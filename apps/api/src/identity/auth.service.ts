@@ -5,6 +5,7 @@ import { z } from 'zod';
 import type { Database, Transaction } from '../database/client.js';
 import { DATABASE } from '../database/database.constants.js';
 import {
+  orgUnits,
   roleAssignments,
   roles,
   sessions,
@@ -16,6 +17,7 @@ import { TenantDb } from '../database/tenant-db.service.js';
 import type { Localized } from '../i18n/locales.js';
 import { hashPassword, verifyPassword } from '../security/passwords.js';
 import { hashToken, ProvisioningService } from './provisioning.service.js';
+import { buildScope, type Scope } from './scope.js';
 
 export const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_MINUTES = 15;
@@ -38,7 +40,10 @@ export type AuthContext = {
     email: string;
     orgUnitId: string | null;
   };
+  /** Everything the user's roles allow, wherever they were granted. */
   permissions: string[];
+  /** Where each of those permissions applies. Ask it with `covers()`. */
+  scope: Scope;
 };
 
 const uuid = z.uuid();
@@ -71,13 +76,26 @@ export class AuthService {
     return tenant;
   }
 
-  private async permissionsOf(tx: Transaction, userId: string) {
-    const rows = await tx
-      .select({ permissions: roles.permissions })
+  /** What a user's roles allow, and for which part of the organization. */
+  private async accessOf(tx: Transaction, userId: string) {
+    const grants = await tx
+      .select({
+        permissions: roles.permissions,
+        orgUnitId: roleAssignments.orgUnitId,
+      })
       .from(roleAssignments)
       .innerJoin(roles, eq(roles.id, roleAssignments.roleId))
       .where(eq(roleAssignments.userId, userId));
-    return [...new Set(rows.flatMap((r) => r.permissions))].sort();
+    // The tree is only needed when a role was granted for one unit.
+    const units = grants.some((g) => g.orgUnitId)
+      ? await tx
+          .select({ id: orgUnits.id, parentId: orgUnits.parentId })
+          .from(orgUnits)
+      : [];
+    return {
+      permissions: [...new Set(grants.flatMap((g) => g.permissions))].sort(),
+      scope: buildScope(grants, units),
+    };
   }
 
   /** Returns a session token, or null if sign-in is refused for any reason. */
@@ -218,7 +236,7 @@ export class AuthService {
           email: user.email,
           orgUnitId: user.orgUnitId,
         },
-        permissions: await this.permissionsOf(tx, user.id),
+        ...(await this.accessOf(tx, user.id)),
       };
     });
   }

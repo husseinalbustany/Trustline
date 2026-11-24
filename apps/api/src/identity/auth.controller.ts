@@ -69,8 +69,8 @@ export class AuthController {
   @Get('me')
   @UseGuards(SessionGuard)
   me(@Req() req: AuthedRequest) {
-    const { tenant, user, permissions } = req.auth;
-    return { tenant, user, permissions };
+    const { tenant, user, permissions, scope } = req.auth;
+    return { tenant, user, permissions, scope };
   }
 
   @Post('logout')
