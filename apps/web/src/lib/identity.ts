@@ -12,6 +12,11 @@ export type Session = {
   };
   user: { id: string; name: Localized; email: string };
   permissions: string[];
+  /**
+   * Where each permission applies: "all" for the whole organization, or the
+   * org units it covers (the granted units and everything beneath them).
+   */
+  scope: Record<string, "all" | string[]>;
 };
 
 export type RoleGrant = {

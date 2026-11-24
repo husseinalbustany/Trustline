@@ -1,17 +1,11 @@
-import { PageHeader } from "@/components/ui/page-header";
+import { ReportForm } from "@/components/incidents/report-form";
 import { getDictionary } from "@/i18n/dictionaries";
 import { resolveLocale, type LangParams } from "@/i18n/locale";
 
 export default async function Page({ params }: { params: LangParams }) {
-  const dict = await getDictionary(await resolveLocale(params));
-
+  const lang = await resolveLocale(params);
+  const dict = await getDictionary(lang);
   return (
-    <>
-      <PageHeader
-        title={dict.reportIncident.title}
-        description={dict.reportIncident.description}
-      />
-      <p className="mt-6 text-sm text-muted">{dict.modulePage.notBuilt}</p>
-    </>
+    <ReportForm lang={lang} t={dict.incidents} heading={dict.reportIncident} />
   );
 }

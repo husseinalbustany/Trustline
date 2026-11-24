@@ -48,11 +48,184 @@
       "policiesDue": "Policies due for review"
     },
     "recentIncidents": "Recent incidents",
-    "myTasks": "My tasks"
+    "myTasks": "My tasks",
+    "loadError": "Could not load incidents. Reload the page.",
+    "noIncidents": "No incidents to show yet.",
+    "viewAll": "View all incidents"
   },
   "reportIncident": {
     "title": "Report an incident",
     "description": "Report an incident, near miss or hazard. It should take under two minutes."
+  },
+  "incidents": {
+    "title": "Incidents",
+    "description": "Incidents, near misses and hazards, from report to closure.",
+    "loading": "Loading…",
+    "loadError": "Could not load incidents. Reload the page.",
+    "notFound": "This incident does not exist, or your role does not let you see it.",
+    "report": "Report an incident",
+    "type": {
+      "incident": "Incident",
+      "near_miss": "Near miss",
+      "hazard": "Hazard"
+    },
+    "typeHelp": {
+      "incident": "Something went wrong and reached a patient, a visitor or a member of staff.",
+      "near_miss": "Something went wrong but was caught before it reached anyone.",
+      "hazard": "A condition that could cause harm if nothing is done."
+    },
+    "status": {
+      "new": "New",
+      "triaged": "Triaged",
+      "in_progress": "In progress",
+      "closed": "Closed",
+      "rejected": "Rejected"
+    },
+    "harm": {
+      "none": "No harm",
+      "mild": "Mild harm",
+      "moderate": "Moderate harm",
+      "severe": "Severe harm",
+      "death": "Death"
+    },
+    "sentinel": "Sentinel event",
+    "list": {
+      "filterLabel": "Filter by status",
+      "all": "All",
+      "mine": "Reported by me",
+      "empty": "No incidents to show. When one is reported, it appears here.",
+      "emptyFiltered": "No incidents match this filter. Choose another status or show all.",
+      "reported": "Reported {date}",
+      "pagination": "Pages",
+      "page": "Page {page} of {pages}",
+      "total": "{total} in total",
+      "previous": "Previous",
+      "next": "Next"
+    },
+    "form": {
+      "noPermission": "Your role does not allow you to report incidents. Ask your administrator.",
+      "noUnits": "No departments have been set up for your organization yet, so a report cannot say where it happened. Ask your administrator.",
+      "type": "What are you reporting?",
+      "category": "Category",
+      "choose": "Choose…",
+      "where": "Where it happened",
+      "occurredAt": "When it happened",
+      "occurredAtHelp": "Set to now. Change it if it happened earlier; it cannot be in the future.",
+      "description": "What happened",
+      "descriptionHelp": "Use your own words. Do not type patient names or record numbers.",
+      "immediateAction": "What was done immediately (optional)",
+      "harmLevel": "Harm level",
+      "anonymous": "Report anonymously",
+      "anonymousWarning": "Your name is not stored with an anonymous report. You will not be able to find it again or follow its progress, so write down the reference you are given after sending.",
+      "submit": "Send report",
+      "cancel": "Cancel",
+      "doneTitle": "Report sent",
+      "doneHelp": "Thank you. The quality team will review it. Its reference is:",
+      "doneAnonymous": "Write this reference down now. The report is anonymous, so you will not be able to find it again.",
+      "view": "View it",
+      "another": "Report another"
+    },
+    "detail": {
+      "back": "Back to incidents",
+      "reporterView": "You are seeing the reporter's view: your report, its progress and the comments shared with you.",
+      "report": "The report",
+      "whatHappened": "What happened",
+      "immediateAction": "What was done immediately",
+      "type": "Type",
+      "category": "Category",
+      "where": "Where it happened",
+      "occurredAt": "When it happened",
+      "reportedAt": "Reported",
+      "reportedBy": "Reported by",
+      "anonymous": "Anonymous",
+      "harmLevel": "Harm level",
+      "ownerUnit": "Responsible department",
+      "ownerUnitNone": "Not decided yet",
+      "assignedTo": "Assigned to",
+      "assignedToNone": "No one yet",
+      "closureSummary": "Closure summary",
+      "rejectionReason": "Reason for rejecting"
+    },
+    "timeline": {
+      "title": "Timeline",
+      "byline": "{name} · {date}",
+      "anonymousReporter": "Anonymous reporter",
+      "unknownPerson": "Unknown user",
+      "note": "Note:",
+      "ownerUnit": "Responsible department: {unit}",
+      "category": "Category: {category}",
+      "events": {
+        "reported": "Reported",
+        "triaged": "Triaged",
+        "assigned": "Assigned to {name}, {unit}",
+        "assignedSomeone": "Assigned to a member of staff, {unit}",
+        "assignedUnit": "Handed to {unit}, with no one assigned",
+        "status_changed": "Status changed from “{from}” to “{to}”",
+        "closed": "Closed",
+        "rejected": "Rejected",
+        "reopened": "Reopened",
+        "commented": "Comment added",
+        "commentedInternal": "Internal comment added"
+      }
+    },
+    "comments": {
+      "title": "Comments",
+      "empty": "No comments yet.",
+      "internal": "Internal",
+      "body": "Add a comment",
+      "bodyHelp": "Do not type patient names or record numbers.",
+      "visibility": "Who can read it",
+      "visibilityInternal": "Internal: staff handling the incident only, not the reporter",
+      "visibilityEveryone": "Everyone who can see this incident, including the reporter",
+      "reporterHelp": "The staff handling this incident will read your comment.",
+      "submit": "Add comment"
+    },
+    "triage": {
+      "title": "Triage",
+      "retitle": "Change the triage",
+      "help": "Confirm the harm level, then hand the incident to the department responsible.",
+      "harmLevel": "Harm level",
+      "sentinel": "This is a sentinel event",
+      "category": "Category",
+      "ownerUnit": "Responsible department",
+      "assignee": "Assigned to",
+      "assigneeNone": "No one yet",
+      "usersError": "Could not load the list of staff. Reload the page to choose who it is assigned to.",
+      "leavesScope": "This department is outside the area your role covers. After saving you will no longer be able to triage or change this incident.",
+      "submit": "Save triage",
+      "saved": "Triage saved."
+    },
+    "actions": {
+      "title": "Change status",
+      "start": "Start work",
+      "close": "Close incident",
+      "reject": "Reject report",
+      "reopen": "Reopen",
+      "note": {
+        "start": "Note (optional)",
+        "close": "Closure summary: what was found and what was done",
+        "reject": "Why this report is rejected",
+        "reopen": "Why this incident is reopened"
+      },
+      "noteHelp": "The reporter can read this note. Do not type patient names or record numbers.",
+      "confirm": "Confirm",
+      "cancel": "Cancel",
+      "done": "Status changed."
+    },
+    "errors": {
+      "invalid": "Check the fields and try again.",
+      "occurred_in_future": "The time it happened is in the future. Correct it and send again.",
+      "unknown_category": "This category is no longer available. Reload the page and choose another.",
+      "unknown_org_unit": "This department no longer exists. Reload the page and choose another.",
+      "unknown_assignee": "This person can no longer be assigned: their account is not active. Choose someone else.",
+      "missing_permission": "Your role does not allow this. Ask your administrator.",
+      "outside_scope": "Your role does not cover the department of this incident. Ask someone who triages for that department.",
+      "invalid_transition": "Someone else has changed this incident in the meantime. The page now shows its current status; check it and try again.",
+      "note_required": "Write a note explaining this change, then confirm again.",
+      "internal_not_allowed": "You can only add comments that everyone can see. Send it again as a comment for everyone.",
+      "notFound": "This incident does not exist, or your role does not let you see it. Go back to the list.",
+      "generic": "Could not save. Check your connection and try again."
+    }
   },
   "modulePage": {
     "scopeTitle": "What this area will cover",

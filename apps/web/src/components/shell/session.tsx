@@ -14,3 +14,17 @@ export function useSession(): Session {
 
 export const can = (session: Session, permission: string) =>
   session.permissions.includes(permission);
+
+/**
+ * Whether the user holds a permission for one org unit: granted for the
+ * whole organization, or for that unit or one above it.
+ */
+export function canIn(
+  session: Session,
+  permission: string,
+  orgUnitId: string | null | undefined,
+) {
+  const reach = session.scope?.[permission];
+  if (reach === "all") return true;
+  return !!reach && !!orgUnitId && reach.includes(orgUnitId);
+}

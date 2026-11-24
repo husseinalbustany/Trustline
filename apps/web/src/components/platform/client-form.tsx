@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
 import { InviteLink } from "@/components/ui/invite-link";
 import { PageHeader } from "@/components/ui/page-header";
+import { dateTimeFormat } from "@/lib/format";
 import { EmptyState, Panel } from "@/components/ui/panel";
 import {
   ApiError,
@@ -162,14 +163,7 @@ export function ClientForm({
   if (mode === "edit" && !client) return <EmptyState>{t.loading}</EmptyState>;
 
   const suspended = client?.status === "suspended";
-  // Western digits in both languages, as everywhere else in the app.
-  const dateFormat = new Intl.DateTimeFormat(
-    lang === "ar" ? "ar-u-nu-latn" : "en",
-    {
-      dateStyle: "medium",
-      timeStyle: "short",
-    },
-  );
+  const dateFormat = dateTimeFormat(lang);
 
   return (
     <>

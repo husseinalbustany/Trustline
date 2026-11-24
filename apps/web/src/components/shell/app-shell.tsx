@@ -9,7 +9,7 @@ import { api, statusOf } from "@/lib/api";
 import type { Session } from "@/lib/identity";
 import { pick } from "@/lib/localized";
 import { LanguageSwitcher } from "./language-switcher";
-import { SessionContext } from "./session";
+import { can, SessionContext } from "./session";
 import { Sidebar, type SidebarLabels } from "./sidebar";
 import { loadPage } from "@/lib/navigate";
 
@@ -121,10 +121,14 @@ export function AppShell({
                 pathname={pathname}
                 label={labels.language}
               />
-              <ButtonLink href={`/${lang}/incidents/new`}>
-                <Plus className="size-4" aria-hidden />
-                <span className="max-sm:sr-only">{labels.reportIncident}</span>
-              </ButtonLink>
+              {can(session, "incidents.report") && (
+                <ButtonLink href={`/${lang}/incidents/new`}>
+                  <Plus className="size-4" aria-hidden />
+                  <span className="max-sm:sr-only">
+                    {labels.reportIncident}
+                  </span>
+                </ButtonLink>
+              )}
               {problem === "signOut" && (
                 <span role="alert" className="text-sm text-danger">
                   {labels.signOutFailed}

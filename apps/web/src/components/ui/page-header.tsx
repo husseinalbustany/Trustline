@@ -5,7 +5,7 @@ export function PageHeader({
   description,
   actions,
 }: {
-  title: string;
+  title: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
 }) {
@@ -17,7 +17,11 @@ export function PageHeader({
           <p className="mt-1 max-w-2xl text-sm text-muted">{description}</p>
         )}
       </div>
-      {actions && <div className="flex shrink-0 gap-2">{actions}</div>}
+      {actions && (
+        <div className="flex max-w-full shrink-0 flex-wrap gap-2">
+          {actions}
+        </div>
+      )}
     </div>
   );
 }
