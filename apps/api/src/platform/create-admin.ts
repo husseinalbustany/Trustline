@@ -1,6 +1,7 @@
 import { requireEnv } from '../env.js';
 import { createDatabase } from '../database/client.js';
-import { platformAdmins } from '../database/schema.js';
+import { eq } from 'drizzle-orm';
+import { platformAdmins, platformSessions } from '../database/schema.js';
 import { hashPassword } from '../security/passwords.js';
 
 export const MIN_PASSWORD_LENGTH = 12;
@@ -23,7 +24,7 @@ export async function createPlatformAdmin(input: {
   try {
     const passwordHash = await hashPassword(input.password);
     const email = input.email.trim().toLowerCase();
-    await db
+    const [admin] = await db
       .insert(platformAdmins)
       .values({ email, name: input.name, passwordHash })
       .onConflictDoUpdate({
@@ -34,7 +35,12 @@ export async function createPlatformAdmin(input: {
           failedAttempts: 0,
           lockedUntil: null,
         },
-      });
+      })
+      .returning({ id: platformAdmins.id });
+    // A password reset ends every session that used the old one.
+    await db
+      .delete(platformSessions)
+      .where(eq(platformSessions.adminId, admin.id));
     return email;
   } finally {
     await pool.end();

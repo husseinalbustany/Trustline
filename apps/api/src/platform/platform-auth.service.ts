@@ -114,8 +114,9 @@ export class PlatformAuthService {
     action: string,
     targetTenantId: string | null = null,
     details: Record<string, unknown> | null = null,
+    db: Pick<Database, 'insert'> = this.db,
   ) {
-    await this.db
+    await db
       .insert(platformAuditLog)
       .values({ adminId, action, targetTenantId, details });
   }

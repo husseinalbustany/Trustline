@@ -3,6 +3,7 @@ import {
   Body,
   ConflictException,
   Controller,
+  ForbiddenException,
   Get,
   NotFoundException,
   Param,
@@ -18,7 +19,7 @@ import type { Transaction } from '../database/client.js';
 import { roleAssignments, roles, sessions, users } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
 import { pgErrorCode } from '../database/errors.js';
-import { ProvisioningService } from './provisioning.service.js';
+import { ProvisioningService, type RoleGrant } from './provisioning.service.js';
 import {
   requirePermission,
   SessionGuard,
@@ -55,7 +56,11 @@ const grantsSchema = z
         .transform((v) => v ?? null),
     }),
   )
-  .max(50);
+  .max(50)
+  // The same role in the same place counts once.
+  .transform((list) => [
+    ...new Map(list.map((g) => [`${g.roleId}:${g.orgUnitId}`, g])).values(),
+  ]);
 
 const createSchema = z.strictObject({
   ...profile,
@@ -124,6 +129,40 @@ export class UsersController {
     }));
   }
 
+  /**
+   * Refuses to hand out roles that allow more than the actor may do. Without
+   * this, anyone who manages users could make an administrator.
+   */
+  private async assertCanGrant(
+    tx: Transaction,
+    req: AuthedRequest,
+    grants: RoleGrant[],
+  ) {
+    const wanted = await this.provisioning.permissionsOfRoles(
+      tx,
+      grants.map((g) => g.roleId),
+    );
+    if (wanted === null) throw new BadRequestException();
+    if (!wanted.every((p) => req.auth.permissions.includes(p))) {
+      throw new ForbiddenException({ code: 'cannot_grant_higher_access' });
+    }
+  }
+
+  /**
+   * Refuses to act on someone who may do more than the actor. Without this,
+   * a reset link would let a user manager take over an administrator.
+   */
+  private async assertCanManage(
+    tx: Transaction,
+    req: AuthedRequest,
+    userId: string,
+  ) {
+    const theirs = await this.provisioning.permissionsOfUser(tx, userId);
+    if (!theirs.every((p) => req.auth.permissions.includes(p))) {
+      throw new ForbiddenException({ code: 'cannot_manage_higher_access' });
+    }
+  }
+
   /** Turns a database refusal into the right client error. */
   private async guarded<T>(work: () => Promise<T>): Promise<T> {
     try {
@@ -156,6 +195,7 @@ export class UsersController {
 
     return this.guarded(() =>
       this.tenantDb.withTenant(tenant.id, async (tx) => {
+        await this.assertCanGrant(tx, req, grants);
         const user = await this.provisioning.createUser(
           tx,
           tenant.id,
@@ -211,6 +251,7 @@ export class UsersController {
           .from(users)
           .where(eq(users.id, userId));
         if (!existing) throw new NotFoundException();
+        await this.assertCanManage(tx, req, userId);
 
         // Re-enabling returns someone who never set a password to "invited".
         const nextStatus =
@@ -223,7 +264,11 @@ export class UsersController {
             updatedAt: new Date(),
           })
           .where(eq(users.id, userId));
-        if (status === 'disabled') await this.revokeSessions(tx, userId);
+        if (status === 'disabled') {
+          await this.revokeSessions(tx, userId);
+          // A link issued earlier must not work if they are enabled again.
+          await this.provisioning.voidInvites(tx, userId);
+        }
 
         await this.provisioning.audit(
           tx,
@@ -263,6 +308,8 @@ export class UsersController {
           .from(users)
           .where(eq(users.id, userId));
         if (!existing) throw new NotFoundException();
+        await this.assertCanManage(tx, req, userId);
+        await this.assertCanGrant(tx, req, parsed.data.roles);
         await this.provisioning.setRoles(
           tx,
           tenant.id,
@@ -298,6 +345,7 @@ export class UsersController {
         .from(users)
         .where(eq(users.id, userId));
       if (!existing) throw new NotFoundException();
+      await this.assertCanManage(tx, req, userId);
       if (existing.status === 'disabled') {
         throw new ConflictException({ code: 'user_disabled' });
       }

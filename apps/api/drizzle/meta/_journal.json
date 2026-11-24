@@ -43,6 +43,20 @@
       "when": 1795542256449,
       "tag": "0005_identity_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795544062788,
+      "tag": "0006_platform_admin_column_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795544077998,
+      "tag": "0007_role_assignment_once",
+      "breakpoints": true
     }
   ]
 }

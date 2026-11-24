@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { Transaction } from '../database/client.js';
 import {
   auditLog,
@@ -34,6 +34,36 @@ export type NewUser = {
  */
 @Injectable()
 export class ProvisioningService {
+  /** The permissions a set of roles would give, or null if one is unknown. */
+  async permissionsOfRoles(tx: Transaction, roleIds: string[]) {
+    const ids = [...new Set(roleIds)];
+    if (ids.length === 0) return [];
+    const found = await tx
+      .select({ permissions: roles.permissions })
+      .from(roles)
+      .where(inArray(roles.id, ids));
+    if (found.length !== ids.length) return null;
+    return [...new Set(found.flatMap((r) => r.permissions))];
+  }
+
+  /** Everything a user's current roles allow. */
+  async permissionsOfUser(tx: Transaction, userId: string) {
+    const rows = await tx
+      .select({ permissions: roles.permissions })
+      .from(roleAssignments)
+      .innerJoin(roles, eq(roles.id, roleAssignments.roleId))
+      .where(eq(roleAssignments.userId, userId));
+    return [...new Set(rows.flatMap((r) => r.permissions))].sort();
+  }
+
+  /** Ends every unused set-password link of a user. */
+  async voidInvites(tx: Transaction, userId: string) {
+    await tx
+      .update(userTokens)
+      .set({ usedAt: new Date() })
+      .where(and(eq(userTokens.userId, userId), isNull(userTokens.usedAt)));
+  }
+
   /** Creates the built-in roles, or brings them in line with the code. */
   async ensureSystemRoles(tx: Transaction, tenantId: string) {
     await tx
@@ -99,10 +129,7 @@ export class ProvisioningService {
     userId: string,
     purpose: 'invitation' | 'password_reset',
   ) {
-    await tx
-      .update(userTokens)
-      .set({ usedAt: new Date() })
-      .where(and(eq(userTokens.userId, userId), isNull(userTokens.usedAt)));
+    await this.voidInvites(tx, userId);
     const token = randomBytes(32).toString('base64url');
     const expiresAt = new Date(Date.now() + INVITE_HOURS * 3_600_000);
     await tx.insert(userTokens).values({

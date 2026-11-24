@@ -6,6 +6,7 @@ import { sql } from 'drizzle-orm';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { AppModule } from '../src/app.module.js';
+import { setupApp } from '../src/app.setup.js';
 import { createDatabase } from '../src/database/client.js';
 import { auditLog } from '../src/database/schema.js';
 import { requireEnv } from '../src/env.js';
@@ -106,6 +107,7 @@ describe('hospital users, roles and sign-in', () => {
       imports: [AppModule],
     }).compile();
     app = moduleRef.createNestApplication();
+    setupApp(app);
     await app.init();
     platform = cookieOf(
       await http()
@@ -364,6 +366,265 @@ describe('hospital users, roles and sign-in', () => {
     });
   });
 
+  describe("no one can raise access, their own or anyone else's", () => {
+    /** A custom role with exactly these permissions, and a user holding it. */
+    async function staffWith(name: string, permissions: string[]) {
+      const role = await http()
+        .post('/roles')
+        .set('Cookie', a.cookie)
+        .send({ code: `${name}_role`, nameEn: name, nameAr: name, permissions })
+        .expect(201);
+      a.roles[`${name}_role`] = role.body.id;
+      return {
+        ...(await createStaff(name, `${name}_role`)),
+        roleId: role.body.id,
+      };
+    }
+    const adminGrant = () => [
+      { roleId: a.roles.administrator, orgUnitId: null },
+    ];
+
+    it('a user manager cannot create, promote or take over an administrator', async () => {
+      const manager = await staffWith('usermgr', ['users.manage']);
+      const me = await http().get('/auth/me').set('Cookie', a.cookie);
+      const adminId = me.body.user.id;
+
+      // Cannot mint a new administrator.
+      const created = await http()
+        .post('/users')
+        .set('Cookie', manager.cookie)
+        .send({
+          nameEn: 'Sneak',
+          nameAr: 'Sneak',
+          email: `sneak-${run}@test.invalid`,
+          roles: adminGrant(),
+        });
+      expect(created.status).toBe(403);
+      expect(created.body.code).toBe('cannot_grant_higher_access');
+
+      // Cannot promote someone else.
+      const other = await createStaff('bystander', 'reporter');
+      await http()
+        .put(`/users/${other.id}/roles`)
+        .set('Cookie', manager.cookie)
+        .send({ roles: adminGrant() })
+        .expect(403);
+
+      // Cannot get a reset link for, strip, or disable the administrator.
+      const link = await http()
+        .post(`/users/${adminId}/invite`)
+        .set('Cookie', manager.cookie);
+      expect(link.status).toBe(403);
+      expect(link.body.code).toBe('cannot_manage_higher_access');
+      expect(link.body.token).toBeUndefined();
+      await http()
+        .put(`/users/${adminId}/roles`)
+        .set('Cookie', manager.cookie)
+        .send({ roles: [] })
+        .expect(403);
+      await http()
+        .patch(`/users/${adminId}`)
+        .set('Cookie', manager.cookie)
+        .send({ status: 'disabled' })
+        .expect(403);
+
+      // Can still do the ordinary job: add a user with a role they may give.
+      await http()
+        .post('/users')
+        .set('Cookie', manager.cookie)
+        .send({
+          nameEn: 'New',
+          nameAr: 'New',
+          email: `new-${run}@test.invalid`,
+          roles: [{ roleId: manager.roleId, orgUnitId: null }],
+        })
+        .expect(201);
+      await http()
+        .post(`/users/${other.id}/invite`)
+        .set('Cookie', manager.cookie)
+        .expect(403);
+      const equal = await createStaff('peer', 'usermgr_role');
+      await http()
+        .post(`/users/${equal.id}/invite`)
+        .set('Cookie', manager.cookie)
+        .expect(201);
+    });
+
+    it('a role manager cannot widen a role they hold, or build one beyond their own access', async () => {
+      const manager = await staffWith('rolemgr', ['roles.manage']);
+
+      const own = await http()
+        .patch(`/roles/${manager.roleId}`)
+        .set('Cookie', manager.cookie)
+        .send({ permissions: ['roles.manage', 'users.manage'] });
+      expect(own.status).toBe(403);
+      // Even with permissions they already have, their own role is off limits.
+      const ownSame = await http()
+        .patch(`/roles/${manager.roleId}`)
+        .set('Cookie', manager.cookie)
+        .send({ nameEn: 'Renamed' });
+      expect(ownSame.status).toBe(409);
+      expect(ownSame.body.code).toBe('cannot_change_own_role');
+      await http()
+        .delete(`/roles/${manager.roleId}`)
+        .set('Cookie', manager.cookie)
+        .expect(409);
+
+      const beyond = await http()
+        .post('/roles')
+        .set('Cookie', manager.cookie)
+        .send({
+          code: 'beyond_me',
+          nameEn: 'Beyond',
+          nameAr: 'Beyond',
+          permissions: ['users.manage'],
+        });
+      expect(beyond.status).toBe(403);
+      expect(beyond.body.code).toBe('cannot_grant_higher_access');
+
+      const within = await http()
+        .post('/roles')
+        .set('Cookie', manager.cookie)
+        .send({
+          code: 'within_me',
+          nameEn: 'Within',
+          nameAr: 'Within',
+          permissions: ['roles.manage'],
+        })
+        .expect(201);
+      await http()
+        .patch(`/roles/${within.body.id}`)
+        .set('Cookie', manager.cookie)
+        .send({ permissions: ['roles.manage', 'settings.manage'] })
+        .expect(403);
+
+      const me = await http().get('/auth/me').set('Cookie', manager.cookie);
+      expect(me.body.permissions).toEqual(['roles.manage']);
+    });
+
+    it('the admin portal can create only the first administrator, and the hospital log says who did', async () => {
+      const again = await http()
+        .post(`/platform/tenants/${a.id}/administrators`)
+        .set('Cookie', platform)
+        .send({
+          nameEn: 'Second',
+          nameAr: 'Second',
+          email: `second-${run}@test.invalid`,
+        });
+      expect(again.status).toBe(409);
+      expect(again.body.code).toBe('administrator_exists');
+      expect(again.body.invite).toBeUndefined();
+
+      const list = await http().get('/users').set('Cookie', a.cookie);
+      expect(list.body.map((u: { email: string }) => u.email)).not.toContain(
+        `second-${run}@test.invalid`,
+      );
+
+      const owner = createDatabase(requireEnv('DATABASE_URL'));
+      const { rows } = await owner.db.execute<{
+        changes: { platformAdminEmail: string };
+      }>(
+        sql`select changes from audit_log where tenant_id = ${a.id} and action = 'administrator_created_by_platform'`,
+      );
+      await owner.pool.end();
+      expect(rows).toHaveLength(1);
+      expect(rows[0].changes.platformAdminEmail).toBe(staffEmail);
+    });
+  });
+
+  describe('hardening', () => {
+    it('treats a malformed cookie as no session, not a server error', async () => {
+      await http()
+        .get('/auth/me')
+        .set('Cookie', 'tl_session=%E0%A4%A')
+        .expect(401);
+      await http()
+        .get('/platform/auth/me')
+        .set('Cookie', 'tl_platform_session=%')
+        .expect(401);
+    });
+
+    it('accepts JSON bodies only', async () => {
+      await http()
+        .post('/auth/login')
+        .type('form')
+        .send({ org: a.slug, email: a.adminEmail, password })
+        .expect(415);
+    });
+
+    it('a link issued before a user was disabled stays dead after they are enabled', async () => {
+      const staff = await createStaff('paused', 'reporter');
+      const link = await http()
+        .post(`/users/${staff.id}/invite`)
+        .set('Cookie', a.cookie)
+        .expect(201);
+      const body = { org: a.slug, token: link.body.token };
+      await http().post('/auth/invite/check').send(body).expect(200);
+      await http()
+        .patch(`/users/${staff.id}`)
+        .set('Cookie', a.cookie)
+        .send({ status: 'disabled' })
+        .expect(200);
+      await http()
+        .patch(`/users/${staff.id}`)
+        .set('Cookie', a.cookie)
+        .send({ status: 'active' })
+        .expect(200);
+      await http().post('/auth/invite/check').send(body).expect(404);
+    });
+
+    it('a one-time link sets a password once, even when used twice at the same moment', async () => {
+      const created = await http()
+        .post('/users')
+        .set('Cookie', a.cookie)
+        .send({
+          nameEn: 'Twice',
+          nameAr: 'Twice',
+          email: `twice-${run}@test.invalid`,
+          roles: [],
+        })
+        .expect(201);
+      const body = { org: a.slug, token: created.body.invite.token, password };
+      const results = await Promise.all(
+        [1, 2, 3, 4].map(() => http().post('/auth/invite/accept').send(body)),
+      );
+      expect(results.map((r) => r.status).sort((x, y) => x - y)).toEqual([
+        204, 404, 404, 404,
+      ]);
+    });
+
+    it('stores the same role grant once', async () => {
+      const grant = { roleId: a.roles.reporter, orgUnitId: null };
+      const created = await http()
+        .post('/users')
+        .set('Cookie', a.cookie)
+        .send({
+          nameEn: 'Dup',
+          nameAr: 'Dup',
+          email: `dup-${run}@test.invalid`,
+          roles: [grant, grant],
+        })
+        .expect(201);
+      expect(created.body.user.roles).toHaveLength(1);
+    });
+
+    it("records the caller's address, taken from the trusted proxy only", async () => {
+      await http()
+        .post('/auth/login')
+        .set('X-Forwarded-For', '198.51.100.7, 203.0.113.9')
+        .send({ org: a.slug, email: a.adminEmail, password })
+        .expect(200);
+      const owner = createDatabase(requireEnv('DATABASE_URL'));
+      const { rows } = await owner.db.execute<{ ip_address: string }>(
+        sql`select ip_address from audit_log where tenant_id = ${a.id} and action = 'sign_in' order by occurred_at desc limit 1`,
+      );
+      await owner.pool.end();
+      // One trusted hop: the last address in the list, which the web app
+      // wrote, not the first, which the caller could have made up.
+      expect(rows[0].ip_address).toBe('203.0.113.9');
+    });
+  });
+
   describe('users', () => {
     it('refuses a duplicate email in one hospital, allows it in another', async () => {
       const email = `shared-${run}@test.invalid`;
@@ -454,11 +715,16 @@ describe('hospital users, roles and sign-in', () => {
         .set('Cookie', platform)
         .send(body);
 
-    it('shuts out a suspended client, and lets it back in when reactivated', async () => {
+    it('shuts out a suspended client, and needs a new sign-in when reactivated', async () => {
       await setClient(b.id, { status: 'suspended' }).expect(200);
       await http().get('/auth/me').set('Cookie', b.cookie).expect(401);
       await login(b.slug, b.adminEmail, password).expect(401);
       await setClient(b.id, { status: 'active' }).expect(200);
+      // Reactivating does not revive the sessions that suspension ended.
+      await http().get('/auth/me').set('Cookie', b.cookie).expect(401);
+      b.cookie = cookieOf(
+        await login(b.slug, b.adminEmail, password).expect(200),
+      );
       await http().get('/auth/me').set('Cookie', b.cookie).expect(200);
     });
 

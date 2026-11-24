@@ -6,6 +6,7 @@ import { sql } from 'drizzle-orm';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { AppModule } from '../src/app.module.js';
+import { setupApp } from '../src/app.setup.js';
 import { createDatabase } from '../src/database/client.js';
 import {
   orgUnits,
@@ -48,6 +49,7 @@ describe('admin portal API', () => {
       imports: [AppModule],
     }).compile();
     app = moduleRef.createNestApplication();
+    setupApp(app);
     await app.init();
   }, 30_000);
 
@@ -165,6 +167,27 @@ describe('admin portal API', () => {
     await login(password).expect(401);
   }, 30_000);
 
+  it("ends an admin's sessions when their password is reset", async () => {
+    await createPlatformAdmin({ email, name: 'Test Admin', password });
+    const fresh = (await login(password).expect(200))
+      .get('Set-Cookie')![0]
+      .split(';')[0];
+    await request(app.getHttpServer())
+      .get('/platform/auth/me')
+      .set('Cookie', fresh)
+      .expect(200);
+    await createPlatformAdmin({
+      email,
+      name: 'Test Admin',
+      password: `${password}-new`,
+    });
+    await request(app.getHttpServer())
+      .get('/platform/auth/me')
+      .set('Cookie', fresh)
+      .expect(401);
+    await login(`${password}-new`).expect(200);
+  }, 30_000);
+
   describe('database roles', () => {
     const platform = createDatabase(requireEnv('PLATFORM_DATABASE_URL'));
     const tenantApp = createDatabase(requireEnv('APP_DATABASE_URL'));
@@ -180,6 +203,15 @@ describe('admin portal API', () => {
       ).rejects.toThrow();
       await expect(
         tenantApp.db.update(tenants).set({ status: 'suspended' }),
+      ).rejects.toThrow();
+    });
+
+    it("cannot overwrite an admin's password or email from the API", async () => {
+      await expect(
+        platform.db.update(platformAdmins).set({ passwordHash: 'x' }),
+      ).rejects.toThrow();
+      await expect(
+        platform.db.update(platformAdmins).set({ email: 'x@test.invalid' }),
       ).rejects.toThrow();
     });
 

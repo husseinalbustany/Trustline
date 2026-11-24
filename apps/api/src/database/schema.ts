@@ -202,6 +202,10 @@ export const roleAssignments = pgTable(
       columns: [t.tenantId, t.orgUnitId],
       foreignColumns: [orgUnits.tenantId, orgUnits.id],
     }),
+    // One grant per user, role and place.
+    unique('role_assignments_once_key')
+      .on(t.tenantId, t.userId, t.roleId, t.orgUnitId)
+      .nullsNotDistinct(),
     index('role_assignments_user_idx').on(t.tenantId, t.userId),
     tenantIsolation(),
   ],

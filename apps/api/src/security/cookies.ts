@@ -3,7 +3,13 @@ import type { Request } from 'express';
 export function readCookie(req: Request, name: string): string | undefined {
   for (const part of (req.headers.cookie ?? '').split(';')) {
     const [key, ...value] = part.trim().split('=');
-    if (key === name) return decodeURIComponent(value.join('='));
+    if (key !== name) continue;
+    try {
+      return decodeURIComponent(value.join('='));
+    } catch {
+      // A value that is not valid percent-encoding is treated as no cookie.
+      return undefined;
+    }
   }
   return undefined;
 }

@@ -4,6 +4,7 @@ import {
   ConflictException,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   NotFoundException,
@@ -13,7 +14,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { asc, count, eq } from 'drizzle-orm';
+import { and, asc, count, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { pgErrorCode } from '../database/errors.js';
 import { roleAssignments, roles } from '../database/schema.js';
@@ -81,11 +82,19 @@ export class RolesController {
     return { roles: list, permissions: PERMISSIONS };
   }
 
+  /** Nobody builds a role that allows more than they may do themselves. */
+  private assertWithinOwn(req: AuthedRequest, permissions?: string[]) {
+    if (permissions?.some((p) => !req.auth.permissions.includes(p))) {
+      throw new ForbiddenException({ code: 'cannot_grant_higher_access' });
+    }
+  }
+
   @Post()
   async create(@Body() body: unknown, @Req() req: AuthedRequest) {
     requirePermission(req, 'roles.manage');
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException();
+    this.assertWithinOwn(req, parsed.data.permissions);
     const { tenant, user: actor } = req.auth;
     try {
       return await this.tenantDb.withTenant(tenant.id, async (tx) => {
@@ -123,9 +132,10 @@ export class RolesController {
     if (!parsed.success || Object.keys(parsed.data).length === 0) {
       throw new BadRequestException();
     }
+    this.assertWithinOwn(req, parsed.data.permissions);
     const { tenant, user: actor } = req.auth;
     return this.tenantDb.withTenant(tenant.id, async (tx) => {
-      const role = await this.editable(tx, id);
+      const role = await this.editable(tx, id, actor.id);
       const [updated] = await tx
         .update(roles)
         .set(parsed.data)
@@ -138,7 +148,11 @@ export class RolesController {
         'role_updated',
         'role',
         role.id,
-        { before: role.permissions, after: updated.permissions },
+        {
+          changed: Object.keys(parsed.data),
+          before: role.permissions,
+          after: updated.permissions,
+        },
       );
       return updated;
     });
@@ -150,13 +164,19 @@ export class RolesController {
     requirePermission(req, 'roles.manage');
     const { tenant, user: actor } = req.auth;
     await this.tenantDb.withTenant(tenant.id, async (tx) => {
-      const role = await this.editable(tx, id);
-      const [{ used }] = await tx
-        .select({ used: count() })
-        .from(roleAssignments)
-        .where(eq(roleAssignments.roleId, role.id));
-      if (used > 0) throw new ConflictException({ code: 'role_in_use' });
-      await tx.delete(roles).where(eq(roles.id, role.id));
+      const role = await this.editable(tx, id, actor.id);
+      try {
+        // A savepoint, so a refusal here leaves the transaction usable.
+        await tx.transaction((sp) =>
+          sp.delete(roles).where(eq(roles.id, role.id)),
+        );
+      } catch (e) {
+        // Still granted to someone: the foreign key refuses the delete.
+        if (pgErrorCode(e) === '23503') {
+          throw new ConflictException({ code: 'role_in_use' });
+        }
+        throw e;
+      }
       await this.provisioning.audit(
         tx,
         tenant.id,
@@ -169,10 +189,14 @@ export class RolesController {
     });
   }
 
-  /** The role, if it exists here and is not a built-in one. */
+  /**
+   * The role, if it exists here, is not built in, and is not one the actor
+   * holds: editing your own role would be changing your own access.
+   */
   private async editable(
     tx: Parameters<Parameters<TenantDb['withTenant']>[1]>[0],
     id: string,
+    actorId: string,
   ) {
     const parsed = z.uuid().safeParse(id);
     if (!parsed.success) throw new NotFoundException();
@@ -182,6 +206,17 @@ export class RolesController {
       .where(eq(roles.id, parsed.data));
     if (!role) throw new NotFoundException();
     if (role.isSystem) throw new ConflictException({ code: 'system_role' });
+    const [own] = await tx
+      .select({ id: roleAssignments.id })
+      .from(roleAssignments)
+      .where(
+        and(
+          eq(roleAssignments.roleId, role.id),
+          eq(roleAssignments.userId, actorId),
+        ),
+      )
+      .limit(1);
+    if (own) throw new ConflictException({ code: 'cannot_change_own_role' });
     return role;
   }
 }

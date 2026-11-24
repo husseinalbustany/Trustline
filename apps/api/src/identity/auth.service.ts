@@ -93,23 +93,38 @@ export class AuthService {
       return null;
     }
 
-    return this.tenantDb.withTenant(tenant.id, async (tx) => {
-      const [user] = await tx
+    // Read, verify, then write in separate steps: the password check is slow
+    // and must not hold a database connection while it runs.
+    const [user] = await this.tenantDb.withTenant(tenant.id, (tx) =>
+      tx
         .select()
         .from(users)
-        .where(eq(users.email, input.email.trim().toLowerCase()));
+        .where(eq(users.email, input.email.trim().toLowerCase())),
+    );
 
-      if (!user || !user.passwordHash || user.status !== 'active') {
-        await this.burnTime(input.password);
-        return null;
-      }
+    if (!user || !user.passwordHash || user.status !== 'active') {
+      await this.burnTime(input.password);
+      return null;
+    }
 
-      const locked = user.lockedUntil && user.lockedUntil > new Date();
-      const valid = await verifyPassword(input.password, user.passwordHash);
+    const valid = await verifyPassword(input.password, user.passwordHash);
 
-      if (locked || !valid) {
+    return this.tenantDb.withTenant(tenant.id, async (tx) => {
+      // Re-read under a row lock, so parallel guesses are counted one by one
+      // and a lock set a moment ago is seen.
+      const [fresh] = await tx
+        .select()
+        .from(users)
+        .where(eq(users.id, user.id))
+        .for('update');
+      const locked = fresh.lockedUntil && fresh.lockedUntil > new Date();
+      const stillValid =
+        valid &&
+        fresh.status === 'active' &&
+        fresh.passwordHash === user.passwordHash;
+
+      if (locked || !stillValid) {
         if (!locked) {
-          // One statement, so parallel attempts cannot skip the lock.
           await tx
             .update(users)
             .set({
@@ -259,15 +274,26 @@ export class AuthService {
   /** Sets the password from a one-time link. False if the link is not valid. */
   async acceptInvite(org: string, token: string, password: string) {
     const tenant = await this.findTenant(org, true);
-    if (!tenant) return false;
+    // Check the link before the slow hash, so a bad one costs nothing, and
+    // take the same time whether or not the organization exists.
+    const usable =
+      tenant &&
+      (await this.tenantDb.withTenant(tenant.id, (tx) =>
+        this.findInvite(tx, token),
+      ));
+    if (!tenant || !usable) return false;
+
     const passwordHash = await hashPassword(password);
     return this.tenantDb.withTenant(tenant.id, async (tx) => {
       const row = await this.findInvite(tx, token);
       if (!row) return false;
-      await tx
+      // Claim the link in one statement: of two requests at once, one wins.
+      const claimed = await tx
         .update(userTokens)
         .set({ usedAt: new Date() })
-        .where(eq(userTokens.id, row.invite.id));
+        .where(and(eq(userTokens.id, row.invite.id), isNull(userTokens.usedAt)))
+        .returning({ id: userTokens.id });
+      if (claimed.length === 0) return false;
       await tx
         .update(users)
         .set({

@@ -1,0 +1,1 @@
+ALTER TABLE "role_assignments" ADD CONSTRAINT "role_assignments_once_key" UNIQUE NULLS NOT DISTINCT("tenant_id","user_id","role_id","org_unit_id");

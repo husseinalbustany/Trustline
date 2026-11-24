@@ -12,7 +12,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, ne } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Database } from '../database/client.js';
 import { PLATFORM_DATABASE } from '../database/database.constants.js';
@@ -27,7 +27,7 @@ import {
 } from './platform-auth.guard.js';
 import { PlatformAuthService } from './platform-auth.service.js';
 import { pgErrorCode } from '../database/errors.js';
-import { roles } from '../database/schema.js';
+import { roleAssignments, roles, sessions, users } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
 
@@ -88,16 +88,25 @@ export class PlatformTenantsController {
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException();
     try {
-      const [tenant] = await this.db
-        .insert(tenants)
-        .values(parsed.data)
-        .returning();
+      // The client and its audit entry are saved together or not at all.
+      const tenant = await this.db.transaction(async (tx) => {
+        const [created] = await tx
+          .insert(tenants)
+          .values(parsed.data)
+          .returning();
+        await this.auth.audit(
+          req.platformAdmin.id,
+          'client_created',
+          created.id,
+          { slug: created.slug },
+          tx,
+        );
+        return created;
+      });
+      // Safe to repeat: creating an administrator runs it again.
       await this.tenantDb.withTenant(tenant.id, (tx) =>
         this.provisioning.ensureSystemRoles(tx, tenant.id),
       );
-      await this.auth.audit(req.platformAdmin.id, 'client_created', tenant.id, {
-        slug: tenant.slug,
-      });
       return tenant;
     } catch (e) {
       if (isUniqueViolation(e)) {
@@ -142,24 +151,52 @@ export class PlatformTenantsController {
     if (!parsed.success || Object.keys(parsed.data).length === 0) {
       throw new BadRequestException();
     }
-    const [tenant] = await this.db
-      .update(tenants)
-      .set(parsed.data)
-      .where(eq(tenants.id, this.parseId(id)))
-      .returning();
-    if (!tenant) throw new NotFoundException();
-
-    await this.auth.audit(req.platformAdmin.id, 'client_updated', tenant.id, {
-      changed: Object.keys(parsed.data),
-      ...(parsed.data.status && { status: parsed.data.status }),
+    const tenantId = this.parseId(id);
+    const tenant = await this.db.transaction(async (tx) => {
+      const [before] = await tx
+        .select()
+        .from(tenants)
+        .where(eq(tenants.id, tenantId))
+        .for('update');
+      if (!before) throw new NotFoundException();
+      const [after] = await tx
+        .update(tenants)
+        .set(parsed.data)
+        .where(eq(tenants.id, tenantId))
+        .returning();
+      // What changed, with the old and new value of each field.
+      const changes = Object.fromEntries(
+        (Object.keys(parsed.data) as (keyof typeof parsed.data)[])
+          .filter((key) => before[key] !== after[key])
+          .map((key) => [key, { from: before[key], to: after[key] }]),
+      );
+      await this.auth.audit(
+        req.platformAdmin.id,
+        'client_updated',
+        tenantId,
+        { changes },
+        tx,
+      );
+      return after;
     });
+
+    // Suspension ends every session, so reactivating does not revive them.
+    if (parsed.data.status === 'suspended') {
+      await this.tenantDb.withTenant(tenant.id, (tx) =>
+        tx
+          .update(sessions)
+          .set({ revokedAt: new Date() })
+          .where(isNull(sessions.revokedAt)),
+      );
+    }
     return tenant;
   }
 
   /**
-   * Creates a hospital's administrator and returns a one-time link for them
-   * to set a password. This is the only hospital data the portal writes, and
-   * it goes through the tenant-scoped connection like any other.
+   * Creates a hospital's first administrator and returns a one-time link for
+   * them to set a password. This is the only hospital data the portal writes,
+   * and it is refused once the hospital has an administrator: from then on
+   * the hospital adds its own, and the portal cannot let itself in.
    */
   @Post(':id/administrators')
   async createAdministrator(
@@ -174,6 +211,13 @@ export class PlatformTenantsController {
       .from(tenants)
       .where(eq(tenants.id, this.parseId(id)));
     if (!tenant) throw new NotFoundException();
+    if (tenant.status !== 'active') {
+      throw new ConflictException({ code: 'client_suspended' });
+    }
+    // The link sets a password, which a single sign-on only client cannot use.
+    if (tenant.signInMethod === 'sso') {
+      throw new ConflictException({ code: 'password_sign_in_disabled' });
+    }
 
     try {
       const result = await this.tenantDb.withTenant(tenant.id, async (tx) => {
@@ -182,6 +226,28 @@ export class PlatformTenantsController {
           .select({ id: roles.id })
           .from(roles)
           .where(eq(roles.code, 'administrator'));
+        const [existing] = await tx
+          .select({ id: users.id })
+          .from(roleAssignments)
+          .innerJoin(users, eq(users.id, roleAssignments.userId))
+          .where(
+            and(
+              eq(roleAssignments.roleId, administrator.id),
+              ne(users.status, 'disabled'),
+            ),
+          )
+          .limit(1);
+        if (existing) {
+          throw new ConflictException({ code: 'administrator_exists' });
+        }
+        // Recorded first, on the portal's side, so the account can never
+        // exist without a record of which staff member created it.
+        await this.auth.audit(
+          req.platformAdmin.id,
+          'client_administrator_created',
+          tenant.id,
+          { email: parsed.data.email.trim().toLowerCase() },
+        );
         const user = await this.provisioning.createUser(
           tx,
           tenant.id,
@@ -195,17 +261,24 @@ export class PlatformTenantsController {
           user.id,
           'invitation',
         );
+        // The hospital's own log says the account came from Trustline staff.
+        await this.provisioning.audit(
+          tx,
+          tenant.id,
+          null,
+          'administrator_created_by_platform',
+          'user',
+          user.id,
+          {
+            platformAdminId: req.platformAdmin.id,
+            platformAdminEmail: req.platformAdmin.email,
+          },
+        );
         return {
           user: { id: user.id, email: user.email, nameEn: user.nameEn },
           invite: { ...invite, org: tenant.slug },
         };
       });
-      await this.auth.audit(
-        req.platformAdmin.id,
-        'client_administrator_created',
-        tenant.id,
-        { email: result.user.email },
-      );
       return result;
     } catch (e) {
       if (isUniqueViolation(e)) {
