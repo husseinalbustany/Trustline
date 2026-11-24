@@ -105,6 +105,10 @@ export function TriagePanel({
     options.unshift({ ...incident.category, code: "" });
   }
 
+  // A near miss or a hazard harmed nobody, so it has no harm level to set and
+  // cannot be a sentinel event; the API refuses anything else.
+  const noHarm = incident.type !== "incident";
+
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const { harmLevel, isSentinel, categoryId, assignedTo } = readForm(
@@ -118,8 +122,8 @@ export function TriagePanel({
         {
           method: "POST",
           body: {
-            harmLevel,
-            isSentinel: isSentinel === "on",
+            harmLevel: noHarm ? "none" : harmLevel,
+            isSentinel: noHarm ? false : isSentinel === "on",
             categoryId,
             ownerUnitId,
             assignedTo: assignedTo || null,
@@ -154,29 +158,33 @@ export function TriagePanel({
             className="flex flex-col gap-4 p-4"
           >
             <p className="text-sm text-muted">{g.help}</p>
-            <Field label={g.harmLevel}>
-              <select
-                name="harmLevel"
-                required
-                defaultValue={incident.harmLevel}
-                className={inputClass}
-              >
-                {harmLevels.map((level) => (
-                  <option key={level} value={level}>
-                    {t.harm[level]}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <label className="flex items-center gap-3 text-sm font-medium">
-              <input
-                type="checkbox"
-                name="isSentinel"
-                defaultChecked={incident.isSentinel}
-                className="size-4 accent-accent"
-              />
-              {g.sentinel}
-            </label>
+            {!noHarm && (
+              <>
+                <Field label={g.harmLevel}>
+                  <select
+                    name="harmLevel"
+                    required
+                    defaultValue={incident.harmLevel}
+                    className={inputClass}
+                  >
+                    {harmLevels.map((level) => (
+                      <option key={level} value={level}>
+                        {t.harm[level]}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+                <label className="flex items-center gap-3 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    name="isSentinel"
+                    defaultChecked={incident.isSentinel}
+                    className="size-4 accent-accent"
+                  />
+                  {g.sentinel}
+                </label>
+              </>
+            )}
             <Field label={g.category}>
               <select
                 name="categoryId"
