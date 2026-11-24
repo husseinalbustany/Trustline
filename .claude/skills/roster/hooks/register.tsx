@@ -190,57 +190,54 @@ export const register: Register = on => {
       </Box>
     )
 
-    // One node of the tree: a colored card, drawn under a branch mark when it
-    // hangs off the node above. Its dot fills, in green, while it works.
+    // One node of the tree: a colored card, indented by its depth. Its dot
+    // fills, in green, while it works. A plain column box, with nothing
+    // beside it, which every surface lays out the same way.
     const node = (opts: {
       name: string
       note?: string
       color: string
       busy?: boolean
-      branch?: string
+      depth: number
     }) => (
-      <Box gap={1}>
-        {opts.branch && <Text color={opts.color}>{opts.branch}</Text>}
-        <Box
-          borderStyle="round"
-          borderColor={opts.busy ? 'success' : opts.color}
-          paddingX={1}
-          flexDirection="column"
-          flexGrow={1}
-        >
-          <Text bold>
-            <Text color={opts.busy ? 'success' : opts.color}>
-              {opts.busy ? '● ' : '○ '}
-            </Text>
-            {opts.name}
-            {opts.busy && <Text color="success"> working</Text>}
+      <Box
+        borderStyle="round"
+        borderColor={opts.busy ? 'success' : opts.color}
+        paddingX={1}
+        marginLeft={opts.depth * 2}
+        flexDirection="column"
+      >
+        <Text bold>
+          <Text color={opts.busy ? 'success' : opts.color}>
+            {opts.busy ? '● ' : '○ '}
           </Text>
-          {opts.note && <Text dimColor>{opts.note}</Text>}
-        </Box>
+          {opts.name}
+          {opts.busy && <Text color="success"> working</Text>}
+        </Text>
+        {opts.note && <Text dimColor>{opts.note}</Text>}
       </Box>
     )
 
-    // A branch of the tree: its label, then its agents hanging beneath it.
+    // A branch of the tree: its label, then its agents one level deeper.
     const branch = (title: string, note: string, color: string, list: Member[]) => (
-      <Box flexDirection="column" marginLeft={2}>
-        <Text>
-          <Text color={color}>├─ </Text>
-          <Text bold color={color}>
-            {title}
+      <Box flexDirection="column">
+        <Box marginLeft={4}>
+          <Text>
+            <Text bold color={color}>
+              {title}
+            </Text>
+            <Text dimColor> · {note}</Text>
           </Text>
-          <Text dimColor> · {note}</Text>
-        </Text>
-        <Box flexDirection="column" marginLeft={3}>
-          {list.map((m, i) =>
-            node({
-              name: m.name,
-              note: m.description,
-              color,
-              busy: isWorking(m.name),
-              branch: i === list.length - 1 ? '└─' : '├─',
-            }),
-          )}
         </Box>
+        {list.map(m =>
+          node({
+            name: m.name,
+            note: m.description,
+            color,
+            busy: isWorking(m.name),
+            depth: 3,
+          }),
+        )}
       </Box>
     )
 
@@ -267,30 +264,29 @@ export const register: Register = on => {
         </Box>
 
         {current === 'team' && (
-          <Box flexDirection="column">
-            {node({
-              name: 'Owner',
-              note: 'You. Decides what ships and approves merges.',
-              color: 'warning',
-            })}
-            <Box marginLeft={2}>
+          <Box flexDirection="column" gap={1}>
+            <Box flexDirection="column">
+              {node({
+                name: 'Owner',
+                note: 'You. Decides what ships and approves merges.',
+                color: 'warning',
+                depth: 0,
+              })}
               {node({
                 name: 'Lead',
                 note: 'The main Claude session. Plans, builds and hands out work.',
                 color: 'claude',
                 busy: isLeadBusy,
-                branch: '└─',
+                depth: 1,
               })}
             </Box>
             {members.length === 0 && (
               <Text dimColor>No agents found in {AGENTS_DIR}.</Text>
             )}
-            <Box flexDirection="column" marginLeft={3}>
-              {builders.length > 0 &&
-                branch('Build', 'can change files', 'suggestion', builders)}
-              {reviewers.length > 0 &&
-                branch('Review', 'read and report only', 'merged', reviewers)}
-            </Box>
+            {builders.length > 0 &&
+              branch('Build', 'can change files', 'suggestion', builders)}
+            {reviewers.length > 0 &&
+              branch('Review', 'read and report only', 'merged', reviewers)}
           </Box>
         )}
 
@@ -303,6 +299,7 @@ export const register: Register = on => {
                 : 'Waiting for your next message.',
               color: 'claude',
               busy: isLeadBusy,
+              depth: 0,
             })}
             {agents.length === 0 && (
               <Text dimColor>No other agents have run in this session yet.</Text>

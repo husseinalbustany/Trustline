@@ -60,7 +60,7 @@ test('the roster lists agents from the project, grouped by what they may do', as
       await ui.find({ type: 'Text', text: /^Does api-engineer work\.$/ }),
     ).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /Build/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /├─ Review · read and report only/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /Review · read and report only/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /notes/ })).toBeUndefined()
     await ui.unmount()
   }
