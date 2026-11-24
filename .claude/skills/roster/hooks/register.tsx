@@ -159,18 +159,48 @@ export const register: Register = on => {
     const builders = members.filter(m => m.canEdit)
     const reviewers = members.filter(m => !m.canEdit)
 
+    const isWorking = (name: string) => working.some(a => a.type === name)
+
+    // A count in its own box.
+    const tile = (label: string, value: number) => (
+      <Box borderStyle="round" paddingX={1}>
+        <Text>
+          <Text dimColor>{label} </Text>
+          <Text bold>{String(value)}</Text>
+        </Text>
+      </Box>
+    )
+
+    // A named box in the chain of command.
+    const chip = (name: string) => (
+      <Box borderStyle="round" paddingX={1}>
+        <Text bold>{name}</Text>
+      </Box>
+    )
+
+    // One agent: its name with a dot that fills while it works, and what it does.
+    const card = (m: Member) => (
+      <Box
+        borderStyle="round"
+        borderDimColor={!isWorking(m.name)}
+        paddingX={1}
+        flexDirection="column"
+      >
+        <Text bold>
+          {isWorking(m.name) ? '● ' : '○ '}
+          {m.name}
+        </Text>
+        <Text dimColor>{m.description}</Text>
+      </Box>
+    )
+
     const group = (title: string, note: string, list: Member[]) => (
       <Box flexDirection="column">
-        <Text bold>
-          {title} <Text dimColor>{note}</Text>
+        <Text>
+          <Text bold>{title}</Text>
+          <Text dimColor> · {note}</Text>
         </Text>
-        {list.map(m => (
-          <Text>
-            {working.some(a => a.type === m.name) ? '● ' : '○ '}
-            {m.name}
-            <Text dimColor> {m.description}</Text>
-          </Text>
-        ))}
+        {list.map(card)}
       </Box>
     )
 
@@ -189,19 +219,25 @@ export const register: Register = on => {
           <Button key="refresh" label="Refresh" hotkey="r" onPress={() => refresh($)} />
         </Box>
 
-        <Text>
-          Working now <Text bold>{String(working.length)}</Text>
-          {'   '}Agents <Text bold>{String(members.length)}</Text>
-          {'   '}Engineers <Text bold>{String(builders.length)}</Text>
-          {'   '}Reviewers <Text bold>{String(reviewers.length)}</Text>
-        </Text>
+        <Box gap={1} flexWrap="wrap">
+          {tile('Working now', working.length)}
+          {tile('Agents', members.length)}
+          {tile('Engineers', builders.length)}
+          {tile('Reviewers', reviewers.length)}
+        </Box>
 
         {current === 'team' && (
           <Box flexDirection="column" gap={1}>
-            <Text>
-              <Text bold>Owner</Text> → <Text bold>Lead</Text>
-              <Text dimColor> You decide what ships. The main Claude session hands out the work.</Text>
-            </Text>
+            <Box flexDirection="column">
+              <Box gap={1} alignItems="center">
+                {chip('Owner')}
+                <Text dimColor>→</Text>
+                {chip('Lead')}
+              </Box>
+              <Text dimColor>
+                You decide what ships. The main Claude session hands out the work.
+              </Text>
+            </Box>
             {members.length === 0 && (
               <Text dimColor>No agents found in {AGENTS_DIR}.</Text>
             )}
@@ -216,10 +252,19 @@ export const register: Register = on => {
               <Text dimColor>No agents have run in this session yet.</Text>
             )}
             {agents.map(a => (
-              <Text dimColor={a.status !== 'running'}>
-                {a.status === 'running' ? '● ' : '○ '}
-                {a.type} <Text dimColor>{a.status}</Text> {a.description}
-              </Text>
+              <Box
+                borderStyle="round"
+                borderDimColor={a.status !== 'running'}
+                paddingX={1}
+                flexDirection="column"
+              >
+                <Text bold={a.status === 'running'}>
+                  {a.status === 'running' ? '● ' : '○ '}
+                  {a.type}
+                  <Text dimColor> {a.status}</Text>
+                </Text>
+                <Text dimColor>{a.description}</Text>
+              </Box>
             ))}
           </Box>
         )}
@@ -227,10 +272,13 @@ export const register: Register = on => {
         {current === 'workflow' && (
           <Box flexDirection="column">
             {WORKFLOW.map(([who, what], i) => (
-              <Text>
-                {String(i + 1)}. <Text bold>{who}</Text>
-                <Text dimColor> {what}</Text>
-              </Text>
+              <Box gap={1}>
+                <Text dimColor>{String(i + 1)}</Text>
+                <Box flexDirection="column">
+                  <Text bold>{who}</Text>
+                  <Text dimColor>{what}</Text>
+                </Box>
+              </Box>
             ))}
           </Box>
         )}
@@ -241,7 +289,9 @@ export const register: Register = on => {
               <Text dimColor>No rules section found in {RULES_FILE}.</Text>
             )}
             {ruleList.map(rule => (
-              <Text>• {rule}</Text>
+              <Box borderStyle="round" borderDimColor paddingX={1}>
+                <Text>{rule}</Text>
+              </Box>
             ))}
           </Box>
         )}

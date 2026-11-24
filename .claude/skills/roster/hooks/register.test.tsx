@@ -51,11 +51,14 @@ test('the roster lists agents from the project, grouped by what they may do', as
     const ui = await $.ui.mount({ ...PANE, surface })
 
     expect((await ui.find({ type: 'Text', text: /Agents/ }))?.text).toMatch(/Agents 2/)
-    expect((await ui.find({ type: 'Text', text: /api-engineer/ }))?.text).toMatch(
-      /○ api-engineer Does api-engineer work\./,
+    expect((await ui.find({ type: 'Text', text: /○ api-engineer/ }))?.text).toBe(
+      '○ api-engineer',
     )
+    expect(
+      await ui.find({ type: 'Text', text: /^Does api-engineer work\.$/ }),
+    ).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /Build/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /Review / })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /Review · read and report only/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /notes/ })).toBeUndefined()
     await ui.unmount()
   }
@@ -72,7 +75,7 @@ test('the Rules tab shows the rules section of CLAUDE.md and nothing after it', 
   await ui.press({ key: 'tab-rules' })
 
   expect((await ui.find({ type: 'Text', text: /Tenant isolation/ }))?.text).toBe(
-    '• Tenant isolation.',
+    'Tenant isolation.',
   )
   expect(await ui.find({ type: 'Text', text: /No text in components/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /not a rule/ })).toBeUndefined()
@@ -94,8 +97,9 @@ test('the Live tab marks an agent that is running', async ($, on) => {
 
   expect((await ui.find({ type: 'Text', text: /Working now/ }))?.text).toMatch(/Working now 1/)
   await ui.press({ key: 'tab-live' })
-  expect((await ui.find({ type: 'Text', text: /security-reviewer/ }))?.text).toMatch(
-    /● security-reviewer running Review branch/,
+  expect((await ui.find({ type: 'Text', text: /security-reviewer/ }))?.text).toBe(
+    '● security-reviewer running',
   )
+  expect(await ui.find({ type: 'Text', text: /^Review branch$/ })).toBeDefined()
   await ui.unmount()
 })
