@@ -39,6 +39,7 @@ const WORKFLOW = [
   ['security-reviewer', 'Reviews anything touching sign-in, permissions or data.'],
   ['bilingual-reviewer', 'Reviews any screen or wording change.'],
   ['code-reviewer', 'Reviews the finished change before it is merged.'],
+  ['quality-reviewer', 'Checks the finished feature against what the business asked for.'],
 ]
 
 /** Reads one `key: value` line from an agent file's front matter. */

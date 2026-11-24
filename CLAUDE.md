@@ -44,4 +44,7 @@ and the Next.js docs in `apps/web/node_modules/next/dist/docs/`.
 `.claude/agents/` holds a roster of specialists. Use the engineer for the
 layer being changed, then `security-reviewer` for anything touching sign-in,
 permissions, tenant data or the database, and `bilingual-reviewer` for any
-screen or wording change.
+screen or wording change. When a feature is built and tested, finish with
+`quality-reviewer`, which checks it against `docs/business-requirements.md`
+and the feature's spec in `docs/specs/`, and against what a hospital quality
+department would accept.
