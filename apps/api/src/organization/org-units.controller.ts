@@ -19,8 +19,7 @@ export class OrgUnitsController {
           parentId: orgUnits.parentId,
           type: orgUnits.type,
           code: orgUnits.code,
-          nameEn: orgUnits.nameEn,
-          nameAr: orgUnits.nameAr,
+          name: orgUnits.name,
         })
         .from(orgUnits)
         .orderBy(asc(orgUnits.code)),

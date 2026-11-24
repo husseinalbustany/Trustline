@@ -29,9 +29,9 @@ describe('admin portal API', () => {
 
   const client = {
     slug,
-    nameEn: 'Test Hospital',
-    nameAr: 'مستشفى الاختبار',
+    name: { en: 'Test Hospital', ar: 'مستشفى الاختبار' },
     accreditationStandard: 'JCI',
+    locales: ['en', 'ar'],
     defaultLocale: 'en',
     plan: 'professional',
     signInMethod: 'both',

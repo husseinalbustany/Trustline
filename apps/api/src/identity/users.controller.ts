@@ -19,6 +19,7 @@ import type { Transaction } from '../database/client.js';
 import { roleAssignments, roles, sessions, users } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
 import { pgErrorCode } from '../database/errors.js';
+import { fitsLanguages, localizedText } from '../i18n/locales.js';
 import { ProvisioningService, type RoleGrant } from './provisioning.service.js';
 import {
   requirePermission,
@@ -35,8 +36,7 @@ const optionalText = (max: number) =>
     .transform((v) => v || null);
 
 const profile = {
-  nameEn: z.string().trim().min(1).max(200),
-  nameAr: z.string().trim().min(1).max(200),
+  name: localizedText(200),
   orgUnitId: z
     .uuid()
     .nullish()
@@ -76,8 +76,7 @@ const rolesSchema = z.strictObject({ roles: grantsSchema });
 
 const publicUser = {
   id: users.id,
-  nameEn: users.nameEn,
-  nameAr: users.nameAr,
+  name: users.name,
   email: users.email,
   orgUnitId: users.orgUnitId,
   employeeNumber: users.employeeNumber,
@@ -102,15 +101,14 @@ export class UsersController {
       .select(publicUser)
       .from(users)
       .where(userId ? eq(users.id, userId) : undefined)
-      .orderBy(asc(users.nameEn));
+      .orderBy(asc(users.email));
     const grants = await tx
       .select({
         userId: roleAssignments.userId,
         roleId: roleAssignments.roleId,
         orgUnitId: roleAssignments.orgUnitId,
         code: roles.code,
-        nameEn: roles.nameEn,
-        nameAr: roles.nameAr,
+        name: roles.name,
       })
       .from(roleAssignments)
       .innerJoin(roles, eq(roles.id, roleAssignments.roleId))
@@ -123,8 +121,7 @@ export class UsersController {
           roleId: g.roleId,
           orgUnitId: g.orgUnitId,
           code: g.code,
-          nameEn: g.nameEn,
-          nameAr: g.nameAr,
+          name: g.name,
         })),
     }));
   }
@@ -192,6 +189,9 @@ export class UsersController {
     if (!parsed.success) throw new BadRequestException();
     const { roles: grants, ...input } = parsed.data;
     const { tenant, user: actor } = req.auth;
+    if (!fitsLanguages(input.name, tenant)) {
+      throw new BadRequestException({ code: 'language_mismatch' });
+    }
 
     return this.guarded(() =>
       this.tenantDb.withTenant(tenant.id, async (tx) => {
@@ -240,6 +240,9 @@ export class UsersController {
     }
     const { status, ...fields } = parsed.data;
     const { tenant, user: actor } = req.auth;
+    if (fields.name && !fitsLanguages(fields.name, tenant)) {
+      throw new BadRequestException({ code: 'language_mismatch' });
+    }
     if (status && userId === actor.id) {
       throw new ConflictException({ code: 'cannot_change_self' });
     }

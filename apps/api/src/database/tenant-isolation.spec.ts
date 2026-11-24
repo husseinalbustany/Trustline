@@ -55,8 +55,7 @@ describe('tenant isolation', () => {
           tenantId: cbahi,
           type: 'department',
           code: 'INTRUDER',
-          nameEn: 'Intruder',
-          nameAr: 'دخيل',
+          name: { en: 'Intruder', ar: 'دخيل' },
         }),
       ),
     ).rejects.toThrow();
@@ -66,7 +65,7 @@ describe('tenant isolation', () => {
     const changed = await tenantDb.withTenant(jci, async (tx) => {
       const updated = await tx
         .update(orgUnits)
-        .set({ nameEn: 'Hijacked' })
+        .set({ name: { en: 'Hijacked' } })
         .where(eq(orgUnits.tenantId, cbahi))
         .returning();
       const deleted = await tx

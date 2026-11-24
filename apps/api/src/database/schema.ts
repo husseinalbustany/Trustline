@@ -14,6 +14,7 @@ import {
   unique,
   uuid,
 } from 'drizzle-orm/pg-core';
+import type { Localized } from '../i18n/locales.js';
 
 // The role the API connects as. It owns nothing and cannot bypass row-level
 // security. migrate.ts creates it before the migrations run.
@@ -60,8 +61,13 @@ export const signInMethod = pgEnum('sign_in_method', [
 export const tenants = pgTable('tenants', {
   id: uuid().primaryKey().defaultRandom(),
   slug: text().notNull().unique(),
-  nameEn: text().notNull(),
-  nameAr: text().notNull(),
+  // The client's name in each of its languages.
+  name: jsonb().$type<Localized>().notNull(),
+  // The languages this client works in. Its text is written in these only.
+  locales: text()
+    .array()
+    .notNull()
+    .default(sql`'{en}'::text[]`),
   accreditationStandard: accreditationStandard().notNull(),
   defaultLocale: text().notNull().default('en'),
   // Where this tenant's data must be hosted. Null until the launch regions
@@ -83,8 +89,7 @@ export const orgUnits = pgTable(
     parentId: uuid(),
     type: orgUnitType().notNull(),
     code: text().notNull(),
-    nameEn: text().notNull(),
-    nameAr: text().notNull(),
+    name: jsonb().$type<Localized>().notNull(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -116,8 +121,7 @@ export const users = pgTable(
       .references(() => tenants.id),
     orgUnitId: uuid(),
     employeeNumber: text(),
-    nameEn: text().notNull(),
-    nameAr: text().notNull(),
+    name: jsonb().$type<Localized>().notNull(),
     // Stored lowercase.
     email: text().notNull(),
     phone: text(),
@@ -154,9 +158,8 @@ export const roles = pgTable(
       .notNull()
       .references(() => tenants.id),
     code: text().notNull(),
-    nameEn: text().notNull(),
-    nameAr: text().notNull(),
-    description: text(),
+    name: jsonb().$type<Localized>().notNull(),
+    description: jsonb().$type<Localized>(),
     // Built-in roles are created for every client and cannot be changed.
     isSystem: boolean().notNull().default(false),
     permissions: text()

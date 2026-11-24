@@ -1,3 +1,5 @@
+import type { Locale } from '../i18n/locales.js';
+
 /** Everything a role can allow. The web app shows a label for each. */
 export const PERMISSIONS = [
   'incidents.report',
@@ -15,27 +17,38 @@ export const PERMISSIONS = [
 
 export type Permission = (typeof PERMISSIONS)[number];
 
-/** Roles every client starts with. They cannot be edited or deleted. */
+/**
+ * Roles every client starts with. They cannot be edited or deleted. Named
+ * and described in every supported language; a client sees its own.
+ */
 export const SYSTEM_ROLES: {
   code: string;
-  nameEn: string;
-  nameAr: string;
-  description: string;
+  name: Record<Locale, string>;
+  description: Record<Locale, string>;
   permissions: Permission[];
 }[] = [
   {
     code: 'administrator',
-    nameEn: 'Administrator',
-    nameAr: 'مسؤول النظام',
-    description: 'Full access, including users, roles and settings.',
+    name: { en: 'Administrator', ar: 'مسؤول النظام', fr: 'Administrateur' },
+    description: {
+      en: 'Full access, including users, roles and settings.',
+      ar: 'صلاحية كاملة تشمل المستخدمين والأدوار والإعدادات.',
+      fr: 'Accès complet, y compris les utilisateurs, les rôles et les paramètres.',
+    },
     permissions: [...PERMISSIONS],
   },
   {
     code: 'quality_officer',
-    nameEn: 'Quality officer',
-    nameAr: 'مسؤول الجودة',
-    description:
-      'Triages incidents, manages actions and policies, and views reports.',
+    name: {
+      en: 'Quality officer',
+      ar: 'مسؤول الجودة',
+      fr: 'Responsable qualité',
+    },
+    description: {
+      en: 'Triages incidents, manages actions and policies, and views reports.',
+      ar: 'يفرز الحوادث ويدير الإجراءات التصحيحية والسياسات ويطّلع على التقارير.',
+      fr: 'Trie les incidents, gère les actions et les politiques, et consulte les rapports.',
+    },
     permissions: [
       'incidents.report',
       'incidents.view',
@@ -48,9 +61,12 @@ export const SYSTEM_ROLES: {
   },
   {
     code: 'department_manager',
-    nameEn: 'Department manager',
-    nameAr: 'مدير القسم',
-    description: 'Sees incidents and manages actions for a department.',
+    name: { en: 'Department manager', ar: 'مدير القسم', fr: 'Chef de service' },
+    description: {
+      en: 'Sees incidents and manages actions for a department.',
+      ar: 'يطّلع على الحوادث ويدير الإجراءات التصحيحية في قسمه.',
+      fr: 'Consulte les incidents et gère les actions de son service.',
+    },
     permissions: [
       'incidents.report',
       'incidents.view',
@@ -61,9 +77,12 @@ export const SYSTEM_ROLES: {
   },
   {
     code: 'reporter',
-    nameEn: 'Reporter',
-    nameAr: 'مُبلِّغ',
-    description: 'Reports incidents and reads policies.',
+    name: { en: 'Reporter', ar: 'مُبلِّغ', fr: 'Déclarant' },
+    description: {
+      en: 'Reports incidents and reads policies.',
+      ar: 'يبلّغ عن الحوادث ويقرأ السياسات.',
+      fr: 'Déclare les incidents et lit les politiques.',
+    },
     permissions: ['incidents.report', 'policies.view'],
   },
 ];

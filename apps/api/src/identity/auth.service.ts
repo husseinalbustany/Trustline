@@ -13,6 +13,7 @@ import {
   userTokens,
 } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
+import type { Localized } from '../i18n/locales.js';
 import { hashPassword, verifyPassword } from '../security/passwords.js';
 import { hashToken, ProvisioningService } from './provisioning.service.js';
 
@@ -26,14 +27,14 @@ export type AuthContext = {
   tenant: {
     id: string;
     slug: string;
-    nameEn: string;
-    nameAr: string;
+    name: Localized;
+    locales: string[];
+    defaultLocale: string;
     accreditationStandard: string;
   };
   user: {
     id: string;
-    nameEn: string;
-    nameAr: string;
+    name: Localized;
     email: string;
     orgUnitId: string | null;
   };
@@ -206,14 +207,14 @@ export class AuthService {
         tenant: {
           id: tenant.id,
           slug: tenant.slug,
-          nameEn: tenant.nameEn,
-          nameAr: tenant.nameAr,
+          name: tenant.name,
+          locales: tenant.locales,
+          defaultLocale: tenant.defaultLocale,
           accreditationStandard: tenant.accreditationStandard,
         },
         user: {
           id: user.id,
-          nameEn: user.nameEn,
-          nameAr: user.nameAr,
+          name: user.name,
           email: user.email,
           orgUnitId: user.orgUnitId,
         },
@@ -262,11 +263,10 @@ export class AuthService {
       const row = await this.findInvite(tx, token);
       if (!row) return null;
       return {
-        nameEn: row.user.nameEn,
-        nameAr: row.user.nameAr,
+        name: row.user.name,
         email: row.user.email,
-        organizationEn: tenant.nameEn,
-        organizationAr: tenant.nameAr,
+        organization: tenant.name,
+        defaultLocale: tenant.defaultLocale,
       };
     });
   }

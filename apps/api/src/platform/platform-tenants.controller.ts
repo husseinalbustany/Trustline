@@ -26,18 +26,21 @@ import {
   type PlatformRequest,
 } from './platform-auth.guard.js';
 import { PlatformAuthService } from './platform-auth.service.js';
+import { fitsLanguages, localeSchema, localizedText } from '../i18n/locales.js';
 import { pgErrorCode } from '../database/errors.js';
 import { roleAssignments, roles, sessions, users } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
 
-const name = z.string().trim().min(1).max(200);
-
 const settings = {
-  nameEn: name,
-  nameAr: name,
+  name: localizedText(200),
+  // The languages the client works in, and the one its text must exist in.
+  locales: z
+    .array(localeSchema)
+    .min(1)
+    .transform((list) => [...new Set(list)]),
   accreditationStandard: z.enum(['JCI', 'CBAHI']),
-  defaultLocale: z.enum(['en', 'ar']),
+  defaultLocale: localeSchema,
   plan: z.enum(['starter', 'professional', 'enterprise']),
   signInMethod: z.enum(['password', 'sso', 'both']),
   dataRegion: z
@@ -61,8 +64,7 @@ const updateSchema = z
 const idSchema = z.uuid();
 
 const administratorSchema = z.strictObject({
-  nameEn: name,
-  nameAr: name,
+  name: localizedText(200),
   email: z.email().max(320),
 });
 
@@ -80,13 +82,14 @@ export class PlatformTenantsController {
 
   @Get()
   list() {
-    return this.db.select().from(tenants).orderBy(asc(tenants.nameEn));
+    return this.db.select().from(tenants).orderBy(asc(tenants.slug));
   }
 
   @Post()
   async create(@Body() body: unknown, @Req() req: PlatformRequest) {
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException();
+    this.assertLanguages(parsed.data);
     try {
       // The client and its audit entry are saved together or not at all.
       const tenant = await this.db.transaction(async (tx) => {
@@ -159,6 +162,7 @@ export class PlatformTenantsController {
         .where(eq(tenants.id, tenantId))
         .for('update');
       if (!before) throw new NotFoundException();
+      this.assertLanguages({ ...before, ...parsed.data });
       const [after] = await tx
         .update(tenants)
         .set(parsed.data)
@@ -167,7 +171,9 @@ export class PlatformTenantsController {
       // What changed, with the old and new value of each field.
       const changes = Object.fromEntries(
         (Object.keys(parsed.data) as (keyof typeof parsed.data)[])
-          .filter((key) => before[key] !== after[key])
+          .filter(
+            (key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]),
+          )
           .map((key) => [key, { from: before[key], to: after[key] }]),
       );
       await this.auth.audit(
@@ -217,6 +223,9 @@ export class PlatformTenantsController {
     // The link sets a password, which a single sign-on only client cannot use.
     if (tenant.signInMethod === 'sso') {
       throw new ConflictException({ code: 'password_sign_in_disabled' });
+    }
+    if (!fitsLanguages(parsed.data.name, tenant)) {
+      throw new BadRequestException({ code: 'language_mismatch' });
     }
 
     try {
@@ -275,7 +284,7 @@ export class PlatformTenantsController {
           },
         );
         return {
-          user: { id: user.id, email: user.email, nameEn: user.nameEn },
+          user: { id: user.id, email: user.email, name: user.name },
           invite: { ...invite, org: tenant.slug },
         };
       });
@@ -285,6 +294,23 @@ export class PlatformTenantsController {
         throw new ConflictException({ code: 'email_taken' });
       }
       throw e;
+    }
+  }
+
+  /**
+   * A client's default language is one of its languages, and its name is
+   * written in the default language and in no language it does not use.
+   */
+  private assertLanguages(settings: {
+    name: Parameters<typeof fitsLanguages>[0];
+    locales: string[];
+    defaultLocale: string;
+  }) {
+    if (
+      !settings.locales.includes(settings.defaultLocale) ||
+      !fitsLanguages(settings.name, settings)
+    ) {
+      throw new BadRequestException({ code: 'language_mismatch' });
     }
   }
 

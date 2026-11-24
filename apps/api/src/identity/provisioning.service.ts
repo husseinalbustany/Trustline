@@ -9,6 +9,7 @@ import {
   users,
   userTokens,
 } from '../database/schema.js';
+import type { Localized } from '../i18n/locales.js';
 import { SYSTEM_ROLES } from './permissions.js';
 
 export const INVITE_HOURS = 72;
@@ -19,8 +20,7 @@ export const hashToken = (token: string) =>
 export type RoleGrant = { roleId: string; orgUnitId: string | null };
 
 export type NewUser = {
-  nameEn: string;
-  nameAr: string;
+  name: Localized;
   email: string;
   orgUnitId?: string | null;
   employeeNumber?: string | null;
@@ -72,8 +72,7 @@ export class ProvisioningService {
       .onConflictDoUpdate({
         target: [roles.tenantId, roles.code],
         set: {
-          nameEn: sql`excluded.name_en`,
-          nameAr: sql`excluded.name_ar`,
+          name: sql`excluded.name`,
           description: sql`excluded.description`,
           permissions: sql`excluded.permissions`,
           isSystem: true,

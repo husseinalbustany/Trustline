@@ -48,9 +48,9 @@ describe('hospital users, roles and sign-in', () => {
       .set('Cookie', platform)
       .send({
         slug,
-        nameEn: `Hospital ${suffix}`,
-        nameAr: `مستشفى ${suffix}`,
+        name: { en: `Hospital ${suffix}`, ar: `مستشفى ${suffix}` },
         accreditationStandard: 'JCI',
+        locales: ['en', 'ar'],
         defaultLocale: 'en',
         plan: 'professional',
         signInMethod: 'password',
@@ -60,7 +60,7 @@ describe('hospital users, roles and sign-in', () => {
     const created = await http()
       .post(`/platform/tenants/${tenant.body.id}/administrators`)
       .set('Cookie', platform)
-      .send({ nameEn: 'Admin', nameAr: 'مسؤول', email: adminEmail })
+      .send({ name: { en: 'Admin', ar: 'مسؤول' }, email: adminEmail })
       .expect(201);
     await http()
       .post('/auth/invite/accept')
@@ -83,8 +83,7 @@ describe('hospital users, roles and sign-in', () => {
       .post('/users')
       .set('Cookie', a.cookie)
       .send({
-        nameEn: name,
-        nameAr: name,
+        name: { en: name, ar: name },
         email,
         roles: [{ roleId: a.roles[roleCode], orgUnitId: null }],
       })
@@ -200,8 +199,7 @@ describe('hospital users, roles and sign-in', () => {
         .post('/users')
         .set('Cookie', a.cookie)
         .send({
-          nameEn: 'Invited',
-          nameAr: 'مدعو',
+          name: { en: 'Invited', ar: 'مدعو' },
           email: `invited-${run}@test.invalid`,
           roles: [],
         })
@@ -214,8 +212,8 @@ describe('hospital users, roles and sign-in', () => {
         .send(link)
         .expect(200);
       expect(info.body).toMatchObject({
-        nameEn: 'Invited',
-        organizationEn: 'Hospital a',
+        name: { en: 'Invited', ar: 'مدعو' },
+        organization: { en: 'Hospital a', ar: 'مستشفى a' },
       });
 
       await login(a.slug, created.body.user.email, password).expect(401);
@@ -271,8 +269,7 @@ describe('hospital users, roles and sign-in', () => {
         .post('/users')
         .set('Cookie', reporter.cookie)
         .send({
-          nameEn: 'X',
-          nameAr: 'X',
+          name: { en: 'X', ar: 'X' },
           email: `x-${run}@test.invalid`,
           roles: [],
         })
@@ -316,8 +313,7 @@ describe('hospital users, roles and sign-in', () => {
         .set('Cookie', a.cookie)
         .send({
           code: 'policy_author',
-          nameEn: 'Policy author',
-          nameAr: 'محرر السياسات',
+          name: { en: 'Policy author', ar: 'محرر السياسات' },
           permissions: ['policies.view', 'policies.manage'],
         })
         .expect(201);
@@ -326,8 +322,7 @@ describe('hospital users, roles and sign-in', () => {
         .set('Cookie', a.cookie)
         .send({
           code: 'bad',
-          nameEn: 'Bad',
-          nameAr: 'Bad',
+          name: { en: 'Bad', ar: 'Bad' },
           permissions: ['everything'],
         })
         .expect(400);
@@ -372,7 +367,11 @@ describe('hospital users, roles and sign-in', () => {
       const role = await http()
         .post('/roles')
         .set('Cookie', a.cookie)
-        .send({ code: `${name}_role`, nameEn: name, nameAr: name, permissions })
+        .send({
+          code: `${name}_role`,
+          name: { en: name, ar: name },
+          permissions,
+        })
         .expect(201);
       a.roles[`${name}_role`] = role.body.id;
       return {
@@ -394,8 +393,7 @@ describe('hospital users, roles and sign-in', () => {
         .post('/users')
         .set('Cookie', manager.cookie)
         .send({
-          nameEn: 'Sneak',
-          nameAr: 'Sneak',
+          name: { en: 'Sneak', ar: 'Sneak' },
           email: `sneak-${run}@test.invalid`,
           roles: adminGrant(),
         });
@@ -433,8 +431,7 @@ describe('hospital users, roles and sign-in', () => {
         .post('/users')
         .set('Cookie', manager.cookie)
         .send({
-          nameEn: 'New',
-          nameAr: 'New',
+          name: { en: 'New', ar: 'New' },
           email: `new-${run}@test.invalid`,
           roles: [{ roleId: manager.roleId, orgUnitId: null }],
         })
@@ -462,7 +459,7 @@ describe('hospital users, roles and sign-in', () => {
       const ownSame = await http()
         .patch(`/roles/${manager.roleId}`)
         .set('Cookie', manager.cookie)
-        .send({ nameEn: 'Renamed' });
+        .send({ name: { en: 'Renamed' } });
       expect(ownSame.status).toBe(409);
       expect(ownSame.body.code).toBe('cannot_change_own_role');
       await http()
@@ -475,8 +472,7 @@ describe('hospital users, roles and sign-in', () => {
         .set('Cookie', manager.cookie)
         .send({
           code: 'beyond_me',
-          nameEn: 'Beyond',
-          nameAr: 'Beyond',
+          name: { en: 'Beyond', ar: 'Beyond' },
           permissions: ['users.manage'],
         });
       expect(beyond.status).toBe(403);
@@ -487,8 +483,7 @@ describe('hospital users, roles and sign-in', () => {
         .set('Cookie', manager.cookie)
         .send({
           code: 'within_me',
-          nameEn: 'Within',
-          nameAr: 'Within',
+          name: { en: 'Within', ar: 'Within' },
           permissions: ['roles.manage'],
         })
         .expect(201);
@@ -507,8 +502,7 @@ describe('hospital users, roles and sign-in', () => {
         .post(`/platform/tenants/${a.id}/administrators`)
         .set('Cookie', platform)
         .send({
-          nameEn: 'Second',
-          nameAr: 'Second',
+          name: { en: 'Second', ar: 'Second' },
           email: `second-${run}@test.invalid`,
         });
       expect(again.status).toBe(409);
@@ -529,6 +523,127 @@ describe('hospital users, roles and sign-in', () => {
       await owner.pool.end();
       expect(rows).toHaveLength(1);
       expect(rows[0].changes.platformAdminEmail).toBe(staffEmail);
+    });
+  });
+
+  describe('languages', () => {
+    it('a client can work in French only, with no English or Arabic text', async () => {
+      const slug = `${prefix}-fr`;
+      const tenant = await http()
+        .post('/platform/tenants')
+        .set('Cookie', platform)
+        .send({
+          slug,
+          name: { fr: 'Hôpital Sainte-Marie' },
+          locales: ['fr'],
+          defaultLocale: 'fr',
+          accreditationStandard: 'JCI',
+          plan: 'starter',
+          signInMethod: 'password',
+          dataRegion: null,
+        })
+        .expect(201);
+      expect(tenant.body.name).toEqual({ fr: 'Hôpital Sainte-Marie' });
+
+      const created = await http()
+        .post(`/platform/tenants/${tenant.body.id}/administrators`)
+        .set('Cookie', platform)
+        .send({
+          name: { fr: 'Élise Martin' },
+          email: `elise-${run}@test.invalid`,
+        })
+        .expect(201);
+      const link = { org: slug, token: created.body.invite.token };
+      const info = await http()
+        .post('/auth/invite/check')
+        .send(link)
+        .expect(200);
+      expect(info.body).toMatchObject({
+        name: { fr: 'Élise Martin' },
+        organization: { fr: 'Hôpital Sainte-Marie' },
+        defaultLocale: 'fr',
+      });
+      await http()
+        .post('/auth/invite/accept')
+        .send({ ...link, password })
+        .expect(204);
+      const cookie = cookieOf(
+        await login(slug, `elise-${run}@test.invalid`, password).expect(200),
+      );
+
+      const me = await http().get('/auth/me').set('Cookie', cookie).expect(200);
+      expect(me.body.tenant).toMatchObject({
+        locales: ['fr'],
+        defaultLocale: 'fr',
+      });
+
+      // The built-in roles arrive already named in French.
+      const list = await http().get('/roles').set('Cookie', cookie).expect(200);
+      const reporter = list.body.roles.find(
+        (r: { code: string }) => r.code === 'reporter',
+      );
+      expect(reporter.name.fr).toBe('Déclarant');
+      expect(reporter.description.fr).toBe(
+        'Déclare les incidents et lit les politiques.',
+      );
+
+      // Text must be in the client's languages, and in its default language.
+      const add = (name: object) =>
+        http()
+          .post('/users')
+          .set('Cookie', cookie)
+          .send({
+            name,
+            email: `u${Math.random().toString(36).slice(2)}-${run}@test.invalid`,
+            roles: [],
+          });
+      await add({ fr: 'Jean Dupont' }).expect(201);
+      const english = await add({ en: 'John Smith' });
+      expect(english.status).toBe(400);
+      expect(english.body.code).toBe('language_mismatch');
+      await add({ fr: 'Jean', en: 'John' }).expect(400);
+      await add({ de: 'Hans' }).expect(400);
+      await add({}).expect(400);
+    });
+
+    it('a client can add a language later, and must keep its default among them', async () => {
+      const setClient = (body: object) =>
+        http()
+          .patch(`/platform/tenants/${a.id}`)
+          .set('Cookie', platform)
+          .send(body);
+      // The default language cannot be one the client does not use.
+      await setClient({ defaultLocale: 'fr' }).expect(400);
+      // Nor can a language be dropped while the client's name is written in it.
+      await setClient({ locales: ['en'] }).expect(400);
+
+      const widened = await setClient({ locales: ['en', 'ar', 'fr'] }).expect(
+        200,
+      );
+      expect(widened.body.locales).toEqual(['en', 'ar', 'fr']);
+      const named = await setClient({
+        name: { en: 'Hospital a', ar: 'مستشفى a', fr: 'Hôpital a' },
+      }).expect(200);
+      expect(named.body.name.fr).toBe('Hôpital a');
+
+      const staff = await http()
+        .post('/users')
+        .set('Cookie', a.cookie)
+        .send({
+          name: { en: 'Marie Curie', fr: 'Marie Curie', ar: 'ماري كوري' },
+          email: `marie-${run}@test.invalid`,
+          roles: [],
+        })
+        .expect(201);
+      expect(Object.keys(staff.body.user.name).sort()).toEqual([
+        'ar',
+        'en',
+        'fr',
+      ]);
+      await setClient({
+        locales: ['en', 'ar'],
+        name: { en: 'Hospital a', ar: 'مستشفى a' },
+      }).expect(200);
     });
   });
 
@@ -578,8 +693,7 @@ describe('hospital users, roles and sign-in', () => {
         .post('/users')
         .set('Cookie', a.cookie)
         .send({
-          nameEn: 'Twice',
-          nameAr: 'Twice',
+          name: { en: 'Twice', ar: 'Twice' },
           email: `twice-${run}@test.invalid`,
           roles: [],
         })
@@ -599,8 +713,7 @@ describe('hospital users, roles and sign-in', () => {
         .post('/users')
         .set('Cookie', a.cookie)
         .send({
-          nameEn: 'Dup',
-          nameAr: 'Dup',
+          name: { en: 'Dup', ar: 'Dup' },
           email: `dup-${run}@test.invalid`,
           roles: [grant, grant],
         })
@@ -628,7 +741,7 @@ describe('hospital users, roles and sign-in', () => {
   describe('users', () => {
     it('refuses a duplicate email in one hospital, allows it in another', async () => {
       const email = `shared-${run}@test.invalid`;
-      const body = { nameEn: 'Shared', nameAr: 'مشترك', email, roles: [] };
+      const body = { name: { en: 'Shared', ar: 'مشترك' }, email, roles: [] };
       await http()
         .post('/users')
         .set('Cookie', a.cookie)
@@ -690,7 +803,7 @@ describe('hospital users, roles and sign-in', () => {
       await http()
         .patch(`/users/${other}`)
         .set('Cookie', a.cookie)
-        .send({ nameEn: 'Hijacked' })
+        .send({ name: { en: 'Hijacked' } })
         .expect(404);
       await http()
         .post(`/users/${other}/invite`)

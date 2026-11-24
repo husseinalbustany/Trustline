@@ -19,6 +19,12 @@ import { z } from 'zod';
 import { pgErrorCode } from '../database/errors.js';
 import { roleAssignments, roles } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
+import {
+  fitsLanguages,
+  localizedText,
+  optionalLocalizedText,
+  type Localized,
+} from '../i18n/locales.js';
 import { PERMISSIONS } from './permissions.js';
 import { ProvisioningService } from './provisioning.service.js';
 import {
@@ -28,14 +34,8 @@ import {
 } from './session.guard.js';
 
 const fields = {
-  nameEn: z.string().trim().min(1).max(100),
-  nameAr: z.string().trim().min(1).max(100),
-  description: z
-    .string()
-    .trim()
-    .max(500)
-    .nullish()
-    .transform((v) => v || null),
+  name: localizedText(100),
+  description: optionalLocalizedText(500),
   permissions: z
     .array(z.enum(PERMISSIONS))
     .transform((list) => [...new Set(list)].sort()),
@@ -67,8 +67,7 @@ export class RolesController {
         .select({
           id: roles.id,
           code: roles.code,
-          nameEn: roles.nameEn,
-          nameAr: roles.nameAr,
+          name: roles.name,
           description: roles.description,
           isSystem: roles.isSystem,
           permissions: roles.permissions,
@@ -77,7 +76,7 @@ export class RolesController {
         .from(roles)
         .leftJoin(roleAssignments, eq(roleAssignments.roleId, roles.id))
         .groupBy(roles.id)
-        .orderBy(asc(roles.nameEn)),
+        .orderBy(asc(roles.code)),
     );
     return { roles: list, permissions: PERMISSIONS };
   }
@@ -89,12 +88,28 @@ export class RolesController {
     }
   }
 
+  /** A role is named in the client's default language, in its languages only. */
+  private assertLanguages(
+    req: AuthedRequest,
+    data: { name?: Localized; description?: Localized | null },
+  ) {
+    const { tenant } = req.auth;
+    const nameFits = !data.name || fitsLanguages(data.name, tenant);
+    const descriptionFits = fitsLanguages(data.description, tenant, {
+      required: false,
+    });
+    if (!nameFits || !descriptionFits) {
+      throw new BadRequestException({ code: 'language_mismatch' });
+    }
+  }
+
   @Post()
   async create(@Body() body: unknown, @Req() req: AuthedRequest) {
     requirePermission(req, 'roles.manage');
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException();
     this.assertWithinOwn(req, parsed.data.permissions);
+    this.assertLanguages(req, parsed.data);
     const { tenant, user: actor } = req.auth;
     try {
       return await this.tenantDb.withTenant(tenant.id, async (tx) => {
@@ -133,6 +148,7 @@ export class RolesController {
       throw new BadRequestException();
     }
     this.assertWithinOwn(req, parsed.data.permissions);
+    this.assertLanguages(req, parsed.data);
     const { tenant, user: actor } = req.auth;
     return this.tenantDb.withTenant(tenant.id, async (tx) => {
       const role = await this.editable(tx, id, actor.id);
