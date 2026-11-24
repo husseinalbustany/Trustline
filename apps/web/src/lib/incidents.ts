@@ -1,4 +1,3 @@
-import type { OrgUnit } from "./identity";
 import type { Localized } from "./localized";
 
 export const incidentTypes = ["incident", "near_miss", "hazard"] as const;
@@ -154,31 +153,3 @@ export const harmTone = {
   severe: "danger",
   death: "danger",
 } as const;
-
-const indent = { facility: "", department: "— ", unit: "— — " };
-
-/**
- * Org units as the options of a select: each one under its parent, indented
- * by level. The API returns them ordered by code, not by place in the tree.
- */
-export function unitOptions(
-  units: OrgUnit[],
-  nameOf: (unit: OrgUnit) => string,
-): { id: string; label: string }[] {
-  const ids = new Set(units.map((u) => u.id));
-  const out: { id: string; label: string }[] = [];
-  const seen = new Set<string>();
-  const add = (parentId: string | null) => {
-    for (const unit of units) {
-      const isChild = parentId
-        ? unit.parentId === parentId
-        : !unit.parentId || !ids.has(unit.parentId);
-      if (!isChild || seen.has(unit.id)) continue;
-      seen.add(unit.id);
-      out.push({ id: unit.id, label: indent[unit.type] + nameOf(unit) });
-      add(unit.id);
-    }
-  };
-  add(null);
-  return out;
-}

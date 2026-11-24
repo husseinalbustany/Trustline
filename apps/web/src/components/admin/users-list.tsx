@@ -8,9 +8,11 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
 import { api, statusOf } from "@/lib/api";
+import { fill } from "@/lib/format";
 import type { OrgUnit, User } from "@/lib/identity";
 import { pick, type Localized } from "@/lib/localized";
-import { useSession } from "@/components/shell/session";
+import { loadUnits } from "@/lib/org-units";
+import { can, useSession } from "@/components/shell/session";
 import { AdminTabs } from "./admin-tabs";
 import type { AdminProps } from "./types";
 
@@ -27,10 +29,12 @@ export function UsersList({ lang, t }: AdminProps) {
   const session = useSession();
   const inLang = (text: Localized | null) =>
     pick(text, lang, session.tenant.defaultLocale);
+  // Someone who manages the structure can be shown units switched off by name.
+  const seesInactive = can(session, "organization.manage");
   const roleList = new Intl.ListFormat(lang, { style: "short", type: "unit" });
 
   useEffect(() => {
-    Promise.all([api<User[]>("/users"), api<OrgUnit[]>("/org-units")])
+    Promise.all([api<User[]>("/users"), loadUnits(seesInactive)])
       .then(([u, o]) => {
         setUsers(u);
         setUnits(o);
@@ -39,11 +43,18 @@ export function UsersList({ lang, t }: AdminProps) {
       .catch((err) =>
         setProblem(statusOf(err) === 403 ? t.noAccess : t.loadError),
       );
-  }, [t]);
+  }, [t, seesInactive]);
 
   const unitName = (id: string | null) => {
+    if (!id) return "";
     const unit = units.find((u) => u.id === id);
-    return unit ? inLang(unit.name) : "";
+    // Still in a unit that was switched off: say so instead of showing none.
+    if (!unit) return t.inactiveUnit;
+    return unit.active
+      ? inLang(unit.name)
+      : fill(t.organization.inactiveNamed[unit.type], {
+          name: inLang(unit.name),
+        });
   };
   const c = t.users.columns;
 

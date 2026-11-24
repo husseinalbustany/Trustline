@@ -12,10 +12,10 @@ import type { OrgUnit } from "@/lib/identity";
 import {
   harmLevels,
   incidentTypes,
-  unitOptions,
   type IncidentCategory,
 } from "@/lib/incidents";
 import { pick, readForm } from "@/lib/localized";
+import { unitOptions } from "@/lib/org-units";
 import { explain, textareaClass, type IncidentsProps } from "./types";
 
 type Lists = { categories: IncidentCategory[]; units: OrgUnit[] };

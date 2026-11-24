@@ -6,18 +6,19 @@ import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
 import { Panel } from "@/components/ui/panel";
 import { api, codeOf } from "@/lib/api";
+import { fill } from "@/lib/format";
 import type { OrgUnit } from "@/lib/identity";
 import {
   canBeTriaged,
   harmLevels,
   statusMoves,
-  unitOptions,
   type AssignableUser,
   type Incident,
   type IncidentCategory,
   type StatusAction,
 } from "@/lib/incidents";
 import { pick, readForm, type Localized } from "@/lib/localized";
+import { unitOptions } from "@/lib/org-units";
 import { explain, textareaClass, type IncidentsProps } from "./types";
 
 type Message = { kind: "ok" | "error"; text: string };
@@ -71,6 +72,18 @@ export function TriagePanel({
     ownerUnitId !== "" &&
     !canIn(session, "incidents.triage", incident.orgUnit.id) &&
     !canIn(session, "incidents.triage", ownerUnitId);
+
+  // The department it was handed to may have been switched off since. It is
+  // shown, marked inactive, but cannot be saved again: a new one is needed.
+  const { ownerUnit } = incident;
+  const ownerOptions = unitOptions(units, (u) => inLang(u.name), {
+    id: ownerUnit?.id,
+    label: () =>
+      fill(g.ownerInactiveOption, { name: inLang(ownerUnit?.name ?? {}) }),
+  });
+  const ownerInactive = ownerOptions.some(
+    (o) => o.inactive && o.id === ownerUnitId,
+  );
 
   const unitNames = new Map(units.map((u) => [u.id, inLang(u.name)]));
   // Whoever has it now stays in the list, so saving does not drop them.
@@ -162,8 +175,17 @@ export function TriagePanel({
                 ))}
               </select>
             </Field>
-            <Field label={g.ownerUnit}>
+            <Field
+              label={g.ownerUnit}
+              help={ownerInactive ? g.ownerInactive : undefined}
+            >
               <select
+                // `required` does not refuse a disabled option, so this does.
+                ref={(select) => {
+                  select?.setCustomValidity(
+                    ownerInactive ? g.ownerInactive : "",
+                  );
+                }}
                 required
                 value={ownerUnitId}
                 onChange={(e) => setOwnerUnitId(e.target.value)}
@@ -172,8 +194,8 @@ export function TriagePanel({
                 <option value="" disabled>
                   {t.form.choose}
                 </option>
-                {unitOptions(units, (u) => inLang(u.name)).map((u) => (
-                  <option key={u.id} value={u.id}>
+                {ownerOptions.map((u) => (
+                  <option key={u.id} value={u.id} disabled={u.inactive}>
                     {u.label}
                   </option>
                 ))}

@@ -193,7 +193,9 @@
       "usersError": "Impossible de charger la liste du personnel. Rechargez la page pour choisir la personne à qui l'attribuer.",
       "leavesScope": "Ce service est en dehors du périmètre de votre rôle. Après l'enregistrement, vous ne pourrez plus trier ni modifier cet incident.",
       "submit": "Enregistrer le tri",
-      "saved": "Tri enregistré."
+      "saved": "Tri enregistré.",
+      "ownerInactiveOption": "{name} (inactif)",
+      "ownerInactive": "Ce service a été désactivé. Choisissez le service désormais responsable, puis enregistrez."
     },
     "actions": {
       "title": "Changer le statut",
@@ -216,7 +218,7 @@
       "invalid": "Vérifiez les champs puis réessayez.",
       "occurred_in_future": "La date de l'événement est dans le futur. Corrigez-la puis renvoyez.",
       "unknown_category": "Cette catégorie n'est plus disponible. Rechargez la page et choisissez-en une autre.",
-      "unknown_org_unit": "Ce service n'existe plus. Rechargez la page et choisissez-en un autre.",
+      "unknown_org_unit": "Ce service n'est plus disponible : il a été désactivé ou supprimé. Rechargez la page et choisissez-en un autre.",
       "unknown_assignee": "Cette personne ne peut plus recevoir d'attribution : son compte n'est pas actif. Choisissez quelqu'un d'autre.",
       "missing_permission": "Votre rôle ne le permet pas. Adressez-vous à votre administrateur.",
       "outside_scope": "Votre rôle ne couvre pas le service de cet incident. Adressez-vous à une personne chargée du tri pour ce service.",
@@ -225,7 +227,8 @@
       "internal_not_allowed": "Vous ne pouvez ajouter que des commentaires visibles par tous. Renvoyez-le comme commentaire pour tous.",
       "notFound": "Cet incident n'existe pas, ou votre rôle ne vous permet pas de le consulter. Revenez à la liste.",
       "generic": "Enregistrement impossible. Vérifiez votre connexion puis réessayez."
-    }
+    },
+    "inactiveUnit": "un service désormais inactif"
   },
   "modulePage": {
     "scopeTitle": "Ce que cette partie couvrira",
@@ -517,7 +520,9 @@
         "higherAccess": "Vous ne pouvez pas accorder ni modifier un accès supérieur au vôtre.",
         "ownAccount": "Vous ne pouvez pas modifier votre propre compte.",
         "name": "Nom",
-        "languageMismatch": "Saisissez le nom dans la langue par défaut."
+        "languageMismatch": "Saisissez le nom dans la langue par défaut.",
+        "departmentInactive": "Ce service est désactivé. L'utilisateur y reste tant que vous n'en choisissez pas un autre.",
+        "unknownUnit": "Un service choisi ici a été désactivé. Rechargez la page et choisissez-en un autre."
       }
     },
     "roles": {
@@ -554,6 +559,75 @@
         "deleteError": "Impossible de supprimer le rôle. Réessayez.",
         "name": "Nom",
         "languageMismatch": "Saisissez le nom dans la langue par défaut."
+      }
+    },
+    "inactiveUnit": "Unité inactive",
+    "organization": {
+      "title": "Organisation",
+      "description": "Les sites, services et unités de votre établissement. Les incidents, les utilisateurs et les périmètres des rôles s'y rattachent.",
+      "listLabel": "Structure de l'organisation",
+      "type": {
+        "facility": "Site",
+        "department": "Service",
+        "unit": "Unité"
+      },
+      "add": {
+        "facility": "Ajouter un site",
+        "department": "Ajouter un service",
+        "unit": "Ajouter une unité"
+      },
+      "inactive": {
+        "facility": "Inactif",
+        "department": "Inactif",
+        "unit": "Inactive"
+      },
+      "inactiveNamed": {
+        "facility": "{name} (inactif)",
+        "department": "{name} (inactif)",
+        "unit": "{name} (inactive)"
+      },
+      "showInactive": "Afficher les inactifs",
+      "empty": "Rien n'a encore été créé. Commencez par un site, puis ajoutez ses services et leurs unités.",
+      "addFirst": "Ajoutez votre premier site",
+      "allInactive": "Toute la structure est désactivée. Cochez « Afficher les inactifs » pour la voir, ou ajoutez un site.",
+      "notFound": "Ce site, ce service ou cette unité n'existe pas. Revenez à la structure et ouvrez-le à partir de là.",
+      "back": "Retour à la structure",
+      "form": {
+        "newDescription": "Un site regroupe des services, et un service regroupe des unités.",
+        "type": "Type",
+        "typeHelp": "Un service s'ajoute à un site, et une unité à un service.",
+        "typeFixed": "Le type ne peut pas être modifié.",
+        "parent": {
+          "department": "Site",
+          "unit": "Service"
+        },
+        "parentHelp": "Pour le déplacer, choisissez-en un autre. Tout ce qui en dépend suit.",
+        "choose": "Choisir…",
+        "name": "Nom",
+        "code": "Code",
+        "codeHelp": "De 2 à 40 lettres majuscules (A à Z), chiffres ou tirets, par exemple ICU-2. Il ne pourra plus être modifié.",
+        "codeFixed": "Le code ne peut pas être modifié.",
+        "save": "Enregistrer",
+        "saved": "Modifications enregistrées.",
+        "cancel": "Annuler",
+        "parentMissing": "Ajout impossible ici : ce site ou ce service n'existe pas ou est désactivé. Revenez à la structure et ajoutez à partir de là.",
+        "status": "Statut",
+        "activeHelp": "La désactivation le retire des listes utilisées pour les nouveaux incidents, les utilisateurs, les périmètres des rôles et le tri. Rien n'est supprimé : les incidents et les utilisateurs qui s'y trouvent déjà y restent, et vous pouvez le réactiver.",
+        "switchOff": "Désactiver",
+        "switchedOff": "Désactivation enregistrée.",
+        "inactiveHelp": "Cet élément est désactivé : il ne peut plus être choisi pour de nouveaux incidents, des utilisateurs, des périmètres de rôle ou le tri. Son historique est conservé. Réactivez-le pour l'utiliser à nouveau.",
+        "switchOn": "Réactiver",
+        "switchedOn": "Réactivation enregistrée."
+      },
+      "errors": {
+        "language_mismatch": "Saisissez le nom dans la langue par défaut de l'établissement. Si ses langues ont changé récemment, rechargez d'abord la page.",
+        "invalid_parent": "Impossible de le placer ici : un service appartient à un site, et une unité à un service. Choisissez un autre emplacement.",
+        "parent_inactive": "Le site ou le service dont il dépend est désactivé. Réactivez-le d'abord, ou choisissez-en un autre.",
+        "code_taken": "Ce code est déjà utilisé, peut-être par un élément désactivé. Saisissez un autre code.",
+        "has_active_children": "Des éléments qui en dépendent sont encore actifs. Désactivez-les tous d'abord, puis désactivez celui-ci.",
+        "notFound": "Cet élément n'existe plus. Revenez à la structure.",
+        "invalid": "Vérifiez le nom et le code, puis réessayez.",
+        "generic": "Enregistrement impossible. Vérifiez votre connexion puis réessayez."
       }
     },
     "permissions": {

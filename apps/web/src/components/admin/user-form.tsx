@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
-import { useSession } from "@/components/shell/session";
+import { can, useSession } from "@/components/shell/session";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
 import { InviteLink } from "@/components/ui/invite-link";
@@ -11,8 +11,10 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
 import { api, codeOf, statusOf } from "@/lib/api";
+import { fill } from "@/lib/format";
 import type { Invite, OrgUnit, Role, User } from "@/lib/identity";
 import { pick, readForm, type Localized } from "@/lib/localized";
+import { loadUnits, unitOptions } from "@/lib/org-units";
 import { LocalizedField } from "@/components/ui/localized-field";
 import type { AdminProps } from "./types";
 import { statusTone } from "./users-list";
@@ -20,8 +22,6 @@ import { statusTone } from "./users-list";
 type Message = { kind: "ok" | "error"; text: string; at?: "roles" };
 // roleId -> org unit id, or "" for the whole organization
 type Grants = Record<string, string>;
-
-const indent = { facility: "", department: "— ", unit: "— — " };
 
 /** Adds a user, or edits the one named in the route. */
 export function UserForm({
@@ -46,6 +46,9 @@ export function UserForm({
   const f = t.users.form;
   const listPath = `/${lang}/admin/users`;
   const isSelf = user?.id === session.user.id;
+  // Someone who manages the structure also gets the units switched off, so
+  // one a user is still in can be shown by name.
+  const seesInactive = can(session, "organization.manage");
 
   const adopt = (u: User) => {
     setUser(u);
@@ -57,7 +60,7 @@ export function UserForm({
   useEffect(() => {
     Promise.all([
       api<{ roles: Role[] }>("/roles"),
-      api<OrgUnit[]>("/org-units"),
+      loadUnits(seesInactive),
       mode === "edit" ? api<User>(`/users/${id}`) : null,
     ])
       .then(([r, o, u]) => {
@@ -77,7 +80,7 @@ export function UserForm({
               : t.loadError,
         );
       });
-  }, [mode, id, t]);
+  }, [mode, id, t, seesInactive]);
 
   const grantList = () =>
     Object.entries(grants).map(([roleId, orgUnitId]) => ({
@@ -89,6 +92,7 @@ export function UserForm({
     const code = codeOf(err);
     if (code === "email_taken") return f.emailTaken;
     if (code === "language_mismatch") return f.languageMismatch;
+    if (code === "unknown_org_unit") return f.unknownUnit;
     if (code === "cannot_change_self") return f.ownAccount;
     if (code?.endsWith("higher_access")) return f.higherAccess;
     if (statusOf(err) === 403) return t.noAccess;
@@ -196,6 +200,32 @@ export function UserForm({
     );
   }
 
+  // The units that can be chosen. One already stored here that has since
+  // been switched off comes first and stays selected, so saving does not
+  // move anyone out of it: by name if this user may see it. It is not
+  // disabled, because a form leaves a disabled option out of what it sends.
+  const choices = (stored: string | null | undefined) =>
+    unitOptions(units, (u) => inLang(u.name), {
+      id: stored,
+      label: (unit) =>
+        unit
+          ? fill(t.organization.inactiveNamed[unit.type], {
+              name: inLang(unit.name),
+            })
+          : t.inactiveUnit,
+    });
+  const unitChoices = (stored: string | null | undefined) =>
+    choices(stored).map((option) => (
+      <option
+        key={option.id}
+        value={option.id}
+        className={option.inactive ? "text-muted" : undefined}
+      >
+        {option.label}
+      </option>
+    ));
+  const departmentInactive = choices(user?.orgUnitId).some((o) => o.inactive);
+
   const roleBoxes = (
     <fieldset className="flex flex-col gap-3" disabled={isSelf}>
       <legend className="mb-2 text-sm font-medium">{f.roles}</legend>
@@ -237,12 +267,9 @@ export function UserForm({
                 className={`${inputClass} h-9 max-w-64`}
               >
                 <option value="">{f.wholeOrganization}</option>
-                {units.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {indent[u.type]}
-                    {inLang(u.name)}
-                  </option>
-                ))}
+                {unitChoices(
+                  user?.roles.find((r) => r.roleId === role.id)?.orgUnitId,
+                )}
               </select>
             )}
           </div>
@@ -297,19 +324,17 @@ export function UserForm({
               />
             </Field>
             <div className="grid gap-5 sm:grid-cols-2">
-              <Field label={f.department}>
+              <Field
+                label={f.department}
+                help={departmentInactive ? f.departmentInactive : undefined}
+              >
                 <select
                   name="orgUnitId"
                   defaultValue={user?.orgUnitId ?? ""}
                   className={inputClass}
                 >
                   <option value="">{f.noDepartment}</option>
-                  {units.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {indent[u.type]}
-                      {inLang(u.name)}
-                    </option>
-                  ))}
+                  {unitChoices(user?.orgUnitId)}
                 </select>
               </Field>
               <Field label={f.jobTitle}>

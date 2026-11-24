@@ -193,7 +193,9 @@
       "usersError": "Could not load the list of staff. Reload the page to choose who it is assigned to.",
       "leavesScope": "This department is outside the area your role covers. After saving you will no longer be able to triage or change this incident.",
       "submit": "Save triage",
-      "saved": "Triage saved."
+      "saved": "Triage saved.",
+      "ownerInactiveOption": "{name} (inactive)",
+      "ownerInactive": "This department has been switched off. Choose the department that is responsible now, then save."
     },
     "actions": {
       "title": "Change status",
@@ -216,7 +218,7 @@
       "invalid": "Check the fields and try again.",
       "occurred_in_future": "The time it happened is in the future. Correct it and send again.",
       "unknown_category": "This category is no longer available. Reload the page and choose another.",
-      "unknown_org_unit": "This department no longer exists. Reload the page and choose another.",
+      "unknown_org_unit": "This department is no longer available: it has been switched off or removed. Reload the page and choose another.",
       "unknown_assignee": "This person can no longer be assigned: their account is not active. Choose someone else.",
       "missing_permission": "Your role does not allow this. Ask your administrator.",
       "outside_scope": "Your role does not cover the department of this incident. Ask someone who triages for that department.",
@@ -225,7 +227,8 @@
       "internal_not_allowed": "You can only add comments that everyone can see. Send it again as a comment for everyone.",
       "notFound": "This incident does not exist, or your role does not let you see it. Go back to the list.",
       "generic": "Could not save. Check your connection and try again."
-    }
+    },
+    "inactiveUnit": "a department that is now inactive"
   },
   "modulePage": {
     "scopeTitle": "What this area will cover",
@@ -517,7 +520,9 @@
         "higherAccess": "You cannot give or change access above your own.",
         "ownAccount": "You cannot change your own account.",
         "name": "Name",
-        "languageMismatch": "Fill in the name in the default language."
+        "languageMismatch": "Fill in the name in the default language.",
+        "departmentInactive": "This department is switched off. The user stays in it until you choose another.",
+        "unknownUnit": "A department chosen here has been switched off. Reload the page and choose another."
       }
     },
     "roles": {
@@ -554,6 +559,75 @@
         "deleteError": "Could not delete the role. Try again.",
         "name": "Name",
         "languageMismatch": "Fill in the name in the default language."
+      }
+    },
+    "inactiveUnit": "Inactive unit",
+    "organization": {
+      "title": "Organization",
+      "description": "The facilities, departments and units of your hospital. Incidents, users and role scopes point at them.",
+      "listLabel": "Organization structure",
+      "type": {
+        "facility": "Facility",
+        "department": "Department",
+        "unit": "Unit"
+      },
+      "add": {
+        "facility": "Add facility",
+        "department": "Add department",
+        "unit": "Add unit"
+      },
+      "inactive": {
+        "facility": "Inactive",
+        "department": "Inactive",
+        "unit": "Inactive"
+      },
+      "inactiveNamed": {
+        "facility": "{name} (inactive)",
+        "department": "{name} (inactive)",
+        "unit": "{name} (inactive)"
+      },
+      "showInactive": "Show inactive",
+      "empty": "Nothing has been set up yet. Start with a facility, then add its departments and their units.",
+      "addFirst": "Add your first facility",
+      "allInactive": "Everything in the structure is switched off. Turn on “Show inactive” to see it, or add a facility.",
+      "notFound": "This facility, department or unit does not exist. Go back to the structure and open it from there.",
+      "back": "Back to the structure",
+      "form": {
+        "newDescription": "A facility holds departments, and a department holds units.",
+        "type": "Type",
+        "typeHelp": "A department is added to a facility, and a unit to a department.",
+        "typeFixed": "The type cannot be changed.",
+        "parent": {
+          "department": "Facility",
+          "unit": "Department"
+        },
+        "parentHelp": "To move it, choose another one. Everything under it moves with it.",
+        "choose": "Choose…",
+        "name": "Name",
+        "code": "Code",
+        "codeHelp": "2 to 40 capital letters (A to Z), digits or hyphens, for example ICU-2. It cannot be changed later.",
+        "codeFixed": "The code cannot be changed.",
+        "save": "Save changes",
+        "saved": "Changes saved.",
+        "cancel": "Cancel",
+        "parentMissing": "You cannot add here: this facility or department does not exist or is switched off. Go back to the structure and add from there.",
+        "status": "Status",
+        "activeHelp": "Switching it off removes it from the lists used for new incidents, users, role scopes and triage. Nothing is deleted: the incidents and users already in it stay where they are, and you can switch it on again.",
+        "switchOff": "Switch off",
+        "switchedOff": "Switched off.",
+        "inactiveHelp": "It is switched off, so it cannot be chosen for new incidents, users, role scopes or triage. Its history is kept. Switch it on to use it again.",
+        "switchOn": "Switch on",
+        "switchedOn": "Switched on."
+      },
+      "errors": {
+        "language_mismatch": "Write the name in the hospital's default language. If the hospital's languages were changed recently, reload the page first.",
+        "invalid_parent": "It cannot be placed there: a department goes in a facility, and a unit in a department. Choose another place.",
+        "parent_inactive": "The facility or department above it is switched off. Switch that one on first, or choose another.",
+        "code_taken": "This code is already in use, possibly by something that is switched off. Enter a different code.",
+        "has_active_children": "Something under it is still active. Switch off everything under it first, then switch this off.",
+        "notFound": "It no longer exists. Go back to the structure.",
+        "invalid": "Check the name and the code, then try again.",
+        "generic": "Could not save. Check your connection and try again."
       }
     },
     "permissions": {

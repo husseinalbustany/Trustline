@@ -102,8 +102,14 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
   const dates = dateTimeFormat(lang);
   const when = (iso: string) => dates.format(new Date(iso));
   const d = t.detail;
-  const unitName = (unitId: string) =>
-    inLang(units.find((u) => u.id === unitId)?.name);
+  // The list holds the units in use. One switched off since is named from
+  // the incident itself when it can be, and otherwise described.
+  const unitName = (unitId: string) => {
+    const known = [...units, incident.orgUnit, incident.ownerUnit].find(
+      (u) => u?.id === unitId,
+    );
+    return known ? inLang(known.name) : t.inactiveUnit;
+  };
 
   const facts: [string, ReactNode][] = [
     [d.type, t.type[incident.type]],

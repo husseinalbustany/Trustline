@@ -55,6 +55,8 @@ export type OrgUnit = {
   type: "facility" | "department" | "unit";
   code: string;
   name: Localized;
+  /** Switched off: kept for history, no longer chosen for anything new. */
+  active: boolean;
 };
 
 export type Invite = { token: string; expiresAt: string; org: string };
