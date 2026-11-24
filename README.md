@@ -57,8 +57,7 @@ sign-in, separate from the hospitals' users.
 - **Every change** is recorded in `platform_audit_log` and shown on the
   client's page.
 
-Not built yet: a second sign-in factor for admins, and enforcing a suspended
-client at hospital sign-in (hospital sign-in itself is not built).
+Not built yet: a second sign-in factor for admins.
 
 ## Hospital sign-in, users and roles
 
@@ -91,9 +90,39 @@ Permissions are checked in the API (`requirePermission` in
 `apps/api/src/identity/session.guard.ts`). The menu hides what a user cannot
 open, but that is a convenience, not the protection.
 
-Not built yet: rate limiting on sign-in, single sign-on, a second sign-in factor, self-service
-"forgot password" by email, and limiting what a department-scoped role can
-see (the department is stored, and will apply as each module is built).
+A role granted for one department reaches that department and everything
+under it, and no further. This applies to managing users too: a user manager
+for one ward cannot grant access beyond the ward or act on an account outside
+it. Creating and editing roles, and changing the hospital structure, need the
+permission for the whole organization.
+
+Not built yet: rate limiting on sign-in, single sign-on, a second sign-in
+factor, and self-service "forgot password" by email.
+
+## Hospital structure and incident reporting
+
+- **Structure:** an administrator builds the tree of facilities, departments
+  and units under Administration, Organization. A unit is switched off, never
+  deleted, so old records keep its name.
+- **Reporting:** any member of staff reports an incident, near miss or hazard,
+  optionally without their name. An anonymous report stores no reporter at
+  all. Each report gets a reference such as `INC-2026-00042`.
+- **Handling:** a quality officer or department manager triages the report
+  (harm level, sentinel or not, handling department, assignee), moves it to in
+  progress, and closes it with a summary. A report can be set aside with a
+  reason, unless it is severe, fatal or sentinel. A closed report can be
+  reopened.
+- **Timeline and comments:** every step is written to the incident's timeline
+  by the system, with the previous and new values. Comments are either visible
+  to the reporter or internal to those handling the incident.
+- **Who sees what:** a reporter sees their own reports; a handler sees the
+  incidents that happened in, or were handed to, the departments their role
+  covers; an assignee sees what is assigned to them.
+
+The rules are in `docs/specs/incident-reporting.md`.
+
+Not built yet: deadlines, reminders and escalation; notifications; reporting
+without signing in (QR code); attachments; investigations and actions.
 
 ## API
 
