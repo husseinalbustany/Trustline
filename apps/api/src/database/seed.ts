@@ -1,7 +1,8 @@
 import { and, eq } from 'drizzle-orm';
 import { requireEnv } from '../env.js';
 import { createDatabase } from './client.js';
-import { orgUnits, tenants } from './schema.js';
+import { SYSTEM_ROLES } from '../identity/permissions.js';
+import { orgUnits, roles, tenants } from './schema.js';
 
 type UnitSeed = {
   type: 'facility' | 'department' | 'unit';
@@ -113,6 +114,11 @@ export async function seed() {
           for (const child of children) await insertUnit(child, id);
         };
         await insertUnit(structure, null);
+
+        await tx
+          .insert(roles)
+          .values(SYSTEM_ROLES.map((r) => ({ ...r, tenantId, isSystem: true })))
+          .onConflictDoNothing({ target: [roles.tenantId, roles.code] });
       });
     }
   } finally {

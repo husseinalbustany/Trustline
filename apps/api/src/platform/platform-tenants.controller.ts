@@ -26,6 +26,10 @@ import {
   type PlatformRequest,
 } from './platform-auth.guard.js';
 import { PlatformAuthService } from './platform-auth.service.js';
+import { pgErrorCode } from '../database/errors.js';
+import { roles } from '../database/schema.js';
+import { TenantDb } from '../database/tenant-db.service.js';
+import { ProvisioningService } from '../identity/provisioning.service.js';
 
 const name = z.string().trim().min(1).max(200);
 
@@ -56,10 +60,13 @@ const updateSchema = z
 
 const idSchema = z.uuid();
 
-const isUniqueViolation = (e: unknown) =>
-  [e, (e as { cause?: unknown })?.cause].some(
-    (x) => (x as { code?: string })?.code === '23505',
-  );
+const administratorSchema = z.strictObject({
+  nameEn: name,
+  nameAr: name,
+  email: z.email().max(320),
+});
+
+const isUniqueViolation = (e: unknown) => pgErrorCode(e) === '23505';
 
 @Controller('platform/tenants')
 @UseGuards(PlatformAuthGuard)
@@ -67,6 +74,8 @@ export class PlatformTenantsController {
   constructor(
     @Inject(PLATFORM_DATABASE) private readonly db: Database,
     private readonly auth: PlatformAuthService,
+    private readonly tenantDb: TenantDb,
+    private readonly provisioning: ProvisioningService,
   ) {}
 
   @Get()
@@ -83,6 +92,9 @@ export class PlatformTenantsController {
         .insert(tenants)
         .values(parsed.data)
         .returning();
+      await this.tenantDb.withTenant(tenant.id, (tx) =>
+        this.provisioning.ensureSystemRoles(tx, tenant.id),
+      );
       await this.auth.audit(req.platformAdmin.id, 'client_created', tenant.id, {
         slug: tenant.slug,
       });
@@ -142,6 +154,65 @@ export class PlatformTenantsController {
       ...(parsed.data.status && { status: parsed.data.status }),
     });
     return tenant;
+  }
+
+  /**
+   * Creates a hospital's administrator and returns a one-time link for them
+   * to set a password. This is the only hospital data the portal writes, and
+   * it goes through the tenant-scoped connection like any other.
+   */
+  @Post(':id/administrators')
+  async createAdministrator(
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @Req() req: PlatformRequest,
+  ) {
+    const parsed = administratorSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException();
+    const [tenant] = await this.db
+      .select()
+      .from(tenants)
+      .where(eq(tenants.id, this.parseId(id)));
+    if (!tenant) throw new NotFoundException();
+
+    try {
+      const result = await this.tenantDb.withTenant(tenant.id, async (tx) => {
+        await this.provisioning.ensureSystemRoles(tx, tenant.id);
+        const [administrator] = await tx
+          .select({ id: roles.id })
+          .from(roles)
+          .where(eq(roles.code, 'administrator'));
+        const user = await this.provisioning.createUser(
+          tx,
+          tenant.id,
+          parsed.data,
+          [{ roleId: administrator.id, orgUnitId: null }],
+          null,
+        );
+        const invite = await this.provisioning.createInvite(
+          tx,
+          tenant.id,
+          user.id,
+          'invitation',
+        );
+        return {
+          user: { id: user.id, email: user.email, nameEn: user.nameEn },
+          invite: { ...invite, org: tenant.slug },
+        };
+      });
+      await this.auth.audit(
+        req.platformAdmin.id,
+        'client_administrator_created',
+        tenant.id,
+        { email: result.user.email },
+      );
+      return result;
+    } catch (e) {
+      if (isUniqueViolation(e)) {
+        throw new ConflictException({ code: 'email_taken' });
+      }
+      throw e;
+    }
   }
 
   private parseId(id: string) {

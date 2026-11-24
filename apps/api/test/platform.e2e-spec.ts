@@ -2,7 +2,7 @@ import '../src/env.js';
 import { randomBytes } from 'node:crypto';
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { eq, inArray, like, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { AppModule } from '../src/app.module.js';
@@ -14,6 +14,7 @@ import {
   tenants,
 } from '../src/database/schema.js';
 import { requireEnv } from '../src/env.js';
+import { removeTestData } from './cleanup.js';
 import { createPlatformAdmin } from '../src/platform/create-admin.js';
 import { MAX_FAILED_ATTEMPTS } from '../src/platform/platform-auth.service.js';
 
@@ -22,7 +23,6 @@ describe('admin portal API', () => {
   const email = `admin-${run}@test.invalid`;
   const password = `correct-horse-${run}`;
   const slug = `test-${run}`;
-  const owner = createDatabase(requireEnv('DATABASE_URL'));
   let app: INestApplication<App>;
   let cookie: string;
 
@@ -52,17 +52,7 @@ describe('admin portal API', () => {
   }, 30_000);
 
   afterAll(async () => {
-    const { db, pool } = owner;
-    const admins = db
-      .select({ id: platformAdmins.id })
-      .from(platformAdmins)
-      .where(eq(platformAdmins.email, email));
-    await db
-      .delete(platformAuditLog)
-      .where(inArray(platformAuditLog.adminId, admins));
-    await db.delete(tenants).where(like(tenants.slug, `${slug}%`));
-    await db.delete(platformAdmins).where(eq(platformAdmins.email, email));
-    await pool.end();
+    await removeTestData(slug, email);
     await app.close();
   });
 

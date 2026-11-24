@@ -8,7 +8,7 @@ import {
   platformAuditLog,
   platformSessions,
 } from '../database/schema.js';
-import { hashPassword, verifyPassword } from './passwords.js';
+import { hashPassword, verifyPassword } from '../security/passwords.js';
 
 export const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_MINUTES = 15;

@@ -2,6 +2,7 @@ import { sql } from 'drizzle-orm';
 import {
   foreignKey,
   index,
+  boolean,
   integer,
   jsonb,
   pgEnum,
@@ -96,6 +97,187 @@ export const orgUnits = pgTable(
       foreignColumns: [t.tenantId, t.id],
     }),
     index('org_units_parent_idx').on(t.tenantId, t.parentId),
+    tenantIsolation(),
+  ],
+);
+
+export const userStatus = pgEnum('user_status', [
+  'invited',
+  'active',
+  'disabled',
+]);
+
+export const users = pgTable(
+  'users',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    orgUnitId: uuid(),
+    employeeNumber: text(),
+    nameEn: text().notNull(),
+    nameAr: text().notNull(),
+    // Stored lowercase.
+    email: text().notNull(),
+    phone: text(),
+    jobTitle: text(),
+    preferredLocale: text(),
+    status: userStatus().notNull().default('invited'),
+    // Null until the user sets a password, and for single sign-on only users.
+    passwordHash: text(),
+    passwordChangedAt: timestamp({ withTimezone: true }),
+    ssoSubject: text(),
+    failedAttempts: integer().notNull().default(0),
+    lockedUntil: timestamp({ withTimezone: true }),
+    lastSignInAt: timestamp({ withTimezone: true }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('users_tenant_id_id_key').on(t.tenantId, t.id),
+    unique('users_tenant_id_email_key').on(t.tenantId, t.email),
+    foreignKey({
+      name: 'users_org_unit_fk',
+      columns: [t.tenantId, t.orgUnitId],
+      foreignColumns: [orgUnits.tenantId, orgUnits.id],
+    }),
+    tenantIsolation(),
+  ],
+);
+
+export const roles = pgTable(
+  'roles',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    code: text().notNull(),
+    nameEn: text().notNull(),
+    nameAr: text().notNull(),
+    description: text(),
+    // Built-in roles are created for every client and cannot be changed.
+    isSystem: boolean().notNull().default(false),
+    permissions: text()
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('roles_tenant_id_id_key').on(t.tenantId, t.id),
+    unique('roles_tenant_id_code_key').on(t.tenantId, t.code),
+    tenantIsolation(),
+  ],
+);
+
+export const roleAssignments = pgTable(
+  'role_assignments',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    userId: uuid().notNull(),
+    roleId: uuid().notNull(),
+    // Where the role applies. Null means the whole organization.
+    orgUnitId: uuid(),
+    grantedBy: uuid(),
+    grantedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'role_assignments_user_fk',
+      columns: [t.tenantId, t.userId],
+      foreignColumns: [users.tenantId, users.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'role_assignments_role_fk',
+      columns: [t.tenantId, t.roleId],
+      foreignColumns: [roles.tenantId, roles.id],
+    }),
+    foreignKey({
+      name: 'role_assignments_org_unit_fk',
+      columns: [t.tenantId, t.orgUnitId],
+      foreignColumns: [orgUnits.tenantId, orgUnits.id],
+    }),
+    index('role_assignments_user_idx').on(t.tenantId, t.userId),
+    tenantIsolation(),
+  ],
+);
+
+export const sessions = pgTable(
+  'sessions',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    userId: uuid().notNull(),
+    // SHA-256 of the session token. The token itself is only with the client.
+    tokenHash: text().notNull().unique(),
+    client: text().notNull().default('web'),
+    expiresAt: timestamp({ withTimezone: true }).notNull(),
+    lastSeenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp({ withTimezone: true }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'sessions_user_fk',
+      columns: [t.tenantId, t.userId],
+      foreignColumns: [users.tenantId, users.id],
+    }).onDelete('cascade'),
+    tenantIsolation(),
+  ],
+);
+
+// One-time links: an invitation to set a first password, or a password reset.
+export const userTokens = pgTable(
+  'user_tokens',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    userId: uuid().notNull(),
+    purpose: text().notNull(),
+    tokenHash: text().notNull().unique(),
+    expiresAt: timestamp({ withTimezone: true }).notNull(),
+    usedAt: timestamp({ withTimezone: true }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'user_tokens_user_fk',
+      columns: [t.tenantId, t.userId],
+      foreignColumns: [users.tenantId, users.id],
+    }).onDelete('cascade'),
+    tenantIsolation(),
+  ],
+);
+
+// What happened in a hospital's account, and who did it. The application role
+// can add rows and read them, never change or delete them.
+export const auditLog = pgTable(
+  'audit_log',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    // Null for the system and for Trustline staff acting from the admin portal.
+    actorId: uuid(),
+    action: text().notNull(),
+    entityType: text(),
+    entityId: uuid(),
+    changes: jsonb(),
+    ipAddress: text(),
+    occurredAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('audit_log_entity_idx').on(t.tenantId, t.entityType, t.entityId),
     tenantIsolation(),
   ],
 );

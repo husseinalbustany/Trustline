@@ -1,7 +1,7 @@
 import { requireEnv } from '../env.js';
 import { createDatabase } from '../database/client.js';
 import { platformAdmins } from '../database/schema.js';
-import { hashPassword } from './passwords.js';
+import { hashPassword } from '../security/passwords.js';
 
 export const MIN_PASSWORD_LENGTH = 12;
 

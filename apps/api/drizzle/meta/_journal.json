@@ -29,6 +29,20 @@
       "when": 1795540939845,
       "tag": "0003_platform_role_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1795542255735,
+      "tag": "0004_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795542256449,
+      "tag": "0005_identity_grants",
+      "breakpoints": true
     }
   ]
 }

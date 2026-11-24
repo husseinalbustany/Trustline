@@ -11,6 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { sessionCookieOptions } from '../security/cookies.js';
 import { z } from 'zod';
 import {
   PlatformAuthGuard,
@@ -23,14 +24,6 @@ const loginSchema = z.object({
   email: z.string().min(1).max(320),
   password: z.string().min(1).max(1024),
 });
-
-const cookieOptions = {
-  httpOnly: true,
-  // Never sent on requests that start from another site.
-  sameSite: 'strict' as const,
-  secure: process.env.NODE_ENV === 'production',
-  path: '/',
-};
 
 @Controller('platform/auth')
 export class PlatformAuthController {
@@ -52,7 +45,7 @@ export class PlatformAuthController {
     if (!result) throw new UnauthorizedException();
 
     res.cookie(SESSION_COOKIE, result.token, {
-      ...cookieOptions,
+      ...sessionCookieOptions,
       maxAge: SESSION_HOURS * 3_600_000,
     });
     return result.admin;
@@ -72,6 +65,6 @@ export class PlatformAuthController {
     @Res({ passthrough: true }) res: Response,
   ) {
     await this.auth.logout(req.platformToken, req.platformAdmin.id);
-    res.clearCookie(SESSION_COOKIE, cookieOptions);
+    res.clearCookie(SESSION_COOKIE, sessionCookieOptions);
   }
 }
