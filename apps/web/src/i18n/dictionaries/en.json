@@ -1,0 +1,30 @@
+{
+  "app": {
+    "name": "Trustline",
+    "tagline": "Quality, risk and incident management for hospitals",
+    "switchLanguage": "العربية"
+  },
+  "home": {
+    "status": "Foundation in progress",
+    "intro": "One line of trust from the moment a concern is reported to its resolution.",
+    "modulesTitle": "Planned for the first release",
+    "modules": {
+      "incidents": {
+        "title": "Incident and hazard reporting",
+        "body": "Any employee can raise a safety concern in under two minutes."
+      },
+      "actions": {
+        "title": "Actions",
+        "body": "One tracker for every corrective and preventive action."
+      },
+      "policies": {
+        "title": "Policies and procedures",
+        "body": "One library of current, approved documents with signed approvals."
+      },
+      "reporting": {
+        "title": "Dashboards and reports",
+        "body": "Leadership and committees see the facts."
+      }
+    }
+  }
+}

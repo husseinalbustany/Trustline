@@ -1,0 +1,37 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #16202a;
+  --muted: #5b6875;
+  --surface: #f1f4f6;
+  --line: #dde3e8;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0e1318;
+    --foreground: #e8edf1;
+    --muted: #98a4af;
+    --surface: #1a222a;
+    --line: #2a343e;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  /* System fonts: no build-time font download, and each platform's own
+     Arabic face. */
+  --font-sans:
+    ui-sans-serif, system-ui, "Segoe UI", "Noto Sans Arabic", Tahoma,
+    sans-serif;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+}
