@@ -16,7 +16,10 @@ export function ClientsList({ lang, t }: PlatformProps) {
 
   useEffect(() => {
     platformApi<Client[]>("/tenants")
-      .then(setClients)
+      .then((list) => {
+        setClients(list);
+        setFailed(false);
+      })
       .catch(() => setFailed(true));
   }, []);
 
@@ -73,8 +76,8 @@ export function ClientsList({ lang, t }: PlatformProps) {
                         >
                           {lang === "ar" ? client.nameAr : client.nameEn}
                         </Link>
-                        <div className="text-xs text-muted" dir="ltr">
-                          {client.slug}
+                        <div className="text-xs text-muted">
+                          <span dir="ltr">{client.slug}</span>
                         </div>
                       </td>
                       <td className="px-4 py-3">

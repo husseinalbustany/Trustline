@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { LanguageSwitcher } from "@/components/shell/language-switcher";
 import { Button } from "@/components/ui/button";
+import { statusOf } from "@/lib/api";
 import { platformApi, type Admin } from "@/lib/platform-api";
 import type { PlatformProps } from "./types";
+import { loadPage } from "@/lib/navigate";
 
 /** The admin portal's frame. Shows nothing until the session is confirmed. */
 export function PortalFrame({
@@ -14,28 +16,49 @@ export function PortalFrame({
   t,
   switchLanguage,
   children,
-}: PlatformProps & { switchLanguage: string; children: ReactNode }) {
-  const router = useRouter();
+  signOutFailed,
+  sessionError,
+}: PlatformProps & {
+  switchLanguage: string;
+  signOutFailed: string;
+  sessionError: string;
+  children: ReactNode;
+}) {
   const pathname = usePathname();
   const [admin, setAdmin] = useState<Admin | null>(null);
+  const [problem, setProblem] = useState<"session" | "signOut" | null>(null);
   const loginPath = `/${lang}/platform/login`;
 
   useEffect(() => {
     platformApi<Admin>("/auth/me")
-      .then(setAdmin)
-      .catch(() => {
+      .then((a) => {
+        setAdmin(a);
+        setProblem(null);
+      })
+      .catch((err) => {
         setAdmin(null);
-        router.replace(loginPath);
+        // A full page load, so nothing of the previous session stays mounted.
+        if (statusOf(err) === 401) loadPage(loginPath);
+        else setProblem("session");
       });
-  }, [router, loginPath]);
+  }, [loginPath]);
 
   async function signOut() {
-    await platformApi("/auth/logout", { method: "POST" }).catch(() => {});
-    setAdmin(null);
-    router.replace(loginPath);
+    try {
+      await platformApi("/auth/logout", { method: "POST" });
+    } catch (err) {
+      if (statusOf(err) !== 401) return setProblem("signOut");
+    }
+    loadPage(loginPath);
   }
 
-  if (!admin) return null;
+  if (!admin) {
+    return problem === "session" ? (
+      <p role="alert" className="p-6 text-sm text-danger">
+        {sessionError}
+      </p>
+    ) : null;
+  }
 
   return (
     <div className="flex min-h-dvh flex-col">
@@ -43,7 +66,7 @@ export function PortalFrame({
         <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-4 px-4 sm:px-6">
           <Link
             href={`/${lang}/platform/clients`}
-            className="flex items-center gap-2 font-semibold tracking-tight"
+            className="flex items-center gap-2 font-semibold ltr:tracking-tight"
           >
             <span
               className="flex size-7 items-center justify-center rounded-md bg-accent text-sm text-accent-fg"
@@ -54,6 +77,11 @@ export function PortalFrame({
             {t.title}
           </Link>
           <div className="ms-auto flex items-center gap-2">
+            {problem === "signOut" && (
+              <span role="alert" className="text-sm text-danger">
+                {signOutFailed}
+              </span>
+            )}
             <span className="text-sm text-muted max-sm:hidden">
               {admin.name}
             </span>

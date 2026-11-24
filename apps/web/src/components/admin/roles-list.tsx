@@ -20,7 +20,10 @@ export function RolesList({ lang, t }: AdminProps) {
 
   useEffect(() => {
     api<{ roles: Role[] }>("/roles")
-      .then((data) => setRoles(data.roles))
+      .then((data) => {
+        setRoles(data.roles);
+        setProblem(null);
+      })
       .catch((err) =>
         setProblem(statusOf(err) === 403 ? t.noAccess : t.loadError),
       );

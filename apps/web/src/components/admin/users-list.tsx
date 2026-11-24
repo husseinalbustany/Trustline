@@ -29,6 +29,7 @@ export function UsersList({ lang, t }: AdminProps) {
       .then(([u, o]) => {
         setUsers(u);
         setUnits(o);
+        setProblem(null);
       })
       .catch((err) =>
         setProblem(statusOf(err) === 403 ? t.noAccess : t.loadError),
@@ -89,8 +90,8 @@ export function UsersList({ lang, t }: AdminProps) {
                         >
                           {ar ? user.nameAr : user.nameEn}
                         </Link>
-                        <div className="text-xs text-muted" dir="ltr">
-                          {user.email}
+                        <div className="text-xs text-muted">
+                          <span dir="ltr">{user.email}</span>
                         </div>
                       </td>
                       <td className="px-4 py-3">{unitName(user.orgUnitId)}</td>

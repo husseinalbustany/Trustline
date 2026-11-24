@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
@@ -8,6 +7,7 @@ import { api, statusOf } from "@/lib/api";
 import type { Dictionary } from "@/i18n/dictionaries";
 import type { Locale } from "@/i18n/config";
 import { AuthCard } from "./auth-card";
+import { loadPage } from "@/lib/navigate";
 
 const ORG_KEY = "trustline.org";
 
@@ -20,7 +20,6 @@ export function LoginForm({
   appName: string;
   t: Dictionary["auth"];
 }) {
-  const router = useRouter();
   const orgInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -61,7 +60,9 @@ export function LoginForm({
       // Visited pages stay mounted, so clear the password before leaving.
       form.reset();
       if (orgInput.current) orgInput.current.value = org;
-      router.replace(`/${lang}/dashboard`);
+      // A full page load, so no page from an earlier session stays mounted.
+      loadPage(`/${lang}/dashboard`);
+      return;
     } catch (err) {
       setError(statusOf(err) === 401 ? t.login.failed : t.login.error);
     }

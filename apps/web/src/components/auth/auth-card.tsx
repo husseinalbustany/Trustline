@@ -14,7 +14,9 @@ export function AuthCard({
       <div className="flex w-full max-w-sm flex-col gap-5 rounded-lg border border-line bg-background p-6">
         <div>
           <p className="text-sm font-medium text-accent">{eyebrow}</p>
-          <h1 className="mt-1 text-xl font-semibold tracking-tight">{title}</h1>
+          <h1 className="mt-1 text-xl font-semibold ltr:tracking-tight">
+            {title}
+          </h1>
         </div>
         {children}
       </div>

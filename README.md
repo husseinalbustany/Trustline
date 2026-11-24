@@ -67,7 +67,9 @@ email and password. A hospital can share `/en/login?org=<identifier>` so the
 first field is already filled.
 
 - **First administrator:** created from the admin portal, on the client's
-  page. Everyone else is added by a hospital administrator under
+  page. The portal can create only the first one; it is refused once the
+  hospital has an administrator, and the hospital's audit log names the
+  Trustline staff member who created it. Everyone else is added by a hospital administrator under
   Administration, Users and roles.
 - **Passwords are never set by an administrator.** Adding a user produces a
   one-time link (valid 72 hours) that the person opens to choose their own
@@ -78,7 +80,9 @@ first field is already filled.
   roles (Administrator, Quality officer, Department manager, Reporter) and can
   add its own. A role is granted for the whole organization or one department.
 - **Safeguards:** five wrong passwords lock an account for 15 minutes; nobody
-  can change their own roles or disable themselves; a disabled user and a
+  can change their own roles, edit a role they hold, or disable themselves;
+  nobody can give a role that allows more than they may do, or act on a user
+  who may do more than they may; a disabled user and a
   suspended client are signed out at once.
 - **Audit:** sign-ins and every account or role change go to `audit_log`,
   which the application can add to but not change.
@@ -87,7 +91,7 @@ Permissions are checked in the API (`requirePermission` in
 `apps/api/src/identity/session.guard.ts`). The menu hides what a user cannot
 open, but that is a convenience, not the protection.
 
-Not built yet: single sign-on, a second sign-in factor, self-service
+Not built yet: rate limiting on sign-in, single sign-on, a second sign-in factor, self-service
 "forgot password" by email, and limiting what a department-scoped role can
 see (the department is stored, and will apply as each module is built).
 

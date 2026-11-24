@@ -110,32 +110,39 @@ export function Sidebar({
                 {labels.groups[group.key]}
               </h2>
               <ul className="mt-1 space-y-0.5">
-                {group.items.map(({ key, href, icon: Icon, phase }) => {
-                  const active = isActive(key, href);
-                  return (
-                    <li key={key}>
-                      <Link
-                        href={`/${lang}${href}`}
-                        onClick={onClose}
-                        aria-current={active ? "page" : undefined}
-                        className={`flex items-center gap-3 rounded-md px-2 py-2 text-sm ${
-                          active
-                            ? "bg-accent-soft font-medium text-accent"
-                            : "text-foreground hover:bg-line"
-                        }`}
-                      >
-                        <Icon
-                          className={`size-4 shrink-0 ${active ? "" : "text-muted"}`}
-                          aria-hidden
-                        />
-                        <span className="min-w-0 flex-1 truncate">
-                          {labels.items[key]}
-                        </span>
-                        {phase === 2 && <Badge>{labels.phase2}</Badge>}
-                      </Link>
-                    </li>
-                  );
-                })}
+                {group.items.map(
+                  ({ key, href: itemHref, icon: Icon, phase }) => {
+                    // Someone who manages roles but not users starts on Roles.
+                    const href =
+                      key === "users" && !permissions.includes("users.manage")
+                        ? "/admin/roles"
+                        : itemHref;
+                    const active = isActive(key, itemHref);
+                    return (
+                      <li key={key}>
+                        <Link
+                          href={`/${lang}${href}`}
+                          onClick={onClose}
+                          aria-current={active ? "page" : undefined}
+                          className={`flex items-center gap-3 rounded-md px-2 py-2 text-sm ${
+                            active
+                              ? "bg-accent-soft font-medium text-accent"
+                              : "text-foreground hover:bg-line"
+                          }`}
+                        >
+                          <Icon
+                            className={`size-4 shrink-0 ${active ? "" : "text-muted"}`}
+                            aria-hidden
+                          />
+                          <span className="min-w-0 flex-1 truncate">
+                            {labels.items[key]}
+                          </span>
+                          {phase === 2 && <Badge>{labels.phase2}</Badge>}
+                        </Link>
+                      </li>
+                    );
+                  },
+                )}
               </ul>
             </div>
           ))}

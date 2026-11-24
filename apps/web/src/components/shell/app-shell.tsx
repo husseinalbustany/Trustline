@@ -1,15 +1,16 @@
 "use client";
 
 import { LogOut, Menu, Plus } from "lucide-react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { ButtonLink } from "@/components/ui/button-link";
 import type { Locale } from "@/i18n/config";
-import { api } from "@/lib/api";
+import { api, statusOf } from "@/lib/api";
 import type { Session } from "@/lib/identity";
 import { LanguageSwitcher } from "./language-switcher";
 import { SessionContext } from "./session";
 import { Sidebar, type SidebarLabels } from "./sidebar";
+import { loadPage } from "@/lib/navigate";
 
 export type ShellLabels = SidebarLabels & {
   skipToContent: string;
@@ -17,6 +18,8 @@ export type ShellLabels = SidebarLabels & {
   reportIncident: string;
   switchLanguage: string;
   signOut: string;
+  signOutFailed: string;
+  sessionError: string;
 };
 
 export function AppShell({
@@ -29,25 +32,35 @@ export function AppShell({
   children: ReactNode;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
+  const [problem, setProblem] = useState<"session" | "signOut" | null>(null);
   const loginPath = `/${lang}/login`;
 
   // Nothing in the app is shown until the session is confirmed.
   useEffect(() => {
     api<Session>("/auth/me")
-      .then(setSession)
-      .catch(() => {
+      .then((s) => {
+        setSession(s);
+        setProblem(null);
+      })
+      .catch((err) => {
         setSession(null);
-        router.replace(loginPath);
+        // A full page load, so nothing of the previous session stays mounted.
+        if (statusOf(err) === 401) loadPage(loginPath);
+        else setProblem("session");
       });
-  }, [router, loginPath]);
+  }, [loginPath]);
 
   async function signOut() {
-    await api("/auth/logout", { method: "POST" }).catch(() => {});
-    setSession(null);
-    router.replace(loginPath);
+    try {
+      await api("/auth/logout", { method: "POST" });
+    } catch (err) {
+      // Still signed in on the server: say so instead of pretending.
+      if (statusOf(err) !== 401) return setProblem("signOut");
+    }
+    // A full page load, so nothing of this session stays mounted.
+    loadPage(loginPath);
   }
 
   useEffect(() => {
@@ -58,7 +71,13 @@ export function AppShell({
     return () => window.removeEventListener("keydown", onKey);
   }, [menuOpen]);
 
-  if (!session) return null;
+  if (!session) {
+    return problem === "session" ? (
+      <p role="alert" className="p-6 text-sm text-danger">
+        {labels.sessionError}
+      </p>
+    ) : null;
+  }
   const ar = lang === "ar";
 
   return (
@@ -104,6 +123,11 @@ export function AppShell({
                 <Plus className="size-4" aria-hidden />
                 <span className="max-sm:sr-only">{labels.reportIncident}</span>
               </ButtonLink>
+              {problem === "signOut" && (
+                <span role="alert" className="text-sm text-danger">
+                  {labels.signOutFailed}
+                </span>
+              )}
               <span className="ms-2 text-sm text-muted max-md:hidden">
                 {ar ? session.user.nameAr : session.user.nameEn}
               </span>

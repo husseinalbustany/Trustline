@@ -50,7 +50,7 @@ export function ClientForm({
   const router = useRouter();
   const { id } = useParams<{ id?: string }>();
   const [client, setClient] = useState<Loaded | null>(null);
-  const [missing, setMissing] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
   const [invite, setInvite] = useState<Invite | null>(null);
@@ -61,9 +61,18 @@ export function ClientForm({
   useEffect(() => {
     if (mode !== "edit") return;
     platformApi<Loaded>(`/tenants/${id}`)
-      .then(setClient)
-      .catch(() => setMissing(true));
-  }, [mode, id]);
+      .then((loaded) => {
+        setClient(loaded);
+        setProblem(null);
+      })
+      .catch((err) =>
+        setProblem(
+          err instanceof ApiError && err.status === 404
+            ? t.notFound
+            : t.loadError,
+        ),
+      );
+  }, [mode, id, t]);
 
   async function save(body: Record<string, unknown>, form?: HTMLFormElement) {
     setBusy(true);
@@ -105,8 +114,19 @@ export function ClientForm({
       setInvite(created.invite);
       setClient(await platformApi<Loaded>(`/tenants/${id}`));
     } catch (err) {
-      const status = err instanceof ApiError ? err.status : 0;
-      setAdminError(status === 409 ? t.administrator.emailTaken : f.error);
+      const code = err instanceof ApiError ? err.code : undefined;
+      const a = t.administrator;
+      setAdminError(
+        code === "administrator_exists"
+          ? a.exists
+          : code === "client_suspended"
+            ? a.suspended
+            : code === "password_sign_in_disabled"
+              ? a.ssoOnly
+              : code === "email_taken"
+                ? a.emailTaken
+                : f.error,
+      );
     }
     setBusy(false);
   }
@@ -118,14 +138,18 @@ export function ClientForm({
     void save(mode === "new" ? { slug, ...settings } : settings, form);
   }
 
-  if (missing) return <EmptyState>{t.notFound}</EmptyState>;
+  if (problem) return <EmptyState>{problem}</EmptyState>;
   if (mode === "edit" && !client) return <EmptyState>{t.loading}</EmptyState>;
 
   const suspended = client?.status === "suspended";
-  const dateFormat = new Intl.DateTimeFormat(lang, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+  // Western digits in both languages, as everywhere else in the app.
+  const dateFormat = new Intl.DateTimeFormat(
+    lang === "ar" ? "ar-u-nu-latn" : "en",
+    {
+      dateStyle: "medium",
+      timeStyle: "short",
+    },
+  );
 
   return (
     <>
@@ -219,6 +243,7 @@ export function ClientForm({
           <Field label={f.dataRegion} help={f.dataRegionHelp}>
             <input
               name="dataRegion"
+              dir="auto"
               maxLength={100}
               defaultValue={client?.dataRegion ?? ""}
               className={inputClass}

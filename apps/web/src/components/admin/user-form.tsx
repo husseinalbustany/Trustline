@@ -60,6 +60,7 @@ export function UserForm({
         setRoles(r.roles);
         setUnits(o);
         if (u) adopt(u);
+        setProblem(null);
         setReady(true);
       })
       .catch((err) => {
@@ -80,27 +81,34 @@ export function UserForm({
       orgUnitId: orgUnitId || null,
     }));
 
-  const fail = (err: unknown) =>
-    setMessage({
-      kind: "error",
-      text:
-        codeOf(err) === "email_taken"
-          ? f.emailTaken
-          : statusOf(err) === 400
-            ? f.invalid
-            : f.error,
-    });
+  const explain = (err: unknown) => {
+    const code = codeOf(err);
+    if (code === "email_taken") return f.emailTaken;
+    if (code === "cannot_change_self") return f.ownAccount;
+    if (code?.endsWith("higher_access")) return f.higherAccess;
+    if (statusOf(err) === 403) return t.noAccess;
+    return statusOf(err) === 400 ? f.invalid : f.error;
+  };
 
-  async function run(work: () => Promise<void>) {
+  // `at` says where a failure is shown: beside the part that was acted on.
+  async function run(work: () => Promise<void>, at?: "roles") {
     setBusy(true);
     setMessage(null);
     try {
       await work();
     } catch (err) {
-      fail(err);
+      setMessage({ kind: "error", text: explain(err), at });
     }
     setBusy(false);
   }
+
+  // Visited pages stay mounted, so a one-time link and a "saved" note must
+  // not be waiting here when the page is shown again.
+  const leave = () => {
+    setInvite(null);
+    setMessage(null);
+    if (mode === "new") setUser(null);
+  };
 
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -137,7 +145,7 @@ export function UserForm({
         }),
       );
       setMessage({ kind: "ok", text: f.rolesSaved, at: "roles" });
-    });
+    }, "roles");
 
   const setStatus = (status: "active" | "disabled") =>
     run(async () => {
@@ -168,6 +176,7 @@ export function UserForm({
           <div className="flex gap-2">
             <Link
               href={listPath}
+              onClick={leave}
               className="inline-flex h-9 items-center rounded-md bg-accent px-3 text-sm font-medium text-accent-fg hover:bg-accent-hover"
             >
               {f.back}
@@ -186,6 +195,12 @@ export function UserForm({
       </>
     );
   }
+
+  // Built-in roles are described in the reader's language. A custom role
+  // shows what its author wrote.
+  const builtIn = t.roles.builtInDescriptions as Record<string, string>;
+  const describe = (role: Role) =>
+    role.isSystem ? builtIn[role.code] : role.description;
 
   const roleBoxes = (
     <fieldset className="flex flex-col gap-3" disabled={isSelf}>
@@ -213,9 +228,9 @@ export function UserForm({
                 <span className="font-medium">
                   {ar ? role.nameAr : role.nameEn}
                 </span>
-                {role.description && !ar && (
-                  <span className="block text-xs text-muted">
-                    {role.description}
+                {describe(role) && (
+                  <span dir="auto" className="block text-xs text-muted">
+                    {describe(role)}
                   </span>
                 )}
               </span>
@@ -249,7 +264,9 @@ export function UserForm({
     <>
       <PageHeader
         title={user ? (ar ? user.nameAr : user.nameEn) : f.newTitle}
-        description={user ? user.email : f.newDescription}
+        description={
+          user ? <bdi dir="ltr">{user.email}</bdi> : f.newDescription
+        }
         actions={
           user && (
             <Pill tone={statusTone[user.status]}>
@@ -321,6 +338,7 @@ export function UserForm({
               <Field label={f.jobTitle}>
                 <input
                   name="jobTitle"
+                  dir="auto"
                   maxLength={200}
                   defaultValue={user?.jobTitle ?? ""}
                   className={inputClass}
@@ -363,6 +381,7 @@ export function UserForm({
               </Button>
               <Link
                 href={listPath}
+                onClick={leave}
                 className="inline-flex h-9 items-center rounded-md px-3 text-sm text-muted hover:bg-surface hover:text-foreground"
               >
                 {mode === "new" ? f.cancel : f.back}
@@ -374,7 +393,10 @@ export function UserForm({
             <div className="flex flex-col gap-4 rounded-lg border border-line p-4 sm:p-6">
               {roleBoxes}
               {message?.at === "roles" && (
-                <p role="status" className="text-sm text-accent">
+                <p
+                  role={message.kind === "error" ? "alert" : "status"}
+                  className={`text-sm ${message.kind === "error" ? "text-danger" : "text-accent"}`}
+                >
                   {message.text}
                 </p>
               )}

@@ -1,14 +1,13 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
 import { ApiError, platformApi } from "@/lib/platform-api";
 import type { PlatformProps } from "./types";
+import { loadPage } from "@/lib/navigate";
 
 export function LoginForm({ lang, t }: PlatformProps) {
-  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -25,7 +24,9 @@ export function LoginForm({ lang, t }: PlatformProps) {
       });
       // Visited pages stay mounted, so clear the password before leaving.
       formElement.reset();
-      router.replace(`/${lang}/platform/clients`);
+      // A full page load, so no page from an earlier session stays mounted.
+      loadPage(`/${lang}/platform/clients`);
+      return;
     } catch (err) {
       const refused = err instanceof ApiError && err.status === 401;
       setError(refused ? t.login.failed : t.login.error);
@@ -41,7 +42,7 @@ export function LoginForm({ lang, t }: PlatformProps) {
       >
         <div>
           <p className="text-sm font-medium text-accent">{t.title}</p>
-          <h1 className="mt-1 text-xl font-semibold tracking-tight">
+          <h1 className="mt-1 text-xl font-semibold ltr:tracking-tight">
             {t.login.title}
           </h1>
         </div>

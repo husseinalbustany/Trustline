@@ -29,6 +29,7 @@ export function RoleForm({
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
+  const [confirming, setConfirming] = useState(false);
   const ar = lang === "ar";
   const f = t.roles.form;
   const listPath = `/${lang}/admin/roles`;
@@ -45,6 +46,7 @@ export function RoleForm({
           setRole(found);
           setGranted(found.permissions);
         }
+        setProblem(null);
         setReady(true);
       })
       .catch((err) =>
@@ -52,24 +54,28 @@ export function RoleForm({
       );
   }, [mode, id, t]);
 
-  async function run(work: () => Promise<void>) {
+  async function run(work: () => Promise<void>, fallback = f.error) {
     setBusy(true);
     setMessage(null);
     try {
       await work();
     } catch (err) {
       const code = codeOf(err);
-      setMessage({
-        kind: "error",
-        text:
-          code === "code_taken"
-            ? f.codeTaken
-            : code === "role_in_use"
-              ? f.inUse
-              : statusOf(err) === 400
-                ? f.invalid
-                : f.error,
-      });
+      const text =
+        code === "code_taken"
+          ? f.codeTaken
+          : code === "role_in_use"
+            ? f.inUse
+            : code === "cannot_change_own_role"
+              ? f.ownRole
+              : code === "cannot_grant_higher_access"
+                ? f.higherAccess
+                : statusOf(err) === 403
+                  ? t.noAccess
+                  : statusOf(err) === 400
+                    ? f.invalid
+                    : fallback;
+      setMessage({ kind: "error", text });
     }
     setBusy(false);
   }
@@ -96,11 +102,15 @@ export function RoleForm({
     });
   }
 
-  const remove = () =>
-    run(async () => {
+  // Deleting takes two presses: the first asks, the second deletes.
+  const remove = () => {
+    if (!confirming) return setConfirming(true);
+    setConfirming(false);
+    return run(async () => {
       await api(`/roles/${id}`, { method: "DELETE" });
       router.push(listPath);
-    });
+    }, f.deleteError);
+  };
 
   if (problem) return <EmptyState>{problem}</EmptyState>;
   if (!ready) return <EmptyState>{t.loading}</EmptyState>;
@@ -156,6 +166,7 @@ export function RoleForm({
           <Field label={f.description}>
             <input
               name="description"
+              dir="auto"
               maxLength={500}
               defaultValue={role?.description ?? ""}
               className={inputClass}
@@ -189,6 +200,11 @@ export function RoleForm({
           </div>
         </fieldset>
 
+        {confirming && (
+          <p role="alert" className="text-sm text-danger">
+            {f.deleteConfirm}
+          </p>
+        )}
         {message && (
           <p
             role={message.kind === "error" ? "alert" : "status"}

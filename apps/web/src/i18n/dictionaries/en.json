@@ -11,7 +11,9 @@
     "reportIncident": "Report an incident",
     "switchLanguage": "العربية",
     "phase2": "Phase 2",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "signOutFailed": "Could not sign out. Try again.",
+    "sessionError": "Could not reach the server. Reload the page."
   },
   "nav": {
     "groups": {
@@ -54,7 +56,7 @@
   },
   "modulePage": {
     "scopeTitle": "What this area will cover",
-    "notBuilt": "This area is not built yet."
+    "notBuilt": "This area is not available yet."
   },
   "modules": {
     "incidents": {
@@ -158,7 +160,7 @@
       "email": "Email",
       "password": "Password",
       "submit": "Sign in",
-      "failed": "The email or password is wrong, or the account is temporarily locked.",
+      "failed": "The email or password is wrong, or the account is locked. Check them, or wait 15 minutes and try again.",
       "error": "Could not sign in. Try again."
     },
     "clients": {
@@ -232,8 +234,8 @@
       }
     },
     "inviteLink": {
-      "title": "Send this link to the person",
-      "help": "They open it to set their password. It works once and expires in 72 hours. It is not shown again.",
+      "title": "Send this link to the user",
+      "help": "They open it to set their password. It works once and expires in 72 hours. It will not be shown again, so copy it now.",
       "copy": "Copy link",
       "copied": "Copied"
     },
@@ -241,18 +243,22 @@
       "title": "Hospital administrator",
       "help": "Create the first administrator for this client. They add everyone else.",
       "create": "Create administrator",
-      "emailTaken": "A user with this email already exists for this client."
-    }
+      "emailTaken": "A user with this email already exists for this client.",
+      "exists": "This client already has an administrator. The hospital adds further administrators itself.",
+      "suspended": "This client is suspended. Reactivate it first.",
+      "ssoOnly": "This client uses single sign-on only, so a password link cannot be used."
+    },
+    "loadError": "Could not load this client. Reload the page."
   },
   "auth": {
     "login": {
       "title": "Sign in",
-      "org": "Organization",
+      "org": "Organization ID",
       "orgHelp": "The identifier your hospital gave you.",
       "email": "Email",
       "password": "Password",
       "submit": "Sign in",
-      "failed": "These details did not match an account, or the account is temporarily locked.",
+      "failed": "The organization, email or password is wrong, or the account is locked. Check them, or wait 15 minutes and try again.",
       "error": "Could not sign in. Try again.",
       "forgot": "Forgot your password? Ask your administrator for a reset link."
     },
@@ -263,11 +269,11 @@
       "invalid": "It has expired, was already used, or was replaced by a newer one. Ask your administrator for a new link.",
       "password": "New password",
       "passwordHelp": "At least 12 characters.",
-      "confirm": "Repeat the password",
+      "confirm": "Confirm password",
       "submit": "Set password",
       "tooShort": "The password must be at least 12 characters.",
       "mismatch": "The two passwords do not match.",
-      "error": "Could not set the password. The link may have expired.",
+      "error": "Could not set the password. The link may have expired. Ask your administrator for a new one.",
       "doneTitle": "Password set",
       "done": "You can now sign in with your email and new password."
     }
@@ -278,10 +284,10 @@
     "tabsLabel": "Users and roles",
     "loading": "Loading…",
     "loadError": "Could not load this page. Reload it.",
-    "noAccess": "Your role does not allow this.",
+    "noAccess": "Your role does not allow this. Ask your administrator.",
     "inviteLink": {
-      "title": "Send this link to the person",
-      "help": "They open it to set their password. It works once and expires in 72 hours. It is not shown again.",
+      "title": "Send this link to the user",
+      "help": "They open it to set their password. It works once and expires in 72 hours. It will not be shown again, so copy it now.",
       "copy": "Copy link",
       "copied": "Copied"
     },
@@ -307,7 +313,7 @@
         "nameEn": "Name in English",
         "nameAr": "Name in Arabic",
         "email": "Email",
-        "emailFixed": "The email is the sign-in name and cannot be changed.",
+        "emailFixed": "The email is used to sign in and cannot be changed.",
         "department": "Department",
         "noDepartment": "None",
         "jobTitle": "Job title",
@@ -334,11 +340,13 @@
         "resetHelp": "A reset link lets them choose a new password and signs them out everywhere.",
         "resetPassword": "Create a reset link",
         "disabledHelp": "A disabled user cannot sign in.",
-        "access": "Access",
+        "access": "Account access",
         "disableHelp": "Disabling signs this person out and blocks sign-in. Their records are kept.",
         "disable": "Disable user",
-        "enableHelp": "This person cannot sign in.",
-        "enable": "Enable user"
+        "enableHelp": "Enabling lets this person sign in again.",
+        "enable": "Enable user",
+        "higherAccess": "You cannot give or change access above your own.",
+        "ownAccount": "You cannot change your own account."
       }
     },
     "roles": {
@@ -349,7 +357,7 @@
       "columns": {
         "name": "Role",
         "permissions": "Permissions",
-        "users": "Assigned"
+        "users": "Users"
       },
       "form": {
         "newTitle": "Add role",
@@ -370,17 +378,27 @@
         "codeTaken": "Another role already uses this code.",
         "inUse": "This role is assigned to users. Remove it from them first.",
         "invalid": "Check the fields and try again.",
-        "error": "Could not save. Try again."
+        "error": "Could not save. Try again.",
+        "higherAccess": "You cannot give permissions you do not have.",
+        "ownRole": "You cannot change a role you hold.",
+        "deleteConfirm": "Delete this role? Press again to confirm. This cannot be undone.",
+        "deleteError": "Could not delete the role. Try again."
+      },
+      "builtInDescriptions": {
+        "administrator": "Full access, including users, roles and settings.",
+        "quality_officer": "Triages incidents, manages actions and policies, and views reports.",
+        "department_manager": "Sees incidents and manages actions for a department.",
+        "reporter": "Reports incidents and reads policies."
       }
     },
     "permissions": {
       "incidents.report": "Report incidents",
-      "incidents.view": "See incidents",
+      "incidents.view": "View incidents",
       "incidents.triage": "Triage and assign incidents",
       "actions.manage": "Manage actions",
       "policies.view": "Read policies",
       "policies.manage": "Write and manage policies",
-      "reports.view": "See reports and dashboards",
+      "reports.view": "View reports and dashboards",
       "organization.manage": "Manage the organization structure",
       "users.manage": "Manage users",
       "roles.manage": "Manage roles",

@@ -34,7 +34,8 @@ export const SYSTEM_ROLES: {
     code: 'quality_officer',
     nameEn: 'Quality officer',
     nameAr: 'مسؤول الجودة',
-    description: 'Triages incidents and manages actions, policies and reports.',
+    description:
+      'Triages incidents, manages actions and policies, and views reports.',
     permissions: [
       'incidents.report',
       'incidents.view',
