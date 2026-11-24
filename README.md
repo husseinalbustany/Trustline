@@ -60,6 +60,37 @@ sign-in, separate from the hospitals' users.
 Not built yet: a second sign-in factor for admins, and enforcing a suspended
 client at hospital sign-in (hospital sign-in itself is not built).
 
+## Hospital sign-in, users and roles
+
+Hospital staff sign in at `/en/login` with their organization's identifier,
+email and password. A hospital can share `/en/login?org=<identifier>` so the
+first field is already filled.
+
+- **First administrator:** created from the admin portal, on the client's
+  page. Everyone else is added by a hospital administrator under
+  Administration, Users and roles.
+- **Passwords are never set by an administrator.** Adding a user produces a
+  one-time link (valid 72 hours) that the person opens to choose their own
+  password. The same mechanism resets a password, and a reset signs the user
+  out everywhere. There is no email sending yet, so the administrator passes
+  the link on.
+- **Roles** are sets of permissions. Every client starts with four built-in
+  roles (Administrator, Quality officer, Department manager, Reporter) and can
+  add its own. A role is granted for the whole organization or one department.
+- **Safeguards:** five wrong passwords lock an account for 15 minutes; nobody
+  can change their own roles or disable themselves; a disabled user and a
+  suspended client are signed out at once.
+- **Audit:** sign-ins and every account or role change go to `audit_log`,
+  which the application can add to but not change.
+
+Permissions are checked in the API (`requirePermission` in
+`apps/api/src/identity/session.guard.ts`). The menu hides what a user cannot
+open, but that is a convenience, not the protection.
+
+Not built yet: single sign-on, a second sign-in factor, self-service
+"forgot password" by email, and limiting what a department-scoped role can
+see (the department is stored, and will apply as each module is built).
+
 ## API
 
 The API is served under `/api/v1`. The web app forwards `/api/*` to it, so the

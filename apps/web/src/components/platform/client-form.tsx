@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
+import { InviteLink } from "@/components/ui/invite-link";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Panel } from "@/components/ui/panel";
 import {
@@ -13,6 +14,7 @@ import {
   type Activity,
   type Client,
 } from "@/lib/platform-api";
+import type { Invite } from "@/lib/identity";
 import { StatusPill } from "./status-pill";
 import type { PlatformProps } from "./types";
 
@@ -51,6 +53,8 @@ export function ClientForm({
   const [missing, setMissing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
+  const [invite, setInvite] = useState<Invite | null>(null);
+  const [adminError, setAdminError] = useState<string | null>(null);
   const listPath = `/${lang}/platform/clients`;
   const f = t.form;
 
@@ -83,6 +87,26 @@ export function ClientForm({
         text:
           status === 409 ? f.slugTaken : status === 400 ? f.invalid : f.error,
       });
+    }
+    setBusy(false);
+  }
+
+  async function createAdministrator(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    setBusy(true);
+    setAdminError(null);
+    try {
+      const created = await platformApi<{ invite: Invite }>(
+        `/tenants/${id}/administrators`,
+        { method: "POST", body: Object.fromEntries(new FormData(form)) },
+      );
+      form.reset();
+      setInvite(created.invite);
+      setClient(await platformApi<Loaded>(`/tenants/${id}`));
+    } catch (err) {
+      const status = err instanceof ApiError ? err.status : 0;
+      setAdminError(status === 409 ? t.administrator.emailTaken : f.error);
     }
     setBusy(false);
   }
@@ -240,6 +264,55 @@ export function ClientForm({
                   {suspended ? t.status.reactivate : t.status.suspend}
                 </Button>
               </div>
+            </Panel>
+
+            <Panel title={t.administrator.title}>
+              <form
+                onSubmit={createAdministrator}
+                className="flex flex-col gap-4 p-4"
+              >
+                <p className="text-sm text-muted">{t.administrator.help}</p>
+                <Field label={f.nameEn}>
+                  <input
+                    name="nameEn"
+                    required
+                    maxLength={200}
+                    dir="ltr"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label={f.nameAr}>
+                  <input
+                    name="nameAr"
+                    required
+                    maxLength={200}
+                    dir="rtl"
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label={t.login.email}>
+                  <input
+                    name="email"
+                    type="email"
+                    required
+                    dir="ltr"
+                    className={inputClass}
+                  />
+                </Field>
+                {adminError && (
+                  <p role="alert" className="text-sm text-danger">
+                    {adminError}
+                  </p>
+                )}
+                <div>
+                  <Button type="submit" variant="secondary" disabled={busy}>
+                    {t.administrator.create}
+                  </Button>
+                </div>
+                {invite && (
+                  <InviteLink lang={lang} invite={invite} t={t.inviteLink} />
+                )}
+              </form>
             </Panel>
 
             <Panel title={t.activity.title}>

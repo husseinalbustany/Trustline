@@ -17,24 +17,47 @@ export type SidebarLabels = {
   items: Record<NavItemKey, string>;
 };
 
+// Paths that belong to a menu item without being under its own path.
+const alsoActive: Partial<Record<NavItemKey, string>> = {
+  users: "/admin/roles",
+};
+
 export function Sidebar({
   lang,
   pathname,
   labels,
   open,
   onClose,
+  organization,
+  permissions,
 }: {
   lang: Locale;
   pathname: string;
   labels: SidebarLabels;
+  /** The signed-in user's hospital, shown under the product name. */
+  organization: string;
+  permissions: string[];
   /** Whether the drawer is open on small screens. Always shown on large ones. */
   open: boolean;
   onClose: () => void;
 }) {
-  const isActive = (href: string) => {
+  const under = (href: string) => {
     const full = `/${lang}${href}`;
     return pathname === full || pathname.startsWith(`${full}/`);
   };
+  const isActive = (key: NavItemKey, href: string) =>
+    under(href) || (alsoActive[key] ? under(alsoActive[key]) : false);
+
+  const groups = navigation
+    .map((group) => ({
+      ...group,
+      items: group.items.filter(
+        (item) =>
+          !item.permissions ||
+          item.permissions.some((p) => permissions.includes(p)),
+      ),
+    }))
+    .filter((group) => group.items.length > 0);
 
   return (
     <>
@@ -78,14 +101,17 @@ export function Sidebar({
           aria-label={labels.navigation}
           className="flex-1 overflow-y-auto px-3 pb-6"
         >
-          {navigation.map((group) => (
+          <p className="truncate px-2 pt-1 text-sm text-muted">
+            {organization}
+          </p>
+          {groups.map((group) => (
             <div key={group.key} className="mt-5 first:mt-2">
               <h2 className="px-2 text-xs font-medium text-muted">
                 {labels.groups[group.key]}
               </h2>
               <ul className="mt-1 space-y-0.5">
                 {group.items.map(({ key, href, icon: Icon, phase }) => {
-                  const active = isActive(href);
+                  const active = isActive(key, href);
                   return (
                     <li key={key}>
                       <Link

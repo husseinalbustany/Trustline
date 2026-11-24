@@ -41,6 +41,8 @@ export type NavItem = {
   icon: LucideIcon;
   /** Delivery phase, shown as a badge when the module comes after the MVP. */
   phase?: 2;
+  /** Shown only to users holding at least one of these permissions. */
+  permissions?: string[];
 };
 
 /** The single source for the sidebar: order, grouping, routes and icons. */
@@ -77,9 +79,25 @@ export const navigation: { key: NavGroupKey; items: NavItem[] }[] = [
   {
     key: "administration",
     items: [
-      { key: "organization", href: "/admin/organization", icon: Building2 },
-      { key: "users", href: "/admin/users", icon: Users },
-      { key: "settings", href: "/admin/settings", icon: Settings },
+      {
+        key: "organization",
+        href: "/admin/organization",
+        icon: Building2,
+        permissions: ["organization.manage"],
+      },
+      {
+        key: "users",
+        href: "/admin/users",
+        icon: Users,
+        // Also marks /admin/roles as part of this item.
+        permissions: ["users.manage", "roles.manage"],
+      },
+      {
+        key: "settings",
+        href: "/admin/settings",
+        icon: Settings,
+        permissions: ["settings.manage"],
+      },
     ],
   },
 ];

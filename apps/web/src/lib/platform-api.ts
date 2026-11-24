@@ -1,3 +1,5 @@
+import { api } from "./api";
+
 export type Client = {
   id: string;
   slug: string;
@@ -21,28 +23,10 @@ export type Activity = {
 
 export type Admin = { id: string; email: string; name: string };
 
-export class ApiError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code?: string,
-  ) {
-    super(`API error ${status}`);
-  }
-}
+export { ApiError } from "./api";
 
-/** Calls the admin portal API. The session cookie is sent automatically. */
-export async function platformApi<T>(
+/** Calls the admin portal API. */
+export const platformApi = <T>(
   path: string,
   init?: { method?: string; body?: unknown },
-): Promise<T> {
-  const res = await fetch(`/api/v1/platform${path}`, {
-    method: init?.method ?? "GET",
-    headers: init?.body ? { "Content-Type": "application/json" } : undefined,
-    body: init?.body ? JSON.stringify(init.body) : undefined,
-  });
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, data.code);
-  }
-  return res.status === 204 ? (undefined as T) : res.json();
-}
+) => api<T>(`/platform${path}`, init);

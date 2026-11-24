@@ -10,7 +10,8 @@
     "closeMenu": "Close menu",
     "reportIncident": "Report an incident",
     "switchLanguage": "العربية",
-    "phase2": "Phase 2"
+    "phase2": "Phase 2",
+    "signOut": "Sign out"
   },
   "nav": {
     "groups": {
@@ -226,8 +227,164 @@
       "empty": "No activity yet",
       "actions": {
         "client_created": "Client added",
-        "client_updated": "Client updated"
+        "client_updated": "Client updated",
+        "client_administrator_created": "Administrator created"
       }
+    },
+    "inviteLink": {
+      "title": "Send this link to the person",
+      "help": "They open it to set their password. It works once and expires in 72 hours. It is not shown again.",
+      "copy": "Copy link",
+      "copied": "Copied"
+    },
+    "administrator": {
+      "title": "Hospital administrator",
+      "help": "Create the first administrator for this client. They add everyone else.",
+      "create": "Create administrator",
+      "emailTaken": "A user with this email already exists for this client."
+    }
+  },
+  "auth": {
+    "login": {
+      "title": "Sign in",
+      "org": "Organization",
+      "orgHelp": "The identifier your hospital gave you.",
+      "email": "Email",
+      "password": "Password",
+      "submit": "Sign in",
+      "failed": "These details did not match an account, or the account is temporarily locked.",
+      "error": "Could not sign in. Try again.",
+      "forgot": "Forgot your password? Ask your administrator for a reset link."
+    },
+    "invite": {
+      "title": "Set your password",
+      "checking": "Checking your link…",
+      "invalidTitle": "This link cannot be used",
+      "invalid": "It has expired, was already used, or was replaced by a newer one. Ask your administrator for a new link.",
+      "password": "New password",
+      "passwordHelp": "At least 12 characters.",
+      "confirm": "Repeat the password",
+      "submit": "Set password",
+      "tooShort": "The password must be at least 12 characters.",
+      "mismatch": "The two passwords do not match.",
+      "error": "Could not set the password. The link may have expired.",
+      "doneTitle": "Password set",
+      "done": "You can now sign in with your email and new password."
+    }
+  },
+  "admin": {
+    "title": "Users and roles",
+    "description": "Who can sign in and what they can do.",
+    "tabsLabel": "Users and roles",
+    "loading": "Loading…",
+    "loadError": "Could not load this page. Reload it.",
+    "noAccess": "Your role does not allow this.",
+    "inviteLink": {
+      "title": "Send this link to the person",
+      "help": "They open it to set their password. It works once and expires in 72 hours. It is not shown again.",
+      "copy": "Copy link",
+      "copied": "Copied"
+    },
+    "users": {
+      "title": "Users",
+      "add": "Add user",
+      "notFound": "This user does not exist.",
+      "columns": {
+        "name": "Name",
+        "department": "Department",
+        "roles": "Roles",
+        "status": "Status"
+      },
+      "status": {
+        "invited": "Invited",
+        "active": "Active",
+        "disabled": "Disabled"
+      },
+      "form": {
+        "newTitle": "Add user",
+        "newDescription": "They get a one-time link to set their own password.",
+        "created": "User added. Send them the link below.",
+        "nameEn": "Name in English",
+        "nameAr": "Name in Arabic",
+        "email": "Email",
+        "emailFixed": "The email is the sign-in name and cannot be changed.",
+        "department": "Department",
+        "noDepartment": "None",
+        "jobTitle": "Job title",
+        "employeeNumber": "Employee number",
+        "phone": "Phone",
+        "roles": "Roles",
+        "scope": "Where the role applies",
+        "wholeOrganization": "Whole organization",
+        "ownRoles": "You cannot change your own roles.",
+        "create": "Add user",
+        "save": "Save changes",
+        "saved": "Changes saved.",
+        "saveRoles": "Save roles",
+        "rolesSaved": "Roles saved.",
+        "cancel": "Cancel",
+        "back": "Back to users",
+        "addAnother": "Add another user",
+        "emailTaken": "Another user already has this email.",
+        "invalid": "Check the fields and try again.",
+        "error": "Could not save. Try again.",
+        "signIn": "Sign-in",
+        "invitedHelp": "This person has not set a password yet.",
+        "newInvite": "Create a new link",
+        "resetHelp": "A reset link lets them choose a new password and signs them out everywhere.",
+        "resetPassword": "Create a reset link",
+        "disabledHelp": "A disabled user cannot sign in.",
+        "access": "Access",
+        "disableHelp": "Disabling signs this person out and blocks sign-in. Their records are kept.",
+        "disable": "Disable user",
+        "enableHelp": "This person cannot sign in.",
+        "enable": "Enable user"
+      }
+    },
+    "roles": {
+      "title": "Roles",
+      "add": "Add role",
+      "builtIn": "Built in",
+      "notFound": "This role does not exist.",
+      "columns": {
+        "name": "Role",
+        "permissions": "Permissions",
+        "users": "Assigned"
+      },
+      "form": {
+        "newTitle": "Add role",
+        "newDescription": "A role is a set of permissions you give to users.",
+        "builtInHelp": "Built-in roles cannot be changed. Add a role to make your own.",
+        "nameEn": "Name in English",
+        "nameAr": "Name in Arabic",
+        "code": "Code",
+        "codeHelp": "Lowercase letters, digits and underscores, starting with a letter. Cannot be changed later.",
+        "description": "Description",
+        "permissions": "Permissions",
+        "create": "Add role",
+        "save": "Save changes",
+        "saved": "Changes saved.",
+        "delete": "Delete role",
+        "cancel": "Cancel",
+        "back": "Back to roles",
+        "codeTaken": "Another role already uses this code.",
+        "inUse": "This role is assigned to users. Remove it from them first.",
+        "invalid": "Check the fields and try again.",
+        "error": "Could not save. Try again."
+      }
+    },
+    "permissions": {
+      "incidents.report": "Report incidents",
+      "incidents.view": "See incidents",
+      "incidents.triage": "Triage and assign incidents",
+      "actions.manage": "Manage actions",
+      "policies.view": "Read policies",
+      "policies.manage": "Write and manage policies",
+      "reports.view": "See reports and dashboards",
+      "organization.manage": "Manage the organization structure",
+      "users.manage": "Manage users",
+      "roles.manage": "Manage roles",
+      "settings.manage": "Change settings"
     }
   }
 }
