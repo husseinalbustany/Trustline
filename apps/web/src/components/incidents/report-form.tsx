@@ -110,7 +110,7 @@ export function ReportForm({
     </>
   );
   if (!allowed) return state(f.noPermission);
-  if (problem) return state(t.loadError);
+  if (problem) return state(f.loadError);
   if (!lists) return state(t.loading);
   if (lists.units.length === 0) return state(f.noUnits);
 
@@ -161,6 +161,7 @@ export function ReportForm({
   return (
     <>
       {header}
+      <p className="mt-4 text-sm text-muted">{f.intro}</p>
       <form onSubmit={submit} className="mt-6 flex max-w-2xl flex-col gap-5">
         <fieldset>
           <legend className="mb-1.5 text-sm font-medium">{f.type}</legend>
@@ -279,7 +280,7 @@ export function ReportForm({
           </select>
         </Field>
 
-        <label className="flex items-start gap-3 rounded-lg border border-line p-3 text-sm has-checked:border-danger has-checked:bg-danger-soft">
+        <label className="flex items-start gap-3 rounded-lg border border-line p-3 text-sm has-checked:border-accent has-checked:bg-accent-soft">
           <input
             type="checkbox"
             name="anonymous"

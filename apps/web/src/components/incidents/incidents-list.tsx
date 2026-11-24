@@ -146,9 +146,10 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
                   <p className="mt-1.5 text-sm">
                     {t.type[item.type]}
                     <span className="text-muted"> · </span>
-                    {inLang(item.category.name)}
+                    {/* Names a client wrote: each keeps its own direction. */}
+                    <bdi>{inLang(item.category.name)}</bdi>
                     <span className="text-muted"> · </span>
-                    {inLang(item.orgUnit.name)}
+                    <bdi>{inLang(item.orgUnit.name)}</bdi>
                   </p>
                   <p dir="auto" className="mt-1 text-sm break-words text-muted">
                     {item.descriptionExcerpt}

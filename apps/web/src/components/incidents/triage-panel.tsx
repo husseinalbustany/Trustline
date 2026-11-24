@@ -218,8 +218,11 @@ export function TriagePanel({
                 <option value="">{g.assigneeNone}</option>
                 {people.map((p) => (
                   <option key={p.id} value={p.id}>
+                    {/* An option holds no elements, so each name is isolated
+                        with U+2068 … U+2069 to keep its own direction. */}
                     {[inLang(p.name), p.orgUnitId && unitNames.get(p.orgUnitId)]
                       .filter(Boolean)
+                      .map((part) => `\u2068${part}\u2069`)
                       .join(" · ")}
                   </option>
                 ))}

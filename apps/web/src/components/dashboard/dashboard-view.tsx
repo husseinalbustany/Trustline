@@ -113,11 +113,13 @@ export function DashboardView({
                     <p className="mt-1 text-sm">
                       {i.type[item.type]}
                       <span className="text-muted"> · </span>
-                      {pick(
-                        item.orgUnit.name,
-                        lang,
-                        session.tenant.defaultLocale,
-                      )}
+                      <bdi>
+                        {pick(
+                          item.orgUnit.name,
+                          lang,
+                          session.tenant.defaultLocale,
+                        )}
+                      </bdi>
                     </p>
                     <p className="mt-0.5 text-xs text-muted">
                       {fill(i.list.reported, {

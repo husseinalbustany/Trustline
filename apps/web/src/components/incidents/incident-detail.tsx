@@ -54,7 +54,7 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
       .catch(
         (err) =>
           current &&
-          setProblem(statusOf(err) === 404 ? t.notFound : t.loadError),
+          setProblem(statusOf(err) === 404 ? t.notFound : t.detail.loadError),
       );
     if (mayAssign) {
       api<AssignableUser[]>("/incidents/assignable-users")
@@ -77,7 +77,7 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
         setProblem(null);
       })
       .catch((err) =>
-        setProblem(statusOf(err) === 404 ? t.notFound : t.loadError),
+        setProblem(statusOf(err) === 404 ? t.notFound : t.detail.loadError),
       );
 
   const back = (
@@ -210,11 +210,13 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
     <>
       <PageHeader
         title={<bdi dir="ltr">{incident.reference}</bdi>}
-        description={[
-          t.type[incident.type],
-          inLang(incident.category.name),
-          inLang(incident.orgUnit.name),
-        ].join(" · ")}
+        description={
+          // Names a client wrote: each keeps its own direction.
+          <>
+            {t.type[incident.type]} · <bdi>{inLang(incident.category.name)}</bdi>{" "}
+            · <bdi>{inLang(incident.orgUnit.name)}</bdi>
+          </>
+        }
         actions={
           <IncidentPills
             t={t}

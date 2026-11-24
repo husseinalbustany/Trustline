@@ -139,7 +139,8 @@ export const canBeTriaged = (status: IncidentStatus) =>
   status === "new" || status === "triaged";
 
 export const statusTone = {
-  new: "danger",
+  // Not red: a reporter's fresh report is waiting, not in trouble.
+  new: "neutral",
   triaged: "ok",
   in_progress: "ok",
   closed: "neutral",

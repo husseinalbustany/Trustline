@@ -79,7 +79,7 @@
       "triaged": "Triaged",
       "in_progress": "In progress",
       "closed": "Closed",
-      "rejected": "Rejected"
+      "rejected": "Not taken forward"
     },
     "harm": {
       "none": "No harm",
@@ -94,7 +94,7 @@
       "all": "All",
       "mine": "Reported by me",
       "empty": "No incidents to show. When one is reported, it appears here.",
-      "emptyFiltered": "No incidents match this filter. Choose another status or show all.",
+      "emptyFiltered": "No incidents match these filters. Change the status or untick “Reported by me”.",
       "reported": "Reported {date}",
       "pagination": "Pages",
       "page": "Page {page} of {pages}",
@@ -116,14 +116,16 @@
       "immediateAction": "What was done immediately (optional)",
       "harmLevel": "Harm level",
       "anonymous": "Report anonymously",
-      "anonymousWarning": "Your name is not stored with an anonymous report. You will not be able to find it again or follow its progress, so write down the reference you are given after sending.",
+      "anonymousWarning": "Your name is not stored with the report, so the people who handle it cannot see who sent it. Because it is not linked to your account, it will not appear under “Reported by me” and you will not be able to follow its progress. You will be given a reference after sending: write it down in case you want to ask the quality team about the report later.",
       "submit": "Send report",
       "cancel": "Cancel",
       "doneTitle": "Report sent",
       "doneHelp": "Thank you. The quality team will review it. Its reference is:",
-      "doneAnonymous": "Write this reference down now. The report is anonymous, so you will not be able to find it again.",
-      "view": "View it",
-      "another": "Report another"
+      "doneAnonymous": "Write this reference down now: it will not be shown again, because the report is not linked to your account. Quote it if you want to ask the quality team about this report.",
+      "view": "View the report",
+      "another": "Report another incident",
+      "intro": "Reports are used to make care safer, not to blame anyone.",
+      "loadError": "Could not load the report form. Reload the page."
     },
     "detail": {
       "back": "Back to incidents",
@@ -139,12 +141,13 @@
       "reportedBy": "Reported by",
       "anonymous": "Anonymous",
       "harmLevel": "Harm level",
-      "ownerUnit": "Responsible department",
+      "ownerUnit": "Handling department",
       "ownerUnitNone": "Not decided yet",
       "assignedTo": "Assigned to",
       "assignedToNone": "No one yet",
       "closureSummary": "Closure summary",
-      "rejectionReason": "Reason for rejecting"
+      "rejectionReason": "Reason for not taking it forward",
+      "loadError": "Could not load this incident. Reload the page."
     },
     "timeline": {
       "title": "Timeline",
@@ -152,17 +155,17 @@
       "anonymousReporter": "Anonymous reporter",
       "unknownPerson": "Unknown user",
       "note": "Note:",
-      "ownerUnit": "Responsible department: {unit}",
+      "ownerUnit": "Handling department: {unit}",
       "category": "Category: {category}",
       "events": {
         "reported": "Reported",
         "triaged": "Triaged",
-        "assigned": "Assigned to {name}, {unit}",
-        "assignedSomeone": "Assigned to a member of staff, {unit}",
+        "assigned": "Handed to {unit} and assigned to {name}",
+        "assignedSomeone": "Handed to {unit} and assigned to a member of staff",
         "assignedUnit": "Handed to {unit}, with no one assigned",
         "status_changed": "Status changed from “{from}” to “{to}”",
         "closed": "Closed",
-        "rejected": "Rejected",
+        "rejected": "Not taken forward",
         "reopened": "Reopened",
         "commented": "Comment added",
         "commentedInternal": "Internal comment added"
@@ -177,17 +180,17 @@
       "visibility": "Who can read it",
       "visibilityInternal": "Internal: staff handling the incident only, not the reporter",
       "visibilityEveryone": "Everyone who can see this incident, including the reporter",
-      "reporterHelp": "The staff handling this incident will read your comment.",
+      "reporterHelp": "The staff handling this incident will read your comment. Do not type patient names or record numbers.",
       "submit": "Add comment"
     },
     "triage": {
       "title": "Triage",
       "retitle": "Change the triage",
-      "help": "Confirm the harm level, then hand the incident to the department responsible.",
+      "help": "Confirm the harm level, then hand the incident to the department that will handle it.",
       "harmLevel": "Harm level",
       "sentinel": "This is a sentinel event",
       "category": "Category",
-      "ownerUnit": "Responsible department",
+      "ownerUnit": "Handling department",
       "assignee": "Assigned to",
       "assigneeNone": "No one yet",
       "usersError": "Could not load the list of staff. Reload the page to choose who it is assigned to.",
@@ -195,18 +198,18 @@
       "submit": "Save triage",
       "saved": "Triage saved.",
       "ownerInactiveOption": "{name} (inactive)",
-      "ownerInactive": "This department has been switched off. Choose the department that is responsible now, then save."
+      "ownerInactive": "This department has been switched off. Choose the department that will handle the incident now, then save."
     },
     "actions": {
       "title": "Change status",
       "start": "Start work",
       "close": "Close incident",
-      "reject": "Reject report",
+      "reject": "Do not take forward",
       "reopen": "Reopen",
       "note": {
         "start": "Note (optional)",
         "close": "Closure summary: what was found and what was done",
-        "reject": "Why this report is rejected",
+        "reject": "Why this report is not taken forward",
         "reopen": "Why this incident is reopened"
       },
       "noteHelp": "The reporter can read this note. Do not type patient names or record numbers.",
@@ -224,7 +227,7 @@
       "outside_scope": "Your role does not cover the department of this incident. Ask someone who triages for that department.",
       "invalid_transition": "Someone else has changed this incident in the meantime. The page now shows its current status; check it and try again.",
       "note_required": "Write a note explaining this change, then confirm again.",
-      "internal_not_allowed": "You can only add comments that everyone can see. Send it again as a comment for everyone.",
+      "internal_not_allowed": "You cannot add internal comments. Under “Who can read it”, choose the option that includes the reporter, then add the comment again.",
       "notFound": "This incident does not exist, or your role does not let you see it. Go back to the list.",
       "generic": "Could not save. Check your connection and try again."
     },

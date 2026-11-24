@@ -70,8 +70,8 @@
       "hazard": "Danger"
     },
     "typeHelp": {
-      "incident": "Une erreur s'est produite et a atteint un patient, un visiteur ou un membre du personnel.",
-      "near_miss": "Une erreur s'est produite mais a été interceptée avant d'atteindre quelqu'un.",
+      "incident": "Un événement indésirable qui a touché un patient, un visiteur ou un membre du personnel.",
+      "near_miss": "Un événement indésirable détecté avant de toucher qui que ce soit.",
       "hazard": "Une situation qui pourrait causer un préjudice si rien n'est fait."
     },
     "status": {
@@ -79,7 +79,7 @@
       "triaged": "Trié",
       "in_progress": "En cours",
       "closed": "Clôturé",
-      "rejected": "Rejeté"
+      "rejected": "Classé sans suite"
     },
     "harm": {
       "none": "Aucun préjudice",
@@ -94,7 +94,7 @@
       "all": "Tous",
       "mine": "Déclarés par moi",
       "empty": "Aucun incident à afficher. Dès qu'un incident est déclaré, il apparaît ici.",
-      "emptyFiltered": "Aucun incident ne correspond à ce filtre. Choisissez un autre statut ou affichez tout.",
+      "emptyFiltered": "Aucun incident ne correspond à ces filtres. Changez de statut ou décochez « Déclarés par moi ».",
       "reported": "Déclaré le {date}",
       "pagination": "Pages",
       "page": "Page {page} sur {pages}",
@@ -104,33 +104,35 @@
     },
     "form": {
       "noPermission": "Votre rôle ne vous permet pas de déclarer des incidents. Adressez-vous à votre administrateur.",
-      "noUnits": "Aucun service n'a encore été créé pour votre établissement : une déclaration ne peut donc pas indiquer le lieu. Adressez-vous à votre administrateur.",
-      "type": "Que déclarez-vous ?",
+      "noUnits": "Aucun service n'a encore été créé pour votre établissement : une déclaration ne peut donc pas indiquer le lieu. Adressez-vous à votre administrateur.",
+      "type": "Que souhaitez-vous déclarer ?",
       "category": "Catégorie",
       "choose": "Choisir…",
       "where": "Lieu de l'événement",
       "occurredAt": "Date et heure de l'événement",
-      "occurredAtHelp": "Réglé sur maintenant. Modifiez-le si l'événement est antérieur ; il ne peut pas être dans le futur.",
-      "description": "Que s'est-il passé ?",
+      "occurredAtHelp": "Par défaut, la date et l'heure actuelles. Modifiez-les si l'événement s'est produit plus tôt ; elles ne peuvent pas être dans le futur.",
+      "description": "Que s'est-il passé ?",
       "descriptionHelp": "Écrivez avec vos propres mots. N'indiquez ni nom de patient ni numéro de dossier.",
-      "immediateAction": "Ce qui a été fait immédiatement (facultatif)",
+      "immediateAction": "Mesures immédiates prises (facultatif)",
       "harmLevel": "Niveau de préjudice",
       "anonymous": "Déclarer anonymement",
-      "anonymousWarning": "Votre nom n'est pas enregistré avec une déclaration anonyme. Vous ne pourrez ni la retrouver ni suivre son traitement : notez la référence qui s'affichera après l'envoi.",
+      "anonymousWarning": "Votre nom n'est pas enregistré avec la déclaration : les personnes qui la traitent ne peuvent pas savoir qui l'a envoyée. Comme elle n'est pas rattachée à votre compte, elle n'apparaîtra pas dans « Déclarés par moi » et vous ne pourrez pas suivre son traitement. Une référence s'affichera après l'envoi : notez-la si vous souhaitez interroger l'équipe qualité par la suite.",
       "submit": "Envoyer la déclaration",
       "cancel": "Annuler",
       "doneTitle": "Déclaration envoyée",
-      "doneHelp": "Merci. L'équipe qualité va l'examiner. Sa référence est :",
-      "doneAnonymous": "Notez cette référence maintenant. La déclaration est anonyme : vous ne pourrez pas la retrouver.",
-      "view": "La consulter",
-      "another": "Déclarer un autre incident"
+      "doneHelp": "Merci. L'équipe qualité va l'examiner. Sa référence est :",
+      "doneAnonymous": "Notez cette référence maintenant : elle ne sera plus affichée, car la déclaration n'est pas rattachée à votre compte. Indiquez-la si vous souhaitez interroger l'équipe qualité au sujet de cette déclaration.",
+      "view": "Consulter la déclaration",
+      "another": "Faire une autre déclaration",
+      "intro": "Les déclarations servent à améliorer la sécurité, pas à désigner un coupable.",
+      "loadError": "Impossible de charger le formulaire de déclaration. Rechargez la page."
     },
     "detail": {
       "back": "Retour aux incidents",
-      "reporterView": "Vous voyez la vue du déclarant : votre déclaration, son avancement et les commentaires qui vous sont destinés.",
-      "report": "La déclaration",
+      "reporterView": "Vous consultez cet incident en tant que déclarant : vous voyez votre déclaration, son avancement et les commentaires qui vous sont destinés.",
+      "report": "Déclaration",
       "whatHappened": "Ce qui s'est passé",
-      "immediateAction": "Ce qui a été fait immédiatement",
+      "immediateAction": "Mesures immédiates prises",
       "type": "Type",
       "category": "Catégorie",
       "where": "Lieu de l'événement",
@@ -139,30 +141,31 @@
       "reportedBy": "Déclaré par",
       "anonymous": "Anonyme",
       "harmLevel": "Niveau de préjudice",
-      "ownerUnit": "Service responsable",
-      "ownerUnitNone": "Pas encore décidé",
+      "ownerUnit": "Service chargé du traitement",
+      "ownerUnitNone": "Pas encore défini",
       "assignedTo": "Attribué à",
       "assignedToNone": "Personne pour l'instant",
       "closureSummary": "Synthèse de clôture",
-      "rejectionReason": "Motif du rejet"
+      "rejectionReason": "Motif du classement sans suite",
+      "loadError": "Impossible de charger cet incident. Rechargez la page."
     },
     "timeline": {
       "title": "Chronologie",
       "byline": "{name} · {date}",
       "anonymousReporter": "Déclarant anonyme",
       "unknownPerson": "Utilisateur inconnu",
-      "note": "Note :",
-      "ownerUnit": "Service responsable : {unit}",
-      "category": "Catégorie : {category}",
+      "note": "Note :",
+      "ownerUnit": "Service chargé du traitement : {unit}",
+      "category": "Catégorie : {category}",
       "events": {
         "reported": "Déclaration",
-        "triaged": "Tri effectué",
-        "assigned": "Attribution à {name}, {unit}",
-        "assignedSomeone": "Attribution à un membre du personnel, {unit}",
+        "triaged": "Tri",
+        "assigned": "Transmission à {unit}, attribution à {name}",
+        "assignedSomeone": "Transmission à {unit}, attribution à un membre du personnel",
         "assignedUnit": "Transmission à {unit}, sans personne désignée",
-        "status_changed": "Statut modifié de « {from} » à « {to} »",
+        "status_changed": "Statut passé de « {from} » à « {to} »",
         "closed": "Clôture",
-        "rejected": "Rejet",
+        "rejected": "Classement sans suite",
         "reopened": "Réouverture",
         "commented": "Commentaire ajouté",
         "commentedInternal": "Commentaire interne ajouté"
@@ -175,19 +178,19 @@
       "body": "Ajouter un commentaire",
       "bodyHelp": "N'indiquez ni nom de patient ni numéro de dossier.",
       "visibility": "Qui peut le lire",
-      "visibilityInternal": "Interne : uniquement le personnel qui traite l'incident, pas le déclarant",
+      "visibilityInternal": "Interne : uniquement le personnel qui traite l'incident, pas le déclarant",
       "visibilityEveryone": "Toutes les personnes qui voient cet incident, y compris le déclarant",
-      "reporterHelp": "Le personnel qui traite cet incident lira votre commentaire.",
+      "reporterHelp": "Le personnel qui traite cet incident lira votre commentaire. N'indiquez ni nom de patient ni numéro de dossier.",
       "submit": "Ajouter le commentaire"
     },
     "triage": {
       "title": "Tri",
       "retitle": "Modifier le tri",
-      "help": "Confirmez le niveau de préjudice, puis transmettez l'incident au service responsable.",
+      "help": "Confirmez le niveau de préjudice, puis transmettez l'incident au service chargé de le traiter.",
       "harmLevel": "Niveau de préjudice",
       "sentinel": "Il s'agit d'un événement sentinelle",
       "category": "Catégorie",
-      "ownerUnit": "Service responsable",
+      "ownerUnit": "Service chargé du traitement",
       "assignee": "Attribué à",
       "assigneeNone": "Personne pour l'instant",
       "usersError": "Impossible de charger la liste du personnel. Rechargez la page pour choisir la personne à qui l'attribuer.",
@@ -195,18 +198,18 @@
       "submit": "Enregistrer le tri",
       "saved": "Tri enregistré.",
       "ownerInactiveOption": "{name} (inactif)",
-      "ownerInactive": "Ce service a été désactivé. Choisissez le service désormais responsable, puis enregistrez."
+      "ownerInactive": "Ce service a été désactivé. Choisissez le service désormais chargé de traiter l'incident, puis enregistrez."
     },
     "actions": {
       "title": "Changer le statut",
       "start": "Commencer le traitement",
       "close": "Clôturer l'incident",
-      "reject": "Rejeter la déclaration",
+      "reject": "Classer sans suite",
       "reopen": "Rouvrir",
       "note": {
-        "start": "Note (facultatif)",
-        "close": "Synthèse de clôture : ce qui a été constaté et ce qui a été fait",
-        "reject": "Motif du rejet de cette déclaration",
+        "start": "Note (facultative)",
+        "close": "Synthèse de clôture : ce qui a été constaté et ce qui a été fait",
+        "reject": "Motif du classement sans suite de cette déclaration",
         "reopen": "Motif de la réouverture de cet incident"
       },
       "noteHelp": "Le déclarant peut lire cette note. N'indiquez ni nom de patient ni numéro de dossier.",
@@ -216,15 +219,15 @@
     },
     "errors": {
       "invalid": "Vérifiez les champs puis réessayez.",
-      "occurred_in_future": "La date de l'événement est dans le futur. Corrigez-la puis renvoyez.",
+      "occurred_in_future": "La date de l'événement est dans le futur. Corrigez-la, puis envoyez de nouveau la déclaration.",
       "unknown_category": "Cette catégorie n'est plus disponible. Rechargez la page et choisissez-en une autre.",
-      "unknown_org_unit": "Ce service n'est plus disponible : il a été désactivé ou supprimé. Rechargez la page et choisissez-en un autre.",
-      "unknown_assignee": "Cette personne ne peut plus recevoir d'attribution : son compte n'est pas actif. Choisissez quelqu'un d'autre.",
+      "unknown_org_unit": "Ce service n'est plus disponible : il a été désactivé ou supprimé. Rechargez la page et choisissez-en un autre.",
+      "unknown_assignee": "Cet incident ne peut plus être attribué à cette personne : son compte n'est pas actif. Choisissez quelqu'un d'autre.",
       "missing_permission": "Votre rôle ne le permet pas. Adressez-vous à votre administrateur.",
       "outside_scope": "Votre rôle ne couvre pas le service de cet incident. Adressez-vous à une personne chargée du tri pour ce service.",
-      "invalid_transition": "Quelqu'un d'autre a modifié cet incident entre-temps. La page affiche maintenant son statut actuel ; vérifiez-le puis réessayez.",
+      "invalid_transition": "Quelqu'un d'autre a modifié cet incident entre-temps. La page affiche maintenant son statut actuel ; vérifiez-le puis réessayez.",
       "note_required": "Rédigez une note expliquant ce changement, puis confirmez à nouveau.",
-      "internal_not_allowed": "Vous ne pouvez ajouter que des commentaires visibles par tous. Renvoyez-le comme commentaire pour tous.",
+      "internal_not_allowed": "Vous ne pouvez pas ajouter de commentaire interne. Sous « Qui peut le lire », choisissez l'option qui inclut le déclarant, puis ajoutez de nouveau le commentaire.",
       "notFound": "Cet incident n'existe pas, ou votre rôle ne vous permet pas de le consulter. Revenez à la liste.",
       "generic": "Enregistrement impossible. Vérifiez votre connexion puis réessayez."
     },
@@ -311,7 +314,7 @@
       "title": "Utilisateurs et rôles",
       "description": "Qui peut se connecter et ce que chacun peut faire.",
       "scope": [
-        "Comptes créés par un administrateur, ou à la première connexion unique",
+        "Comptes créés par un administrateur, ou à la première authentification unique (SSO)",
         "Rôles et autorisations par service et par site",
         "Revues des accès et journal d'audit des modifications"
       ]
@@ -322,7 +325,7 @@
       "scope": [
         "Référentiel d'accréditation, langues et identité visuelle",
         "Catégories d'incidents, formulaires et circuits d'approbation",
-        "Connexion par mot de passe ou connexion unique, et notifications"
+        "Connexion par mot de passe ou authentification unique (SSO), et notifications"
       ]
     }
   },
@@ -394,7 +397,7 @@
       },
       "signInMethod": {
         "password": "E-mail et mot de passe",
-        "sso": "Connexion unique",
+        "sso": "Authentification unique (SSO)",
         "both": "Les deux"
       }
     },
@@ -409,7 +412,7 @@
     },
     "inviteLink": {
       "title": "Envoyez ce lien à l'utilisateur",
-      "help": "Il l'ouvre pour définir son mot de passe. Le lien fonctionne une seule fois et expire au bout de 72 heures. Il ne sera plus affiché : copiez-le maintenant.",
+      "help": "Il l'ouvre pour définir son mot de passe. Le lien fonctionne une seule fois et expire au bout de 72 heures. Il ne sera plus affiché : copiez-le maintenant.",
       "copy": "Copier le lien",
       "copied": "Copié"
     },
@@ -420,7 +423,7 @@
       "emailTaken": "Un utilisateur avec cet e-mail existe déjà chez ce client.",
       "exists": "Ce client a déjà un administrateur. L'hôpital ajoute lui-même les suivants.",
       "suspended": "Ce client est suspendu. Réactivez-le d'abord.",
-      "ssoOnly": "Ce client utilise uniquement la connexion unique : un lien de mot de passe ne peut pas servir."
+      "ssoOnly": "Ce client utilise uniquement l'authentification unique (SSO) : un lien de mot de passe ne peut pas servir."
     },
     "loadError": "Impossible de charger ce client. Rechargez la page."
   },
@@ -434,7 +437,7 @@
       "submit": "Se connecter",
       "failed": "L'établissement, l'e-mail ou le mot de passe est incorrect, ou le compte est verrouillé. Vérifiez-les, ou patientez 15 minutes avant de réessayer.",
       "error": "Connexion impossible. Réessayez.",
-      "forgot": "Mot de passe oublié ? Demandez un lien de réinitialisation à votre administrateur."
+      "forgot": "Mot de passe oublié ? Demandez un lien de réinitialisation à votre administrateur."
     },
     "invite": {
       "title": "Définir votre mot de passe",
@@ -461,7 +464,7 @@
     "noAccess": "Votre rôle ne le permet pas. Adressez-vous à votre administrateur.",
     "inviteLink": {
       "title": "Envoyez ce lien à l'utilisateur",
-      "help": "Il l'ouvre pour définir son mot de passe. Le lien fonctionne une seule fois et expire au bout de 72 heures. Il ne sera plus affiché : copiez-le maintenant.",
+      "help": "Il l'ouvre pour définir son mot de passe. Le lien fonctionne une seule fois et expire au bout de 72 heures. Il ne sera plus affiché : copiez-le maintenant.",
       "copy": "Copier le lien",
       "copied": "Copié"
     },
@@ -509,7 +512,7 @@
         "signIn": "Connexion",
         "invitedHelp": "Cette personne n'a pas encore défini de mot de passe.",
         "newInvite": "Créer un nouveau lien",
-        "resetHelp": "Un lien de réinitialisation lui permet de choisir un nouveau mot de passe et la déconnecte partout.",
+        "resetHelp": "Un lien de réinitialisation permet à cette personne de choisir un nouveau mot de passe et la déconnecte partout.",
         "resetPassword": "Créer un lien de réinitialisation",
         "disabledHelp": "Un utilisateur désactivé ne peut pas se connecter.",
         "access": "Accès au compte",
@@ -555,7 +558,7 @@
         "error": "Enregistrement impossible. Réessayez.",
         "higherAccess": "Vous ne pouvez pas accorder des autorisations que vous n'avez pas.",
         "ownRole": "Vous ne pouvez pas modifier un rôle qui vous est attribué.",
-        "deleteConfirm": "Supprimer ce rôle ? Appuyez de nouveau pour confirmer. Cette action est irréversible.",
+        "deleteConfirm": "Supprimer ce rôle ? Appuyez de nouveau pour confirmer. Cette action est irréversible.",
         "deleteError": "Impossible de supprimer le rôle. Réessayez.",
         "name": "Nom",
         "languageMismatch": "Saisissez le nom dans la langue par défaut."
@@ -589,7 +592,7 @@
       "showInactive": "Afficher les inactifs",
       "empty": "Rien n'a encore été créé. Commencez par un site, puis ajoutez ses services et leurs unités.",
       "addFirst": "Ajoutez votre premier site",
-      "allInactive": "Toute la structure est désactivée. Cochez « Afficher les inactifs » pour la voir, ou ajoutez un site.",
+      "allInactive": "Toute la structure est désactivée. Cochez « Afficher les inactifs » pour la voir, ou ajoutez un site.",
       "notFound": "Ce site, ce service ou cette unité n'existe pas. Revenez à la structure et ouvrez-le à partir de là.",
       "back": "Retour à la structure",
       "form": {
@@ -610,18 +613,18 @@
         "save": "Enregistrer",
         "saved": "Modifications enregistrées.",
         "cancel": "Annuler",
-        "parentMissing": "Ajout impossible ici : ce site ou ce service n'existe pas ou est désactivé. Revenez à la structure et ajoutez à partir de là.",
+        "parentMissing": "Ajout impossible ici : ce site ou ce service n'existe pas ou est désactivé. Revenez à la structure et ajoutez à partir de là.",
         "status": "Statut",
-        "activeHelp": "La désactivation le retire des listes utilisées pour les nouveaux incidents, les utilisateurs, les périmètres des rôles et le tri. Rien n'est supprimé : les incidents et les utilisateurs qui s'y trouvent déjà y restent, et vous pouvez le réactiver.",
+        "activeHelp": "La désactivation le retire des listes utilisées pour les nouveaux incidents, les utilisateurs, les périmètres des rôles et le tri. Rien n'est supprimé : les incidents et les utilisateurs qui s'y trouvent déjà y restent, et vous pouvez le réactiver.",
         "switchOff": "Désactiver",
         "switchedOff": "Désactivation enregistrée.",
-        "inactiveHelp": "Cet élément est désactivé : il ne peut plus être choisi pour de nouveaux incidents, des utilisateurs, des périmètres de rôle ou le tri. Son historique est conservé. Réactivez-le pour l'utiliser à nouveau.",
+        "inactiveHelp": "Cet élément est désactivé : il ne peut plus être choisi pour de nouveaux incidents, des utilisateurs, des périmètres de rôle ou le tri. Son historique est conservé. Réactivez-le pour l'utiliser à nouveau.",
         "switchOn": "Réactiver",
         "switchedOn": "Réactivation enregistrée."
       },
       "errors": {
         "language_mismatch": "Saisissez le nom dans la langue par défaut de l'établissement. Si ses langues ont changé récemment, rechargez d'abord la page.",
-        "invalid_parent": "Impossible de le placer ici : un service appartient à un site, et une unité à un service. Choisissez un autre emplacement.",
+        "invalid_parent": "Impossible de le placer ici : un service appartient à un site, et une unité à un service. Choisissez un autre emplacement.",
         "parent_inactive": "Le site ou le service dont il dépend est désactivé. Réactivez-le d'abord, ou choisissez-en un autre.",
         "code_taken": "Ce code est déjà utilisé, peut-être par un élément désactivé. Saisissez un autre code.",
         "has_active_children": "Des éléments qui en dépendent sont encore actifs. Désactivez-les tous d'abord, puis désactivez celui-ci.",
