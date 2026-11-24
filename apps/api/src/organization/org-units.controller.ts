@@ -1,28 +1,107 @@
-import { Controller, Get, Req, UseGuards } from '@nestjs/common';
-import { asc } from 'drizzle-orm';
-import { orgUnits } from '../database/schema.js';
-import { TenantDb } from '../database/tenant-db.service.js';
-import { SessionGuard, type AuthedRequest } from '../identity/session.guard.js';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  NotFoundException,
+  Param,
+  Patch,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { z } from 'zod';
+import { orgUnitType } from '../database/schema.js';
+import {
+  requirePermission,
+  SessionGuard,
+  type AuthedRequest,
+} from '../identity/session.guard.js';
+import {
+  fitsLanguages,
+  localizedText,
+  type Localized,
+} from '../i18n/locales.js';
+import { OrgUnitsService } from './org-units.service.js';
+
+const listSchema = z.strictObject({
+  includeInactive: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+});
+
+const createSchema = z.strictObject({
+  type: z.enum(orgUnitType.enumValues),
+  // Cannot be changed after creation.
+  code: z.string().regex(/^[A-Z0-9-]{2,40}$/),
+  name: localizedText(200),
+  parentId: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+});
+
+// No `type` and no `code`: neither changes after creation.
+const updateSchema = z
+  .strictObject({
+    name: localizedText(200),
+    parentId: z.uuid().nullable(),
+    active: z.boolean(),
+  })
+  .partial();
 
 @Controller('org-units')
 @UseGuards(SessionGuard)
 export class OrgUnitsController {
-  constructor(private readonly tenantDb: TenantDb) {}
+  constructor(private readonly orgUnits: OrgUnitsService) {}
 
-  /** The organization's facilities, departments and units. */
+  /**
+   * The organization's facilities, departments and units. Open to every
+   * signed-in user, because every form that picks a unit needs it; so it
+   * holds the units that can be picked. The ones switched off are for whoever
+   * manages the structure.
+   */
   @Get()
-  list(@Req() req: AuthedRequest) {
-    return this.tenantDb.withTenant(req.auth.tenant.id, (tx) =>
-      tx
-        .select({
-          id: orgUnits.id,
-          parentId: orgUnits.parentId,
-          type: orgUnits.type,
-          code: orgUnits.code,
-          name: orgUnits.name,
-        })
-        .from(orgUnits)
-        .orderBy(asc(orgUnits.code)),
-    );
+  list(@Query() query: unknown, @Req() req: AuthedRequest) {
+    const parsed = listSchema.safeParse(query);
+    if (!parsed.success) throw new BadRequestException();
+    const { includeInactive } = parsed.data;
+    if (includeInactive) requirePermission(req, 'organization.manage');
+    return this.orgUnits.list(req.auth, includeInactive);
+  }
+
+  @Post()
+  create(@Body() body: unknown, @Req() req: AuthedRequest) {
+    requirePermission(req, 'organization.manage');
+    const parsed = createSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException();
+    this.assertLanguages(req, parsed.data.name);
+    return this.orgUnits.create(req.auth, parsed.data);
+  }
+
+  @Patch(':id')
+  update(
+    @Param('id') id: string,
+    @Body() body: unknown,
+    @Req() req: AuthedRequest,
+  ) {
+    requirePermission(req, 'organization.manage');
+    const unitId = z.uuid().safeParse(id);
+    if (!unitId.success) throw new NotFoundException();
+    const parsed = updateSchema.safeParse(body);
+    if (!parsed.success || Object.keys(parsed.data).length === 0) {
+      throw new BadRequestException();
+    }
+    this.assertLanguages(req, parsed.data.name);
+    return this.orgUnits.update(req.auth, unitId.data, parsed.data);
+  }
+
+  /** A unit is named in the client's default language, in its languages only. */
+  private assertLanguages(req: AuthedRequest, name?: Localized) {
+    if (name && !fitsLanguages(name, req.auth.tenant)) {
+      throw new BadRequestException({ code: 'language_mismatch' });
+    }
   }
 }

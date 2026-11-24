@@ -1,7 +1,7 @@
 import { eq, sql } from 'drizzle-orm';
 import { requireEnv } from '../env.js';
 import { createDatabase } from './client.js';
-import { orgUnits, tenants } from './schema.js';
+import { orgUnits, roles, tenants } from './schema.js';
 import { TenantDb } from './tenant-db.service.js';
 
 describe('tenant isolation', () => {
@@ -68,13 +68,28 @@ describe('tenant isolation', () => {
         .set({ name: { en: 'Hijacked' } })
         .where(eq(orgUnits.tenantId, cbahi))
         .returning();
+      // On roles, which the application may delete. It may not delete an
+      // org unit of any tenant: see the next test.
       const deleted = await tx
-        .delete(orgUnits)
-        .where(eq(orgUnits.tenantId, cbahi))
+        .delete(roles)
+        .where(eq(roles.tenantId, cbahi))
         .returning();
       return updated.length + deleted.length;
     });
     expect(changed).toBe(0);
+  });
+
+  it("cannot delete an org unit, not even its own tenant's", async () => {
+    await expect(
+      tenantDb.withTenant(jci, (tx) =>
+        tx.delete(orgUnits).where(eq(orgUnits.tenantId, jci)),
+      ),
+    ).rejects.toMatchObject({ cause: { code: '42501' } });
+    await expect(
+      tenantDb.withTenant(jci, (tx) =>
+        tx.delete(orgUnits).where(eq(orgUnits.tenantId, cbahi)),
+      ),
+    ).rejects.toMatchObject({ cause: { code: '42501' } });
   });
 
   it('does not leak the tenant setting to the next query on the connection', async () => {

@@ -30,6 +30,7 @@ import { TenantDb } from '../database/tenant-db.service.js';
 import type { AuthContext } from '../identity/auth.service.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
 import { covers, reachOf } from '../identity/scope.js';
+import { OrgUnitsService } from '../organization/org-units.service.js';
 import { nextReference } from './reference.js';
 
 export type IncidentStatus = (typeof incidents.status.enumValues)[number];
@@ -114,6 +115,7 @@ export class IncidentsService {
   constructor(
     private readonly tenantDb: TenantDb,
     private readonly provisioning: ProvisioningService,
+    private readonly orgUnits: OrgUnitsService,
   ) {}
 
   /**
@@ -181,14 +183,6 @@ export class IncidentsService {
     if (!category) throw new BadRequestException({ code: 'unknown_category' });
   }
 
-  private async assertOrgUnit(tx: Transaction, orgUnitId: string) {
-    const [unit] = await tx
-      .select({ id: orgUnits.id })
-      .from(orgUnits)
-      .where(eq(orgUnits.id, orgUnitId));
-    if (!unit) throw new BadRequestException({ code: 'unknown_org_unit' });
-  }
-
   /**
    * Adds a timeline entry. The time is the clock's, not the transaction's
    * start, so two entries written by one request keep their order.
@@ -254,7 +248,8 @@ export class IncidentsService {
     const { anonymous, ...fields } = input;
     return this.tenantDb.withTenant(tenant.id, async (tx) => {
       await this.assertCategory(tx, input.categoryId);
-      await this.assertOrgUnit(tx, input.orgUnitId);
+      // Where it happened: a unit of this hospital that is still in use.
+      await this.orgUnits.assertActive(tx, [input.orgUnitId]);
 
       // An anonymous report is stored with no trace of who made it: not on
       // the incident, not on its timeline, not in the audit log.
@@ -491,7 +486,7 @@ export class IncidentsService {
         throw new ConflictException({ code: 'invalid_transition' });
       }
       if (input.categoryId) await this.assertCategory(tx, input.categoryId);
-      await this.assertOrgUnit(tx, input.ownerUnitId);
+      await this.orgUnits.assertActive(tx, [input.ownerUnitId]);
       if (input.assignedTo) {
         const [person] = await tx
           .select({ id: users.id })

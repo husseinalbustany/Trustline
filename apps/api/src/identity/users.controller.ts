@@ -20,6 +20,7 @@ import { roleAssignments, roles, sessions, users } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
 import { pgErrorCode } from '../database/errors.js';
 import { fitsLanguages, localizedText } from '../i18n/locales.js';
+import { OrgUnitsService } from '../organization/org-units.service.js';
 import { ProvisioningService, type RoleGrant } from './provisioning.service.js';
 import {
   requirePermission,
@@ -94,6 +95,7 @@ export class UsersController {
   constructor(
     private readonly tenantDb: TenantDb,
     private readonly provisioning: ProvisioningService,
+    private readonly orgUnits: OrgUnitsService,
   ) {}
 
   private async withRoles(tx: Transaction, userId?: string) {
@@ -160,6 +162,32 @@ export class UsersController {
     }
   }
 
+  /**
+   * Refuses a role granted for an org unit that is switched off. A grant the
+   * user already holds there may stay, since this replaces the whole list.
+   */
+  private async assertGrantUnits(
+    tx: Transaction,
+    userId: string,
+    grants: RoleGrant[],
+  ) {
+    const held = await tx
+      .select({
+        roleId: roleAssignments.roleId,
+        orgUnitId: roleAssignments.orgUnitId,
+      })
+      .from(roleAssignments)
+      .where(eq(roleAssignments.userId, userId));
+    const added = grants.filter(
+      (g) =>
+        !held.some((h) => h.roleId === g.roleId && h.orgUnitId === g.orgUnitId),
+    );
+    await this.orgUnits.assertActive(
+      tx,
+      added.map((g) => g.orgUnitId),
+    );
+  }
+
   /** Turns a database refusal into the right client error. */
   private async guarded<T>(work: () => Promise<T>): Promise<T> {
     try {
@@ -196,6 +224,11 @@ export class UsersController {
     return this.guarded(() =>
       this.tenantDb.withTenant(tenant.id, async (tx) => {
         await this.assertCanGrant(tx, req, grants);
+        // Their own unit and the units their roles are for: all in use.
+        await this.orgUnits.assertActive(tx, [
+          input.orgUnitId,
+          ...grants.map((g) => g.orgUnitId),
+        ]);
         const user = await this.provisioning.createUser(
           tx,
           tenant.id,
@@ -255,6 +288,11 @@ export class UsersController {
           .where(eq(users.id, userId));
         if (!existing) throw new NotFoundException();
         await this.assertCanManage(tx, req, userId);
+        // Someone may stay in a unit that was switched off since, but
+        // nobody is moved into one.
+        if (fields.orgUnitId && fields.orgUnitId !== existing.orgUnitId) {
+          await this.orgUnits.assertActive(tx, [fields.orgUnitId]);
+        }
 
         // Re-enabling returns someone who never set a password to "invited".
         const nextStatus =
@@ -313,6 +351,7 @@ export class UsersController {
         if (!existing) throw new NotFoundException();
         await this.assertCanManage(tx, req, userId);
         await this.assertCanGrant(tx, req, parsed.data.roles);
+        await this.assertGrantUnits(tx, userId, parsed.data.roles);
         await this.provisioning.setRoles(
           tx,
           tenant.id,

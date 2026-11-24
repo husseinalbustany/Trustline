@@ -80,6 +80,8 @@ export const tenants = pgTable('tenants', {
   createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
 });
 
+// A hospital's structure: facilities, their departments, and the units in
+// those. The application role cannot delete one.
 export const orgUnits = pgTable(
   'org_units',
   {
@@ -91,7 +93,11 @@ export const orgUnits = pgTable(
     type: orgUnitType().notNull(),
     code: text().notNull(),
     name: jsonb().$type<Localized>().notNull(),
+    // Switched off, never deleted: incidents, users and role grants keep
+    // pointing at it. An inactive unit cannot be chosen for anything new.
+    active: boolean().notNull().default(true),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     unique('org_units_tenant_id_id_key').on(t.tenantId, t.id),
