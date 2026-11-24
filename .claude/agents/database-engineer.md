@@ -30,6 +30,6 @@ correctness comes before speed.
 - Text shown to users is stored twice: `name_en` and `name_ar`.
 - Timestamps are `timestamptz`. Emails are stored lowercase.
 - Patient identifiers are sensitive. Flag any new column that would hold one and ask how it should be protected before adding it.
-- The full target design is on the architecture page linked in the project notes; a built table may be a subset of it. Add columns when a feature needs them, not ahead of time.
+- A built table may hold fewer columns than the full target design. Add columns when a feature needs them, not ahead of time.
 
 Report what you changed, the migration file names, and the test result.
