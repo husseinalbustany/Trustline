@@ -25,6 +25,7 @@ import {
 } from '../identity/session.guard.js';
 import {
   CLOCK_TOLERANCE_MINUTES,
+  EARLIEST_OCCURRED_AT,
   IncidentsService,
 } from './incidents.service.js';
 
@@ -51,7 +52,18 @@ const reportSchema = z.strictObject({
   immediateAction: optionalText(2000),
   harmLevel: z.enum(incidentHarmLevel.enumValues),
   anonymous: z.boolean(),
+  // When the reporter opened the form. Read leniently on purpose: a device
+  // with a wrong clock, or one that writes the time oddly, must never have
+  // its report refused over a measurement. What cannot be used is dropped.
+  startedAt: z.string().max(64).nullish(),
 });
+
+const isoMoment = z.iso.datetime({ offset: true });
+
+const flag = z.enum(['true', 'false']).transform((v) => v === 'true');
+
+/** The revision of the incident the caller was looking at, if they say. */
+const revision = z.number().int().min(1).optional();
 
 // An empty value in the address (`?status=`) means the filter is not set.
 const blankAsUnset = (query: unknown) =>
@@ -63,10 +75,23 @@ const listSchema = z.preprocess(
   blankAsUnset,
   z.strictObject({
     status: z.enum(incidentStatus.enumValues).optional(),
-    mine: z
-      .enum(['true', 'false'])
-      .default('false')
-      .transform((v) => v === 'true'),
+    type: z.enum(incidentType.enumValues).optional(),
+    harmLevel: z.enum(incidentHarmLevel.enumValues).optional(),
+    sentinel: flag.optional(),
+    orgUnitId: z.uuid().optional(),
+    // Days, both included, on the date of reporting (UTC).
+    from: z.iso.date().optional(),
+    to: z.iso.date().optional(),
+    // The start of a reference, or all of it: "inc-2026-0004".
+    reference: z
+      .string()
+      .trim()
+      .max(20)
+      .regex(/^[A-Za-z0-9-]+$/)
+      .optional(),
+    assignedToMe: flag.default(false),
+    mine: flag.default(false),
+    sort: z.enum(['newest', 'oldest', 'harm']).default('newest'),
     page: z.coerce.number().int().min(1).max(100_000).default(1),
     pageSize: z.coerce.number().int().min(1).max(100).default(20),
   }),
@@ -81,11 +106,13 @@ const triageSchema = z.strictObject({
     .uuid()
     .nullish()
     .transform((v) => v ?? null),
+  revision,
 });
 
 const statusSchema = z.strictObject({
   to: z.enum(incidentStatus.enumValues),
   note: optionalText(2000),
+  revision,
 });
 
 const commentSchema = z.strictObject({
@@ -115,11 +142,19 @@ export class IncidentsController {
     requirePermission(req, 'incidents.report');
     const parsed = reportSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException();
+    const { startedAt, ...input } = parsed.data;
     const latest = Date.now() + CLOCK_TOLERANCE_MINUTES * 60_000;
-    if (parsed.data.occurredAt.getTime() > latest) {
+    if (input.occurredAt.getTime() > latest) {
       throw new BadRequestException({ code: 'occurred_in_future' });
     }
-    return this.incidents.report(req.auth, parsed.data);
+    if (input.occurredAt.getTime() < EARLIEST_OCCURRED_AT.getTime()) {
+      throw new BadRequestException({ code: 'occurred_too_long_ago' });
+    }
+    const started = isoMoment.safeParse(startedAt);
+    return this.incidents.report(req.auth, {
+      ...input,
+      ...(started.success && { startedAt: new Date(started.data) }),
+    });
   }
 
   /**
@@ -130,7 +165,14 @@ export class IncidentsController {
   list(@Query() query: unknown, @Req() req: AuthedRequest) {
     const parsed = listSchema.safeParse(query);
     if (!parsed.success) throw new BadRequestException();
-    return this.incidents.list(req.auth, parsed.data);
+    const { from, to, ...filters } = parsed.data;
+    const day = (date: string) => Date.parse(`${date}T00:00:00Z`);
+    return this.incidents.list(req.auth, {
+      ...filters,
+      ...(from && { reportedFrom: new Date(day(from)) }),
+      // Up to the end of the last day.
+      ...(to && { reportedBefore: new Date(day(to) + 86_400_000) }),
+    });
   }
 
   // Declared before ':id', or Nest would take "summary" for an id.
@@ -177,8 +219,14 @@ export class IncidentsController {
     const incidentId = this.parseId(id);
     const parsed = statusSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException();
-    const { to, note } = parsed.data;
-    return this.incidents.changeStatus(req.auth, incidentId, to, note);
+    const { to, note, revision } = parsed.data;
+    return this.incidents.changeStatus(
+      req.auth,
+      incidentId,
+      to,
+      note,
+      revision,
+    );
   }
 
   /** Anyone who may see the incident may comment on it. */

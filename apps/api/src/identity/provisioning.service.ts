@@ -36,26 +36,34 @@ export type NewUser = {
  */
 @Injectable()
 export class ProvisioningService {
-  /** The permissions a set of roles would give, or null if one is unknown. */
-  async permissionsOfRoles(tx: Transaction, roleIds: string[]) {
+  /**
+   * What each of these roles allows, by role id, or null if one of them does
+   * not exist in this hospital.
+   */
+  async permissionsByRole(tx: Transaction, roleIds: string[]) {
     const ids = [...new Set(roleIds)];
-    if (ids.length === 0) return [];
+    if (ids.length === 0) return new Map<string, string[]>();
     const found = await tx
-      .select({ permissions: roles.permissions })
+      .select({ id: roles.id, permissions: roles.permissions })
       .from(roles)
       .where(inArray(roles.id, ids));
     if (found.length !== ids.length) return null;
-    return [...new Set(found.flatMap((r) => r.permissions))];
+    return new Map(found.map((r) => [r.id, r.permissions]));
   }
 
-  /** Everything a user's current roles allow. */
-  async permissionsOfUser(tx: Transaction, userId: string) {
-    const rows = await tx
-      .select({ permissions: roles.permissions })
+  /**
+   * What a user's current roles allow, one entry per grant, each with the
+   * place it was granted for (null: the whole organization).
+   */
+  grantsOfUser(tx: Transaction, userId: string) {
+    return tx
+      .select({
+        permissions: roles.permissions,
+        orgUnitId: roleAssignments.orgUnitId,
+      })
       .from(roleAssignments)
       .innerJoin(roles, eq(roles.id, roleAssignments.roleId))
       .where(eq(roleAssignments.userId, userId));
-    return [...new Set(rows.flatMap((r) => r.permissions))].sort();
   }
 
   /** Ends every unused set-password link of a user. */

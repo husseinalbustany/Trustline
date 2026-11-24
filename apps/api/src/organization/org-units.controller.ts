@@ -14,7 +14,7 @@ import {
 import { z } from 'zod';
 import { orgUnitType } from '../database/schema.js';
 import {
-  requirePermission,
+  requireEverywhere,
   SessionGuard,
   type AuthedRequest,
 } from '../identity/session.guard.js';
@@ -62,19 +62,24 @@ export class OrgUnitsController {
    * signed-in user, because every form that picks a unit needs it; so it
    * holds the units that can be picked. The ones switched off are for whoever
    * manages the structure.
+   *
+   * The structure belongs to the hospital as a whole, and moving a unit
+   * changes what every role granted for a department covers. So reading the
+   * switched-off units and every write below need `organization.manage` for
+   * the whole organization: holding it for one department is not enough.
    */
   @Get()
   list(@Query() query: unknown, @Req() req: AuthedRequest) {
     const parsed = listSchema.safeParse(query);
     if (!parsed.success) throw new BadRequestException();
     const { includeInactive } = parsed.data;
-    if (includeInactive) requirePermission(req, 'organization.manage');
+    if (includeInactive) requireEverywhere(req, 'organization.manage');
     return this.orgUnits.list(req.auth, includeInactive);
   }
 
   @Post()
   create(@Body() body: unknown, @Req() req: AuthedRequest) {
-    requirePermission(req, 'organization.manage');
+    requireEverywhere(req, 'organization.manage');
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException();
     this.assertLanguages(req, parsed.data.name);
@@ -87,7 +92,7 @@ export class OrgUnitsController {
     @Body() body: unknown,
     @Req() req: AuthedRequest,
   ) {
-    requirePermission(req, 'organization.manage');
+    requireEverywhere(req, 'organization.manage');
     const unitId = z.uuid().safeParse(id);
     if (!unitId.success) throw new NotFoundException();
     const parsed = updateSchema.safeParse(body);

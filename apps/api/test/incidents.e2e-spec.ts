@@ -232,7 +232,20 @@ describe('incident reporting', () => {
       open: number;
       awaitingTriage: number;
       closedLast30Days: number;
+      assignedToMe: number;
+      serious: number;
+      medianSecondsToReport: number | null;
     };
+  };
+
+  /** A summary with nothing in it. */
+  const EMPTY_SUMMARY = {
+    open: 0,
+    awaitingTriage: 0,
+    closedLast30Days: 0,
+    assignedToMe: 0,
+    serious: 0,
+    medianSecondsToReport: null,
   };
 
   /** A new incident in the ward department, taken to the given status. */
@@ -468,7 +481,6 @@ describe('incident reporting', () => {
         type: 'near_miss',
         description: '  A wet floor had no sign.  ',
         immediateAction: '  Sign placed.  ',
-        harmLevel: 'mild',
         orgUnitId: wardUnit,
       });
       const res = await open(reporter.cookie, id).expect(200);
@@ -476,7 +488,7 @@ describe('incident reporting', () => {
         type: 'near_miss',
         description: 'A wet floor had no sign.',
         immediateAction: 'Sign placed.',
-        harmLevel: 'mild',
+        harmLevel: 'none',
         isSentinel: false,
         status: 'new',
         category: { id: a.categories.equipment },
@@ -711,11 +723,7 @@ describe('incident reporting', () => {
     it('shows someone with no rights nothing', async () => {
       await open(noRoles.cookie, inWard).expect(404);
       expect(await listOf(noRoles.cookie)).toEqual({ items: [], total: 0 });
-      expect(await summaryOf(noRoles.cookie)).toEqual({
-        open: 0,
-        awaitingTriage: 0,
-        closedLast30Days: 0,
-      });
+      expect(await summaryOf(noRoles.cookie)).toEqual(EMPTY_SUMMARY);
     });
 
     it('shows a department viewer their department and the unit beneath it', async () => {
@@ -774,9 +782,9 @@ describe('incident reporting', () => {
         `INC-${year}-00002`,
       ]);
       expect(await summaryOf(b.cookie)).toEqual({
+        ...EMPTY_SUMMARY,
         open: 2,
         awaitingTriage: 2,
-        closedLast30Days: 0,
       });
     });
 
@@ -804,6 +812,7 @@ describe('incident reporting', () => {
       expect(res.body.total).toBeGreaterThan(2);
       const [first, second] = res.body.items;
       expect(Object.keys(first).sort()).toEqual([
+        'assignedToMe',
         'category',
         'descriptionExcerpt',
         'harmLevel',
@@ -1058,11 +1067,37 @@ describe('incident reporting', () => {
       expect(cleared.body.assignedTo).toBeNull();
     });
 
-    it('is refused once work has started or the incident has ended', async () => {
-      for (const status of ['in_progress', 'closed', 'rejected'] as const) {
+    it('stays possible while work is in progress, and leaves the status as it is', async () => {
+      const id = await incidentIn('in_progress');
+      const res = await triage(quality.cookie, id, {
+        harmLevel: 'moderate',
+        ownerUnitId: labDept,
+      }).expect(200);
+      expect(res.body).toMatchObject({
+        status: 'in_progress',
+        harmLevel: 'moderate',
+        ownerUnit: { id: labDept },
+        canRetriage: true,
+      });
+      expect(res.body.events.at(-2)).toMatchObject({
+        kind: 'triaged',
+        fromStatus: 'in_progress',
+        toStatus: 'in_progress',
+        details: {
+          harmLevel: { from: 'mild', to: 'moderate' },
+          ownerUnitId: { from: wardDept, to: labDept },
+        },
+      });
+      expect(res.body.events.at(-1)).toMatchObject({ kind: 'assigned' });
+    });
+
+    it('is refused once the incident has ended', async () => {
+      for (const status of ['closed', 'rejected'] as const) {
         const id = await incidentIn(status);
         const res = await triage(quality.cookie, id).expect(409);
         expect(res.body.code).toBe('invalid_transition');
+        const stored = await open(quality.cookie, id).expect(200);
+        expect(stored.body.canRetriage).toBe(false);
       }
     });
 
@@ -1295,7 +1330,7 @@ describe('incident reporting', () => {
     const INTERNAL_TEXT = `for-the-team-${run}`;
     let assignee: Staff; // may report, and nothing else
     let id: string;
-    const none = { open: 0, awaitingTriage: 0, closedLast30Days: 0 };
+    const none = EMPTY_SUMMARY;
 
     beforeAll(async () => {
       assignee = await createStaff('assignee', {
@@ -1346,7 +1381,11 @@ describe('incident reporting', () => {
         items: [],
         total: 0,
       });
-      expect(await summaryOf(assignee.cookie)).toEqual({ ...none, open: 1 });
+      expect(await summaryOf(assignee.cookie)).toEqual({
+        ...none,
+        open: 1,
+        assignedToMe: 1,
+      });
     });
 
     it('can post both kinds of comment', async () => {
@@ -1594,13 +1633,19 @@ describe('incident reporting', () => {
         changes: {
           from: 'new',
           to: 'triaged',
-          harmLevel: 'mild',
-          isSentinel: false,
-          categoryId: null,
-          ownerUnitId: wardDept,
-          assignedTo: wardTriager.id,
+          harmLevel: { from: 'none', to: 'mild' },
+          ownerUnitId: { from: null, to: wardDept },
+          assignedTo: { from: null, to: wardTriager.id },
         },
       });
+      // Only what changed is listed.
+      expect(Object.keys(byAction.incident_triaged.changes).sort()).toEqual([
+        'assignedTo',
+        'from',
+        'harmLevel',
+        'ownerUnitId',
+        'to',
+      ]);
       expect(byAction.incident_commented).toMatchObject({
         actor_id: quality.id,
         changes: { commentId: comment.body.id, visibility: 'internal' },
@@ -1633,6 +1678,277 @@ describe('incident reporting', () => {
     });
   });
 
+  describe('rules a quality department expects', () => {
+    it('keeps type and harm in agreement', async () => {
+      for (const type of ['near_miss', 'hazard']) {
+        const res = await http()
+          .post('/incidents')
+          .set('Cookie', reporter.cookie)
+          .send(validReport({ type, harmLevel: 'mild' }))
+          .expect(400);
+        expect(res.body.code).toBe('harm_not_applicable');
+      }
+      const { id } = await report(reporter, { type: 'near_miss' });
+      const harm = await triage(quality.cookie, id, {
+        harmLevel: 'mild',
+      }).expect(400);
+      expect(harm.body.code).toBe('harm_not_applicable');
+      const sentinel = await triage(quality.cookie, id, {
+        harmLevel: 'none',
+        isSentinel: true,
+      }).expect(400);
+      expect(sentinel.body.code).toBe('sentinel_not_applicable');
+      await triage(quality.cookie, id, { harmLevel: 'none' }).expect(200);
+    });
+
+    it('does not let a serious report be rejected, and does not offer it', async () => {
+      const { id } = await report(reporter, { harmLevel: 'severe' });
+      const before = await open(quality.cookie, id).expect(200);
+      expect(before.body.moves).toEqual([]);
+      expect(before.body.canRetriage).toBe(true);
+      const refused = await move(quality.cookie, id, 'rejected', 'No').expect(
+        409,
+      );
+      expect(refused.body.code).toBe('serious_cannot_be_rejected');
+
+      const mild = await report(reporter);
+      const offered = await open(quality.cookie, mild.id).expect(200);
+      expect(offered.body.moves).toEqual([
+        { to: 'rejected', noteRequired: true },
+      ]);
+      // Nothing is offered to someone who may not triage.
+      const theirs = await open(reporter.cookie, mild.id).expect(200);
+      expect(theirs.body).toMatchObject({ moves: [], canRetriage: false });
+      const triaged = await triage(quality.cookie, mild.id).expect(200);
+      expect(triaged.body.moves).toEqual([
+        { to: 'in_progress', noteRequired: false },
+        { to: 'closed', noteRequired: true },
+      ]);
+    });
+
+    it('records what each triage changed, and names what the timeline points at', async () => {
+      const { id } = await report(reporter, { harmLevel: 'moderate' });
+      await triage(quality.cookie, id, {
+        harmLevel: 'severe',
+        isSentinel: true,
+        categoryId: a.categories.fall,
+        ownerUnitId: labDept,
+        assignedTo: labTriager.id,
+      }).expect(200);
+      const res = await open(quality.cookie, id).expect(200);
+      const triaged = res.body.events.find(
+        (e: { kind: string }) => e.kind === 'triaged',
+      );
+      expect(triaged.details).toEqual({
+        harmLevel: { from: 'moderate', to: 'severe' },
+        isSentinel: { from: false, to: true },
+        categoryId: { from: a.categories.equipment, to: a.categories.fall },
+        ownerUnitId: { from: null, to: labDept },
+      });
+      expect(res.body.people).toEqual({
+        [labTriager.id]: { en: 'Test lab-triager' },
+      });
+      expect(res.body.units).toEqual({ [labDept]: { en: 'Unit LAB' } });
+      expect(Object.keys(res.body.categories).sort()).toEqual(
+        [a.categories.equipment, a.categories.fall].sort(),
+      );
+      // The reporter gets the names their own entries point at: no person.
+      const theirs = await open(reporter.cookie, id).expect(200);
+      expect(theirs.body.people).toEqual({});
+      expect(theirs.body.units).toEqual({ [labDept]: { en: 'Unit LAB' } });
+      expect(theirs.body.orgUnit).toMatchObject({ active: true });
+    });
+
+    it('refuses a decision made on an out-of-date screen', async () => {
+      const { id } = await report(reporter);
+      const first = await open(quality.cookie, id).expect(200);
+      expect(first.body.revision).toBe(1);
+      // A comment by someone else does not make the screen out of date.
+      await http()
+        .post(`/incidents/${id}/comments`)
+        .set('Cookie', reporter.cookie)
+        .send({ body: 'More detail.', visibility: 'everyone' })
+        .expect(201);
+      const triaged = await triage(quality.cookie, id, {
+        revision: 1,
+      }).expect(200);
+      expect(triaged.body.revision).toBe(2);
+
+      const stale = await triage(a.cookie, id, {
+        revision: 1,
+        isSentinel: true,
+      }).expect(409);
+      expect(stale.body.code).toBe('stale_incident');
+      const staleMove = await http()
+        .post(`/incidents/${id}/status`)
+        .set('Cookie', a.cookie)
+        .send({ to: 'closed', note: 'Done', revision: 1 })
+        .expect(409);
+      expect(staleMove.body.code).toBe('stale_incident');
+      const stored = await open(quality.cookie, id).expect(200);
+      expect(stored.body).toMatchObject({
+        status: 'triaged',
+        isSentinel: false,
+        revision: 2,
+      });
+      const moved = await http()
+        .post(`/incidents/${id}/status`)
+        .set('Cookie', a.cookie)
+        .send({ to: 'in_progress', revision: 2 })
+        .expect(200);
+      expect(moved.body.revision).toBe(3);
+      // Without a revision the call behaves as before.
+      await move(a.cookie, id, 'closed', 'Done').expect(200);
+      await triage(quality.cookie, id, { revision: 0 }).expect(400);
+    });
+
+    it('tells a scoped triager the incident was handed off, and keeps the change', async () => {
+      const { id, reference } = await report(otherReporter, {
+        orgUnitId: labDept,
+      });
+      await triage(quality.cookie, id, { ownerUnitId: wardDept }).expect(200);
+      await open(wardTriager.cookie, id).expect(200);
+      const res = await triage(wardTriager.cookie, id, {
+        ownerUnitId: labDept,
+      }).expect(200);
+      expect(res.body).toEqual({ id, reference, handedOff: true });
+      await open(wardTriager.cookie, id).expect(404);
+      const stored = await open(quality.cookie, id).expect(200);
+      expect(stored.body.ownerUnit).toMatchObject({ id: labDept });
+      expect(stored.body.events.at(-2)).toMatchObject({
+        kind: 'triaged',
+        actor: { id: wardTriager.id },
+        details: { ownerUnitId: { from: wardDept, to: labDept } },
+      });
+      expect(stored.body.events.at(-1)).toMatchObject({ kind: 'assigned' });
+    });
+
+    it('refuses a time before 1900', async () => {
+      const res = await http()
+        .post('/incidents')
+        .set('Cookie', reporter.cookie)
+        .send(validReport({ occurredAt: '1899-12-31T23:59:59Z' }))
+        .expect(400);
+      expect(res.body.code).toBe('occurred_too_long_ago');
+      await http()
+        .post('/incidents')
+        .set('Cookie', reporter.cookie)
+        .send(validReport({ occurredAt: '0000-01-01T00:00:00Z' }))
+        .expect(400);
+    });
+
+    it('keeps a believable start time, ignores any other, and reports the median', async () => {
+      const startedAt = (secondsAgo: number) =>
+        new Date(Date.now() - secondsAgo * 1000).toISOString();
+      const stored = async (id: string) =>
+        (
+          await owner.db.execute<{ took: number | null }>(
+            sql`select extract(epoch from reported_at - report_started_at)::float as took from incidents where id = ${id}`,
+          )
+        ).rows[0].took;
+      const timed = await createStaff('timed', {
+        role: 'reporter',
+        orgUnitId: null,
+      });
+      expect((await summaryOf(timed.cookie)).medianSecondsToReport).toBeNull();
+      const quick = await report(timed, { startedAt: startedAt(60) });
+      const slow = await report(timed, { startedAt: startedAt(100) });
+      expect(await stored(quick.id)).toBeGreaterThanOrEqual(60);
+      expect(await stored(quick.id)).toBeLessThan(70);
+      for (const wrong of [
+        startedAt(25 * 3600),
+        startedAt(-3600),
+        'half past nine',
+        '0000-01-01T00:00:00Z',
+      ]) {
+        const ignored = await report(timed, { startedAt: wrong });
+        expect(await stored(ignored.id)).toBeNull();
+      }
+      const anonymous = await http()
+        .post('/incidents')
+        .set('Cookie', timed.cookie)
+        .send(validReport({ anonymous: true, startedAt: startedAt(30) }))
+        .expect(201);
+      expect(await stored(anonymous.body.id)).toBeGreaterThanOrEqual(30);
+      const median = (await summaryOf(timed.cookie)).medianSecondsToReport!;
+      expect(median).toBeGreaterThanOrEqual(80);
+      expect(median).toBeLessThan(90);
+      expect(await stored(slow.id)).toBeGreaterThanOrEqual(100);
+    });
+
+    it('filters and sorts the list inside what the caller may see', async () => {
+      const finder = await createStaff('finder', {
+        role: 'quality_officer',
+        orgUnitId: wardDept,
+      });
+      const before = await listOf(finder.cookie);
+      const death = await report(reporter, {
+        harmLevel: 'death',
+        orgUnitId: wardUnit,
+      });
+      const hazard = await report(reporter, {
+        type: 'hazard',
+        orgUnitId: wardDept,
+      });
+      const elsewhere = await report(reporter, { orgUnitId: labDept });
+      await triage(quality.cookie, death.id, {
+        harmLevel: 'death',
+        isSentinel: true,
+        ownerUnitId: wardDept,
+        assignedTo: finder.id,
+      }).expect(200);
+      const ids = async (query: string) =>
+        (await listOf(finder.cookie, query)).items.map((i) => i.id);
+
+      expect(await ids('&type=hazard')).toContain(hazard.id);
+      expect(await ids('&type=hazard')).not.toContain(death.id);
+      expect(await ids('&harmLevel=death&sentinel=true')).toContain(death.id);
+      expect(await ids('&sentinel=false')).not.toContain(death.id);
+      expect(await ids('&assignedToMe=true')).toEqual([death.id]);
+      expect(await ids(`&orgUnitId=${wardUnit}`)).toContain(death.id);
+      expect(await ids(`&orgUnitId=${wardUnit}`)).not.toContain(hazard.id);
+      // A unit outside their view, or another hospital's: no rows, no error.
+      expect(await ids(`&orgUnitId=${labDept}`)).not.toContain(elsewhere.id);
+      expect(await ids(`&orgUnitId=${bUnit}`)).toEqual([]);
+      expect(await ids(`&reference=${death.reference.toLowerCase()}`)).toEqual([
+        death.id,
+      ]);
+      expect(await ids(`&reference=inc-${year}-`)).toContain(hazard.id);
+      expect(await ids(`&reference=${elsewhere.reference}`)).toEqual([]);
+      const today = new Date().toISOString().slice(0, 10);
+      expect(await ids(`&from=${today}&to=${today}`)).toContain(death.id);
+      expect(await ids('&to=2000-01-01')).toEqual([]);
+      const filtered = await listOf(finder.cookie, '&type=hazard');
+      expect(filtered.total).toBe(filtered.items.length);
+
+      const byHarm = await ids('&sort=harm');
+      expect(byHarm[0]).toBe(death.id);
+      expect(byHarm).toHaveLength(before.total + 2);
+      const oldest = await ids('&sort=oldest');
+      expect(oldest).toEqual([...(await ids('&sort=newest'))].reverse());
+      const item = (await listOf(finder.cookie, '&assignedToMe=true'))
+        .items[0] as unknown as { assignedToMe: boolean };
+      expect(item.assignedToMe).toBe(true);
+      expect(await summaryOf(finder.cookie)).toMatchObject({
+        assignedToMe: 1,
+      });
+      expect((await summaryOf(finder.cookie)).serious).toBeGreaterThanOrEqual(
+        1,
+      );
+      for (const query of [
+        'type=x',
+        'sentinel=1',
+        'from=yesterday',
+        'reference=%25',
+      ]) {
+        await http()
+          .get(`/incidents?${query}`)
+          .set('Cookie', finder.cookie)
+          .expect(400);
+      }
+    });
+  });
+
   describe('at the same moment', () => {
     it('gives every report its own number', async () => {
       const results = await Promise.all(
@@ -1655,6 +1971,45 @@ describe('incident reporting', () => {
       expect([rejected.status, triaged.status].sort((x, y) => x - y)).toEqual([
         200, 409,
       ]);
+    });
+  });
+
+  describe('a query the database refuses', () => {
+    it('gets a plain 500, and none of the report reaches the server log', async () => {
+      const written: string[] = [];
+      const spies = [process.stdout, process.stderr].map((stream) =>
+        vi.spyOn(stream, 'write').mockImplementation((chunk: unknown) => {
+          written.push(String(chunk));
+          return true;
+        }),
+      );
+      // Wind hospital B's counter back, so the next reference is one taken.
+      const wind = (by: number) =>
+        owner.db.execute(
+          sql`update reference_counters set last_number = last_number + ${by} where tenant_id = ${b.id} and prefix = 'INC' and year = ${year}`,
+        );
+      await wind(-1);
+      try {
+        const res = await http()
+          .post('/incidents')
+          .set('Cookie', b.cookie)
+          .send(
+            validReport({ categoryId: b.categories.other, orgUnitId: bUnit }),
+          )
+          .expect(500);
+        expect(res.body).toEqual({
+          statusCode: 500,
+          message: 'Internal server error',
+        });
+      } finally {
+        for (const spy of spies) spy.mockRestore();
+        await wind(1);
+      }
+      const log = written.join('');
+      expect(log).toContain('code=23505');
+      expect(log).toContain('constraint=incidents_tenant_id_reference_key');
+      expect(log).not.toContain(SECRET_TEXT);
+      expect(log).not.toContain('infusion pump');
     });
   });
 });

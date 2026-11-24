@@ -13,15 +13,24 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { and, asc, eq, isNull } from 'drizzle-orm';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { z } from 'zod';
 import type { Transaction } from '../database/client.js';
-import { roleAssignments, roles, sessions, users } from '../database/schema.js';
+import {
+  orgUnits,
+  roleAssignments,
+  roles,
+  sessions,
+  users,
+} from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
 import { pgErrorCode } from '../database/errors.js';
-import { fitsLanguages, localizedText } from '../i18n/locales.js';
+import { fitsLanguages, localizedText, sameText } from '../i18n/locales.js';
 import { OrgUnitsService } from '../organization/org-units.service.js';
+import type { Permission } from './permissions.js';
 import { ProvisioningService, type RoleGrant } from './provisioning.service.js';
+import { covers } from './scope.js';
 import {
   requirePermission,
   SessionGuard,
@@ -75,19 +84,38 @@ const updateSchema = z
 
 const rolesSchema = z.strictObject({ roles: grantsSchema });
 
+// A user sits in one org unit and may hold roles for others.
+const homeUnit = alias(orgUnits, 'home_unit');
+const grantUnit = alias(orgUnits, 'grant_unit');
+
 const publicUser = {
   id: users.id,
   name: users.name,
   email: users.email,
   orgUnitId: users.orgUnitId,
+  // Named here, switched off or not, so a screen that lists only the units
+  // in use can still show where someone is, and not move them by accident.
+  orgUnit: { id: homeUnit.id, name: homeUnit.name, active: homeUnit.active },
   employeeNumber: users.employeeNumber,
   jobTitle: users.jobTitle,
   phone: users.phone,
   status: users.status,
   lockedUntil: users.lockedUntil,
-  lastSignInAt: users.lastSignInAt,
+  // The day only (UTC). The exact moment could be matched against the time
+  // of an anonymous report to learn who made it.
+  lastSignInAt: sql<
+    string | null
+  >`to_char(${users.lastSignInAt} at time zone 'UTC', 'YYYY-MM-DD')`,
   createdAt: users.createdAt,
 };
+
+/** The profile fields compared one to one when a user is edited. */
+const PLAIN_FIELDS = [
+  'orgUnitId',
+  'employeeNumber',
+  'jobTitle',
+  'phone',
+] as const;
 
 @Controller('users')
 @UseGuards(SessionGuard)
@@ -102,6 +130,7 @@ export class UsersController {
     const list = await tx
       .select(publicUser)
       .from(users)
+      .leftJoin(homeUnit, eq(homeUnit.id, users.orgUnitId))
       .where(userId ? eq(users.id, userId) : undefined)
       .orderBy(asc(users.email));
     const grants = await tx
@@ -109,12 +138,19 @@ export class UsersController {
         userId: roleAssignments.userId,
         roleId: roleAssignments.roleId,
         orgUnitId: roleAssignments.orgUnitId,
+        orgUnit: {
+          id: grantUnit.id,
+          name: grantUnit.name,
+          active: grantUnit.active,
+        },
         code: roles.code,
         name: roles.name,
       })
       .from(roleAssignments)
       .innerJoin(roles, eq(roles.id, roleAssignments.roleId))
-      .where(userId ? eq(roleAssignments.userId, userId) : undefined);
+      .leftJoin(grantUnit, eq(grantUnit.id, roleAssignments.orgUnitId))
+      .where(userId ? eq(roleAssignments.userId, userId) : undefined)
+      .orderBy(asc(roles.code), asc(grantUnit.code));
     return list.map((user) => ({
       ...user,
       roles: grants
@@ -122,6 +158,7 @@ export class UsersController {
         .map((g) => ({
           roleId: g.roleId,
           orgUnitId: g.orgUnitId,
+          orgUnit: g.orgUnit,
           code: g.code,
           name: g.name,
         })),
@@ -129,35 +166,65 @@ export class UsersController {
   }
 
   /**
-   * Refuses to hand out roles that allow more than the actor may do. Without
-   * this, anyone who manages users could make an administrator.
+   * Refuses to place or manage someone outside the part of the organization
+   * the actor manages users for. Someone with no org unit belongs to the
+   * organization as a whole, so only a whole-organization manager acts on
+   * them.
+   */
+  private assertInReach(req: AuthedRequest, orgUnitId: string | null) {
+    if (!covers(req.auth, 'users.manage', orgUnitId)) {
+      throw new ForbiddenException({ code: 'outside_scope' });
+    }
+  }
+
+  /**
+   * Refuses to hand out a role that allows more than the actor may do, or
+   * allows it in more places: every permission of every role must be one the
+   * actor holds for the place the role is granted for, and a role for the
+   * whole organization only comes from someone who holds all of it for the
+   * whole organization. Without this, anyone who manages one department's
+   * users could make an administrator.
    */
   private async assertCanGrant(
     tx: Transaction,
     req: AuthedRequest,
     grants: RoleGrant[],
   ) {
-    const wanted = await this.provisioning.permissionsOfRoles(
+    const byRole = await this.provisioning.permissionsByRole(
       tx,
       grants.map((g) => g.roleId),
     );
-    if (wanted === null) throw new BadRequestException();
-    if (!wanted.every((p) => req.auth.permissions.includes(p))) {
+    if (byRole === null) throw new BadRequestException();
+    const within = grants.every((grant) =>
+      (byRole.get(grant.roleId) ?? []).every((p) =>
+        covers(req.auth, p as Permission, grant.orgUnitId),
+      ),
+    );
+    if (!within) {
       throw new ForbiddenException({ code: 'cannot_grant_higher_access' });
     }
   }
 
   /**
-   * Refuses to act on someone who may do more than the actor. Without this,
-   * a reset link would let a user manager take over an administrator.
+   * Refuses to act on someone outside the actor's part of the organization,
+   * or who may do more than the actor, or the same in more places: the actor
+   * must hold each of their permissions at each place they hold it. Without
+   * this, a reset link would let one department's user manager take over an
+   * administrator.
    */
   private async assertCanManage(
     tx: Transaction,
     req: AuthedRequest,
-    userId: string,
+    target: { id: string; orgUnitId: string | null },
   ) {
-    const theirs = await this.provisioning.permissionsOfUser(tx, userId);
-    if (!theirs.every((p) => req.auth.permissions.includes(p))) {
+    this.assertInReach(req, target.orgUnitId);
+    const theirs = await this.provisioning.grantsOfUser(tx, target.id);
+    const within = theirs.every((grant) =>
+      grant.permissions.every((p) =>
+        covers(req.auth, p as Permission, grant.orgUnitId),
+      ),
+    );
+    if (!within) {
       throw new ForbiddenException({ code: 'cannot_manage_higher_access' });
     }
   }
@@ -223,6 +290,7 @@ export class UsersController {
 
     return this.guarded(() =>
       this.tenantDb.withTenant(tenant.id, async (tx) => {
+        this.assertInReach(req, input.orgUnitId);
         await this.assertCanGrant(tx, req, grants);
         // Their own unit and the units their roles are for: all in use.
         await this.orgUnits.assertActive(tx, [
@@ -282,35 +350,63 @@ export class UsersController {
 
     return this.guarded(() =>
       this.tenantDb.withTenant(tenant.id, async (tx) => {
+        // Locked, so what is recorded as changed is what did change.
         const [existing] = await tx
           .select()
           .from(users)
-          .where(eq(users.id, userId));
+          .where(eq(users.id, userId))
+          .for('update');
         if (!existing) throw new NotFoundException();
-        await this.assertCanManage(tx, req, userId);
-        // Someone may stay in a unit that was switched off since, but
-        // nobody is moved into one.
-        if (fields.orgUnitId && fields.orgUnitId !== existing.orgUnitId) {
-          await this.orgUnits.assertActive(tx, [fields.orgUnitId]);
+        await this.assertCanManage(tx, req, existing);
+
+        // Only what differs from what is stored is written and recorded.
+        const changes: Partial<typeof fields> = {};
+        if (fields.name && !sameText(fields.name, existing.name)) {
+          changes.name = fields.name;
+        }
+        for (const key of PLAIN_FIELDS) {
+          const value = fields[key];
+          if (value !== undefined && value !== existing[key]) {
+            changes[key] = value;
+          }
+        }
+        // Re-enabling returns someone who never set a password to "invited".
+        const wanted =
+          status === 'active' && !existing.passwordHash ? 'invited' : status;
+        const nextStatus =
+          wanted && wanted !== existing.status ? wanted : undefined;
+        const changed = [
+          ...Object.keys(changes),
+          ...(nextStatus ? ['status'] : []),
+        ];
+        if (changed.length === 0) {
+          const [same] = await this.withRoles(tx, userId);
+          return same;
         }
 
-        // Re-enabling returns someone who never set a password to "invited".
-        const nextStatus =
-          status === 'active' && !existing.passwordHash ? 'invited' : status;
+        // Someone may stay in a unit that was switched off since, but
+        // nobody is moved into one, nor out of the actor's reach.
+        if (changes.orgUnitId !== undefined) {
+          this.assertInReach(req, changes.orgUnitId);
+          await this.orgUnits.assertActive(tx, [changes.orgUnitId]);
+        }
+
         await tx
           .update(users)
           .set({
-            ...fields,
+            ...changes,
             ...(nextStatus && { status: nextStatus }),
             updatedAt: new Date(),
           })
           .where(eq(users.id, userId));
-        if (status === 'disabled') {
+        if (nextStatus === 'disabled') {
           await this.revokeSessions(tx, userId);
           // A link issued earlier must not work if they are enabled again.
           await this.provisioning.voidInvites(tx, userId);
         }
 
+        // Which fields changed, and for a move or a change of status, from
+        // what to what. Never the names or contact details themselves.
         await this.provisioning.audit(
           tx,
           tenant.id,
@@ -318,7 +414,15 @@ export class UsersController {
           'user_updated',
           'user',
           userId,
-          { changed: Object.keys(parsed.data), ...(status && { status }) },
+          {
+            changed,
+            ...(changes.orgUnitId !== undefined && {
+              orgUnitId: { from: existing.orgUnitId, to: changes.orgUnitId },
+            }),
+            ...(nextStatus && {
+              status: { from: existing.status, to: nextStatus },
+            }),
+          },
         );
         const [updated] = await this.withRoles(tx, userId);
         return updated;
@@ -345,11 +449,11 @@ export class UsersController {
     return this.guarded(() =>
       this.tenantDb.withTenant(tenant.id, async (tx) => {
         const [existing] = await tx
-          .select({ id: users.id })
+          .select({ id: users.id, orgUnitId: users.orgUnitId })
           .from(users)
           .where(eq(users.id, userId));
         if (!existing) throw new NotFoundException();
-        await this.assertCanManage(tx, req, userId);
+        await this.assertCanManage(tx, req, existing);
         await this.assertCanGrant(tx, req, parsed.data.roles);
         await this.assertGrantUnits(tx, userId, parsed.data.roles);
         await this.provisioning.setRoles(
@@ -387,7 +491,7 @@ export class UsersController {
         .from(users)
         .where(eq(users.id, userId));
       if (!existing) throw new NotFoundException();
-      await this.assertCanManage(tx, req, userId);
+      await this.assertCanManage(tx, req, existing);
       if (existing.status === 'disabled') {
         throw new ConflictException({ code: 'user_disabled' });
       }

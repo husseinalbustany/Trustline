@@ -42,6 +42,15 @@ export const optionalLocalizedText = (max: number) =>
       return Object.keys(kept).length > 0 ? kept : null;
     });
 
+/** Whether two localized texts say the same in every language. */
+export const sameText = (
+  a: Localized | null | undefined,
+  b: Localized | null | undefined,
+) =>
+  SUPPORTED_LOCALES.every(
+    (locale) => (a?.[locale] ?? '') === (b?.[locale] ?? ''),
+  );
+
 export type LanguageSettings = { locales: string[]; defaultLocale: string };
 
 /**

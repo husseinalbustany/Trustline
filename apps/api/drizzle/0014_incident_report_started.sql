@@ -1,0 +1,1 @@
+ALTER TABLE "incidents" ADD COLUMN "report_started_at" timestamp with time zone;

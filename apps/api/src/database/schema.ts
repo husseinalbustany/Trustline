@@ -378,6 +378,10 @@ export const incidents = pgTable(
     // Null when reported anonymously. Nothing else may record who it was.
     reportedBy: uuid(),
     reportedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    // When the reporter opened the form, as their device told it, to measure
+    // how long reporting takes. Null when not sent or not believable. It is
+    // a time only: it says nothing about who reported.
+    reportStartedAt: timestamp({ withTimezone: true }),
     // Set by the reporter, corrected at triage.
     harmLevel: incidentHarmLevel().notNull(),
     isSentinel: boolean().notNull().default(false),
@@ -391,6 +395,11 @@ export const incidents = pgTable(
     closedAt: timestamp({ withTimezone: true }),
     closureSummary: text(),
     rejectionReason: text(),
+    // Raised by every triage and every change of status, and by nothing
+    // else. Someone saving a decision says which revision they were looking
+    // at, so a decision made on an out-of-date screen is refused. A comment
+    // does not raise it: it changes nothing a decision rests on.
+    revision: integer().notNull().default(1),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
@@ -437,6 +446,9 @@ export const incidents = pgTable(
     index('incidents_reported_by_idx').on(t.tenantId, t.reportedBy),
     index('incidents_org_unit_idx').on(t.tenantId, t.orgUnitId),
     index('incidents_owner_unit_idx').on(t.tenantId, t.ownerUnitId),
+    // "Assigned to me", and the assignee's part of who may see an incident:
+    // without it every list for a reporter or assignee reads the whole table.
+    index('incidents_assigned_to_idx').on(t.tenantId, t.assignedTo),
     tenantIsolation(),
   ],
 );

@@ -503,6 +503,60 @@ describe('organization structure', () => {
     });
   });
 
+  describe('organization.manage held for one department only', () => {
+    it('is refused on create, update, move and the switched-off list', async () => {
+      const role = await http()
+        .post('/roles')
+        .set('Cookie', a.cookie)
+        .send({
+          code: 'structure_local',
+          name: { en: 'Local structure' },
+          permissions: ['organization.manage'],
+        })
+        .expect(201);
+      const email = `local-org-${run}@test.invalid`;
+      const created = await newUser({
+        email,
+        orgUnitId: department.id,
+        roles: [{ roleId: role.body.id, orgUnitId: department.id }],
+      }).expect(201);
+      await http()
+        .post('/auth/invite/accept')
+        .send({ org: a.slug, token: created.body.invite.token, password })
+        .expect(204);
+      const local = cookieOf(await login(a.slug, email).expect(200));
+      const me = await http().get('/auth/me').set('Cookie', local).expect(200);
+      expect(me.body.permissions).toEqual(['organization.manage']);
+
+      const before = await auditOf(unit.id);
+      const refusals = [
+        // Even inside the department the role was granted for.
+        await create(local, {
+          type: 'unit',
+          code: 'LOCAL-NEW',
+          name: { en: 'Local new' },
+          parentId: department.id,
+        }),
+        await patch(local, unit.id, { name: { en: 'Renamed locally' } }),
+        await patch(local, unit.id, { parentId: bFacility.id }),
+        await patch(local, unit.id, { active: false }),
+        await http()
+          .get('/org-units?includeInactive=true')
+          .set('Cookie', local),
+      ];
+      for (const res of refusals) {
+        expect(res.status).toBe(403);
+        expect(res.body).toMatchObject({
+          code: 'missing_permission',
+          permission: 'organization.manage',
+        });
+      }
+      expect(await stored(unit.id)).toEqual(unit);
+      expect(await auditOf(unit.id)).toEqual(before);
+      await http().get('/org-units').set('Cookie', local).expect(200);
+    });
+  });
+
   describe("another hospital's units", () => {
     it('are never listed', async () => {
       const ours = await everything(a.cookie);
@@ -1153,20 +1207,26 @@ describe('organization structure', () => {
         entity_type: 'org_unit',
         changes,
       });
-      expect(await auditOf(dept.id)).toEqual([
+      const log = await auditOf(dept.id);
+      expect(log.slice(0, 4)).toEqual([
         entry('org_unit_created', { type: 'department', parentId: top.id }),
         entry('org_unit_updated', { changed: ['name'] }),
-        entry('org_unit_updated', {
-          changed: ['parentId'],
-          parentId: { from: top.id, to: other.id },
-        }),
+        // A move is an action of its own.
+        entry('org_unit_moved', { from: top.id, to: other.id }),
         entry('org_unit_updated', { changed: ['active'], active: false }),
-        entry('org_unit_updated', {
-          changed: ['name', 'parentId', 'active'],
-          parentId: { from: other.id, to: top.id },
-          active: true,
-        }),
       ]);
+      // One change that moves, renames and switches on: the move apart from
+      // the rest, both written at the same moment.
+      expect(log).toHaveLength(6);
+      expect(log.slice(4)).toEqual(
+        expect.arrayContaining([
+          entry('org_unit_moved', { from: other.id, to: top.id }),
+          entry('org_unit_updated', {
+            changed: ['name', 'active'],
+            active: true,
+          }),
+        ]),
+      );
     });
 
     it('has an entry for every unit created, and none holding a name', async () => {

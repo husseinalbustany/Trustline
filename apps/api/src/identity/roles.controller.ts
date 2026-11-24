@@ -25,9 +25,11 @@ import {
   optionalLocalizedText,
   type Localized,
 } from '../i18n/locales.js';
-import { PERMISSIONS } from './permissions.js';
+import { PERMISSIONS, type Permission } from './permissions.js';
 import { ProvisioningService } from './provisioning.service.js';
+import { covers } from './scope.js';
 import {
+  requireEverywhere,
   requirePermission,
   SessionGuard,
   type AuthedRequest,
@@ -56,7 +58,12 @@ export class RolesController {
     private readonly provisioning: ProvisioningService,
   ) {}
 
-  /** Anyone managing users needs the list, to assign roles. */
+  /**
+   * Anyone managing users needs the list, to assign roles; holding either
+   * right anywhere is enough to read it. Writing a role is different: it
+   * changes what its holders may do across the hospital, so every write
+   * below needs `roles.manage` for the whole organization.
+   */
   @Get()
   async list(@Req() req: AuthedRequest) {
     if (!req.auth.permissions.includes('users.manage')) {
@@ -81,9 +88,14 @@ export class RolesController {
     return { roles: list, permissions: PERMISSIONS };
   }
 
-  /** Nobody builds a role that allows more than they may do themselves. */
-  private assertWithinOwn(req: AuthedRequest, permissions?: string[]) {
-    if (permissions?.some((p) => !req.auth.permissions.includes(p))) {
+  /**
+   * Nobody builds a role that allows more than they may do themselves. A role
+   * belongs to the hospital as a whole and can be granted anywhere in it, so
+   * each of its permissions must be one the actor holds for the whole
+   * organization: holding it for one department is not enough.
+   */
+  private assertWithinOwn(req: AuthedRequest, permissions?: Permission[]) {
+    if (permissions?.some((p) => !covers(req.auth, p, null))) {
       throw new ForbiddenException({ code: 'cannot_grant_higher_access' });
     }
   }
@@ -105,7 +117,7 @@ export class RolesController {
 
   @Post()
   async create(@Body() body: unknown, @Req() req: AuthedRequest) {
-    requirePermission(req, 'roles.manage');
+    requireEverywhere(req, 'roles.manage');
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException();
     this.assertWithinOwn(req, parsed.data.permissions);
@@ -142,7 +154,7 @@ export class RolesController {
     @Body() body: unknown,
     @Req() req: AuthedRequest,
   ) {
-    requirePermission(req, 'roles.manage');
+    requireEverywhere(req, 'roles.manage');
     const parsed = updateSchema.safeParse(body);
     if (!parsed.success || Object.keys(parsed.data).length === 0) {
       throw new BadRequestException();
@@ -177,7 +189,7 @@ export class RolesController {
   @Delete(':id')
   @HttpCode(204)
   async remove(@Param('id') id: string, @Req() req: AuthedRequest) {
-    requirePermission(req, 'roles.manage');
+    requireEverywhere(req, 'roles.manage');
     const { tenant, user: actor } = req.auth;
     await this.tenantDb.withTenant(tenant.id, async (tx) => {
       const role = await this.editable(tx, id, actor.id);

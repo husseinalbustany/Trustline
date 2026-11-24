@@ -1,0 +1,1 @@
+CREATE INDEX "incidents_assigned_to_idx" ON "incidents" USING btree ("tenant_id","assigned_to");

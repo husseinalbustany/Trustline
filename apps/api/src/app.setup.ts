@@ -1,5 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
+import { HttpAdapterHost } from '@nestjs/core';
 import type { NextFunction, Request, Response } from 'express';
+import { DatabaseErrorFilter } from './database/database-error.filter.js';
 
 /**
  * Settings every instance of the API needs, applied the same way when it is
@@ -15,6 +17,11 @@ export function setupApp(app: INestApplication) {
       set: (k: string, v: number) => void;
     }
   ).set('trust proxy', hops);
+
+  // A query the database refuses must not put its parameters in the log.
+  app.useGlobalFilters(
+    new DatabaseErrorFilter(app.get(HttpAdapterHost).httpAdapter),
+  );
 
   // Bodies are JSON only. A form posted from another site cannot be JSON
   // without the browser first asking permission, which the API never grants.

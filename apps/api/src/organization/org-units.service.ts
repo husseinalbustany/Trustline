@@ -11,7 +11,7 @@ import { orgUnits } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
 import type { AuthContext } from '../identity/auth.service.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
-import { SUPPORTED_LOCALES, type Localized } from '../i18n/locales.js';
+import { sameText, type Localized } from '../i18n/locales.js';
 
 export type OrgUnitType = (typeof orgUnits.type.enumValues)[number];
 
@@ -48,9 +48,6 @@ export type UpdateInput = {
   parentId?: string | null;
   active?: boolean;
 };
-
-const sameText = (a: Localized, b: Localized) =>
-  SUPPORTED_LOCALES.every((locale) => (a[locale] ?? '') === (b[locale] ?? ''));
 
 /**
  * The rules of a hospital's structure: facilities, the departments in them
@@ -202,11 +199,10 @@ export class OrgUnitsService {
 
       const changed = [
         ...(renamed ? ['name'] : []),
-        ...(moved ? ['parentId'] : []),
         ...(switched ? ['active'] : []),
       ];
       // Nothing differs from what is stored: no write, nothing to audit.
-      if (changed.length === 0) return unit;
+      if (changed.length === 0 && !moved) return unit;
 
       const [updated] = await tx
         .update(orgUnits)
@@ -218,20 +214,31 @@ export class OrgUnitsService {
         })
         .where(eq(orgUnits.id, id))
         .returning(unitFields);
-      // Which fields changed, ids and the on/off state: never the name.
-      await this.provisioning.audit(
-        tx,
-        tenant.id,
-        user.id,
-        'org_unit_updated',
-        'org_unit',
-        id,
-        {
-          changed,
-          ...(moved && { parentId: { from: unit.parentId, to: parentId } }),
-          ...(switched && { active }),
-        },
-      );
+      // A move changes what every role granted above the unit covers, so it
+      // is recorded as an action of its own, easy to find later.
+      if (moved) {
+        await this.provisioning.audit(
+          tx,
+          tenant.id,
+          user.id,
+          'org_unit_moved',
+          'org_unit',
+          id,
+          { from: unit.parentId, to: parentId },
+        );
+      }
+      // Which other fields changed, and the on/off state: never the name.
+      if (renamed || switched) {
+        await this.provisioning.audit(
+          tx,
+          tenant.id,
+          user.id,
+          'org_unit_updated',
+          'org_unit',
+          id,
+          { changed, ...(switched && { active }) },
+        );
+      }
       return updated;
     });
   }

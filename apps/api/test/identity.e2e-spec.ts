@@ -137,6 +137,8 @@ describe('hospital users, roles and sign-in', () => {
         .expect(200);
       expect(me.body.tenant.slug).toBe(a.slug);
       expect(me.body.user.email).toBe(a.adminEmail);
+      // The report form preselects the user's own unit from this.
+      expect(me.body.user).toHaveProperty('orgUnitId', null);
       expect(me.body.permissions).toContain('users.manage');
     });
 
@@ -523,6 +525,321 @@ describe('hospital users, roles and sign-in', () => {
       await owner.pool.end();
       expect(rows).toHaveLength(1);
       expect(rows[0].changes.platformAdminEmail).toBe(staffEmail);
+    });
+  });
+
+  describe('a user manager for one department', () => {
+    let ward: string;
+    let lab: string;
+    let wardManager: { id: string; cookie: string };
+    let colleague: string; // a reporter of the ward
+    let everywhere: string; // sits in the ward, reports for the whole hospital
+    const email = (name: string) => `${name}-${run}@test.invalid`;
+
+    const addUnit = async (type: string, code: string, parentId?: string) =>
+      (
+        await http()
+          .post('/org-units')
+          .set('Cookie', a.cookie)
+          .send({ type, code, name: { en: code }, parentId })
+          .expect(201)
+      ).body.id as string;
+
+    const addUser = (cookie: string, name: string, body: object) =>
+      http()
+        .post('/users')
+        .set('Cookie', cookie)
+        .send({ name: { en: name, ar: name }, email: email(name), ...body });
+
+    beforeAll(async () => {
+      const site = await addUnit('facility', 'SCOPE');
+      ward = await addUnit('department', 'SCOPE-WARD', site);
+      lab = await addUnit('department', 'SCOPE-LAB', site);
+      const role = await http()
+        .post('/roles')
+        .set('Cookie', a.cookie)
+        .send({
+          code: 'ward_admin',
+          name: { en: 'Ward admin', ar: 'Ward admin' },
+          permissions: [
+            'users.manage',
+            'roles.manage',
+            'incidents.report',
+            'policies.view',
+          ],
+        })
+        .expect(201);
+      const created = await addUser(a.cookie, 'wardmgr', {
+        orgUnitId: ward,
+        roles: [{ roleId: role.body.id, orgUnitId: ward }],
+      }).expect(201);
+      await http()
+        .post('/auth/invite/accept')
+        .send({ org: a.slug, token: created.body.invite.token, password })
+        .expect(204);
+      wardManager = {
+        id: created.body.user.id,
+        cookie: cookieOf(
+          await login(a.slug, email('wardmgr'), password).expect(200),
+        ),
+      };
+      const me = await http()
+        .get('/auth/me')
+        .set('Cookie', wardManager.cookie)
+        .expect(200);
+      expect(me.body.user.orgUnitId).toBe(ward);
+      const reporterAt = async (name: string, orgUnitId: string | null) =>
+        (
+          await addUser(a.cookie, name, {
+            orgUnitId: ward,
+            roles: [{ roleId: a.roles.reporter, orgUnitId }],
+          }).expect(201)
+        ).body.user.id as string;
+      colleague = await reporterAt('wardcolleague', ward);
+      everywhere = await reporterAt('wardeverywhere', null);
+    });
+
+    it('cannot create a user with a role for the whole organization', async () => {
+      const res = await addUser(wardManager.cookie, 'wide', {
+        orgUnitId: ward,
+        roles: [{ roleId: a.roles.reporter, orgUnitId: null }],
+      });
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('cannot_grant_higher_access');
+      // Nor one for another department.
+      const other = await addUser(wardManager.cookie, 'wide', {
+        orgUnitId: ward,
+        roles: [{ roleId: a.roles.reporter, orgUnitId: lab }],
+      });
+      expect(other.status).toBe(403);
+      const list = await http().get('/users').set('Cookie', a.cookie);
+      expect(list.body.map((u: { email: string }) => u.email)).not.toContain(
+        email('wide'),
+      );
+    });
+
+    it("cannot widen someone's role to the whole organization", async () => {
+      const res = await http()
+        .put(`/users/${colleague}/roles`)
+        .set('Cookie', wardManager.cookie)
+        .send({ roles: [{ roleId: a.roles.reporter, orgUnitId: null }] });
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('cannot_grant_higher_access');
+      const stored = await http()
+        .get(`/users/${colleague}`)
+        .set('Cookie', a.cookie)
+        .expect(200);
+      expect(stored.body.roles).toEqual([
+        expect.objectContaining({ code: 'reporter', orgUnitId: ward }),
+      ]);
+    });
+
+    it('cannot get a reset link for, edit or re-role someone with wider access', async () => {
+      const me = await http().get('/auth/me').set('Cookie', a.cookie);
+      for (const target of [everywhere, me.body.user.id as string]) {
+        const link = await http()
+          .post(`/users/${target}/invite`)
+          .set('Cookie', wardManager.cookie);
+        expect(link.status).toBe(403);
+        expect(link.body.token).toBeUndefined();
+      }
+      const link = await http()
+        .post(`/users/${everywhere}/invite`)
+        .set('Cookie', wardManager.cookie);
+      expect(link.body.code).toBe('cannot_manage_higher_access');
+      const edit = await http()
+        .patch(`/users/${everywhere}`)
+        .set('Cookie', wardManager.cookie)
+        .send({ status: 'disabled' });
+      expect(edit.status).toBe(403);
+      expect(edit.body.code).toBe('cannot_manage_higher_access');
+      const strip = await http()
+        .put(`/users/${everywhere}/roles`)
+        .set('Cookie', wardManager.cookie)
+        .send({ roles: [] });
+      expect(strip.status).toBe(403);
+    });
+
+    it('cannot place or manage anyone outside the department', async () => {
+      for (const orgUnitId of [lab, null]) {
+        const res = await addUser(wardManager.cookie, 'outside', {
+          orgUnitId,
+          roles: [],
+        });
+        expect(res.status).toBe(403);
+        expect(res.body.code).toBe('outside_scope');
+      }
+      const outsider = await addUser(a.cookie, 'labperson', {
+        orgUnitId: lab,
+        roles: [],
+      }).expect(201);
+      const link = await http()
+        .post(`/users/${outsider.body.user.id}/invite`)
+        .set('Cookie', wardManager.cookie);
+      expect(link.status).toBe(403);
+      expect(link.body.code).toBe('outside_scope');
+      const moved = await http()
+        .patch(`/users/${colleague}`)
+        .set('Cookie', wardManager.cookie)
+        .send({ orgUnitId: lab });
+      expect(moved.status).toBe(403);
+      expect(moved.body.code).toBe('outside_scope');
+    });
+
+    it('cannot write roles, which belong to the whole hospital', async () => {
+      const res = await http()
+        .post('/roles')
+        .set('Cookie', wardManager.cookie)
+        .send({
+          code: 'ward_made',
+          name: { en: 'Ward made', ar: 'Ward made' },
+          permissions: ['policies.view'],
+        });
+      expect(res.status).toBe(403);
+      expect(res.body.code).toBe('missing_permission');
+      await http()
+        .patch(`/roles/${a.roles.policy_author ?? a.roles.reporter}`)
+        .set('Cookie', wardManager.cookie)
+        .send({ name: { en: 'Renamed' } })
+        .expect(403);
+      // Reading the list, to assign roles, stays open to them.
+      await http().get('/roles').set('Cookie', wardManager.cookie).expect(200);
+    });
+
+    it('can still add a reporter for the ward and reset a ward colleague', async () => {
+      const added = await addUser(wardManager.cookie, 'wardnew', {
+        orgUnitId: ward,
+        roles: [{ roleId: a.roles.reporter, orgUnitId: ward }],
+      }).expect(201);
+      expect(added.body.user).toMatchObject({
+        orgUnitId: ward,
+        orgUnit: { id: ward, name: { en: 'SCOPE-WARD' }, active: true },
+        roles: [
+          {
+            code: 'reporter',
+            orgUnitId: ward,
+            orgUnit: { id: ward, name: { en: 'SCOPE-WARD' }, active: true },
+          },
+        ],
+      });
+      const link = await http()
+        .post(`/users/${colleague}/invite`)
+        .set('Cookie', wardManager.cookie)
+        .expect(201);
+      expect(link.body.token).toBeTruthy();
+      await http()
+        .patch(`/users/${colleague}`)
+        .set('Cookie', wardManager.cookie)
+        .send({ jobTitle: 'Nurse' })
+        .expect(200);
+    });
+
+    it('leaves a whole-organization administrator unaffected', async () => {
+      const widened = await http()
+        .put(`/users/${colleague}/roles`)
+        .set('Cookie', a.cookie)
+        .send({ roles: [{ roleId: a.roles.reporter, orgUnitId: null }] })
+        .expect(200);
+      expect(widened.body.roles).toEqual([
+        expect.objectContaining({ orgUnitId: null, orgUnit: null }),
+      ]);
+      await http()
+        .post(`/users/${everywhere}/invite`)
+        .set('Cookie', a.cookie)
+        .expect(201);
+      await http()
+        .patch(`/users/${everywhere}`)
+        .set('Cookie', a.cookie)
+        .send({ orgUnitId: null })
+        .expect(200);
+    });
+
+    it('shows the last sign-in as a day, and a unit switched off as such', async () => {
+      const list = await http()
+        .get('/users')
+        .set('Cookie', a.cookie)
+        .expect(200);
+      const admin = list.body.find(
+        (u: { email: string }) => u.email === a.adminEmail,
+      );
+      expect(admin.lastSignInAt).toBe(new Date().toISOString().slice(0, 10));
+      expect(admin.orgUnit).toBeNull();
+      const one = await http()
+        .get(`/users/${wardManager.id}`)
+        .set('Cookie', a.cookie)
+        .expect(200);
+      expect(one.body.lastSignInAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      const never = list.body.find(
+        (u: { email: string }) => u.email === email('labperson'),
+      );
+      expect(never.lastSignInAt).toBeNull();
+
+      await http()
+        .patch(`/org-units/${lab}`)
+        .set('Cookie', a.cookie)
+        .send({ active: false })
+        .expect(200);
+      const after = await http()
+        .get(`/users/${never.id}`)
+        .set('Cookie', a.cookie)
+        .expect(200);
+      expect(after.body).toMatchObject({
+        orgUnitId: lab,
+        orgUnit: { id: lab, active: false },
+      });
+    });
+
+    it('records only what an edit changed, and nothing for one that changed nothing', async () => {
+      const owner = createDatabase(requireEnv('DATABASE_URL'));
+      const log = async () =>
+        (
+          await owner.db.execute<{ changes: Record<string, unknown> }>(
+            sql`select changes from audit_log where tenant_id = ${a.id} and entity_id = ${colleague} and action = 'user_updated' order by occurred_at`,
+          )
+        ).rows.map((r) => r.changes);
+      const patch = (body: object) =>
+        http()
+          .patch(`/users/${colleague}`)
+          .set('Cookie', a.cookie)
+          .send(body)
+          .expect(200);
+      try {
+        const before = (await log()).length;
+        const current = await http()
+          .get(`/users/${colleague}`)
+          .set('Cookie', a.cookie)
+          .expect(200);
+        // The whole form, as the screen sends it, with nothing altered.
+        const same = await patch({
+          name: current.body.name,
+          orgUnitId: current.body.orgUnitId,
+          jobTitle: current.body.jobTitle,
+          phone: current.body.phone,
+          employeeNumber: current.body.employeeNumber,
+        });
+        expect(same.body.orgUnitId).toBe(ward);
+        expect(await log()).toHaveLength(before);
+
+        // One field alone leaves the rest, the unit included, where it was.
+        const titled = await patch({ jobTitle: 'Senior nurse' });
+        expect(titled.body).toMatchObject({ orgUnitId: ward });
+        await patch({
+          name: current.body.name,
+          orgUnitId: null,
+          jobTitle: 'Senior nurse',
+          status: 'disabled',
+        });
+        expect((await log()).slice(before)).toEqual([
+          { changed: ['jobTitle'] },
+          {
+            changed: ['orgUnitId', 'status'],
+            orgUnitId: { from: ward, to: null },
+            status: { from: 'invited', to: 'disabled' },
+          },
+        ]);
+      } finally {
+        await owner.pool.end();
+      }
     });
   });
 
