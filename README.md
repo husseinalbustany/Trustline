@@ -14,6 +14,26 @@ tenant isolation, and the bilingual web shell.
 | `apps/web` | Next.js web app, English and Arabic (right-to-left). |
 | `docker-compose.yml` | Postgres for local development. |
 
+## Web app structure
+
+Every signed-in screen sits inside one shell: a sidebar, a top bar with the
+"Report an incident" button, and the page.
+
+| Path under `apps/web/src` | What it holds |
+| --- | --- |
+| `config/navigation.ts` | The sidebar: groups, order, routes, icons, delivery phase. |
+| `app/[lang]/(app)/` | One folder per area: `dashboard`, `incidents`, `investigations`, `actions`, `policies`, `risks`, `training`, `reports`, `admin/*`. |
+| `components/shell/` | Sidebar, top bar, language switcher. |
+| `components/ui/` | Shared building blocks: page header, panel, badge, button. |
+| `i18n/dictionaries/` | All text, in `en.json` and `ar.json`. No text is written in components. |
+
+Areas that are not built yet render `components/module-page.tsx`, which lists
+what the area will cover. To build an area, replace its `page.tsx`. To add
+one, add a folder, a `navigation.ts` entry, and its text in both dictionaries.
+
+Layout uses logical properties (`start`/`end`, not left/right), so Arabic
+mirrors without separate styles.
+
 ## Run it locally
 
 Needs Node 22, pnpm and Docker.

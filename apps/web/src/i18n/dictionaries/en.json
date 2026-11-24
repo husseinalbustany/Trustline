@@ -1,30 +1,150 @@
 {
   "app": {
     "name": "Trustline",
-    "tagline": "Quality, risk and incident management for hospitals",
-    "switchLanguage": "العربية"
+    "tagline": "Quality, risk and incident management for hospitals"
   },
-  "home": {
-    "status": "Foundation in progress",
-    "intro": "One line of trust from the moment a concern is reported to its resolution.",
-    "modulesTitle": "Planned for the first release",
-    "modules": {
-      "incidents": {
-        "title": "Incident and hazard reporting",
-        "body": "Any employee can raise a safety concern in under two minutes."
-      },
-      "actions": {
-        "title": "Actions",
-        "body": "One tracker for every corrective and preventive action."
-      },
-      "policies": {
-        "title": "Policies and procedures",
-        "body": "One library of current, approved documents with signed approvals."
-      },
-      "reporting": {
-        "title": "Dashboards and reports",
-        "body": "Leadership and committees see the facts."
-      }
+  "shell": {
+    "skipToContent": "Skip to content",
+    "navigation": "Main",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu",
+    "reportIncident": "Report an incident",
+    "switchLanguage": "العربية",
+    "phase2": "Phase 2"
+  },
+  "nav": {
+    "groups": {
+      "overview": "Overview",
+      "safety": "Safety",
+      "governance": "Governance",
+      "insights": "Insights",
+      "administration": "Administration"
+    },
+    "items": {
+      "dashboard": "Dashboard",
+      "incidents": "Incidents",
+      "investigations": "Investigations",
+      "actions": "Actions",
+      "policies": "Policies",
+      "risks": "Risks",
+      "training": "Training",
+      "reports": "Reports",
+      "organization": "Organization",
+      "users": "Users and roles",
+      "settings": "Settings"
+    }
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "description": "What needs attention across incidents, actions and policies.",
+    "noData": "No data yet",
+    "tiles": {
+      "openIncidents": "Open incidents",
+      "awaitingTriage": "Awaiting triage",
+      "overdueActions": "Overdue actions",
+      "policiesDue": "Policies due for review"
+    },
+    "recentIncidents": "Recent incidents",
+    "myTasks": "My tasks"
+  },
+  "reportIncident": {
+    "title": "Report an incident",
+    "description": "Report an incident, near miss or hazard. It should take under two minutes."
+  },
+  "modulePage": {
+    "scopeTitle": "What this area will cover",
+    "notBuilt": "This area is not built yet."
+  },
+  "modules": {
+    "incidents": {
+      "title": "Incidents",
+      "description": "Incidents, near misses and hazards, from report to closure.",
+      "scope": [
+        "Reporting by any employee, with an anonymous option and QR codes",
+        "Triage and routing to the responsible departments",
+        "Response deadlines with escalation, and feedback to the reporter"
+      ]
+    },
+    "investigations": {
+      "title": "Investigations",
+      "description": "Investigation and root cause analysis for serious events.",
+      "scope": [
+        "Investigation team, timeline, interviews and evidence",
+        "5 Whys, fishbone diagram and contributing factors",
+        "Root cause analysis report with approval"
+      ]
+    },
+    "actions": {
+      "title": "Actions",
+      "description": "One tracker for every corrective and preventive action.",
+      "scope": [
+        "Actions from incidents, investigations, risks and policies in one place",
+        "Owners, due dates, evidence and escalation",
+        "Effectiveness checks after an action is completed"
+      ]
+    },
+    "policies": {
+      "title": "Policies",
+      "description": "One library of current, approved policies and procedures.",
+      "scope": [
+        "Templates, numbering and version history",
+        "Configurable approval cycles with electronic signature",
+        "Periodic review reminders and staff acknowledgement"
+      ]
+    },
+    "risks": {
+      "title": "Risks",
+      "description": "Risk registers for the organization and each department.",
+      "scope": [
+        "Enterprise and department registers",
+        "Configurable 5×5 risk matrix and heat maps",
+        "Controls, reviews, and incidents linked to risks"
+      ]
+    },
+    "training": {
+      "title": "Training",
+      "description": "Proof that staff were trained, with their signature.",
+      "scope": [
+        "Courses, sessions and awareness campaigns",
+        "Signed attendance, quizzes and certificates with expiry",
+        "Required training by role, and compliance by department"
+      ]
+    },
+    "reports": {
+      "title": "Reports",
+      "description": "Dashboards and reports for leadership and committees.",
+      "scope": [
+        "Role-based dashboards and trends",
+        "Standard reports with Excel and PDF export",
+        "Scheduled reports by email"
+      ]
+    },
+    "organization": {
+      "title": "Organization",
+      "description": "Facilities, departments and units.",
+      "scope": [
+        "The organization's structure, in English and Arabic",
+        "Locations used for reporting and routing",
+        "Department owners and escalation contacts"
+      ]
+    },
+    "users": {
+      "title": "Users and roles",
+      "description": "Who can sign in and what they can do.",
+      "scope": [
+        "Accounts created automatically at first single sign-on",
+        "Roles and permissions per department and facility",
+        "Access reviews and the audit trail of changes"
+      ]
+    },
+    "settings": {
+      "title": "Settings",
+      "description": "How Trustline is configured for this organization.",
+      "scope": [
+        "Accreditation standard, languages and branding",
+        "Incident categories, forms and approval workflows",
+        "Single sign-on and notifications"
+      ]
     }
   }
 }

@@ -6,6 +6,10 @@
   --muted: #5b6875;
   --surface: #f1f4f6;
   --line: #dde3e8;
+  --accent: #0f6b6b;
+  --accent-hover: #0b5656;
+  --accent-fg: #ffffff;
+  --accent-soft: #dff0ef;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -15,6 +19,10 @@
     --muted: #98a4af;
     --surface: #1a222a;
     --line: #2a343e;
+    --accent: #5cc9c4;
+    --accent-hover: #7bd6d2;
+    --accent-fg: #06201f;
+    --accent-soft: #14302f;
   }
 }
 
@@ -24,6 +32,10 @@
   --color-muted: var(--muted);
   --color-surface: var(--surface);
   --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: var(--accent-soft);
   /* System fonts: no build-time font download, and each platform's own
      Arabic face. */
   --font-sans:
@@ -34,4 +46,9 @@
 body {
   background: var(--background);
   color: var(--foreground);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
