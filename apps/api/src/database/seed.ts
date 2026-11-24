@@ -3,7 +3,8 @@ import { requireEnv } from '../env.js';
 import { createDatabase } from './client.js';
 import type { Locale, Localized } from '../i18n/locales.js';
 import { SYSTEM_ROLES } from '../identity/permissions.js';
-import { orgUnits, roles, tenants } from './schema.js';
+import { DEFAULT_INCIDENT_CATEGORIES } from '../incidents/categories.js';
+import { incidentCategories, orgUnits, roles, tenants } from './schema.js';
 
 type UnitSeed = {
   type: 'facility' | 'department' | 'unit';
@@ -171,6 +172,15 @@ export async function seed() {
               description: sql`excluded.description`,
               permissions: sql`excluded.permissions`,
             },
+          });
+
+        // In every language, like the built-in roles. Existing ones are kept
+        // as they are, exactly as ProvisioningService does for a new client.
+        await tx
+          .insert(incidentCategories)
+          .values(DEFAULT_INCIDENT_CATEGORIES.map((c) => ({ ...c, tenantId })))
+          .onConflictDoNothing({
+            target: [incidentCategories.tenantId, incidentCategories.code],
           });
       });
     }

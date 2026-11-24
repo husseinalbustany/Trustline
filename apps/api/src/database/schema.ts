@@ -9,6 +9,7 @@ import {
   pgPolicy,
   pgRole,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -285,6 +286,248 @@ export const auditLog = pgTable(
   },
   (t) => [
     index('audit_log_entity_idx').on(t.tenantId, t.entityType, t.entityId),
+    tenantIsolation(),
+  ],
+);
+
+export const incidentType = pgEnum('incident_type', [
+  'incident',
+  'near_miss',
+  'hazard',
+]);
+
+export const incidentHarmLevel = pgEnum('incident_harm_level', [
+  'none',
+  'mild',
+  'moderate',
+  'severe',
+  'death',
+]);
+
+export const incidentStatus = pgEnum('incident_status', [
+  'new',
+  'triaged',
+  'in_progress',
+  'closed',
+  'rejected',
+]);
+
+export const incidentEventKind = pgEnum('incident_event_kind', [
+  'reported',
+  'triaged',
+  'assigned',
+  'status_changed',
+  'commented',
+  'reopened',
+  'closed',
+  'rejected',
+]);
+
+export const incidentCommentVisibility = pgEnum('incident_comment_visibility', [
+  'everyone',
+  // Not shown to someone who sees the incident only because they reported it.
+  'internal',
+]);
+
+// What kind of thing went wrong. Every client starts with the default list in
+// incidents/categories.ts.
+export const incidentCategories = pgTable(
+  'incident_categories',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    code: text().notNull(),
+    name: jsonb().$type<Localized>().notNull(),
+    position: integer().notNull().default(0),
+    active: boolean().notNull().default(true),
+  },
+  (t) => [
+    unique('incident_categories_tenant_id_id_key').on(t.tenantId, t.id),
+    unique('incident_categories_tenant_id_code_key').on(t.tenantId, t.code),
+    tenantIsolation(),
+  ],
+);
+
+// A reported incident, near miss or hazard. Holds no patient identifier of
+// any kind. The application role cannot delete one.
+export const incidents = pgTable(
+  'incidents',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    // INC-<year>-<5 digits>, numbered per tenant and year by nextReference().
+    reference: text().notNull(),
+    type: incidentType().notNull(),
+    categoryId: uuid().notNull(),
+    // Where it happened.
+    orgUnitId: uuid().notNull(),
+    occurredAt: timestamp({ withTimezone: true }).notNull(),
+    // The reporter's own words, in whatever language they wrote.
+    description: text().notNull(),
+    immediateAction: text(),
+    // Null when reported anonymously. Nothing else may record who it was.
+    reportedBy: uuid(),
+    reportedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    // Set by the reporter, corrected at triage.
+    harmLevel: incidentHarmLevel().notNull(),
+    isSentinel: boolean().notNull().default(false),
+    status: incidentStatus().notNull().default('new'),
+    // The department responsible, and the person in it. Both set at triage.
+    ownerUnitId: uuid(),
+    assignedTo: uuid(),
+    triagedBy: uuid(),
+    triagedAt: timestamp({ withTimezone: true }),
+    closedBy: uuid(),
+    closedAt: timestamp({ withTimezone: true }),
+    closureSummary: text(),
+    rejectionReason: text(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('incidents_tenant_id_id_key').on(t.tenantId, t.id),
+    unique('incidents_tenant_id_reference_key').on(t.tenantId, t.reference),
+    foreignKey({
+      name: 'incidents_category_fk',
+      columns: [t.tenantId, t.categoryId],
+      foreignColumns: [incidentCategories.tenantId, incidentCategories.id],
+    }),
+    foreignKey({
+      name: 'incidents_org_unit_fk',
+      columns: [t.tenantId, t.orgUnitId],
+      foreignColumns: [orgUnits.tenantId, orgUnits.id],
+    }),
+    foreignKey({
+      name: 'incidents_owner_unit_fk',
+      columns: [t.tenantId, t.ownerUnitId],
+      foreignColumns: [orgUnits.tenantId, orgUnits.id],
+    }),
+    foreignKey({
+      name: 'incidents_reported_by_fk',
+      columns: [t.tenantId, t.reportedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'incidents_assigned_to_fk',
+      columns: [t.tenantId, t.assignedTo],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'incidents_triaged_by_fk',
+      columns: [t.tenantId, t.triagedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'incidents_closed_by_fk',
+      columns: [t.tenantId, t.closedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    // The list is filtered by status and shown newest first.
+    index('incidents_status_idx').on(t.tenantId, t.status, t.reportedAt),
+    index('incidents_reported_by_idx').on(t.tenantId, t.reportedBy),
+    index('incidents_org_unit_idx').on(t.tenantId, t.orgUnitId),
+    index('incidents_owner_unit_idx').on(t.tenantId, t.ownerUnitId),
+    tenantIsolation(),
+  ],
+);
+
+// The timeline of an incident. Like the audit log, the application role can
+// add rows and read them, never change or delete them.
+export const incidentEvents = pgTable(
+  'incident_events',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    incidentId: uuid().notNull(),
+    occurredAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    kind: incidentEventKind().notNull(),
+    // Null for an anonymous report.
+    actorId: uuid(),
+    fromStatus: incidentStatus(),
+    toStatus: incidentStatus(),
+    details: jsonb(),
+    // Hidden unless said otherwise, so a forgotten value never shows the
+    // reporter something internal.
+    visibleToReporter: boolean().notNull().default(false),
+  },
+  (t) => [
+    foreignKey({
+      name: 'incident_events_incident_fk',
+      columns: [t.tenantId, t.incidentId],
+      foreignColumns: [incidents.tenantId, incidents.id],
+    }),
+    foreignKey({
+      name: 'incident_events_actor_fk',
+      columns: [t.tenantId, t.actorId],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    index('incident_events_incident_idx').on(
+      t.tenantId,
+      t.incidentId,
+      t.occurredAt,
+    ),
+    tenantIsolation(),
+  ],
+);
+
+// The application role can add and read comments, not change or delete them.
+export const incidentComments = pgTable(
+  'incident_comments',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    incidentId: uuid().notNull(),
+    authorId: uuid().notNull(),
+    body: text().notNull(),
+    // No default: whoever writes a comment must say who may read it.
+    visibility: incidentCommentVisibility().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'incident_comments_incident_fk',
+      columns: [t.tenantId, t.incidentId],
+      foreignColumns: [incidents.tenantId, incidents.id],
+    }),
+    foreignKey({
+      name: 'incident_comments_author_fk',
+      columns: [t.tenantId, t.authorId],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    index('incident_comments_incident_idx').on(
+      t.tenantId,
+      t.incidentId,
+      t.createdAt,
+    ),
+    tenantIsolation(),
+  ],
+);
+
+// The last number given out for each kind of reference, per tenant and year.
+// Only nextReference() in incidents/reference.ts should write here.
+export const referenceCounters = pgTable(
+  'reference_counters',
+  {
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    prefix: text().notNull(),
+    year: integer().notNull(),
+    lastNumber: integer().notNull().default(0),
+  },
+  (t) => [
+    primaryKey({
+      name: 'reference_counters_pkey',
+      columns: [t.tenantId, t.prefix, t.year],
+    }),
     tenantIsolation(),
   ],
 );

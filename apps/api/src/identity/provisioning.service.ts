@@ -4,12 +4,14 @@ import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { Transaction } from '../database/client.js';
 import {
   auditLog,
+  incidentCategories,
   roleAssignments,
   roles,
   users,
   userTokens,
 } from '../database/schema.js';
 import type { Localized } from '../i18n/locales.js';
+import { DEFAULT_INCIDENT_CATEGORIES } from '../incidents/categories.js';
 import { SYSTEM_ROLES } from './permissions.js';
 
 export const INVITE_HOURS = 72;
@@ -77,6 +79,20 @@ export class ProvisioningService {
           permissions: sql`excluded.permissions`,
           isSystem: true,
         },
+      });
+  }
+
+  /**
+   * Adds the default incident categories a client does not have yet. Ones it
+   * already has are left alone, so its own renaming, order and switched-off
+   * categories survive. Safe to repeat.
+   */
+  async ensureIncidentCategories(tx: Transaction, tenantId: string) {
+    await tx
+      .insert(incidentCategories)
+      .values(DEFAULT_INCIDENT_CATEGORIES.map((c) => ({ ...c, tenantId })))
+      .onConflictDoNothing({
+        target: [incidentCategories.tenantId, incidentCategories.code],
       });
   }
 

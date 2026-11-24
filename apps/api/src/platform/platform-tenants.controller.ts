@@ -107,9 +107,10 @@ export class PlatformTenantsController {
         return created;
       });
       // Safe to repeat: creating an administrator runs it again.
-      await this.tenantDb.withTenant(tenant.id, (tx) =>
-        this.provisioning.ensureSystemRoles(tx, tenant.id),
-      );
+      await this.tenantDb.withTenant(tenant.id, async (tx) => {
+        await this.provisioning.ensureSystemRoles(tx, tenant.id);
+        await this.provisioning.ensureIncidentCategories(tx, tenant.id);
+      });
       return tenant;
     } catch (e) {
       if (isUniqueViolation(e)) {
@@ -231,6 +232,7 @@ export class PlatformTenantsController {
     try {
       const result = await this.tenantDb.withTenant(tenant.id, async (tx) => {
         await this.provisioning.ensureSystemRoles(tx, tenant.id);
+        await this.provisioning.ensureIncidentCategories(tx, tenant.id);
         const [administrator] = await tx
           .select({ id: roles.id })
           .from(roles)

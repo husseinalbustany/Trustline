@@ -71,6 +71,20 @@
       "when": 1795544616753,
       "tag": "0009_localized_text_drop",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795545348788,
+      "tag": "0010_incidents",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795545376076,
+      "tag": "0011_incidents_grants",
+      "breakpoints": true
     }
   ]
 }

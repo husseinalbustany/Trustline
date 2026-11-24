@@ -2,9 +2,14 @@ import { inArray, like, or } from 'drizzle-orm';
 import { createDatabase } from '../src/database/client.js';
 import {
   auditLog,
+  incidentCategories,
+  incidentComments,
+  incidentEvents,
+  incidents,
   orgUnits,
   platformAdmins,
   platformAuditLog,
+  referenceCounters,
   roleAssignments,
   roles,
   sessions,
@@ -34,7 +39,14 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
           inArray(platformAuditLog.adminId, admins),
         ),
       );
+    // Children before what they point to: the timeline and comments before
+    // incidents, incidents before categories, users and org units.
     for (const table of [
+      incidentEvents,
+      incidentComments,
+      incidents,
+      incidentCategories,
+      referenceCounters,
       auditLog,
       userTokens,
       sessions,
