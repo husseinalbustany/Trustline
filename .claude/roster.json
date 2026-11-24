@@ -1,0 +1,12 @@
+{
+  "agents": {
+    "database-engineer": { "name": "Karim", "look": "boy-1" },
+    "api-engineer": { "name": "Ziad", "look": "boy-2" },
+    "web-engineer": { "name": "Maya", "look": "girl-1" },
+    "test-engineer": { "name": "Jad", "look": "boy-3" },
+    "security-reviewer": { "name": "Rima", "look": "girl-2" },
+    "code-reviewer": { "name": "Elie", "look": "boy-4" },
+    "bilingual-reviewer": { "name": "Nour", "look": "girl-3" },
+    "quality-reviewer": { "name": "Yara", "look": "girl-4" }
+  }
+}

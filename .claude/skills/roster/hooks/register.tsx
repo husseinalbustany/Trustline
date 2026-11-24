@@ -2,15 +2,18 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { LiveAgent, Member, Tab } from '../types'
+import { avatarSvg } from './avatar'
 
 const PANE = 'roster'
 const AGENTS_DIR = '.claude/agents'
 const RULES_FILE = 'CLAUDE.md'
+// Each agent's name on the team and the portrait drawn for it.
+const ROSTER_FILE = '.claude/roster.json'
 const RULES_HEADING = '## Rules that are easy to break'
 
 const tab = atom({ plugin: 'roster', key: 'tab' } as const, 'team' as Tab)
 const team = atom({ plugin: 'roster', key: 'team' } as const, [], {
-  shape: 'team-1',
+  shape: 'team-2',
 })
 const rules = atom({ plugin: 'roster', key: 'rules' } as const, [], {
   shape: 'rules-1',
@@ -63,6 +66,21 @@ function ruleOf(bullet: string): string {
   return firstSentence(plain)
 }
 
+type Person = { name?: string; look?: string }
+
+/** Reads the names and looks from the roster file; none if it is missing or broken. */
+async function loadPeople($: EngineInterface): Promise<Record<string, Person>> {
+  const text = await $.fs.read(ROSTER_FILE).catch(() => '')
+
+  try {
+    const parsed = JSON.parse(text) as { agents?: Record<string, Person> }
+
+    return parsed.agents ?? {}
+  } catch {
+    return {}
+  }
+}
+
 async function loadTeam($: EngineInterface): Promise<Member[]> {
   const entries = await $.fs.list(AGENTS_DIR).catch(() => [])
   const files = entries
@@ -70,12 +88,16 @@ async function loadTeam($: EngineInterface): Promise<Member[]> {
     .map(e => e.name)
     .sort()
   const members: Member[] = []
+  const people = await loadPeople($)
 
   for (const file of files) {
     const text = await $.fs.read(`${AGENTS_DIR}/${file}`).catch(() => '')
     const tools = field(text, 'tools')
+    const name = field(text, 'name') || file.replace(/\.md$/, '')
     members.push({
-      name: field(text, 'name') || file.replace(/\.md$/, ''),
+      name,
+      person: people[name]?.name ?? '',
+      look: people[name]?.look ?? '',
       description: firstSentence(field(text, 'description')),
       // No `tools` line means every tool, so the agent can edit.
       canEdit: tools === '' || /\b(Edit|Write)\b/.test(tools),
@@ -194,8 +216,14 @@ export const register: Register = on => {
     // One node of the tree: a colored card, indented by its depth. Its dot
     // fills, in green, while it works. A plain column box, with nothing
     // beside it, which every surface lays out the same way.
+    // Portraits are drawn where the surface can draw one; a terminal cannot.
+    const table = $.ui.resolve(e)
+    const Svg = 'Svg' in table ? table.Svg : undefined
+
     const node = (opts: {
       name: string
+      role?: string
+      look?: string
       note?: string
       color: string
       busy?: boolean
@@ -208,16 +236,30 @@ export const register: Register = on => {
         marginLeft={opts.depth * 2}
         flexDirection="column"
       >
-        <Text bold>
-          <Text color={opts.busy ? 'success' : opts.color}>
-            {opts.busy ? '● ' : '○ '}
+        <Box gap={1} alignItems="center">
+          {Svg && opts.look ? (
+            <Svg
+              source={avatarSvg(opts.look)}
+              alt={`Portrait of ${opts.name}`}
+              width={40}
+              height={40}
+            />
+          ) : null}
+          <Text bold>
+            <Text color={opts.busy ? 'success' : opts.color}>
+              {opts.busy ? '● ' : '○ '}
+            </Text>
+            {opts.name}
+            {opts.role ? <Text dimColor> · {opts.role}</Text> : null}
+            {opts.busy && <Text color="success"> working</Text>}
           </Text>
-          {opts.name}
-          {opts.busy && <Text color="success"> working</Text>}
-        </Text>
+        </Box>
         {opts.note && <Text dimColor>{opts.note}</Text>}
       </Box>
     )
+
+    // An agent is shown by its person's name, with its role beside it.
+    const personOf = (type: string) => members.find(m => m.name === type)
 
     // A branch of the tree: its label, then its agents one level deeper.
     const branch = (title: string, note: string, color: string, list: Member[]) => (
@@ -232,7 +274,9 @@ export const register: Register = on => {
         </Box>
         {list.map(m =>
           node({
-            name: m.name,
+            name: m.person || m.name,
+            role: m.person ? m.name : undefined,
+            look: m.look,
             note: m.description,
             color,
             busy: isWorking(m.name),
@@ -314,7 +358,9 @@ export const register: Register = on => {
               >
                 <Text bold={a.status === 'running'}>
                   {a.status === 'running' ? '● ' : '○ '}
-                  {a.type}
+                  {personOf(a.type)?.person
+                    ? `${personOf(a.type)?.person} · ${a.type}`
+                    : a.type}
                   <Text dimColor> {a.status}</Text>
                 </Text>
                 <Text dimColor>{a.description}</Text>

@@ -8,6 +8,11 @@ A panel for this project's Claude agents. Type `/roster` to open it.
 - **Workflow**: the order work moves through the team.
 - **Rules**: the "Rules that are easy to break" section of `CLAUDE.md`.
 
+Each agent's name on the team and its portrait come from
+`.claude/roster.json`: `name` is shown beside the role, and `look` picks one
+of eight drawn portraits (`girl-1` to `girl-4`, `boy-1` to `boy-4`). An agent
+not listed there is shown by its role alone.
+
 Press Refresh after adding or editing an agent file. Add an agent by adding a
 file to `.claude/agents`; the panel reads the folder, so nothing else changes.
 

@@ -36,9 +36,11 @@ test('the roster lists agents from the project, grouped by what they may do', as
   ] }))
   on('fs.read', (_, e) => ({
     value:
-      e.path === 'CLAUDE.md'
+      e.path.endsWith('CLAUDE.md')
         ? NOTES
-        : AGENT(
+        : e.path.endsWith('roster.json')
+          ? '{"agents":{"api-engineer":{"name":"Ziad","look":"boy-2"}}}'
+          : AGENT(
             e.path.includes('api') ? 'api-engineer' : 'code-reviewer',
             e.path.includes('api') ? 'Read, Edit, Write, Bash' : 'Read, Grep, Bash',
           ),
@@ -51,9 +53,17 @@ test('the roster lists agents from the project, grouped by what they may do', as
     const ui = await $.ui.mount({ ...PANE, surface })
 
     expect((await ui.find({ type: 'Text', text: /Agents/ }))?.text).toMatch(/Agents 2/)
-    expect((await ui.find({ type: 'Text', text: /○ api-engineer/ }))?.text).toBe(
-      '○ api-engineer',
+    // An agent in the roster file goes by its person's name, role beside it.
+    expect((await ui.find({ type: 'Text', text: /Ziad/ }))?.text).toBe(
+      '○ Ziad · api-engineer',
     )
+    // One not in the file keeps its role as its name.
+    expect((await ui.find({ type: 'Text', text: /○ code-reviewer/ }))?.text).toBe(
+      '○ code-reviewer',
+    )
+    // A portrait is drawn wherever the surface can draw one.
+    const portrait = await ui.find({ type: 'Svg' })
+    expect(portrait === undefined).toBe(surface === 'terminal')
     expect(await ui.find({ type: 'Text', text: /○ Owner/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /○ Lead/ })).toBeDefined()
     expect(
