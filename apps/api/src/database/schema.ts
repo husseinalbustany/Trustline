@@ -2,6 +2,8 @@ import { sql } from 'drizzle-orm';
 import {
   foreignKey,
   index,
+  integer,
+  jsonb,
   pgEnum,
   pgPolicy,
   pgRole,
@@ -40,6 +42,20 @@ export const orgUnitType = pgEnum('org_unit_type', [
   'unit',
 ]);
 
+export const tenantStatus = pgEnum('tenant_status', ['active', 'suspended']);
+
+export const tenantPlan = pgEnum('tenant_plan', [
+  'starter',
+  'professional',
+  'enterprise',
+]);
+
+export const signInMethod = pgEnum('sign_in_method', [
+  'password',
+  'sso',
+  'both',
+]);
+
 export const tenants = pgTable('tenants', {
   id: uuid().primaryKey().defaultRandom(),
   slug: text().notNull().unique(),
@@ -50,6 +66,9 @@ export const tenants = pgTable('tenants', {
   // Where this tenant's data must be hosted. Null until the launch regions
   // are decided.
   dataRegion: text(),
+  status: tenantStatus().notNull().default('active'),
+  plan: tenantPlan().notNull().default('starter'),
+  signInMethod: signInMethod().notNull().default('password'),
   createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -79,4 +98,42 @@ export const orgUnits = pgTable(
     index('org_units_parent_idx').on(t.tenantId, t.parentId),
     tenantIsolation(),
   ],
+);
+
+// Platform tables: Trustline's own staff and what they do in the admin portal.
+// They hold no hospital data. Only the trustline_platform role can reach them,
+// and that role has no access to tenant data tables.
+
+export const platformAdmins = pgTable('platform_admins', {
+  id: uuid().primaryKey().defaultRandom(),
+  email: text().notNull().unique(),
+  name: text().notNull(),
+  passwordHash: text().notNull(),
+  failedAttempts: integer().notNull().default(0),
+  lockedUntil: timestamp({ withTimezone: true }),
+  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+});
+
+export const platformSessions = pgTable('platform_sessions', {
+  id: uuid().primaryKey().defaultRandom(),
+  // SHA-256 of the session token. The token itself is only in the cookie.
+  tokenHash: text().notNull().unique(),
+  adminId: uuid()
+    .notNull()
+    .references(() => platformAdmins.id, { onDelete: 'cascade' }),
+  expiresAt: timestamp({ withTimezone: true }).notNull(),
+  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+});
+
+export const platformAuditLog = pgTable(
+  'platform_audit_log',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    adminId: uuid().references(() => platformAdmins.id),
+    action: text().notNull(),
+    targetTenantId: uuid().references(() => tenants.id),
+    details: jsonb(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('platform_audit_log_tenant_idx').on(t.targetTenantId)],
 );

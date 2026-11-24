@@ -105,7 +105,10 @@ export async function seed() {
             .select({ id: orgUnits.id })
             .from(orgUnits)
             .where(
-              and(eq(orgUnits.tenantId, tenantId), eq(orgUnits.code, unit.code)),
+              and(
+                eq(orgUnits.tenantId, tenantId),
+                eq(orgUnits.code, unit.code),
+              ),
             );
           for (const child of children) await insertUnit(child, id);
         };

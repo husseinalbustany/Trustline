@@ -34,6 +34,38 @@ one, add a folder, a `navigation.ts` entry, and its text in both dictionaries.
 Layout uses logical properties (`start`/`end`, not left/right), so Arabic
 mirrors without separate styles.
 
+## Admin portal
+
+Trustline's own staff manage every client at `/en/platform` (or `/ar/platform`):
+add a hospital, edit its settings, suspend or reactivate it. It has its own
+sign-in, separate from the hospitals' users.
+
+- **Accounts** are created from the command line, never from the portal or
+  the API:
+
+  ```bash
+  PLATFORM_ADMIN_EMAIL=you@example.com PLATFORM_ADMIN_NAME="Your Name" \
+    PLATFORM_ADMIN_PASSWORD='at least 12 characters' pnpm platform:create-admin
+  ```
+
+  Running it again for the same email resets the password and clears a lock.
+- **Sign-in** uses a session cookie that scripts cannot read. Five wrong
+  passwords lock the account for 15 minutes. Sessions last 8 hours.
+- **Database access** goes through a third role, `trustline_platform`
+  (`PLATFORM_DATABASE_URL`). It can manage client records but has no access to
+  hospital data, and it can add to the audit log but not change it.
+- **Every change** is recorded in `platform_audit_log` and shown on the
+  client's page.
+
+Not built yet: a second sign-in factor for admins, and enforcing a suspended
+client at hospital sign-in (hospital sign-in itself is not built).
+
+## API
+
+The API is served under `/api/v1`. The web app forwards `/api/*` to it, so the
+browser only ever talks to one origin. The version in the path is there so
+that a future mobile app on an older release keeps working.
+
 ## Run it locally
 
 Needs Node 22, pnpm and Docker.
@@ -48,7 +80,8 @@ pnpm dev
 ```
 
 The web app is at http://localhost:3000 and the API at
-http://localhost:3001/api/health.
+http://localhost:3001/api/v1/health. To use the admin portal, create an
+admin as described above.
 
 `pnpm db:seed` creates two fictional hospitals: `demo-jci` (JCI, English by
 default) and `demo-cbahi` (CBAHI, Arabic by default), each with a facility,
@@ -70,7 +103,7 @@ pnpm build
 Every tenant's data lives in the same tables, separated by Postgres row-level
 security:
 
-- The API connects as `trustline_app` (`APP_DATABASE_URL`), a role that owns
+- For hospital data, the API connects as `trustline_app` (`APP_DATABASE_URL`), a role that owns
   nothing and cannot bypass row-level security. Migrations and the seed run as
   the owner role (`DATABASE_URL`).
 - Every table that holds tenant data has a `tenant_id` column and a

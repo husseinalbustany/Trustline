@@ -25,6 +25,7 @@ jobs:
     env:
       DATABASE_URL: postgres://trustline:trustline@localhost:5432/trustline
       APP_DATABASE_URL: postgres://trustline_app:trustline_app@localhost:5432/trustline
+      PLATFORM_DATABASE_URL: postgres://trustline_platform:trustline_platform@localhost:5432/trustline
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4

@@ -15,6 +15,20 @@
       "when": 1795538975175,
       "tag": "0001_app_role_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1795540939210,
+      "tag": "0002_platform_admin",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1795540939845,
+      "tag": "0003_platform_role_grants",
+      "breakpoints": true
     }
   ]
 }

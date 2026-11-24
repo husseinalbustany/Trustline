@@ -1,0 +1,77 @@
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Post,
+  Req,
+  Res,
+  UnauthorizedException,
+  UseGuards,
+} from '@nestjs/common';
+import type { Response } from 'express';
+import { z } from 'zod';
+import {
+  PlatformAuthGuard,
+  SESSION_COOKIE,
+  type PlatformRequest,
+} from './platform-auth.guard.js';
+import { PlatformAuthService, SESSION_HOURS } from './platform-auth.service.js';
+
+const loginSchema = z.object({
+  email: z.string().min(1).max(320),
+  password: z.string().min(1).max(1024),
+});
+
+const cookieOptions = {
+  httpOnly: true,
+  // Never sent on requests that start from another site.
+  sameSite: 'strict' as const,
+  secure: process.env.NODE_ENV === 'production',
+  path: '/',
+};
+
+@Controller('platform/auth')
+export class PlatformAuthController {
+  constructor(private readonly auth: PlatformAuthService) {}
+
+  @Post('login')
+  @HttpCode(200)
+  async login(
+    @Body() body: unknown,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const parsed = loginSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException();
+
+    const result = await this.auth.login(
+      parsed.data.email,
+      parsed.data.password,
+    );
+    if (!result) throw new UnauthorizedException();
+
+    res.cookie(SESSION_COOKIE, result.token, {
+      ...cookieOptions,
+      maxAge: SESSION_HOURS * 3_600_000,
+    });
+    return result.admin;
+  }
+
+  @Get('me')
+  @UseGuards(PlatformAuthGuard)
+  me(@Req() req: PlatformRequest) {
+    return req.platformAdmin;
+  }
+
+  @Post('logout')
+  @HttpCode(204)
+  @UseGuards(PlatformAuthGuard)
+  async logout(
+    @Req() req: PlatformRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.auth.logout(req.platformToken, req.platformAdmin.id);
+    res.clearCookie(SESSION_COOKIE, cookieOptions);
+  }
+}

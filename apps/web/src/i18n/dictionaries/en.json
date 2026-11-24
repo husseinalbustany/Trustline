@@ -146,5 +146,88 @@
         "Sign-in by password or single sign-on, and notifications"
       ]
     }
+  },
+  "platform": {
+    "title": "Trustline Platform",
+    "signOut": "Sign out",
+    "loading": "Loading…",
+    "notFound": "This client does not exist.",
+    "login": {
+      "title": "Sign in to the admin portal",
+      "email": "Email",
+      "password": "Password",
+      "submit": "Sign in",
+      "failed": "The email or password is wrong, or the account is temporarily locked.",
+      "error": "Could not sign in. Try again."
+    },
+    "clients": {
+      "title": "Clients",
+      "description": "Every hospital and organization using Trustline.",
+      "add": "Add client",
+      "empty": "No clients yet. Add the first one.",
+      "loadError": "Could not load clients. Reload the page.",
+      "columns": {
+        "name": "Client",
+        "standard": "Standard",
+        "plan": "Plan",
+        "signIn": "Sign-in",
+        "status": "Status"
+      }
+    },
+    "form": {
+      "newTitle": "Add client",
+      "newDescription": "Create the record for a new hospital or organization.",
+      "nameEn": "Name in English",
+      "nameAr": "Name in Arabic",
+      "slug": "Identifier",
+      "slugHelp": "Lowercase letters, digits and hyphens, 3 to 40 characters. Cannot be changed later.",
+      "accreditationStandard": "Accreditation standard",
+      "defaultLocale": "Default language",
+      "plan": "Plan",
+      "signInMethod": "Sign-in method",
+      "dataRegion": "Data region",
+      "dataRegionHelp": "Where this client's data must be hosted. Leave empty if not decided.",
+      "create": "Add client",
+      "save": "Save changes",
+      "saved": "Changes saved.",
+      "cancel": "Cancel",
+      "back": "Back to clients",
+      "slugTaken": "Another client already uses this identifier.",
+      "invalid": "Check the fields and try again.",
+      "error": "Could not save. Try again."
+    },
+    "status": {
+      "title": "Status",
+      "active": "Active",
+      "suspended": "Suspended",
+      "suspend": "Suspend client",
+      "reactivate": "Reactivate client",
+      "activeHelp": "Suspending blocks this client's staff from signing in. Their data is kept.",
+      "suspendedHelp": "This client's staff cannot sign in. Their data is kept."
+    },
+    "options": {
+      "plan": {
+        "starter": "Starter",
+        "professional": "Professional",
+        "enterprise": "Enterprise"
+      },
+      "signInMethod": {
+        "password": "Email and password",
+        "sso": "Single sign-on",
+        "both": "Both"
+      },
+      "locale": {
+        "en": "English",
+        "ar": "Arabic"
+      }
+    },
+    "activity": {
+      "title": "Recent activity",
+      "empty": "No activity yet",
+      "actions": {
+        "client_created": "Client added",
+        "client_updated": "Client updated"
+      }
+    }
   }
 }

@@ -10,6 +10,8 @@
   --accent-hover: #0b5656;
   --accent-fg: #ffffff;
   --accent-soft: #dff0ef;
+  --danger: #b3261e;
+  --danger-soft: #fbe9e7;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -23,6 +25,8 @@
     --accent-hover: #7bd6d2;
     --accent-fg: #06201f;
     --accent-soft: #14302f;
+    --danger: #f2877f;
+    --danger-soft: #3a1b19;
   }
 }
 
@@ -36,6 +40,8 @@
   --color-accent-hover: var(--accent-hover);
   --color-accent-fg: var(--accent-fg);
   --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
   /* System fonts: no build-time font download, and each platform's own
      Arabic face. */
   --font-sans:

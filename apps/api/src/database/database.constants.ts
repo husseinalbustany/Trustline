@@ -1,2 +1,5 @@
+/** Tenant data, as the trustline_app role. Use through TenantDb. */
 export const DATABASE = Symbol('DATABASE');
-export const DATABASE_POOL = Symbol('DATABASE_POOL');
+/** Client records and platform staff, as the trustline_platform role. */
+export const PLATFORM_DATABASE = Symbol('PLATFORM_DATABASE');
+export const DATABASE_POOLS = Symbol('DATABASE_POOLS');
