@@ -27,7 +27,7 @@ correctness comes before speed.
 
 - Three roles, three jobs: the owner migrates, `trustline_app` reads hospital data under row-level security, `trustline_platform` manages client records and has no access to hospital tables. Do not widen a grant to make a query work; change the query.
 - Names are `snake_case` in the database and `camelCase` in the schema file (Drizzle converts).
-- Text shown to users is stored twice: `name_en` and `name_ar`.
+- Text a client writes (names, titles, descriptions) is one `jsonb` column holding a value per language, typed `Localized`. Never add `_en` / `_ar` columns.
 - Timestamps are `timestamptz`. Emails are stored lowercase.
 - Patient identifiers are sensitive. Flag any new column that would hold one and ask how it should be protected before adding it.
 - A built table may hold fewer columns than the full target design. Add columns when a feature needs them, not ahead of time.

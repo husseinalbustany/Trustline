@@ -54,11 +54,13 @@ test('the roster lists agents from the project, grouped by what they may do', as
     expect((await ui.find({ type: 'Text', text: /○ api-engineer/ }))?.text).toBe(
       '○ api-engineer',
     )
+    expect(await ui.find({ type: 'Text', text: /○ Owner/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /○ Lead/ })).toBeDefined()
     expect(
       await ui.find({ type: 'Text', text: /^Does api-engineer work\.$/ }),
     ).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /Build/ })).toBeDefined()
-    expect(await ui.find({ type: 'Text', text: /Review · read and report only/ })).toBeDefined()
+    expect(await ui.find({ type: 'Text', text: /├─ Review · read and report only/ })).toBeDefined()
     expect(await ui.find({ type: 'Text', text: /notes/ })).toBeUndefined()
     await ui.unmount()
   }
@@ -100,6 +102,7 @@ test('the Live tab marks an agent that is running', async ($, on) => {
   expect((await ui.find({ type: 'Text', text: /security-reviewer/ }))?.text).toBe(
     '● security-reviewer running',
   )
+  expect(await ui.find({ type: 'Text', text: /Waiting for your next message/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^Review branch$/ })).toBeDefined()
   await ui.unmount()
 })

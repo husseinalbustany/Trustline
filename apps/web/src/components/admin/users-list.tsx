@@ -9,6 +9,8 @@ import { EmptyState, Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
 import { api, statusOf } from "@/lib/api";
 import type { OrgUnit, User } from "@/lib/identity";
+import { pick, type Localized } from "@/lib/localized";
+import { useSession } from "@/components/shell/session";
 import { AdminTabs } from "./admin-tabs";
 import type { AdminProps } from "./types";
 
@@ -22,7 +24,10 @@ export function UsersList({ lang, t }: AdminProps) {
   const [users, setUsers] = useState<User[] | null>(null);
   const [units, setUnits] = useState<OrgUnit[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
-  const ar = lang === "ar";
+  const session = useSession();
+  const inLang = (text: Localized | null) =>
+    pick(text, lang, session.tenant.defaultLocale);
+  const roleList = new Intl.ListFormat(lang, { style: "short", type: "unit" });
 
   useEffect(() => {
     Promise.all([api<User[]>("/users"), api<OrgUnit[]>("/org-units")])
@@ -38,7 +43,7 @@ export function UsersList({ lang, t }: AdminProps) {
 
   const unitName = (id: string | null) => {
     const unit = units.find((u) => u.id === id);
-    return unit ? (ar ? unit.nameAr : unit.nameEn) : "";
+    return unit ? inLang(unit.name) : "";
   };
   const c = t.users.columns;
 
@@ -88,7 +93,7 @@ export function UsersList({ lang, t }: AdminProps) {
                           href={`/${lang}/admin/users/${user.id}`}
                           className="font-medium hover:text-accent hover:underline"
                         >
-                          {ar ? user.nameAr : user.nameEn}
+                          {inLang(user.name)}
                         </Link>
                         <div className="text-xs text-muted">
                           <span dir="ltr">{user.email}</span>
@@ -96,11 +101,9 @@ export function UsersList({ lang, t }: AdminProps) {
                       </td>
                       <td className="px-4 py-3">{unitName(user.orgUnitId)}</td>
                       <td className="px-4 py-3">
-                        {[
-                          ...new Set(
-                            user.roles.map((r) => (ar ? r.nameAr : r.nameEn)),
-                          ),
-                        ].join(ar ? "، " : ", ")}
+                        {roleList.format([
+                          ...new Set(user.roles.map((r) => inLang(r.name))),
+                        ])}
                       </td>
                       <td className="px-4 py-3">
                         <Pill tone={statusTone[user.status]}>

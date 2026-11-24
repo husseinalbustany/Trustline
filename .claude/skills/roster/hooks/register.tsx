@@ -18,6 +18,8 @@ const rules = atom({ plugin: 'roster', key: 'rules' } as const, [], {
 const live = atom({ plugin: 'roster', key: 'live' } as const, [], {
   shape: 'live-1',
 })
+// Whether the Lead, the main Claude session, is in the middle of a turn.
+const leadBusy = atom({ plugin: 'roster', key: 'leadBusy' } as const, false)
 
 const TABS: { id: Tab; label: string; hotkey: string }[] = [
   { id: 'team', label: 'Team', hotkey: '1' },
@@ -140,6 +142,21 @@ export const register: Register = on => {
     return { text: `Roster opened: ${members.length} agents.` }
   })
 
+  // The Lead does much of the work itself, so it counts as working during a turn.
+  on('turn.start', async ($, e, next) => {
+    await update($, leadBusy, () => true)
+
+    return next(e)
+  })
+
+  on('turn.complete', async ($, e, next) => {
+    await update($, leadBusy, () => false)
+    const agents = await loadLive($)
+    await update($, live, () => agents)
+
+    return next(e)
+  })
+
   // Keep the Live tab current as agents are started.
   on('tool.call', { tool: 'Agent' }, async ($, e, next) => {
     const ran = await next(e)
@@ -156,51 +173,74 @@ export const register: Register = on => {
     const ruleList = await read($, rules)
     const agents = await read($, live)
     const working = agents.filter(a => a.status === 'running')
+    const isLeadBusy = await read($, leadBusy)
     const builders = members.filter(m => m.canEdit)
     const reviewers = members.filter(m => !m.canEdit)
-
     const isWorking = (name: string) => working.some(a => a.type === name)
 
-    // A count in its own box.
-    const tile = (label: string, value: number) => (
-      <Box borderStyle="round" paddingX={1}>
+    // A count in its own box, its number in the group's color.
+    const tile = (label: string, value: number, color: string) => (
+      <Box borderStyle="round" borderColor={color} paddingX={1}>
         <Text>
           <Text dimColor>{label} </Text>
-          <Text bold>{String(value)}</Text>
+          <Text bold color={color}>
+            {String(value)}
+          </Text>
         </Text>
       </Box>
     )
 
-    // A named box in the chain of command.
-    const chip = (name: string) => (
-      <Box borderStyle="round" paddingX={1}>
-        <Text bold>{name}</Text>
+    // One node of the tree: a colored card, drawn under a branch mark when it
+    // hangs off the node above. Its dot fills, in green, while it works.
+    const node = (opts: {
+      name: string
+      note?: string
+      color: string
+      busy?: boolean
+      branch?: string
+    }) => (
+      <Box gap={1}>
+        {opts.branch && <Text color={opts.color}>{opts.branch}</Text>}
+        <Box
+          borderStyle="round"
+          borderColor={opts.busy ? 'success' : opts.color}
+          paddingX={1}
+          flexDirection="column"
+          flexGrow={1}
+        >
+          <Text bold>
+            <Text color={opts.busy ? 'success' : opts.color}>
+              {opts.busy ? '● ' : '○ '}
+            </Text>
+            {opts.name}
+            {opts.busy && <Text color="success"> working</Text>}
+          </Text>
+          {opts.note && <Text dimColor>{opts.note}</Text>}
+        </Box>
       </Box>
     )
 
-    // One agent: its name with a dot that fills while it works, and what it does.
-    const card = (m: Member) => (
-      <Box
-        borderStyle="round"
-        borderDimColor={!isWorking(m.name)}
-        paddingX={1}
-        flexDirection="column"
-      >
-        <Text bold>
-          {isWorking(m.name) ? '● ' : '○ '}
-          {m.name}
-        </Text>
-        <Text dimColor>{m.description}</Text>
-      </Box>
-    )
-
-    const group = (title: string, note: string, list: Member[]) => (
-      <Box flexDirection="column">
+    // A branch of the tree: its label, then its agents hanging beneath it.
+    const branch = (title: string, note: string, color: string, list: Member[]) => (
+      <Box flexDirection="column" marginLeft={2}>
         <Text>
-          <Text bold>{title}</Text>
+          <Text color={color}>├─ </Text>
+          <Text bold color={color}>
+            {title}
+          </Text>
           <Text dimColor> · {note}</Text>
         </Text>
-        {list.map(card)}
+        <Box flexDirection="column" marginLeft={3}>
+          {list.map((m, i) =>
+            node({
+              name: m.name,
+              note: m.description,
+              color,
+              busy: isWorking(m.name),
+              branch: i === list.length - 1 ? '└─' : '├─',
+            }),
+          )}
+        </Box>
       </Box>
     )
 
@@ -220,36 +260,52 @@ export const register: Register = on => {
         </Box>
 
         <Box gap={1} flexWrap="wrap">
-          {tile('Working now', working.length)}
-          {tile('Agents', members.length)}
-          {tile('Engineers', builders.length)}
-          {tile('Reviewers', reviewers.length)}
+          {tile('Working now', working.length + (isLeadBusy ? 1 : 0), 'success')}
+          {tile('Agents', members.length, 'claude')}
+          {tile('Engineers', builders.length, 'suggestion')}
+          {tile('Reviewers', reviewers.length, 'merged')}
         </Box>
 
         {current === 'team' && (
-          <Box flexDirection="column" gap={1}>
-            <Box flexDirection="column">
-              <Box gap={1} alignItems="center">
-                {chip('Owner')}
-                <Text dimColor>→</Text>
-                {chip('Lead')}
-              </Box>
-              <Text dimColor>
-                You decide what ships. The main Claude session hands out the work.
-              </Text>
+          <Box flexDirection="column">
+            {node({
+              name: 'Owner',
+              note: 'You. Decides what ships and approves merges.',
+              color: 'warning',
+            })}
+            <Box marginLeft={2}>
+              {node({
+                name: 'Lead',
+                note: 'The main Claude session. Plans, builds and hands out work.',
+                color: 'claude',
+                busy: isLeadBusy,
+                branch: '└─',
+              })}
             </Box>
             {members.length === 0 && (
               <Text dimColor>No agents found in {AGENTS_DIR}.</Text>
             )}
-            {builders.length > 0 && group('Build', 'can change files', builders)}
-            {reviewers.length > 0 && group('Review', 'read and report only', reviewers)}
+            <Box flexDirection="column" marginLeft={3}>
+              {builders.length > 0 &&
+                branch('Build', 'can change files', 'suggestion', builders)}
+              {reviewers.length > 0 &&
+                branch('Review', 'read and report only', 'merged', reviewers)}
+            </Box>
           </Box>
         )}
 
         {current === 'live' && (
           <Box flexDirection="column">
+            {node({
+              name: 'Lead',
+              note: isLeadBusy
+                ? 'The main Claude session is doing this turn itself.'
+                : 'Waiting for your next message.',
+              color: 'claude',
+              busy: isLeadBusy,
+            })}
             {agents.length === 0 && (
-              <Text dimColor>No agents have run in this session yet.</Text>
+              <Text dimColor>No other agents have run in this session yet.</Text>
             )}
             {agents.map(a => (
               <Box

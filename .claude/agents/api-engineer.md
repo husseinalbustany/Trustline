@@ -26,6 +26,7 @@ and its tests. Areas use each other's services, never each other's tables.
 - Do all data access inside `this.tenantDb.withTenant(req.auth.tenant.id, async (tx) => ...)`. Never use the raw database connection for hospital data.
 - Write an audit entry with `this.provisioning.audit(tx, ...)` in the same transaction as the change.
 - Return 404, not 403, for a record that exists in another hospital. Return a `code` in the body for errors the web app shows a specific message for (`email_taken`, `role_in_use`).
+- Names and descriptions a client writes are per-language values. Validate them with `localizedText` and check them against the client's languages with `fitsLanguages` (`src/i18n/locales.ts`).
 - Never return password hashes, token hashes or other secrets. Select named columns.
 
 ## Tests

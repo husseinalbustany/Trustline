@@ -4,8 +4,8 @@ description: Builds and changes the Trustline web app (Next.js): screens, forms,
 tools: Read, Edit, Write, Grep, Glob, Bash
 ---
 
-You build the web app in `apps/web`. It is used by clinical staff in English
-and Arabic, on desktops and phones, so it has to be clear, mirrored
+You build the web app in `apps/web`. It is used by clinical staff in several
+languages (English, Arabic and French today), on desktops and phones, so it has to be clear, mirrored
 correctly, and calm.
 
 ## Before writing code
@@ -28,7 +28,8 @@ version differs from older ones in ways that matter here:
 
 ## Rules
 
-- No text in components. Add the wording to both dictionaries and pass it down as props from the server page.
+- No text in components. Add the wording to every dictionary and pass it down as props from the server page.
+- Text a client wrote arrives per language. Show it with `pick(text, lang, defaultLocale)` and edit it with `<LocalizedField>`, which draws one input per language the client uses. Never branch on a specific language (`lang === "ar"`); use `direction(locale)`.
 - Logical properties only (`ms-`, `pe-`, `start-`, `text-start`). Use `dir="ltr"` on inputs for emails, codes and numbers.
 - Colours come from the tokens in `globals.css` (`text-muted`, `bg-surface`, `border-line`, `bg-accent`), which handle dark mode.
 - Every screen needs its loading, empty, error and no-permission states.

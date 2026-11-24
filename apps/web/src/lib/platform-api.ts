@@ -1,12 +1,13 @@
 import { api } from "./api";
+import type { Localized } from "./localized";
 
 export type Client = {
   id: string;
   slug: string;
-  nameEn: string;
-  nameAr: string;
+  name: Localized;
+  locales: string[];
   accreditationStandard: "JCI" | "CBAHI";
-  defaultLocale: "en" | "ar";
+  defaultLocale: string;
   plan: "starter" | "professional" | "enterprise";
   signInMethod: "password" | "sso" | "both";
   dataRegion: string | null;

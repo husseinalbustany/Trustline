@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { ButtonLink } from "@/components/ui/button-link";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Panel } from "@/components/ui/panel";
+import { pick } from "@/lib/localized";
 import { platformApi, type Client } from "@/lib/platform-api";
 import { StatusPill } from "./status-pill";
 import type { PlatformProps } from "./types";
@@ -74,7 +75,7 @@ export function ClientsList({ lang, t }: PlatformProps) {
                           href={`/${lang}/platform/clients/${client.id}`}
                           className="font-medium hover:text-accent hover:underline"
                         >
-                          {lang === "ar" ? client.nameAr : client.nameEn}
+                          {pick(client.name, lang, client.defaultLocale)}
                         </Link>
                         <div className="text-xs text-muted">
                           <span dir="ltr">{client.slug}</span>

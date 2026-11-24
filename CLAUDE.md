@@ -23,8 +23,11 @@ Run from the repository root. The database must be running (`docker compose up -
 - **Every change to an account, role or record is audited** through
   `ProvisioningService.audit()` in the same transaction.
 - **No text in components.** All wording lives in
-  `apps/web/src/i18n/dictionaries/en.json` and `ar.json`, and both must have
-  the same keys.
+  `apps/web/src/i18n/dictionaries/`, one file per language, and every file
+  must have the same keys.
+- **Text a client writes is stored per language** in one column
+  (`name: { en, ar, fr }`), never as `name_en` / `name_ar` columns. Validate
+  it with `localizedText` and `fitsLanguages`, and show it with `pick()`.
 - **Layout uses logical properties** (`ms-`, `pe-`, `start-`, `text-start`),
   never left/right, so Arabic mirrors.
 - **No secrets, real patient data or real hospital names** in code, tests or

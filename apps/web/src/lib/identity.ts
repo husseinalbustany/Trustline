@@ -1,12 +1,16 @@
+import type { Localized } from "./localized";
+
 export type Session = {
   tenant: {
     id: string;
     slug: string;
-    nameEn: string;
-    nameAr: string;
+    name: Localized;
+    /** The languages this hospital works in, and the one its text must exist in. */
+    locales: string[];
+    defaultLocale: string;
     accreditationStandard: string;
   };
-  user: { id: string; nameEn: string; nameAr: string; email: string };
+  user: { id: string; name: Localized; email: string };
   permissions: string[];
 };
 
@@ -14,14 +18,12 @@ export type RoleGrant = {
   roleId: string;
   orgUnitId: string | null;
   code: string;
-  nameEn: string;
-  nameAr: string;
+  name: Localized;
 };
 
 export type User = {
   id: string;
-  nameEn: string;
-  nameAr: string;
+  name: Localized;
   email: string;
   orgUnitId: string | null;
   employeeNumber: string | null;
@@ -35,9 +37,8 @@ export type User = {
 export type Role = {
   id: string;
   code: string;
-  nameEn: string;
-  nameAr: string;
-  description: string | null;
+  name: Localized;
+  description: Localized | null;
   isSystem: boolean;
   permissions: string[];
   assignments: number;
@@ -48,8 +49,7 @@ export type OrgUnit = {
   parentId: string | null;
   type: "facility" | "department" | "unit";
   code: string;
-  nameEn: string;
-  nameAr: string;
+  name: Localized;
 };
 
 export type Invite = { token: string; expiresAt: string; org: string };

@@ -9,11 +9,11 @@
     "openMenu": "Open menu",
     "closeMenu": "Close menu",
     "reportIncident": "Report an incident",
-    "switchLanguage": "العربية",
     "phase2": "Phase 2",
     "signOut": "Sign out",
     "signOutFailed": "Could not sign out. Try again.",
-    "sessionError": "Could not reach the server. Reload the page."
+    "sessionError": "Could not reach the server. Reload the page.",
+    "language": "Language"
   },
   "nav": {
     "groups": {
@@ -126,7 +126,7 @@
       "title": "Organization",
       "description": "Facilities, departments and units.",
       "scope": [
-        "The organization's structure, in English and Arabic",
+        "The organization's structure, in each of its languages",
         "Locations used for reporting and routing",
         "Department owners and escalation contacts"
       ]
@@ -180,8 +180,6 @@
     "form": {
       "newTitle": "Add client",
       "newDescription": "Create the record for a new hospital or organization.",
-      "nameEn": "Name in English",
-      "nameAr": "Name in Arabic",
       "slug": "Identifier",
       "slugHelp": "Lowercase letters, digits and hyphens, 3 to 40 characters. Cannot be changed later.",
       "accreditationStandard": "Accreditation standard",
@@ -197,7 +195,11 @@
       "back": "Back to clients",
       "slugTaken": "Another client already uses this identifier.",
       "invalid": "Check the fields and try again.",
-      "error": "Could not save. Try again."
+      "error": "Could not save. Try again.",
+      "name": "Name",
+      "languageMismatch": "Fill in the name in the default language.",
+      "locales": "Languages",
+      "localesHelp": "The languages this client works in. Names are written in each of them."
     },
     "status": {
       "title": "Status",
@@ -218,10 +220,6 @@
         "password": "Email and password",
         "sso": "Single sign-on",
         "both": "Both"
-      },
-      "locale": {
-        "en": "English",
-        "ar": "Arabic"
       }
     },
     "activity": {
@@ -310,8 +308,6 @@
         "newTitle": "Add user",
         "newDescription": "They get a one-time link to set their own password.",
         "created": "User added. Send them the link below.",
-        "nameEn": "Name in English",
-        "nameAr": "Name in Arabic",
         "email": "Email",
         "emailFixed": "The email is used to sign in and cannot be changed.",
         "department": "Department",
@@ -346,7 +342,9 @@
         "enableHelp": "Enabling lets this person sign in again.",
         "enable": "Enable user",
         "higherAccess": "You cannot give or change access above your own.",
-        "ownAccount": "You cannot change your own account."
+        "ownAccount": "You cannot change your own account.",
+        "name": "Name",
+        "languageMismatch": "Fill in the name in the default language."
       }
     },
     "roles": {
@@ -363,8 +361,6 @@
         "newTitle": "Add role",
         "newDescription": "A role is a set of permissions you give to users.",
         "builtInHelp": "Built-in roles cannot be changed. Add a role to make your own.",
-        "nameEn": "Name in English",
-        "nameAr": "Name in Arabic",
         "code": "Code",
         "codeHelp": "Lowercase letters, digits and underscores, starting with a letter. Cannot be changed later.",
         "description": "Description",
@@ -382,13 +378,9 @@
         "higherAccess": "You cannot give permissions you do not have.",
         "ownRole": "You cannot change a role you hold.",
         "deleteConfirm": "Delete this role? Press again to confirm. This cannot be undone.",
-        "deleteError": "Could not delete the role. Try again."
-      },
-      "builtInDescriptions": {
-        "administrator": "Full access, including users, roles and settings.",
-        "quality_officer": "Triages incidents, manages actions and policies, and views reports.",
-        "department_manager": "Sees incidents and manages actions for a department.",
-        "reporter": "Reports incidents and reads policies."
+        "deleteError": "Could not delete the role. Try again.",
+        "name": "Name",
+        "languageMismatch": "Fill in the name in the default language."
       }
     },
     "permissions": {

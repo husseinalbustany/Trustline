@@ -21,6 +21,7 @@ declare module 'claude-code' {
       team: Shaped<Member[]>
       rules: Shaped<string[]>
       live: Shaped<LiveAgent[]>
+      leadBusy: boolean
     }
   }
 }

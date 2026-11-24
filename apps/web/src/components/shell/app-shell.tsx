@@ -7,6 +7,7 @@ import { ButtonLink } from "@/components/ui/button-link";
 import type { Locale } from "@/i18n/config";
 import { api, statusOf } from "@/lib/api";
 import type { Session } from "@/lib/identity";
+import { pick } from "@/lib/localized";
 import { LanguageSwitcher } from "./language-switcher";
 import { SessionContext } from "./session";
 import { Sidebar, type SidebarLabels } from "./sidebar";
@@ -16,10 +17,10 @@ export type ShellLabels = SidebarLabels & {
   skipToContent: string;
   openMenu: string;
   reportIncident: string;
-  switchLanguage: string;
   signOut: string;
   signOutFailed: string;
   sessionError: string;
+  language: string;
 };
 
 export function AppShell({
@@ -78,7 +79,8 @@ export function AppShell({
       </p>
     ) : null;
   }
-  const ar = lang === "ar";
+  const inLang = (text: Session["user"]["name"]) =>
+    pick(text, lang, session.tenant.defaultLocale);
 
   return (
     <SessionContext.Provider value={session}>
@@ -96,7 +98,7 @@ export function AppShell({
           labels={labels}
           open={menuOpen}
           onClose={() => setMenuOpen(false)}
-          organization={ar ? session.tenant.nameAr : session.tenant.nameEn}
+          organization={inLang(session.tenant.name)}
           permissions={session.permissions}
         />
 
@@ -117,7 +119,7 @@ export function AppShell({
               <LanguageSwitcher
                 lang={lang}
                 pathname={pathname}
-                label={labels.switchLanguage}
+                label={labels.language}
               />
               <ButtonLink href={`/${lang}/incidents/new`}>
                 <Plus className="size-4" aria-hidden />
@@ -129,7 +131,7 @@ export function AppShell({
                 </span>
               )}
               <span className="ms-2 text-sm text-muted max-md:hidden">
-                {ar ? session.user.nameAr : session.user.nameEn}
+                {inLang(session.user.name)}
               </span>
               <button
                 type="button"

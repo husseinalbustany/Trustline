@@ -5,16 +5,16 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
 import { api } from "@/lib/api";
+import { pick, type Localized } from "@/lib/localized";
 import type { Dictionary } from "@/i18n/dictionaries";
 import type { Locale } from "@/i18n/config";
 import { AuthCard } from "./auth-card";
 
 type Info = {
-  nameEn: string;
-  nameAr: string;
+  name: Localized;
   email: string;
-  organizationEn: string;
-  organizationAr: string;
+  organization: Localized;
+  defaultLocale: string;
 };
 
 const MIN_LENGTH = 12;
@@ -112,9 +112,9 @@ export function InviteForm({
   return (
     <AuthCard eyebrow={appName} title={t.invite.title}>
       <p className="text-sm text-muted">
-        {lang === "ar" ? info?.nameAr : info?.nameEn}
+        {pick(info?.name, lang, info?.defaultLocale)}
         {" · "}
-        {lang === "ar" ? info?.organizationAr : info?.organizationEn}
+        {pick(info?.organization, lang, info?.defaultLocale)}
         <br />
         <span dir="ltr">{info?.email}</span>
       </p>

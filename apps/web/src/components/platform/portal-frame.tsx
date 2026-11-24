@@ -14,12 +14,12 @@ import { loadPage } from "@/lib/navigate";
 export function PortalFrame({
   lang,
   t,
-  switchLanguage,
+  language,
   children,
   signOutFailed,
   sessionError,
 }: PlatformProps & {
-  switchLanguage: string;
+  language: string;
   signOutFailed: string;
   sessionError: string;
   children: ReactNode;
@@ -88,7 +88,7 @@ export function PortalFrame({
             <LanguageSwitcher
               lang={lang}
               pathname={pathname}
-              label={switchLanguage}
+              label={language}
             />
             <Button variant="secondary" onClick={signOut}>
               {t.signOut}

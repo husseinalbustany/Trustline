@@ -1,8 +1,8 @@
 import { Languages } from "lucide-react";
 import Link from "next/link";
-import type { Locale } from "@/i18n/config";
+import { localeNames, locales, type Locale } from "@/i18n/config";
 
-/** Links to the same page in the other language. */
+/** Links to the same page in each of the other languages. */
 export function LanguageSwitcher({
   lang,
   pathname,
@@ -10,19 +10,26 @@ export function LanguageSwitcher({
 }: {
   lang: Locale;
   pathname: string;
+  /** Names the group for screen readers, e.g. "Language". */
   label: string;
 }) {
-  const other: Locale = lang === "ar" ? "en" : "ar";
   const rest = pathname.split("/").slice(2).join("/");
 
   return (
-    <Link
-      href={`/${other}/${rest}`}
-      lang={other}
-      className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm text-muted hover:bg-surface hover:text-foreground"
-    >
-      <Languages className="size-4" aria-hidden />
-      {label}
-    </Link>
+    <nav aria-label={label} className="flex items-center text-sm text-muted">
+      <Languages className="mx-1 size-4 shrink-0" aria-hidden />
+      {locales
+        .filter((other) => other !== lang)
+        .map((other) => (
+          <Link
+            key={other}
+            href={`/${other}/${rest}`}
+            lang={other}
+            className="inline-flex h-9 items-center rounded-md px-2 hover:bg-surface hover:text-foreground"
+          >
+            {localeNames[other]}
+          </Link>
+        ))}
+    </nav>
   );
 }

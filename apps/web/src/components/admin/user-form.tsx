@@ -12,6 +12,8 @@ import { EmptyState, Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
 import { api, codeOf, statusOf } from "@/lib/api";
 import type { Invite, OrgUnit, Role, User } from "@/lib/identity";
+import { pick, readForm, type Localized } from "@/lib/localized";
+import { LocalizedField } from "@/components/ui/localized-field";
 import type { AdminProps } from "./types";
 import { statusTone } from "./users-list";
 
@@ -38,7 +40,9 @@ export function UserForm({
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
-  const ar = lang === "ar";
+  const languages = session.tenant;
+  const inLang = (text: Localized | null | undefined) =>
+    pick(text, lang, languages.defaultLocale);
   const f = t.users.form;
   const listPath = `/${lang}/admin/users`;
   const isSelf = user?.id === session.user.id;
@@ -84,6 +88,7 @@ export function UserForm({
   const explain = (err: unknown) => {
     const code = codeOf(err);
     if (code === "email_taken") return f.emailTaken;
+    if (code === "language_mismatch") return f.languageMismatch;
     if (code === "cannot_change_self") return f.ownAccount;
     if (code?.endsWith("higher_access")) return f.higherAccess;
     if (statusOf(err) === 403) return t.noAccess;
@@ -113,9 +118,7 @@ export function UserForm({
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
-    const { email, orgUnitId, ...rest } = Object.fromEntries(
-      new FormData(form),
-    );
+    const { email, orgUnitId, ...rest } = readForm(form);
     const profile = { ...rest, orgUnitId: orgUnitId || null };
     void run(async () => {
       if (mode === "new") {
@@ -167,10 +170,7 @@ export function UserForm({
   if (mode === "new" && user && invite) {
     return (
       <>
-        <PageHeader
-          title={ar ? user.nameAr : user.nameEn}
-          description={f.created}
-        />
+        <PageHeader title={inLang(user.name)} description={f.created} />
         <div className="mt-6 flex max-w-2xl flex-col gap-4">
           <InviteLink lang={lang} invite={invite} t={t.inviteLink} />
           <div className="flex gap-2">
@@ -196,12 +196,6 @@ export function UserForm({
     );
   }
 
-  // Built-in roles are described in the reader's language. A custom role
-  // shows what its author wrote.
-  const builtIn = t.roles.builtInDescriptions as Record<string, string>;
-  const describe = (role: Role) =>
-    role.isSystem ? builtIn[role.code] : role.description;
-
   const roleBoxes = (
     <fieldset className="flex flex-col gap-3" disabled={isSelf}>
       <legend className="mb-2 text-sm font-medium">{f.roles}</legend>
@@ -225,12 +219,10 @@ export function UserForm({
                 }}
               />
               <span>
-                <span className="font-medium">
-                  {ar ? role.nameAr : role.nameEn}
-                </span>
-                {describe(role) && (
+                <span className="font-medium">{inLang(role.name)}</span>
+                {inLang(role.description) && (
                   <span dir="auto" className="block text-xs text-muted">
-                    {describe(role)}
+                    {inLang(role.description)}
                   </span>
                 )}
               </span>
@@ -248,7 +240,7 @@ export function UserForm({
                 {units.map((u) => (
                   <option key={u.id} value={u.id}>
                     {indent[u.type]}
-                    {ar ? u.nameAr : u.nameEn}
+                    {inLang(u.name)}
                   </option>
                 ))}
               </select>
@@ -263,7 +255,7 @@ export function UserForm({
   return (
     <>
       <PageHeader
-        title={user ? (ar ? user.nameAr : user.nameEn) : f.newTitle}
+        title={user ? inLang(user.name) : f.newTitle}
         description={
           user ? <bdi dir="ltr">{user.email}</bdi> : f.newDescription
         }
@@ -283,28 +275,13 @@ export function UserForm({
             onSubmit={submit}
             className="flex flex-col gap-5 rounded-lg border border-line p-4 sm:p-6"
           >
-            <div className="grid gap-5 sm:grid-cols-2">
-              <Field label={f.nameEn}>
-                <input
-                  name="nameEn"
-                  required
-                  maxLength={200}
-                  dir="ltr"
-                  defaultValue={user?.nameEn}
-                  className={inputClass}
-                />
-              </Field>
-              <Field label={f.nameAr}>
-                <input
-                  name="nameAr"
-                  required
-                  maxLength={200}
-                  dir="rtl"
-                  defaultValue={user?.nameAr}
-                  className={inputClass}
-                />
-              </Field>
-            </div>
+            <LocalizedField
+              label={f.name}
+              name="name"
+              locales={languages.locales}
+              required={languages.defaultLocale}
+              value={user?.name}
+            />
             <Field
               label={f.email}
               help={mode === "edit" ? f.emailFixed : undefined}
@@ -330,7 +307,7 @@ export function UserForm({
                   {units.map((u) => (
                     <option key={u.id} value={u.id}>
                       {indent[u.type]}
-                      {ar ? u.nameAr : u.nameEn}
+                      {inLang(u.name)}
                     </option>
                   ))}
                 </select>

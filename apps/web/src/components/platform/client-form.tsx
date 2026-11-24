@@ -15,6 +15,9 @@ import {
   type Client,
 } from "@/lib/platform-api";
 import type { Invite } from "@/lib/identity";
+import { hasLocale, localeNames, locales } from "@/i18n/config";
+import { pick, readForm } from "@/lib/localized";
+import { LocalizedField } from "@/components/ui/localized-field";
 import { StatusPill } from "./status-pill";
 import type { PlatformProps } from "./types";
 
@@ -55,6 +58,14 @@ export function ClientForm({
   const [message, setMessage] = useState<Message | null>(null);
   const [invite, setInvite] = useState<Invite | null>(null);
   const [adminError, setAdminError] = useState<string | null>(null);
+  // The client's languages and default, edited here and sent with the form.
+  const [langs, setLangs] = useState<string[]>([lang]);
+  const [defaultLang, setDefaultLang] = useState<string>(lang);
+  const adopt = (loaded: Loaded) => {
+    setClient(loaded);
+    setLangs(loaded.locales);
+    setDefaultLang(loaded.defaultLocale);
+  };
   const listPath = `/${lang}/platform/clients`;
   const f = t.form;
 
@@ -62,7 +73,7 @@ export function ClientForm({
     if (mode !== "edit") return;
     platformApi<Loaded>(`/tenants/${id}`)
       .then((loaded) => {
-        setClient(loaded);
+        adopt(loaded);
         setProblem(null);
       })
       .catch((err) =>
@@ -87,14 +98,21 @@ export function ClientForm({
         return;
       }
       await platformApi(`/tenants/${id}`, { method: "PATCH", body });
-      setClient(await platformApi<Loaded>(`/tenants/${id}`));
+      adopt(await platformApi<Loaded>(`/tenants/${id}`));
       setMessage({ kind: "ok", text: f.saved });
     } catch (err) {
       const status = err instanceof ApiError ? err.status : 0;
+      const code = err instanceof ApiError ? err.code : undefined;
       setMessage({
         kind: "error",
         text:
-          status === 409 ? f.slugTaken : status === 400 ? f.invalid : f.error,
+          code === "language_mismatch"
+            ? f.languageMismatch
+            : status === 409
+              ? f.slugTaken
+              : status === 400
+                ? f.invalid
+                : f.error,
       });
     }
     setBusy(false);
@@ -108,7 +126,7 @@ export function ClientForm({
     try {
       const created = await platformApi<{ invite: Invite }>(
         `/tenants/${id}/administrators`,
-        { method: "POST", body: Object.fromEntries(new FormData(form)) },
+        { method: "POST", body: readForm(form) },
       );
       form.reset();
       setInvite(created.invite);
@@ -134,7 +152,9 @@ export function ClientForm({
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
-    const { slug, ...settings } = Object.fromEntries(new FormData(form));
+    // Languages are held in state; the rest is read from the form.
+    const { slug, ...fields } = readForm(form);
+    const settings = { ...fields, locales: langs, defaultLocale: defaultLang };
     void save(mode === "new" ? { slug, ...settings } : settings, form);
   }
 
@@ -155,7 +175,7 @@ export function ClientForm({
     <>
       <PageHeader
         title={
-          client ? (lang === "ar" ? client.nameAr : client.nameEn) : f.newTitle
+          client ? pick(client.name, lang, client.defaultLocale) : f.newTitle
         }
         description={client ? undefined : f.newDescription}
         actions={
@@ -174,28 +194,39 @@ export function ClientForm({
           onSubmit={submit}
           className="flex flex-col gap-5 rounded-lg border border-line p-4 sm:p-6"
         >
-          <div className="grid gap-5 sm:grid-cols-2">
-            <Field label={f.nameEn}>
-              <input
-                name="nameEn"
-                required
-                maxLength={200}
-                dir="ltr"
-                defaultValue={client?.nameEn}
-                className={inputClass}
-              />
-            </Field>
-            <Field label={f.nameAr}>
-              <input
-                name="nameAr"
-                required
-                maxLength={200}
-                dir="rtl"
-                defaultValue={client?.nameAr}
-                className={inputClass}
-              />
-            </Field>
-          </div>
+          <fieldset className="flex flex-col gap-2">
+            <legend className="mb-1 text-sm font-medium">{f.locales}</legend>
+            <div className="flex flex-wrap gap-x-5 gap-y-2">
+              {locales.map((locale) => (
+                <label key={locale} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    className="accent-accent"
+                    checked={langs.includes(locale)}
+                    // The default language cannot be switched off.
+                    disabled={locale === defaultLang}
+                    onChange={(e) =>
+                      setLangs(
+                        e.target.checked
+                          ? [...langs, locale]
+                          : langs.filter((l) => l !== locale),
+                      )
+                    }
+                  />
+                  {localeNames[locale]}
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-muted">{f.localesHelp}</p>
+          </fieldset>
+
+          <LocalizedField
+            label={f.name}
+            name="name"
+            locales={langs}
+            required={defaultLang}
+            value={client?.name}
+          />
 
           <Field label={f.slug} help={f.slugHelp}>
             <input
@@ -218,11 +249,17 @@ export function ClientForm({
               />
             </Field>
             <Field label={f.defaultLocale}>
-              <Select
-                name="defaultLocale"
-                defaultValue={client?.defaultLocale}
-                options={t.options.locale}
-              />
+              <select
+                value={defaultLang}
+                onChange={(e) => setDefaultLang(e.target.value)}
+                className={inputClass}
+              >
+                {langs.map((locale) => (
+                  <option key={locale} value={locale}>
+                    {hasLocale(locale) ? localeNames[locale] : locale}
+                  </option>
+                ))}
+              </select>
             </Field>
             <Field label={f.plan}>
               <Select
@@ -297,24 +334,12 @@ export function ClientForm({
                 className="flex flex-col gap-4 p-4"
               >
                 <p className="text-sm text-muted">{t.administrator.help}</p>
-                <Field label={f.nameEn}>
-                  <input
-                    name="nameEn"
-                    required
-                    maxLength={200}
-                    dir="ltr"
-                    className={inputClass}
-                  />
-                </Field>
-                <Field label={f.nameAr}>
-                  <input
-                    name="nameAr"
-                    required
-                    maxLength={200}
-                    dir="rtl"
-                    className={inputClass}
-                  />
-                </Field>
+                <LocalizedField
+                  label={f.name}
+                  name="name"
+                  locales={client.locales}
+                  required={client.defaultLocale}
+                />
                 <Field label={t.login.email}>
                   <input
                     name="email"

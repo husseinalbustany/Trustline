@@ -1,0 +1,400 @@
+{
+  "app": {
+    "name": "Trustline",
+    "tagline": "Gestion de la qualité, des risques et des incidents pour les hôpitaux"
+  },
+  "shell": {
+    "skipToContent": "Aller au contenu",
+    "navigation": "Menu principal",
+    "openMenu": "Ouvrir le menu",
+    "closeMenu": "Fermer le menu",
+    "reportIncident": "Déclarer un incident",
+    "phase2": "Phase 2",
+    "signOut": "Se déconnecter",
+    "signOutFailed": "Déconnexion impossible. Réessayez.",
+    "sessionError": "Serveur injoignable. Rechargez la page.",
+    "language": "Langue"
+  },
+  "nav": {
+    "groups": {
+      "overview": "Vue d'ensemble",
+      "safety": "Sécurité",
+      "governance": "Gouvernance",
+      "insights": "Analyses",
+      "administration": "Administration"
+    },
+    "items": {
+      "dashboard": "Tableau de bord",
+      "incidents": "Incidents",
+      "investigations": "Enquêtes",
+      "actions": "Actions correctives",
+      "policies": "Politiques",
+      "risks": "Risques",
+      "training": "Formation",
+      "reports": "Rapports",
+      "organization": "Organisation",
+      "users": "Utilisateurs et rôles",
+      "settings": "Paramètres"
+    }
+  },
+  "dashboard": {
+    "title": "Tableau de bord",
+    "description": "Ce qui demande votre attention parmi les incidents, les actions correctives et les politiques.",
+    "noData": "Aucune donnée pour l'instant",
+    "tiles": {
+      "openIncidents": "Incidents ouverts",
+      "awaitingTriage": "En attente de tri",
+      "overdueActions": "Actions correctives en retard",
+      "policiesDue": "Politiques à réviser"
+    },
+    "recentIncidents": "Incidents récents",
+    "myTasks": "Mes tâches"
+  },
+  "reportIncident": {
+    "title": "Déclarer un incident",
+    "description": "Déclarez un incident, un presque-accident ou un danger. Cela prend moins de deux minutes."
+  },
+  "modulePage": {
+    "scopeTitle": "Ce que cette partie couvrira",
+    "notBuilt": "Cette partie n'est pas encore disponible."
+  },
+  "modules": {
+    "incidents": {
+      "title": "Incidents",
+      "description": "Incidents, presque-accidents et dangers, de la déclaration à la clôture.",
+      "scope": [
+        "Déclaration ouverte à tout le personnel, avec option anonyme et codes QR",
+        "Tri et transmission aux services concernés",
+        "Délais de réponse avec escalade, et retour d'information au déclarant"
+      ]
+    },
+    "investigations": {
+      "title": "Enquêtes",
+      "description": "Enquête et analyse des causes profondes pour les événements graves.",
+      "scope": [
+        "Équipe d'enquête, chronologie, entretiens et preuves",
+        "Méthode des 5 pourquoi, diagramme d'Ishikawa et facteurs contributifs",
+        "Rapport d'analyse des causes profondes, avec approbation"
+      ]
+    },
+    "actions": {
+      "title": "Actions correctives",
+      "description": "Un seul suivi pour toutes les actions correctives et préventives.",
+      "scope": [
+        "Les actions issues des incidents, des enquêtes, des risques et des politiques au même endroit",
+        "Responsables, échéances, preuves et escalade",
+        "Vérification de l'efficacité une fois l'action terminée"
+      ]
+    },
+    "policies": {
+      "title": "Politiques",
+      "description": "Une seule bibliothèque de politiques et procédures en vigueur et approuvées.",
+      "scope": [
+        "Modèles, numérotation et historique des versions",
+        "Circuits d'approbation configurables avec signature électronique",
+        "Rappels de révision périodique et prise de connaissance par le personnel"
+      ]
+    },
+    "risks": {
+      "title": "Risques",
+      "description": "Registres des risques de l'établissement et de chaque service.",
+      "scope": [
+        "Registres au niveau de l'établissement et des services",
+        "Matrice des risques 5×5 configurable et cartes de chaleur",
+        "Mesures de maîtrise, revues, et incidents liés aux risques"
+      ]
+    },
+    "training": {
+      "title": "Formation",
+      "description": "La preuve que le personnel a été formé, avec sa signature.",
+      "scope": [
+        "Cours, sessions et campagnes de sensibilisation",
+        "Présence signée, quiz et attestations avec date d'expiration",
+        "Formations requises par rôle, et conformité par service"
+      ]
+    },
+    "reports": {
+      "title": "Rapports",
+      "description": "Tableaux de bord et rapports pour la direction et les comités.",
+      "scope": [
+        "Tableaux de bord par rôle et tendances",
+        "Rapports standards avec export Excel et PDF",
+        "Rapports programmés par e-mail"
+      ]
+    },
+    "organization": {
+      "title": "Organisation",
+      "description": "Sites, services et unités.",
+      "scope": [
+        "La structure de l'établissement, dans chacune de ses langues",
+        "Les lieux utilisés pour la déclaration et la transmission",
+        "Responsables de service et contacts d'escalade"
+      ]
+    },
+    "users": {
+      "title": "Utilisateurs et rôles",
+      "description": "Qui peut se connecter et ce que chacun peut faire.",
+      "scope": [
+        "Comptes créés par un administrateur, ou à la première connexion unique",
+        "Rôles et autorisations par service et par site",
+        "Revues des accès et journal d'audit des modifications"
+      ]
+    },
+    "settings": {
+      "title": "Paramètres",
+      "description": "La configuration de Trustline pour cet établissement.",
+      "scope": [
+        "Référentiel d'accréditation, langues et identité visuelle",
+        "Catégories d'incidents, formulaires et circuits d'approbation",
+        "Connexion par mot de passe ou connexion unique, et notifications"
+      ]
+    }
+  },
+  "platform": {
+    "title": "Plateforme Trustline",
+    "signOut": "Se déconnecter",
+    "loading": "Chargement…",
+    "notFound": "Ce client n'existe pas.",
+    "login": {
+      "title": "Connexion au portail d'administration",
+      "email": "E-mail",
+      "password": "Mot de passe",
+      "submit": "Se connecter",
+      "failed": "L'e-mail ou le mot de passe est incorrect, ou le compte est verrouillé. Vérifiez-les, ou patientez 15 minutes avant de réessayer.",
+      "error": "Connexion impossible. Réessayez."
+    },
+    "clients": {
+      "title": "Clients",
+      "description": "Tous les hôpitaux et établissements qui utilisent Trustline.",
+      "add": "Ajouter un client",
+      "empty": "Aucun client pour l'instant. Ajoutez le premier.",
+      "loadError": "Impossible de charger les clients. Rechargez la page.",
+      "columns": {
+        "name": "Client",
+        "standard": "Référentiel",
+        "plan": "Offre",
+        "signIn": "Connexion",
+        "status": "Statut"
+      }
+    },
+    "form": {
+      "newTitle": "Ajouter un client",
+      "newDescription": "Créez la fiche d'un nouvel hôpital ou établissement.",
+      "slug": "Identifiant",
+      "slugHelp": "Lettres minuscules, chiffres et tirets, de 3 à 40 caractères. Ne peut plus être modifié ensuite.",
+      "accreditationStandard": "Référentiel d'accréditation",
+      "defaultLocale": "Langue par défaut",
+      "plan": "Offre",
+      "signInMethod": "Mode de connexion",
+      "dataRegion": "Région des données",
+      "dataRegionHelp": "Le lieu où les données de ce client doivent être hébergées. Laissez vide si ce n'est pas encore décidé.",
+      "create": "Ajouter le client",
+      "save": "Enregistrer",
+      "saved": "Modifications enregistrées.",
+      "cancel": "Annuler",
+      "back": "Retour aux clients",
+      "slugTaken": "Un autre client utilise déjà cet identifiant.",
+      "invalid": "Vérifiez les champs puis réessayez.",
+      "error": "Enregistrement impossible. Réessayez.",
+      "name": "Nom",
+      "languageMismatch": "Saisissez le nom dans la langue par défaut.",
+      "locales": "Langues",
+      "localesHelp": "Les langues de travail de ce client. Les noms sont saisis dans chacune d'elles."
+    },
+    "status": {
+      "title": "Statut",
+      "active": "Actif",
+      "suspended": "Suspendu",
+      "suspend": "Suspendre le client",
+      "reactivate": "Réactiver le client",
+      "activeHelp": "La suspension empêche le personnel de ce client de se connecter. Ses données sont conservées.",
+      "suspendedHelp": "Le personnel de ce client ne peut pas se connecter. Ses données sont conservées."
+    },
+    "options": {
+      "plan": {
+        "starter": "Essentiel",
+        "professional": "Professionnel",
+        "enterprise": "Entreprise"
+      },
+      "signInMethod": {
+        "password": "E-mail et mot de passe",
+        "sso": "Connexion unique",
+        "both": "Les deux"
+      }
+    },
+    "activity": {
+      "title": "Activité récente",
+      "empty": "Aucune activité pour l'instant",
+      "actions": {
+        "client_created": "Client ajouté",
+        "client_updated": "Client modifié",
+        "client_administrator_created": "Administrateur créé"
+      }
+    },
+    "inviteLink": {
+      "title": "Envoyez ce lien à l'utilisateur",
+      "help": "Il l'ouvre pour définir son mot de passe. Le lien fonctionne une seule fois et expire au bout de 72 heures. Il ne sera plus affiché : copiez-le maintenant.",
+      "copy": "Copier le lien",
+      "copied": "Copié"
+    },
+    "administrator": {
+      "title": "Administrateur de l'hôpital",
+      "help": "Créez le premier administrateur de ce client. Il ajoutera les autres utilisateurs.",
+      "create": "Créer l'administrateur",
+      "emailTaken": "Un utilisateur avec cet e-mail existe déjà chez ce client.",
+      "exists": "Ce client a déjà un administrateur. L'hôpital ajoute lui-même les suivants.",
+      "suspended": "Ce client est suspendu. Réactivez-le d'abord.",
+      "ssoOnly": "Ce client utilise uniquement la connexion unique : un lien de mot de passe ne peut pas servir."
+    },
+    "loadError": "Impossible de charger ce client. Rechargez la page."
+  },
+  "auth": {
+    "login": {
+      "title": "Connexion",
+      "org": "Identifiant de l'établissement",
+      "orgHelp": "L'identifiant fourni par votre hôpital.",
+      "email": "E-mail",
+      "password": "Mot de passe",
+      "submit": "Se connecter",
+      "failed": "L'établissement, l'e-mail ou le mot de passe est incorrect, ou le compte est verrouillé. Vérifiez-les, ou patientez 15 minutes avant de réessayer.",
+      "error": "Connexion impossible. Réessayez.",
+      "forgot": "Mot de passe oublié ? Demandez un lien de réinitialisation à votre administrateur."
+    },
+    "invite": {
+      "title": "Définir votre mot de passe",
+      "checking": "Vérification du lien…",
+      "invalidTitle": "Ce lien ne peut pas être utilisé",
+      "invalid": "Il a expiré, a déjà servi, ou a été remplacé par un lien plus récent. Demandez un nouveau lien à votre administrateur.",
+      "password": "Nouveau mot de passe",
+      "passwordHelp": "Au moins 12 caractères.",
+      "confirm": "Confirmer le mot de passe",
+      "submit": "Définir le mot de passe",
+      "tooShort": "Le mot de passe doit comporter au moins 12 caractères.",
+      "mismatch": "Les deux mots de passe ne sont pas identiques.",
+      "error": "Impossible de définir le mot de passe. Le lien a peut-être expiré. Demandez-en un nouveau à votre administrateur.",
+      "doneTitle": "Mot de passe défini",
+      "done": "Vous pouvez maintenant vous connecter avec votre e-mail et votre nouveau mot de passe."
+    }
+  },
+  "admin": {
+    "title": "Utilisateurs et rôles",
+    "description": "Qui peut se connecter et ce que chacun peut faire.",
+    "tabsLabel": "Utilisateurs et rôles",
+    "loading": "Chargement…",
+    "loadError": "Impossible de charger cette page. Rechargez-la.",
+    "noAccess": "Votre rôle ne le permet pas. Adressez-vous à votre administrateur.",
+    "inviteLink": {
+      "title": "Envoyez ce lien à l'utilisateur",
+      "help": "Il l'ouvre pour définir son mot de passe. Le lien fonctionne une seule fois et expire au bout de 72 heures. Il ne sera plus affiché : copiez-le maintenant.",
+      "copy": "Copier le lien",
+      "copied": "Copié"
+    },
+    "users": {
+      "title": "Utilisateurs",
+      "add": "Ajouter un utilisateur",
+      "notFound": "Cet utilisateur n'existe pas.",
+      "columns": {
+        "name": "Nom",
+        "department": "Service",
+        "roles": "Rôles",
+        "status": "Statut"
+      },
+      "status": {
+        "invited": "Invité",
+        "active": "Actif",
+        "disabled": "Désactivé"
+      },
+      "form": {
+        "newTitle": "Ajouter un utilisateur",
+        "newDescription": "Il reçoit un lien à usage unique pour définir lui-même son mot de passe.",
+        "created": "Utilisateur ajouté. Envoyez-lui le lien ci-dessous.",
+        "email": "E-mail",
+        "emailFixed": "L'e-mail sert à se connecter et ne peut pas être modifié.",
+        "department": "Service",
+        "noDepartment": "Aucun",
+        "jobTitle": "Fonction",
+        "employeeNumber": "Matricule",
+        "phone": "Téléphone",
+        "roles": "Rôles",
+        "scope": "Périmètre du rôle",
+        "wholeOrganization": "Tout l'établissement",
+        "ownRoles": "Vous ne pouvez pas modifier vos propres rôles.",
+        "create": "Ajouter l'utilisateur",
+        "save": "Enregistrer",
+        "saved": "Modifications enregistrées.",
+        "saveRoles": "Enregistrer les rôles",
+        "rolesSaved": "Rôles enregistrés.",
+        "cancel": "Annuler",
+        "back": "Retour aux utilisateurs",
+        "addAnother": "Ajouter un autre utilisateur",
+        "emailTaken": "Un autre utilisateur a déjà cet e-mail.",
+        "invalid": "Vérifiez les champs puis réessayez.",
+        "error": "Enregistrement impossible. Réessayez.",
+        "signIn": "Connexion",
+        "invitedHelp": "Cette personne n'a pas encore défini de mot de passe.",
+        "newInvite": "Créer un nouveau lien",
+        "resetHelp": "Un lien de réinitialisation lui permet de choisir un nouveau mot de passe et la déconnecte partout.",
+        "resetPassword": "Créer un lien de réinitialisation",
+        "disabledHelp": "Un utilisateur désactivé ne peut pas se connecter.",
+        "access": "Accès au compte",
+        "disableHelp": "La désactivation déconnecte cette personne et bloque sa connexion. Ses enregistrements sont conservés.",
+        "disable": "Désactiver l'utilisateur",
+        "enableHelp": "L'activation permet à cette personne de se connecter à nouveau.",
+        "enable": "Activer l'utilisateur",
+        "higherAccess": "Vous ne pouvez pas accorder ni modifier un accès supérieur au vôtre.",
+        "ownAccount": "Vous ne pouvez pas modifier votre propre compte.",
+        "name": "Nom",
+        "languageMismatch": "Saisissez le nom dans la langue par défaut."
+      }
+    },
+    "roles": {
+      "title": "Rôles",
+      "add": "Ajouter un rôle",
+      "builtIn": "Par défaut",
+      "notFound": "Ce rôle n'existe pas.",
+      "columns": {
+        "name": "Rôle",
+        "permissions": "Autorisations",
+        "users": "Utilisateurs"
+      },
+      "form": {
+        "newTitle": "Ajouter un rôle",
+        "newDescription": "Un rôle est un ensemble d'autorisations que vous attribuez aux utilisateurs.",
+        "builtInHelp": "Les rôles par défaut ne peuvent pas être modifiés. Ajoutez un rôle pour créer le vôtre.",
+        "code": "Code",
+        "codeHelp": "Lettres minuscules, chiffres et tirets bas, en commençant par une lettre. Ne peut plus être modifié ensuite.",
+        "description": "Description",
+        "permissions": "Autorisations",
+        "create": "Ajouter le rôle",
+        "save": "Enregistrer",
+        "saved": "Modifications enregistrées.",
+        "delete": "Supprimer le rôle",
+        "cancel": "Annuler",
+        "back": "Retour aux rôles",
+        "codeTaken": "Un autre rôle utilise déjà ce code.",
+        "inUse": "Ce rôle est attribué à des utilisateurs. Retirez-le-leur d'abord.",
+        "invalid": "Vérifiez les champs puis réessayez.",
+        "error": "Enregistrement impossible. Réessayez.",
+        "higherAccess": "Vous ne pouvez pas accorder des autorisations que vous n'avez pas.",
+        "ownRole": "Vous ne pouvez pas modifier un rôle qui vous est attribué.",
+        "deleteConfirm": "Supprimer ce rôle ? Appuyez de nouveau pour confirmer. Cette action est irréversible.",
+        "deleteError": "Impossible de supprimer le rôle. Réessayez.",
+        "name": "Nom",
+        "languageMismatch": "Saisissez le nom dans la langue par défaut."
+      }
+    },
+    "permissions": {
+      "incidents.report": "Déclarer des incidents",
+      "incidents.view": "Consulter les incidents",
+      "incidents.triage": "Trier et attribuer les incidents",
+      "actions.manage": "Gérer les actions correctives",
+      "policies.view": "Lire les politiques",
+      "policies.manage": "Rédiger et gérer les politiques",
+      "reports.view": "Consulter les rapports et tableaux de bord",
+      "organization.manage": "Gérer la structure de l'établissement",
+      "users.manage": "Gérer les utilisateurs",
+      "roles.manage": "Gérer les rôles",
+      "settings.manage": "Modifier les paramètres"
+    }
+  }
+}

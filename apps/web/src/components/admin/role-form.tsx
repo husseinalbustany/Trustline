@@ -10,6 +10,9 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/panel";
 import { api, codeOf, statusOf } from "@/lib/api";
 import type { Role } from "@/lib/identity";
+import { pick, readForm } from "@/lib/localized";
+import { LocalizedField } from "@/components/ui/localized-field";
+import { useSession } from "@/components/shell/session";
 import type { AdminProps } from "./types";
 
 type Message = { kind: "ok" | "error"; text: string };
@@ -30,7 +33,7 @@ export function RoleForm({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
   const [confirming, setConfirming] = useState(false);
-  const ar = lang === "ar";
+  const languages = useSession().tenant;
   const f = t.roles.form;
   const listPath = `/${lang}/admin/roles`;
   const locked = role?.isSystem ?? false;
@@ -62,19 +65,21 @@ export function RoleForm({
     } catch (err) {
       const code = codeOf(err);
       const text =
-        code === "code_taken"
-          ? f.codeTaken
-          : code === "role_in_use"
-            ? f.inUse
-            : code === "cannot_change_own_role"
-              ? f.ownRole
-              : code === "cannot_grant_higher_access"
-                ? f.higherAccess
-                : statusOf(err) === 403
-                  ? t.noAccess
-                  : statusOf(err) === 400
-                    ? f.invalid
-                    : fallback;
+        code === "language_mismatch"
+          ? f.languageMismatch
+          : code === "code_taken"
+            ? f.codeTaken
+            : code === "role_in_use"
+              ? f.inUse
+              : code === "cannot_change_own_role"
+                ? f.ownRole
+                : code === "cannot_grant_higher_access"
+                  ? f.higherAccess
+                  : statusOf(err) === 403
+                    ? t.noAccess
+                    : statusOf(err) === 400
+                      ? f.invalid
+                      : fallback;
       setMessage({ kind: "error", text });
     }
     setBusy(false);
@@ -83,7 +88,7 @@ export function RoleForm({
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
-    const { code, ...fields } = Object.fromEntries(new FormData(form));
+    const { code, ...fields } = readForm(form);
     const body = { ...fields, permissions: granted };
     void run(async () => {
       if (mode === "new") {
@@ -118,7 +123,9 @@ export function RoleForm({
   return (
     <>
       <PageHeader
-        title={role ? (ar ? role.nameAr : role.nameEn) : f.newTitle}
+        title={
+          role ? pick(role.name, lang, languages.defaultLocale) : f.newTitle
+        }
         description={
           locked ? f.builtInHelp : role ? undefined : f.newDescription
         }
@@ -130,28 +137,14 @@ export function RoleForm({
         className="mt-6 flex max-w-3xl flex-col gap-5 rounded-lg border border-line p-4 sm:p-6"
       >
         <fieldset disabled={locked} className="flex flex-col gap-5">
-          <div className="grid gap-5 sm:grid-cols-2">
-            <Field label={f.nameEn}>
-              <input
-                name="nameEn"
-                required
-                maxLength={100}
-                dir="ltr"
-                defaultValue={role?.nameEn}
-                className={inputClass}
-              />
-            </Field>
-            <Field label={f.nameAr}>
-              <input
-                name="nameAr"
-                required
-                maxLength={100}
-                dir="rtl"
-                defaultValue={role?.nameAr}
-                className={inputClass}
-              />
-            </Field>
-          </div>
+          <LocalizedField
+            label={f.name}
+            name="name"
+            locales={languages.locales}
+            required={languages.defaultLocale}
+            value={role?.name}
+            maxLength={100}
+          />
           {mode === "new" && (
             <Field label={f.code} help={f.codeHelp}>
               <input
@@ -163,15 +156,13 @@ export function RoleForm({
               />
             </Field>
           )}
-          <Field label={f.description}>
-            <input
-              name="description"
-              dir="auto"
-              maxLength={500}
-              defaultValue={role?.description ?? ""}
-              className={inputClass}
-            />
-          </Field>
+          <LocalizedField
+            label={f.description}
+            name="description"
+            locales={languages.locales}
+            value={role?.description}
+            maxLength={500}
+          />
 
           <div>
             <p className="mb-2 text-sm font-medium">{f.permissions}</p>

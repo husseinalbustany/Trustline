@@ -9,13 +9,15 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Panel } from "@/components/ui/panel";
 import { api, statusOf } from "@/lib/api";
 import type { Role } from "@/lib/identity";
+import { pick } from "@/lib/localized";
+import { useSession } from "@/components/shell/session";
 import { AdminTabs } from "./admin-tabs";
 import type { AdminProps } from "./types";
 
 export function RolesList({ lang, t }: AdminProps) {
   const [roles, setRoles] = useState<Role[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
-  const ar = lang === "ar";
+  const session = useSession();
   const c = t.roles.columns;
 
   useEffect(() => {
@@ -76,7 +78,11 @@ export function RolesList({ lang, t }: AdminProps) {
                             href={`/${lang}/admin/roles/${role.id}`}
                             className="font-medium hover:text-accent hover:underline"
                           >
-                            {ar ? role.nameAr : role.nameEn}
+                            {pick(
+                              role.name,
+                              lang,
+                              session.tenant.defaultLocale,
+                            )}
                           </Link>
                           {role.isSystem && <Badge>{t.roles.builtIn}</Badge>}
                         </div>

@@ -11,7 +11,7 @@ tenant isolation, and the bilingual web shell.
 | Path | What it is |
 | --- | --- |
 | `apps/api` | NestJS API. Postgres through Drizzle, migrations in `apps/api/drizzle`. |
-| `apps/web` | Next.js web app, English and Arabic (right-to-left). |
+| `apps/web` | Next.js web app, in English, Arabic (right-to-left) and French. |
 | `docker-compose.yml` | Postgres for local development. |
 
 ## Web app structure
@@ -25,7 +25,7 @@ Every signed-in screen sits inside one shell: a sidebar, a top bar with the
 | `app/[lang]/(app)/` | One folder per area: `dashboard`, `incidents`, `investigations`, `actions`, `policies`, `risks`, `training`, `reports`, `admin/*`. |
 | `components/shell/` | Sidebar, top bar, language switcher. |
 | `components/ui/` | Shared building blocks: page header, panel, badge, button. |
-| `i18n/dictionaries/` | All text, in `en.json` and `ar.json`. No text is written in components. |
+| `i18n/dictionaries/` | All interface text, one file per language. No text is written in components. |
 
 Areas that are not built yet render `components/module-page.tsx`, which lists
 what the area will cover. To build an area, replace its `page.tsx`. To add
@@ -118,9 +118,9 @@ The web app is at http://localhost:3000 and the API at
 http://localhost:3001/api/v1/health. To use the admin portal, create an
 admin as described above.
 
-`pnpm db:seed` creates two fictional hospitals: `demo-jci` (JCI, English by
-default) and `demo-cbahi` (CBAHI, Arabic by default), each with a facility,
-departments and units.
+`pnpm db:seed` creates three fictional hospitals, each with a facility,
+departments and units: `demo-jci` (JCI, English and Arabic), `demo-cbahi`
+(CBAHI, Arabic first) and `demo-fr` (French first, with Arabic and English).
 
 ## Checks
 
@@ -154,9 +154,30 @@ To add a table: define it in `apps/api/src/database/schema.ts` with the
 `tenantIsolation()` policy, run `pnpm --filter api db:generate`, and add its
 grants for `trustline_app` in a migration.
 
+## Languages
+
+The interface is available in English, Arabic and French, and a client can
+work in any one or several of them.
+
+- **Interface text** lives in `apps/web/src/i18n/dictionaries/<language>.json`.
+  All files have the same entries.
+- **Text a client writes** (the name of a department, a user, a role) is
+  stored once per language in a single column, for example
+  `{"en": "Pharmacy", "fr": "Pharmacie"}`. There are no per-language columns.
+- **Each client chooses its languages** and a default. Its text must be
+  written in the default language and only in languages it has switched on.
+  A reader sees text in their own language, or in the client's default when
+  there is no translation.
+- **To add a language:** add it to `SUPPORTED_LOCALES` in
+  `apps/api/src/i18n/locales.ts` and to `locales` in
+  `apps/web/src/i18n/config.ts`, add its dictionary file, and translate the
+  built-in roles in `apps/api/src/identity/permissions.ts`. No table changes.
+
 ## Settings that vary by tenant
 
 - `accreditation_standard`: `JCI` or `CBAHI`.
-- `default_locale`: `en` or `ar`.
+- `locales`: the languages the client works in, in its own order.
+- `default_locale`: one of those. Every name the client writes must exist
+  in it.
 - `data_region`: where the tenant's data must be hosted. Empty until launch
   regions are decided.
