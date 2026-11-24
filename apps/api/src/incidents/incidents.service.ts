@@ -117,19 +117,42 @@ export class IncidentsService {
   ) {}
 
   /**
-   * The incidents a user may see: the ones they reported, and the ones that
-   * happened in, or are owned by, a unit their view or triage rights cover.
+   * The incidents a user may see: the ones they reported, the ones assigned
+   * to them, and the ones that happened in, or are owned by, a unit their
+   * view or triage rights cover.
    */
   private visibleTo(auth: AuthContext): SQL {
     const reach = reachOf(auth, ['incidents.view', 'incidents.triage']);
     if (reach === 'all') return sql`true`;
     const mine = eq(incidents.reportedBy, auth.user.id);
-    if (reach.length === 0) return mine;
+    const assigned = eq(incidents.assignedTo, auth.user.id);
+    if (reach.length === 0) return or(mine, assigned)!;
     return or(
       mine,
+      assigned,
       inArray(incidents.orgUnitId, reach),
       inArray(incidents.ownerUnitId, reach),
     )!;
+  }
+
+  /**
+   * Whether a user sees all of an incident, internal parts included: through
+   * view or triage rights over it, or because it is assigned to them. Anyone
+   * else who sees it does so only as its reporter.
+   */
+  private seesAll(
+    auth: AuthContext,
+    incident: {
+      orgUnitId: string;
+      ownerUnitId: string | null;
+      assignedTo: string | null;
+    },
+  ) {
+    return (
+      incident.assignedTo === auth.user.id ||
+      this.holds(auth, 'incidents.view', incident) ||
+      this.holds(auth, 'incidents.triage', incident)
+    );
   }
 
   /** Whether a permission covers where the incident happened or who owns it. */
@@ -205,6 +228,24 @@ export class IncidentsService {
           asc(incidentCategories.position),
           asc(incidentCategories.code),
         ),
+    );
+  }
+
+  /**
+   * The people an incident can be assigned to: active users only, and only
+   * what a triager needs to pick one. No contact details.
+   */
+  assignableUsers(auth: AuthContext) {
+    return this.tenantDb.withTenant(auth.tenant.id, (tx) =>
+      tx
+        .select({
+          id: users.id,
+          name: users.name,
+          orgUnitId: users.orgUnitId,
+        })
+        .from(users)
+        .where(eq(users.status, 'active'))
+        .orderBy(asc(users.email)),
     );
   }
 
@@ -366,7 +407,10 @@ export class IncidentsService {
       ownerUnitId: row.ownerUnit?.id ?? null,
     };
     const canTriage = this.holds(auth, 'incidents.triage', where);
-    const full = canTriage || this.holds(auth, 'incidents.view', where);
+    const full = this.seesAll(auth, {
+      ...where,
+      assignedTo: row.assignedTo?.id ?? null,
+    });
 
     const events = await tx
       .select({
@@ -594,13 +638,12 @@ export class IncidentsService {
         .select({
           orgUnitId: incidents.orgUnitId,
           ownerUnitId: incidents.ownerUnitId,
+          assignedTo: incidents.assignedTo,
         })
         .from(incidents)
         .where(and(eq(incidents.id, id), this.visibleTo(auth)));
       if (!incident) throw new NotFoundException();
-      const full =
-        this.holds(auth, 'incidents.view', incident) ||
-        this.holds(auth, 'incidents.triage', incident);
+      const full = this.seesAll(auth, incident);
       // Someone who could not read an internal comment may not write one.
       if (!full && input.visibility === 'internal') {
         throw new ForbiddenException({ code: 'internal_not_allowed' });

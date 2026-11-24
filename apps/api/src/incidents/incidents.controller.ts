@@ -139,6 +139,14 @@ export class IncidentsController {
     return this.incidents.summary(req.auth);
   }
 
+  // Also before ':id'. For the triage panel, so it asks for the right to
+  // triage, not the right to manage users.
+  @Get('assignable-users')
+  assignableUsers(@Req() req: AuthedRequest) {
+    requirePermission(req, 'incidents.triage');
+    return this.incidents.assignableUsers(req.auth);
+  }
+
   @Get(':id')
   get(@Param('id') id: string, @Req() req: AuthedRequest) {
     return this.incidents.get(req.auth, this.parseId(id));

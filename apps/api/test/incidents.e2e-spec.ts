@@ -379,6 +379,7 @@ describe('incident reporting', () => {
       await http().post('/incidents').send(validReport()).expect(401);
       await http().get('/incidents').expect(401);
       await http().get('/incidents/summary').expect(401);
+      await http().get('/incidents/assignable-users').expect(401);
       await http().get(`/incidents/${id}`).expect(401);
       await http().post(`/incidents/${id}/triage`).send({}).expect(401);
       await http().post(`/incidents/${id}/status`).send({}).expect(401);
@@ -1287,6 +1288,229 @@ describe('incident reporting', () => {
         'reopened',
       ]);
       expect(JSON.stringify(theirs.body)).not.toContain(wardTriager.id);
+    });
+  });
+
+  describe('the assignee', () => {
+    const INTERNAL_TEXT = `for-the-team-${run}`;
+    let assignee: Staff; // may report, and nothing else
+    let id: string;
+    const none = { open: 0, awaitingTriage: 0, closedLast30Days: 0 };
+
+    beforeAll(async () => {
+      assignee = await createStaff('assignee', {
+        role: 'reporter',
+        orgUnitId: null,
+      });
+      id = (await report(reporter, { orgUnitId: wardDept })).id;
+    });
+
+    it('sees nothing of it before being assigned', async () => {
+      await open(assignee.cookie, id).expect(404);
+      expect(await listOf(assignee.cookie)).toEqual({ items: [], total: 0 });
+      expect(await summaryOf(assignee.cookie)).toEqual(none);
+    });
+
+    it('can open, list and count the incident once assigned', async () => {
+      await triage(quality.cookie, id, { assignedTo: assignee.id }).expect(200);
+      await http()
+        .post(`/incidents/${id}/comments`)
+        .set('Cookie', quality.cookie)
+        .send({ body: INTERNAL_TEXT, visibility: 'internal' })
+        .expect(201);
+
+      const res = await open(assignee.cookie, id).expect(200);
+      expect(res.body).toMatchObject({
+        access: 'full',
+        canTriage: false,
+        assignedTo: { id: assignee.id },
+      });
+      expect(res.body.comments).toEqual([
+        expect.objectContaining({
+          body: INTERNAL_TEXT,
+          visibility: 'internal',
+        }),
+      ]);
+      expect(res.body.events.map((e: { kind: string }) => e.kind)).toEqual([
+        'reported',
+        'triaged',
+        'assigned',
+        'commented',
+      ]);
+
+      const list = await listOf(assignee.cookie);
+      expect(list.total).toBe(1);
+      expect(list.items.map((i) => i.id)).toEqual([id]);
+      // Assigned to them, not reported by them.
+      expect(await listOf(assignee.cookie, '&mine=true')).toEqual({
+        items: [],
+        total: 0,
+      });
+      expect(await summaryOf(assignee.cookie)).toEqual({ ...none, open: 1 });
+    });
+
+    it('can post both kinds of comment', async () => {
+      for (const visibility of ['internal', 'everyone']) {
+        await http()
+          .post(`/incidents/${id}/comments`)
+          .set('Cookie', assignee.cookie)
+          .send({ body: 'Looking into it.', visibility })
+          .expect(201);
+      }
+      const res = await open(quality.cookie, id).expect(200);
+      expect(
+        res.body.comments
+          .filter(
+            (c: { author: { id: string } }) => c.author.id === assignee.id,
+          )
+          .map((c: { visibility: string }) => c.visibility),
+      ).toEqual(['internal', 'everyone']);
+    });
+
+    it('cannot triage or change status without the right to triage', async () => {
+      // No triage right anywhere: refused before the incident is looked at.
+      const triaged = await triage(assignee.cookie, id).expect(403);
+      expect(triaged.body.code).toBe('missing_permission');
+      const moved = await move(assignee.cookie, id, 'in_progress').expect(403);
+      expect(moved.body.code).toBe('missing_permission');
+      const stored = await open(quality.cookie, id).expect(200);
+      expect(stored.body.status).toBe('triaged');
+    });
+
+    it('answers 403 outside_scope to an assignee whose triage right is for elsewhere', async () => {
+      const other = await report(reporter, { orgUnitId: wardDept });
+      await open(labTriager.cookie, other.id).expect(404);
+      await triage(quality.cookie, other.id, {
+        assignedTo: labTriager.id,
+      }).expect(200);
+
+      const res = await open(labTriager.cookie, other.id).expect(200);
+      expect(res.body).toMatchObject({ access: 'full', canTriage: false });
+      const triaged = await triage(labTriager.cookie, other.id).expect(403);
+      expect(triaged.body.code).toBe('outside_scope');
+      const moved = await move(
+        labTriager.cookie,
+        other.id,
+        'closed',
+        'Done',
+      ).expect(403);
+      expect(moved.body.code).toBe('outside_scope');
+      const stored = await open(quality.cookie, other.id).expect(200);
+      expect(stored.body).toMatchObject({
+        status: 'triaged',
+        assignedTo: { id: labTriager.id },
+      });
+    });
+
+    it('loses access when taken off the incident', async () => {
+      // Handed to someone else.
+      await triage(quality.cookie, id, { assignedTo: wardTriager.id }).expect(
+        200,
+      );
+      await open(assignee.cookie, id).expect(404);
+      expect(await listOf(assignee.cookie)).toEqual({ items: [], total: 0 });
+      expect(await summaryOf(assignee.cookie)).toEqual(none);
+      await http()
+        .post(`/incidents/${id}/comments`)
+        .set('Cookie', assignee.cookie)
+        .send({ body: 'Still here?', visibility: 'everyone' })
+        .expect(404);
+
+      // Back on it, then left with nobody assigned.
+      await triage(quality.cookie, id, { assignedTo: assignee.id }).expect(200);
+      await open(assignee.cookie, id).expect(200);
+      await triage(quality.cookie, id).expect(200);
+      await open(assignee.cookie, id).expect(404);
+    });
+  });
+
+  describe('choosing an assignee', () => {
+    const assignable = (cookie: string) =>
+      http().get('/incidents/assignable-users').set('Cookie', cookie);
+
+    it('lists active users only, by email, with no contact details', async () => {
+      const placed = await http()
+        .post('/users')
+        .set('Cookie', a.cookie)
+        .send({
+          name: { en: 'Test placed' },
+          email: `placed-inc-${run}@test.invalid`,
+          orgUnitId: wardUnit,
+          phone: '0000 000',
+          roles: [],
+        })
+        .expect(201);
+      await http()
+        .post('/auth/invite/accept')
+        .send({ org: a.slug, token: placed.body.invite.token, password })
+        .expect(204);
+      const gone = await createStaff('gone', {
+        role: 'reporter',
+        orgUnitId: null,
+      });
+      await http()
+        .patch(`/users/${gone.id}`)
+        .set('Cookie', a.cookie)
+        .send({ status: 'disabled' })
+        .expect(200);
+
+      const res = await assignable(quality.cookie).expect(200);
+      const list = res.body as {
+        id: string;
+        name: Record<string, string>;
+        orgUnitId: string | null;
+      }[];
+      for (const item of list) {
+        expect(Object.keys(item).sort()).toEqual(['id', 'name', 'orgUnitId']);
+      }
+      expect(JSON.stringify(res.body)).not.toContain('@');
+      expect(JSON.stringify(res.body)).not.toContain('0000 000');
+
+      const active = await owner.db.execute<{ id: string }>(
+        sql`select id from users where tenant_id = ${a.id} and status = 'active' order by email`,
+      );
+      expect(list.map((u) => u.id)).toEqual(active.rows.map((r) => r.id));
+      const ids = list.map((u) => u.id);
+      expect(ids).toEqual(expect.arrayContaining([reporter.id, quality.id]));
+      expect(ids).not.toContain(invitedId);
+      expect(ids).not.toContain(gone.id);
+
+      expect(list.find((u) => u.id === placed.body.user.id)).toEqual({
+        id: placed.body.user.id,
+        name: { en: 'Test placed' },
+        orgUnitId: wardUnit,
+      });
+      expect(list.find((u) => u.id === reporter.id)).toEqual({
+        id: reporter.id,
+        name: { en: 'Test reporter' },
+        orgUnitId: null,
+      });
+    });
+
+    it('is open to a triager for one department, as the permission is held somewhere', async () => {
+      await assignable(wardTriager.cookie).expect(200);
+    });
+
+    it('refuses someone without the right to triage', async () => {
+      for (const who of [reporter, allViewer, noRoles]) {
+        const res = await assignable(who.cookie).expect(403);
+        expect(res.body.code).toBe('missing_permission');
+      }
+    });
+
+    it("never shows another hospital's users", async () => {
+      const mine = await http()
+        .get('/auth/me')
+        .set('Cookie', b.cookie)
+        .expect(200);
+      const theirs = await assignable(b.cookie).expect(200);
+      expect(theirs.body).toEqual([
+        { id: mine.body.user.id, name: { en: 'Admin' }, orgUnitId: null },
+      ]);
+      const ours = await assignable(quality.cookie).expect(200);
+      expect(ours.body.map((u: { id: string }) => u.id)).not.toContain(
+        mine.body.user.id,
+      );
     });
   });
 
