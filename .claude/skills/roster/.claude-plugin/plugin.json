@@ -1,0 +1,6 @@
+{
+  "name": "roster",
+  "version": "0.1.0",
+  "description": "A Roster panel for the project's Claude agents: the team, who is working now, the workflow and the rules.",
+  "types": "./types/index.d.ts"
+}
