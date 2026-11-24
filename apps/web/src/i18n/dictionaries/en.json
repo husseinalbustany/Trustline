@@ -132,7 +132,7 @@
       "title": "Users and roles",
       "description": "Who can sign in and what they can do.",
       "scope": [
-        "Accounts created automatically at first single sign-on",
+        "Accounts created by an administrator, or at first single sign-on",
         "Roles and permissions per department and facility",
         "Access reviews and the audit trail of changes"
       ]
@@ -143,7 +143,7 @@
       "scope": [
         "Accreditation standard, languages and branding",
         "Incident categories, forms and approval workflows",
-        "Single sign-on and notifications"
+        "Sign-in by password or single sign-on, and notifications"
       ]
     }
   }
