@@ -12,11 +12,12 @@ import { Pill } from "@/components/ui/pill";
 import { api, statusOf } from "@/lib/api";
 import { dateTimeFormat, fill } from "@/lib/format";
 import type { OrgUnit } from "@/lib/identity";
-import type {
-  AssignableUser,
-  Incident,
-  IncidentCategory,
-  IncidentEvent,
+import {
+  valueAfter,
+  type AssignableUser,
+  type Incident,
+  type IncidentCategory,
+  type IncidentEvent,
 } from "@/lib/incidents";
 import { pick, readForm, type Localized } from "@/lib/localized";
 import { IncidentPills } from "./pills";
@@ -105,10 +106,12 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
   // The list holds the units in use. One switched off since is named from
   // the incident itself when it can be, and otherwise described.
   const unitName = (unitId: string) => {
-    const known = [...units, incident.orgUnit, incident.ownerUnit].find(
-      (u) => u?.id === unitId,
-    );
-    return known ? inLang(known.name) : t.inactiveUnit;
+    const known =
+      incident.units?.[unitId] ??
+      [...units, incident.orgUnit, incident.ownerUnit].find(
+        (u) => u?.id === unitId,
+      )?.name;
+    return known ? inLang(known) : t.inactiveUnit;
   };
 
   const facts: [string, ReactNode][] = [
@@ -147,17 +150,25 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
     const e = t.timeline.events;
     switch (event.kind) {
       case "triaged": {
-        const { harmLevel, isSentinel, ownerUnitId, categoryId } =
-          event.details;
-        const category = inLang(
-          categories.find((c) => c.id === categoryId)?.name,
-        );
+        // Newer events hold only what changed; each line shows what is there.
+        const details = event.details ?? {};
+        const harmLevel = valueAfter(details.harmLevel);
+        const ownerUnitId = valueAfter(details.ownerUnitId);
+        const categoryId = valueAfter(details.categoryId);
+        const category = categoryId
+          ? inLang(
+              incident.categories?.[categoryId] ??
+                categories.find((c) => c.id === categoryId)?.name,
+            )
+          : "";
         return [
           e.triaged,
           [
-            t.harm[harmLevel],
-            isSentinel ? t.sentinel : "",
-            fill(t.timeline.ownerUnit, { unit: unitName(ownerUnitId) }),
+            harmLevel ? t.harm[harmLevel] : "",
+            valueAfter(details.isSentinel) ? t.sentinel : "",
+            ownerUnitId
+              ? fill(t.timeline.ownerUnit, { unit: unitName(ownerUnitId) })
+              : "",
             category ? fill(t.timeline.category, { category }) : "",
           ].filter(Boolean),
         ];
@@ -168,11 +179,14 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
         if (!assignedTo) return [fill(e.assignedUnit, { unit }), []];
         // The event names the person by id only.
         const person =
-          staff.find((p) => p.id === assignedTo) ??
-          (incident.assignedTo?.id === assignedTo ? incident.assignedTo : null);
+          incident.people?.[assignedTo] ??
+          staff.find((p) => p.id === assignedTo)?.name ??
+          (incident.assignedTo?.id === assignedTo
+            ? incident.assignedTo.name
+            : null);
         return [
           person
-            ? fill(e.assigned, { name: inLang(person.name), unit })
+            ? fill(e.assigned, { name: inLang(person), unit })
             : fill(e.assignedSomeone, { unit }),
           [],
         ];

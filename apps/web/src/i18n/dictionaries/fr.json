@@ -226,6 +226,7 @@
       "missing_permission": "Votre rôle ne le permet pas. Adressez-vous à votre administrateur.",
       "outside_scope": "Votre rôle ne couvre pas le service de cet incident. Adressez-vous à une personne chargée du tri pour ce service.",
       "invalid_transition": "Quelqu'un d'autre a modifié cet incident entre-temps. La page affiche maintenant son statut actuel ; vérifiez-le puis réessayez.",
+      "stale_incident": "Quelqu'un d'autre a modifié cet incident pendant que vous l'aviez ouvert. La page affiche maintenant sa dernière version : vérifiez-la puis enregistrez de nouveau. Si cela se reproduit, rechargez la page.",
       "note_required": "Rédigez une note expliquant ce changement, puis confirmez à nouveau.",
       "internal_not_allowed": "Vous ne pouvez pas ajouter de commentaire interne. Sous « Qui peut le lire », choisissez l'option qui inclut le déclarant, puis ajoutez de nouveau le commentaire.",
       "notFound": "Cet incident n'existe pas, ou votre rôle ne vous permet pas de le consulter. Revenez à la liste.",

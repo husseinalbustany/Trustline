@@ -226,6 +226,7 @@
       "missing_permission": "Your role does not allow this. Ask your administrator.",
       "outside_scope": "Your role does not cover the department of this incident. Ask someone who triages for that department.",
       "invalid_transition": "Someone else has changed this incident in the meantime. The page now shows its current status; check it and try again.",
+      "stale_incident": "Someone else changed this incident while you had it open. The page now shows its latest version: check it and save again. If this keeps happening, reload the page.",
       "note_required": "Write a note explaining this change, then confirm again.",
       "internal_not_allowed": "You cannot add internal comments. Under “Who can read it”, choose the option that includes the reporter, then add the comment again.",
       "notFound": "This incident does not exist, or your role does not let you see it. Go back to the list.",

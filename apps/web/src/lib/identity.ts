@@ -41,6 +41,7 @@ export type User = {
   jobTitle: string | null;
   phone: string | null;
   status: "invited" | "active" | "disabled";
+  /** The day of the last sign-in, as "2026-11-24": a date, not a moment. */
   lastSignInAt: string | null;
   roles: RoleGrant[];
 };

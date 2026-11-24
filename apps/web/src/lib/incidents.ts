@@ -50,6 +50,13 @@ export type IncidentList = { items: IncidentListItem[]; total: number };
 
 type Note = { note: string | null } | null;
 
+/** A changed value as an event records it: the new shape, or the older plain one. */
+export type Was<T> = T | { from: T; to: T };
+
+/** The value an event left behind, whichever way it was recorded. */
+export const valueAfter = <T,>(was: Was<T> | undefined): T | undefined =>
+  was !== null && typeof was === "object" && "to" in was ? was.to : was;
+
 /** One entry on the timeline. What `details` holds depends on the kind. */
 export type IncidentEvent = {
   id: string;
@@ -62,12 +69,16 @@ export type IncidentEvent = {
   | { kind: "reported"; details: null }
   | {
       kind: "triaged";
+      /**
+       * Only what the triage changed, each as `{ from, to }`. Events stored
+       * before that hold every field as a plain value.
+       */
       details: {
-        harmLevel: HarmLevel;
-        isSentinel: boolean;
-        ownerUnitId: string;
-        categoryId?: string;
-      };
+        harmLevel?: Was<HarmLevel>;
+        isSentinel?: Was<boolean>;
+        ownerUnitId?: Was<string | null>;
+        categoryId?: Was<string>;
+      } | null;
     }
   | {
       kind: "assigned";
@@ -103,6 +114,12 @@ export type Incident = Omit<IncidentListItem, "descriptionExcerpt"> & {
   closureSummary: string | null;
   rejectionReason: string | null;
   access: "full" | "reporter";
+  /** Changes with every write; sent back so a stale page is refused. */
+  revision?: number;
+  /** Names for the ids its events mention, including ones no longer listed. */
+  people?: Record<string, Localized>;
+  units?: Record<string, Localized>;
+  categories?: Record<string, Localized>;
   canTriage: boolean;
   events: IncidentEvent[];
   comments: IncidentComment[];

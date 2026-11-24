@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { canIn, useSession } from "@/components/shell/session";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,10 @@ import { unitOptions } from "@/lib/org-units";
 import { explain, textareaClass, type IncidentsProps } from "./types";
 
 type Message = { kind: "ok" | "error"; text: string };
+
+/** The incident changed since this page loaded it: it must be read again. */
+const isStale = (err: unknown) =>
+  codeOf(err) === "invalid_transition" || codeOf(err) === "stale_incident";
 
 function Note({ message }: { message: Message | null }) {
   if (!message) return null;
@@ -58,6 +63,7 @@ export function TriagePanel({
 }) {
   const { lang, t, incident, onChange, onStale } = shared;
   const session = useSession();
+  const router = useRouter();
   const [ownerUnitId, setOwnerUnitId] = useState(incident.ownerUnit?.id ?? "");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
@@ -107,8 +113,9 @@ export function TriagePanel({
     setBusy(true);
     setMessage(null);
     try {
-      onChange(
-        await api<Incident>(`/incidents/${incident.id}/triage`, {
+      const result = await api<Incident | { handedOff: true }>(
+        `/incidents/${incident.id}/triage`,
+        {
           method: "POST",
           body: {
             harmLevel,
@@ -116,12 +123,21 @@ export function TriagePanel({
             categoryId,
             ownerUnitId,
             assignedTo: assignedTo || null,
+            // What this page was looking at: refused if it changed since.
+            revision: incident.revision,
           },
-        }),
+        },
       );
+      // Handed to a department this user cannot see: there is no incident
+      // to show any more, so back to the list (the form warned of this).
+      if ("handedOff" in result) {
+        setBusy(false);
+        return router.push(`/${lang}/incidents`);
+      }
+      onChange(result);
       setMessage({ kind: "ok", text: g.saved });
     } catch (err) {
-      if (codeOf(err) === "invalid_transition") onStale();
+      if (isStale(err)) onStale();
       setMessage({ kind: "error", text: explain(err, t.errors) });
     }
     setBusy(false);
@@ -264,14 +280,18 @@ function StatusActions({ t, incident, onChange, onStale }: Shared) {
       onChange(
         await api<Incident>(`/incidents/${incident.id}/status`, {
           method: "POST",
-          body: { to: move.to, note: note || null },
+          body: {
+            to: move.to,
+            note: note || null,
+            revision: incident.revision,
+          },
         }),
       );
       form.reset();
       setChosen(null);
       setMessage({ kind: "ok", text: a.done });
     } catch (err) {
-      if (codeOf(err) === "invalid_transition") {
+      if (isStale(err)) {
         setChosen(null);
         onStale();
       }

@@ -40,6 +40,8 @@ export function ReportForm({
   // The latest time the form accepts, and what "when" shows until changed.
   const [now, setNow] = useState("");
   const [occurredAt, setOccurredAt] = useState<string | null>(null);
+  // When the form was opened, so the time a report takes can be measured.
+  const [startedAt, setStartedAt] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<Sent | null>(null);
@@ -58,6 +60,7 @@ export function ReportForm({
       .then(([categories, units]) => {
         setLists({ categories, units });
         setNow(localMinute(new Date()));
+        setStartedAt(new Date().toISOString());
         setProblem(false);
       })
       .catch(() => setProblem(true));
@@ -70,6 +73,7 @@ export function ReportForm({
     setError(null);
     setOccurredAt(null);
     setNow(localMinute(new Date()));
+    setStartedAt(new Date().toISOString());
   };
 
   // The page stays mounted when the reporter leaves by the menu or the back
@@ -105,6 +109,7 @@ export function ReportForm({
             ).toISOString(),
             immediateAction: immediateAction || null,
             anonymous: anonymous === "on",
+            startedAt,
           },
         },
       );
