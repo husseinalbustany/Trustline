@@ -10,7 +10,13 @@ export type Session = {
     defaultLocale: string;
     accreditationStandard: string;
   };
-  user: { id: string; name: Localized; email: string };
+  user: {
+    id: string;
+    name: Localized;
+    email: string;
+    /** The unit the user works in, when one was set on their account. */
+    orgUnitId: string | null;
+  };
   permissions: string[];
   /**
    * Where each permission applies: "all" for the whole organization, or the

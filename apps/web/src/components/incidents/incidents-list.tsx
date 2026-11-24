@@ -53,11 +53,19 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
 
   // A new question: show "loading" rather than the previous answer.
   const ask = (next: { status?: Filter; mine?: boolean; page?: number }) => {
+    const to = {
+      status: next.status ?? status,
+      mine: next.mine ?? mine,
+      page: next.page ?? 1,
+    };
+    // The same question again (the chip already selected): nothing would be
+    // fetched, so what is on screen stays instead of "loading" for ever.
+    if (to.status === status && to.mine === mine && to.page === page) return;
     setData(null);
     setProblem(false);
-    setStatus(next.status ?? status);
-    setMine(next.mine ?? mine);
-    setPage(next.page ?? 1);
+    setStatus(to.status);
+    setMine(to.mine);
+    setPage(to.page);
   };
 
   const pages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;

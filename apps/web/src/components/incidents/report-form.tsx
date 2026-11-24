@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useState, type FormEvent } from "react";
 import { can, useSession } from "@/components/shell/session";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
@@ -13,6 +13,7 @@ import {
   harmLevels,
   incidentTypes,
   type IncidentCategory,
+  type IncidentType,
 } from "@/lib/incidents";
 import { pick, readForm } from "@/lib/localized";
 import { unitOptions } from "@/lib/org-units";
@@ -42,6 +43,9 @@ export function ReportForm({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState<Sent | null>(null);
+  // The type chosen: only an incident reached someone, so only it has a
+  // harm level to ask about.
+  const [type, setType] = useState<IncidentType | null>(null);
   const f = t.form;
   const listPath = `/${lang}/incidents`;
 
@@ -68,6 +72,17 @@ export function ReportForm({
     setNow(localMinute(new Date()));
   };
 
+  // The page stays mounted when the reporter leaves by the menu or the back
+  // button. A return visit starts with an empty form, not with the last
+  // report's reference (the form itself was emptied when it was sent).
+  useLayoutEffect(
+    () => () => {
+      setSent(null);
+      setError(null);
+    },
+    [],
+  );
+
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
@@ -81,6 +96,8 @@ export function ReportForm({
           method: "POST",
           body: {
             ...fields,
+            // A near miss or a hazard harmed no one, so the form does not ask.
+            harmLevel: type === "incident" ? fields.harmLevel : "none",
             // Left as it was, "when" means the moment of sending.
             occurredAt: (occurredAt
               ? new Date(occurredAt)
@@ -92,6 +109,7 @@ export function ReportForm({
         },
       );
       form.reset();
+      setType(null);
       setOccurredAt(null);
       setSent({ ...created, anonymous: anonymous === "on" });
     } catch (err) {
@@ -157,6 +175,10 @@ export function ReportForm({
 
   const inLang = (text: IncidentCategory["name"]) =>
     pick(text, lang, session.tenant.defaultLocale);
+  // Most reports are about the reporter's own unit: start there when it can
+  // be chosen. It is only a starting point; the reporter can change it.
+  const ownUnit =
+    lists.units.find((u) => u.id === session.user.orgUnitId)?.id ?? "";
 
   return (
     <>
@@ -166,24 +188,26 @@ export function ReportForm({
         <fieldset>
           <legend className="mb-1.5 text-sm font-medium">{f.type}</legend>
           <div className="grid gap-2 sm:grid-cols-3">
-            {incidentTypes.map((type) => (
+            {incidentTypes.map((option) => (
               <label
-                key={type}
+                key={option}
                 className="flex cursor-pointer items-start gap-3 rounded-lg border border-line p-3 has-checked:border-accent has-checked:bg-accent-soft has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-accent"
               >
                 <input
                   type="radio"
                   name="type"
-                  value={type}
+                  value={option}
                   required
+                  checked={type === option}
+                  onChange={() => setType(option)}
                   className="mt-1 size-4 shrink-0 accent-accent"
                 />
                 <span>
                   <span className="block text-base font-semibold">
-                    {t.type[type]}
+                    {t.type[option]}
                   </span>
                   <span className="block text-xs text-muted">
-                    {t.typeHelp[type]}
+                    {t.typeHelp[option]}
                   </span>
                 </span>
               </label>
@@ -211,9 +235,11 @@ export function ReportForm({
           </Field>
           <Field label={f.where}>
             <select
+              // Starts again if the unit to start from changes.
+              key={ownUnit}
               name="orgUnitId"
               required
-              defaultValue=""
+              defaultValue={ownUnit}
               className={inputClass}
             >
               <option value="" disabled>
@@ -262,23 +288,25 @@ export function ReportForm({
           />
         </Field>
 
-        <Field label={f.harmLevel}>
-          <select
-            name="harmLevel"
-            required
-            defaultValue=""
-            className={`${inputClass} sm:max-w-xs`}
-          >
-            <option value="" disabled>
-              {f.choose}
-            </option>
-            {harmLevels.map((level) => (
-              <option key={level} value={level}>
-                {t.harm[level]}
+        {type !== "near_miss" && type !== "hazard" && (
+          <Field label={f.harmLevel}>
+            <select
+              name="harmLevel"
+              required
+              defaultValue=""
+              className={`${inputClass} sm:max-w-xs`}
+            >
+              <option value="" disabled>
+                {f.choose}
               </option>
-            ))}
-          </select>
-        </Field>
+              {harmLevels.map((level) => (
+                <option key={level} value={level}>
+                  {t.harm[level]}
+                </option>
+              ))}
+            </select>
+          </Field>
+        )}
 
         <label className="flex items-start gap-3 rounded-lg border border-line p-3 text-sm has-checked:border-accent has-checked:bg-accent-soft">
           <input
