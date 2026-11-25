@@ -65,7 +65,7 @@ describe('follow-up code', () => {
       'left-to-right marks around it': `${LRM}${code}${LRM}`,
       'an Arabic letter mark in front': `${ALM}${code}`,
       'isolated, as a right-to-left page shows it': `${ISOLATES[0]}${code}${ISOLATES[3]}`,
-      'a mark between every two characters': [...bare].join(RLM),
+      'a mark between every two characters': bare.split('').join(RLM),
       'every isolate and embedding there is': `${ISOLATES.join('')}${code}${EMBEDDINGS.join('')}`,
       'a zero-width space and a joiner': `\u200b${groups[0]}\u200d${groups.slice(1).join('')}\u200c`,
       'a byte order mark': `\ufeff${code}`,
@@ -94,8 +94,8 @@ describe('follow-up code', () => {
     expect(matchesFollowUpCode(bare.slice(1), hash)).toBe(false);
     expect(matchesFollowUpCode(`${bare}2`, hash)).toBe(false);
     expect(matchesFollowUpCode(`2${bare}`, hash)).toBe(false);
-    expect(matchesFollowUpCode([...bare].reverse().join(''), hash)).toBe(
-      [...bare].reverse().join('') === bare,
+    expect(matchesFollowUpCode(bare.split('').reverse().join(''), hash)).toBe(
+      bare.split('').reverse().join('') === bare,
     );
     expect(matchesFollowUpCode(`${bare.slice(0, 8)}\u200f`, hash)).toBe(false);
     // Nothing but marks is no code at all, and matches none.

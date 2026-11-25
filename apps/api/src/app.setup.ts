@@ -58,7 +58,7 @@ export function describeListening(
   const trust =
     hops === 0
       ? 'TRUST_PROXY_HOPS=0: X-Forwarded-For is ignored, and every caller is counted by the address that connected'
-      : `TRUST_PROXY_HOPS=${hops}: a caller's address is the entry ${hops === 1 ? 'last' : `${hops} from the end`} in X-Forwarded-For, which a proxy in front of the web app must write`;
+      : `TRUST_PROXY_HOPS=${hops}: a caller's address is ${hops === 1 ? 'the last entry' : `entry ${hops} from the end`} of X-Forwarded-For, which a proxy in front of the web app must write`;
   return [
     { level: 'log', message: `Listening on ${host}:${port}. ${trust}.` },
     ...(isLoopback(host)

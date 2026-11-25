@@ -1,4 +1,4 @@
-import { inArray, like, or } from 'drizzle-orm';
+import { eq, inArray, or, sql } from 'drizzle-orm';
 import { createDatabase } from '../src/database/client.js';
 import {
   auditLog,
@@ -21,18 +21,36 @@ import {
 } from '../src/database/schema.js';
 import { requireEnv } from '../src/env.js';
 
-/** Removes the clients and platform admins a test run created. */
+/** A tag, a hyphen and a run's random part are longer than this. */
+const MIN_PREFIX = 8;
+
+/**
+ * Removes the clients and the platform admin a test run created, and nothing
+ * else. The database is shared with hospitals this run did not make (the
+ * demo hospitals, and whatever someone working next to the suite has made),
+ * so what is removed is named exactly:
+ *
+ * - clients whose identifier starts with `slugPrefix`, letter for letter
+ *   (never a pattern: an `_` or `%` in it stands for itself);
+ * - the one platform admin with exactly this email.
+ *
+ * A prefix too short to be a run's own is refused: an empty one would name
+ * every hospital there is.
+ */
 export async function removeTestData(slugPrefix: string, adminEmail: string) {
+  if (slugPrefix.length < MIN_PREFIX) {
+    throw new Error(
+      `removeTestData: "${slugPrefix}" is too short to be one run's own prefix`,
+    );
+  }
   const { db, pool } = createDatabase(requireEnv('DATABASE_URL'));
+  const ours = sql`starts_with(${tenants.slug}, ${slugPrefix})`;
   try {
-    const ids = db
-      .select({ id: tenants.id })
-      .from(tenants)
-      .where(like(tenants.slug, `${slugPrefix}%`));
+    const ids = db.select({ id: tenants.id }).from(tenants).where(ours);
     const admins = db
       .select({ id: platformAdmins.id })
       .from(platformAdmins)
-      .where(like(platformAdmins.email, adminEmail));
+      .where(eq(platformAdmins.email, adminEmail));
     await db
       .delete(platformAuditLog)
       .where(
@@ -61,10 +79,8 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
     ]) {
       await db.delete(table).where(inArray(table.tenantId, ids));
     }
-    await db.delete(tenants).where(like(tenants.slug, `${slugPrefix}%`));
-    await db
-      .delete(platformAdmins)
-      .where(like(platformAdmins.email, adminEmail));
+    await db.delete(tenants).where(ours);
+    await db.delete(platformAdmins).where(eq(platformAdmins.email, adminEmail));
   } finally {
     await pool.end();
   }

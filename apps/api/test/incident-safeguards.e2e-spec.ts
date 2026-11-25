@@ -3108,7 +3108,7 @@ describe('incident safeguards', () => {
             ),
           ),
         );
-        expect(burst.map((r) => r.status).sort()).toEqual([
+        expect(burst.map((r) => r.status).sort((x, y) => x - y)).toEqual([
           201, 201, 429, 429, 429, 429, 429, 429,
         ]);
         expect(await written(id)).toEqual({

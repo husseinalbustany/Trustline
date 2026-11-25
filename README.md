@@ -136,17 +136,34 @@ factor, and self-service "forgot password" by email.
   its hash is stored; it cannot be shown again or reissued. It works for
   every active hospital, whether or not that hospital takes reports without
   sign-in. Whoever reads with a code is given no name or id of anyone working
-  at the hospital, and neither the incident's id nor its number. A wrong
-  code, an unknown hospital and a suspended one are all answered with the
-  same 404 after the same 50 milliseconds.
-- **Limits on the public routes:** one address may send 10 reports and make
-  30 follow-up attempts an hour; more are answered 429. The count is kept in
-  the memory of each API process: with several processes the real limit is
-  that many times higher, and a restart clears it. Besides that, each
-  hospital takes at most 60 public reports an hour whatever addresses they
-  come from; this is counted in the database, so it is the same for every
-  process. **The limit per address is only as good as the address**: see
-  "In front of the web app" below.
+  at the hospital, and neither the incident's id nor its number. When it is
+  typed or pasted back, only the characters a code is made of are read:
+  letter case, hyphens, spaces, punctuation and invisible direction marks
+  make no difference. A wrong code, an unknown hospital and a suspended one
+  are all answered with the same 404 on the same 50-millisecond step.
+- **What a code may write:** comments, while the incident is open. An
+  incident takes at most 10 comments by code in 24 hours, whatever addresses
+  they come from (429 after that), and none once it is closed or was not
+  taken forward (409 `incident_ended`); the code still reads it, and a
+  reopened incident takes comments again. Both are counted and checked in the
+  database, and both are answered only to someone holding the right code.
+- **Limits on the public routes:** one address may open the public form 60
+  times, send 10 reports and make 30 follow-up attempts an hour; more are
+  answered 429. An IPv6 address is counted as its /56 network, which is what
+  one home connection is handed. The count is kept in the memory of each API
+  process: with several processes the real limit is that many times higher,
+  and a restart clears it. Besides that, each hospital takes at most 60
+  public reports an hour whatever addresses they come from; this is counted
+  in the database, so it is the same for every process. Two reports that
+  reach one hospital at the same instant do not wait for each other: the
+  second is answered 429 with `Retry-After: 1` and is sent again. **The
+  limit per address is only as good as the address**: see "In front of the
+  web app" below.
+- **When the public form is held shut:** the first time in an hour that a
+  hospital's ceiling turns a report away, the hospital's audit log gets an
+  entry `public_reporting_limit_reached` (no actor, nothing about any
+  sender) and the server log a warning with the hospital's id. Somebody has
+  to look for them: nothing is sent to anyone yet.
 - **Second sign-off:** a sentinel event, or an incident with harm level
   death, is not closed by one person. Whoever handles it asks for closure
   with the summary they propose; someone else holding `incidents.sign_off`
@@ -175,7 +192,11 @@ factor, and self-service "forgot password" by email.
   those notifications, each once. It needs no configuration: any number of
   processes may run it at once, and it stops with the process. Deadlines that
   were already past when this release was installed are shown as overdue but
-  not announced.
+  not announced. A run that did something writes one line to the server log;
+  a hospital whose check failed is named there with the kind of failure
+  (never anything from a record), and is tried again at the next run. No
+  statement of the check may take longer than 30 seconds, so one that hangs
+  cannot stop it.
 
 The rules are in `docs/specs/incident-reporting.md` and
 `docs/specs/incident-safeguards-and-deadlines.md`.
@@ -193,21 +214,50 @@ that a future mobile app on an older release keeps working.
 
 The API learns a caller's address from the `X-Forwarded-For` header. The web
 app passes that header on as it received it: it does not replace it and, as
-far as its code shows (this was read, not measured), does not add one. So in
-production **a reverse proxy must sit in front of the web app and set
-`X-Forwarded-For` itself to the address of whoever connected to it**,
-replacing anything the sender wrote there (nginx:
-`proxy_set_header X-Forwarded-For $remote_addr;`). A proxy that adds the
-real address after the sender's entries works too.
+far as its code shows (this was read, not measured), does not add one. The
+limits per address on the public routes, and the address stored with each
+sign-in, are true only if all three of these hold in production.
 
-`TRUST_PROXY_HOPS` tells the API how many proxies in front of the web app
-write the header:
+**1. A reverse proxy in front of the web app writes the header.**
+
+- The **outermost** proxy, the one the internet connects to, sets
+  `X-Forwarded-For` to the address of whoever connected to it, replacing
+  anything the sender wrote there. nginx:
+  `proxy_set_header X-Forwarded-For $remote_addr;`. (One that adds that
+  address after the sender's entries works too.)
+- **Every proxy behind it** adds the address of whoever connected to it,
+  which is the proxy in front of it, after what is already there. It must
+  not replace the header. nginx:
+  `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;`. An inner
+  proxy that replaces the header makes every caller the proxy in front of
+  it, and all of them share one allowance.
+
+**2. The web app and the API can be reached only through that proxy.** The
+web app's port must accept connections from the proxy only, and the API's
+port from the web app only. Whoever can reach either of them directly sends
+their own `X-Forwarded-For`, chooses the address they are counted by, and
+has every limit per address to themselves.
+
+- The API listens on `127.0.0.1` unless told otherwise, so only the machine
+  it runs on can connect. Where the web app runs on another machine or in
+  another container, set `API_HOST` to the address the web app reaches it on
+  (`0.0.0.0` for all of them) and let the network (a firewall, a private
+  container network with no published port) allow the web app alone. The web
+  app finds the API at `API_URL` (`http://localhost:3001` unless set).
+- The web app listens on every address unless told otherwise. Where the
+  proxy runs on the same machine, start it with `next start -H 127.0.0.1`;
+  elsewhere, close its port to everything but the proxy.
+
+**3. `TRUST_PROXY_HOPS` says how many proxies in front of the web app write
+the header.**
 
 | Deployment | `TRUST_PROXY_HOPS` |
 |---|---|
 | one proxy, web app, API | `1` (the default) |
 | CDN, load balancer, web app, API (each adds its entry) | `2` |
 | the API reached directly, with no web app or proxy | `0` |
+
+The API does not start on a value that is not a whole number from 0 to 9.
 
 Without such a proxy no setting is right. Left at 1, anyone can send their
 own `X-Forwarded-For` with each request and get a fresh allowance every time,
@@ -218,6 +268,39 @@ that is not an IP address is counted as one caller, and the ceiling of 60
 public reports an hour per hospital holds whatever the header says. The
 address stored with each sign-in in the audit log comes from the same
 header, and is only as true.
+
+**Check it on the host, before a hospital switches public reporting on.**
+When it starts, the API writes one line to its log with the address it
+listens on and the trust it places in the header, and a warning if other
+machines can connect to it; compare both with the deployment. Then, from a
+machine outside, open the public form 61 times, claiming a different address
+each time. Nothing is stored by this, and the hospital need not exist:
+
+```bash
+for i in $(seq 1 61); do
+  curl -s -o /dev/null -w '%{http_code}\n' \
+    -H "X-Forwarded-For: 198.51.100.$i" \
+    https://<your host>/api/v1/public/reporting/no-such-hospital
+done | sort | uniq -c
+```
+
+The answer must be 60 times `404` and once `429`: the addresses claimed were
+ignored and the sender was counted as one. 61 times `404` means the sender's
+header is believed (the outermost proxy is not replacing it, or the web app
+or the API was reached past it). Then open it once more from another
+network: it must be `404`. A `429` there means every caller is counted as
+one (an inner proxy replaces the header, or `TRUST_PROXY_HOPS` is too low).
+
+### What the database gives up on
+
+Every session of the application role (`trustline_app`) has limits set in the
+database itself, so they hold for any release: a statement is given up after
+15 seconds, a wait for a lock after 5, and a transaction left idle after 60.
+A request waits at most 10 seconds for a database connection when all are in
+use. All are far above what a request needs; a request that reaches one is
+answered with a 500 and logged by its error class (57014 for a statement,
+55P03 for a lock). Migrations and the seed run as the owner role and are not
+limited.
 
 ## Run it locally
 
@@ -233,8 +316,9 @@ pnpm dev
 ```
 
 The web app is at http://localhost:3000 and the API at
-http://localhost:3001/api/v1/health. To use the admin portal, create an
-admin as described above.
+http://localhost:3001/api/v1/health. The API accepts connections from this
+machine only (`API_HOST`, see "In front of the web app"). To use the admin
+portal, create an admin as described above.
 
 `pnpm db:seed` creates three fictional hospitals, each with a facility,
 departments and units: `demo-jci` (JCI, English and Arabic), `demo-cbahi`
@@ -249,7 +333,12 @@ pnpm test
 pnpm build
 ```
 
-`pnpm test` needs the database running. It migrates and seeds it first.
+`pnpm test` needs the database running. It migrates and seeds it first. The
+API's tests create hospitals of their own under a prefix of the run and
+remove them afterwards; they may share the database with other hospitals,
+and act on none they did not make, apart from the demo hospitals of the
+seed, which the database-level specs use (rows they add there are marked
+`ZZ` and removed).
 
 ## Tenant isolation
 

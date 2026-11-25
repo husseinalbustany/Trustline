@@ -77,10 +77,12 @@ describe('how the API is reached', () => {
       expect(lines[0].level).toBe('log');
       expect(lines[0].message).toContain('Listening on 127.0.0.1:3001');
       expect(lines[0].message).toContain('TRUST_PROXY_HOPS=1');
-      expect(lines[0].message).toContain('last in X-Forwarded-For');
+      expect(lines[0].message).toContain('the last entry of X-Forwarded-For');
       expect(
         describeListening({ host: '127.0.0.1', port: 3001 }, 2)[0].message,
-      ).toContain('TRUST_PROXY_HOPS=2');
+      ).toContain(
+        "TRUST_PROXY_HOPS=2: a caller's address is entry 2 from the end",
+      );
       expect(
         describeListening({ host: '127.0.0.1', port: 3001 }, 0)[0].message,
       ).toContain('X-Forwarded-For is ignored');

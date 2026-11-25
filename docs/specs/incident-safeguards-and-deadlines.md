@@ -65,9 +65,11 @@ that never opens the public form.
 ### Public routes (no session; under `/api/v1/public`)
 
 - `GET /public/reporting/:slug` → the hospital's name, languages and default
-  language, its active org units (id, parent, type, name) and active
-  categories. 404 if the hospital does not exist, is suspended, or has public
-  reporting off: the three cases must look the same.
+  language, its time zone (`timeZone`, so the form can ask "when did it
+  happen" on the hospital's clock as the staff form does), its active org
+  units (id, parent, type, name) and active categories. 404 if the hospital
+  does not exist, is suspended, or has public reporting off: the three cases
+  must look the same, and take the same time (see "Protection").
 - `POST /public/reporting/:slug` → the same body as `POST /incidents` without
   `anonymous` (a public report is always anonymous). Stored with
   `reported_by` NULL and `channel = 'public'`. Answers 201 `{ followUpCode }`
@@ -93,17 +95,44 @@ that never opens the public form.
 - `POST /public/follow-up/:slug/comments` body `{ code, body }` → adds an
   `everyone` comment written by the reporter, and answers 201 with that same
   view as it now reads, the comment included. So writing a comment costs one
-  attempt at the code, not two.
+  attempt at the code, not two. With a right code it can still be refused,
+  in two ways (decided after the third security review):
+  - 409 `incident_ended` once the incident is `closed` or `rejected`. Nobody
+    is working on it then, and a code cannot be taken back. Reading with the
+    code still works, and a reopened incident takes comments again. (Staff
+    who are signed in may still comment on an ended incident.)
+  - 429 `too_many_requests`, with `Retry-After`, when the incident has had
+    10 comments by code in the last 24 hours, whatever addresses they came
+    from. Counted in the database, so it is the same for every API process.
+    `Retry-After` can be most of a day here, where the limits per address
+    never say more than an hour.
+
+  These two come only after the code has proved right, so they are not part
+  of the rule that every refusal looks the same: they are answered at once
+  and plainly, to someone who already holds the code and learns nothing from
+  them that the view itself does not tell. A wrong code on the same route is
+  the same 404 as ever.
 
 `incidents.channel`: `app` (default, signed in) | `public`.
 
 Protection, since these routes are open to the internet:
-- A limit per IP address: 10 reports an hour and 30 follow-up attempts an
-  hour, answered with 429 `too_many_requests`. An in-memory limiter is
-  acceptable for now; say so in the README (it is per server process).
+- A limit per IP address: 10 reports an hour, 30 follow-up attempts an hour
+  and 60 openings of the report form an hour, answered with 429
+  `too_many_requests`. An in-memory limiter is acceptable for now; say so in
+  the README (it is per server process). An IPv6 address is counted as its
+  /56 network, which is what one home connection is handed.
 - A wrong code answers the same 404, in the same time, whether the hospital
   is active, is suspended or does not exist (compare hashes in constant
   time; do the same work on every path).
+  > **Changed after the third security review (API engineer).** "The same
+  > time" is kept by a step, not by the work being equal to the last tenth
+  > of a millisecond: every 404 of the four public routes (no hospital, a
+  > suspended one, a form that is off, a wrong code) is held until the next
+  > multiple of 50 milliseconds since the request was taken up. Normally
+  > that is one step; when the server is so busy that the work takes longer,
+  > the answer still leaves on a step. A 400 for a malformed request and a
+  > 429 are answered before anything is looked up, and say nothing of a
+  > hospital.
 - The body limits of `POST /incidents` apply. No free text reaches a log.
 - Nothing about the sender (IP address, user agent) is stored with the
   incident, its events or the audit log. The audit row says a public report
@@ -120,7 +149,11 @@ Protection, since these routes are open to the internet:
 - 16 characters from an alphabet without look-alikes (no 0/O, 1/I/L), shown in
   groups of four (`K7QM-2RXD-9FHT-WB3N`), generated with the system's secure
   random source. Only a hash is stored (`incidents.follow_up_code_hash`).
-  Case and hyphens are ignored when it is typed back.
+  When it is typed or pasted back, only the characters of that alphabet are
+  read: letter case does not matter, and everything else is left out
+  (hyphens, spaces, punctuation, and the invisible direction marks a phone
+  puts around text pasted into a right-to-left field), so none of it costs
+  the reporter an attempt.
 - It is shown once and cannot be recovered or reissued.
 - A signed-in user can also use it: the follow-up page works with or without
   a session, and never links the code to the session.
@@ -134,6 +167,12 @@ code alone, are written into the sections above. The rest:
   the harm level or clearing the sentinel flag afterwards does not remove the
   second signature (`incidents.sign_off_needed`, set when the incident is
   reported or triaged as sentinel or death, never cleared).
+  > **Added after the third security review (API engineer).** The database
+  > keeps this itself. A trigger on `incidents` raises the flag whenever a
+  > row is, or until that change was, a sentinel event or a death, and
+  > ignores any change of the flag from true to false: the rest of such a
+  > change is stored, the flag stays. So a release that knows nothing of the
+  > flag, a script or a mistake can neither clear it nor fail to set it.
 - **"By the reporter" is decided when a comment is written,** not when it is
   read: it is true only when the writer had no more than the reporter's own
   access, or used a follow-up code. A handler who also reported the incident
@@ -141,12 +180,23 @@ code alone, are written into the sections above. The rest:
   comment tells a reader who reported.
   > **Added while building (API engineer): comments stored before this.**
   > What access a writer had was never recorded, so it cannot be decided
-  > afterwards for an old comment. Every stored comment whose author is the
-  > incident's reporter is therefore kept as "by the reporter", exactly as
-  > each reader has been shown it so far; no name appears where none did.
-  > New comments also record the other capacity (`as_handler`), so that a
-  > comment written by a release that records neither is read the same
-  > cautious way instead of showing the reporter's name.
+  > afterwards for an old comment that everyone may read. Every such comment
+  > whose author is the incident's reporter is therefore kept as "by the
+  > reporter", exactly as each reader has been shown it so far; no name
+  > appears where none did. New comments also record the other capacity
+  > (`as_handler`), so that a comment written by a release that records
+  > neither is read the same cautious way instead of showing the reporter's
+  > name.
+  >
+  > **Changed after the third security review.** For an *internal* comment
+  > it can be decided: only someone who saw all of the incident could write
+  > one, so its author wrote it as a handler. Marked "by the reporter", it
+  > told whoever reads the internal comments that the report was a named
+  > one, made by a colleague with full access. A migration records every
+  > stored internal comment of an incident's reporter as written by a
+  > handler, and an internal comment is never read as the reporter's,
+  > whatever is stored with it. Such a comment now carries its author's
+  > name, like any handler's.
 - **A withdrawal note is not shown to the reporter,** like a sent-back note.
 - **Signing off needs the `revision`** the signer was looking at.
 - **The address limit is not the only limit.** Each hospital also has a
@@ -155,6 +205,39 @@ code alone, are written into the sections above. The rest:
   quality office is not buried. The limiter only accepts a real IP address as
   a key. The README states what must sit in front of the web app for the
   address limit to mean anything.
+
+### Decided after the third security review
+
+Where a rule above changed, it says so in its place. The rest:
+
+- **A form held shut is not silent.** The first time in an hour that a
+  hospital's ceiling turns a public report away, the hospital's audit log
+  gets an entry `public_reporting_limit_reached` (no actor, no address,
+  nothing of what was sent; `changes` holds the limit) and the server log
+  one warning with the hospital's id. Once an hour per hospital, however
+  many are turned away. Nobody is notified by it yet.
+- **Nobody queues for a hospital's turn.** Public reports to one hospital
+  are counted one at a time. A report that arrives while another is being
+  stored is not kept waiting, holding a database connection: it is answered
+  429 `too_many_requests` with `Retry-After: 1` and is to be sent again.
+  The form must keep what was typed and offer to send it again, as it must
+  for the ceiling. A report that is refused for what it says (400: unknown
+  category or unit, harm that does not fit its type) is refused before its
+  turn is asked for: it is answered 400 even when the hospital's ceiling is
+  reached, where it was 429 before. (The limit per address still comes
+  before everything.)
+- **Text a client writes carries no control characters.** Every name, code
+  and free text on every route is refused (400) with a C0 or C1 control
+  character or DEL in it; a name, which is one line, also with a tab or a
+  line break. Free text keeps its tabs and line breaks. What Arabic and
+  French are written with is none of these and is stored as written: the
+  zero-width joiner and non-joiner, the direction marks, the non-breaking
+  spaces. The organization and the email of a sign-in, and the organization
+  of a set-password link, are refused the same way, before anything is
+  looked up, so that the answer is the same whether or not the hospital
+  exists.
+- **The public routes can be verified from outside.** The README gives the
+  check to run on a host before a hospital switches public reporting on.
 
 ### Comments by an anonymous reporter
 
@@ -232,7 +315,13 @@ Hours and days are calendar time. Working-hours calendars come later.
 
 `tenants.time_zone`: an IANA name (for example `Asia/Beirut`), default `UTC`,
 set by Trustline staff in the admin portal when the client is created or
-edited, and validated against the names the runtime knows. Every "day" the
+edited, and validated against the names the runtime knows. No offset is
+taken, under any spelling: the whole `Etc/` area (`Etc/GMT+3`, `Etc/UTC`) is
+refused, and UTC is written `UTC`. The name is stored in the letter case
+IANA writes it, whatever was typed (`asia/riyadh` is stored `Asia/Riyadh`);
+a second spelling of a zone that the runtime does not list (`Asia/Kolkata`
+beside `Asia/Calcutta`) is kept as chosen, and taken only when each of its
+parts starts with a capital letter. Every "day" the
 API works out for a hospital uses it: the `from` and `to` list filters, and
 "the last 30 days" in the summary. `GET /auth/me` returns it as
 `tenant.timeZone`, so screens show dates in the hospital's time, not the
@@ -254,9 +343,16 @@ browser's. The client is never asked for an offset.
   > becomes "late" by raising it: the person being measured could move the
   > mark, and would be discouraged from raising a harm level. So the triage
   > deadline stays the one the triage was made under. When `close_due_at`
-  > moves, what was announced about the old one is forgotten
-  > (`close_due_soon_at`, `close_overdue_at` are cleared): it is another
-  > deadline.
+  > moves to a moment still to come, what was announced about the old one
+  > is forgotten (`close_due_soon_at`, `close_overdue_at` are cleared): it
+  > is another deadline, and is announced in its turn.
+  >
+  > **Changed after the third security review.** When it moves to a moment
+  > already past, what was announced stands. Otherwise whoever may triage
+  > could have an overdue incident announced again, to the assignee and to
+  > everyone who triages for the whole organization, as often as they
+  > changed its harm level. If nothing was announced yet (the old deadline
+  > had not passed), the next check announces the missed one, once.
 - `triage_due_at` stops mattering once the incident leaves `new`.
   `close_due_at` stops mattering once it is `closed` or `rejected`; reopening
   does not give a new deadline.
@@ -342,6 +438,20 @@ description, no comment text, no names of people).
   >   `due_soon` is not sent after it.
   > - A suspended hospital is skipped; its deadlines are announced, once,
   >   when it is active again.
+  >
+  > **Added after the third security review.**
+  > - A run that did something writes one line to the server log (how many
+  >   notifications, how many hospitals failed); a hospital whose check
+  >   failed is named with the kind of failure, never with anything from a
+  >   record; a run that could not start says so. None fails in silence.
+  > - No statement of the check may take longer than 30 seconds, waiting
+  >   for a lock included. A hospital it cannot finish is left for the next
+  >   run, and the others are checked.
+  > - Notifications are written in pieces of a thousand, so no batch is too
+  >   large to be sent.
+  > - The check can be run for named hospitals only. The API never does;
+  >   tests do, because they share a database with hospitals they did not
+  >   make and run the check as of moments that are not now.
 - `GET /notifications?unread=&page=&pageSize=` → the caller's own, newest
   first, each with the incident's reference and whether the caller can still
   open it. `GET /notifications/count` → `{ unread }`.
