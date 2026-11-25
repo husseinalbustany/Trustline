@@ -21,12 +21,20 @@ export const childType: Record<UnitType, UnitType | null> = {
 };
 
 /**
+ * What placing a unit in the tree needs. The form for reporting without
+ * sign-in gets no more than this, and only units that are active.
+ */
+export type TreeUnit = Pick<OrgUnit, "id" | "parentId" | "type" | "name"> & {
+  active?: boolean;
+};
+
+/**
  * Units in the order of the tree: each one followed by what sits under it.
  * The API returns them ordered by code, not by place in the tree.
  */
-export function inTreeOrder(units: OrgUnit[]): OrgUnit[] {
+export function inTreeOrder<T extends TreeUnit>(units: T[]): T[] {
   const ids = new Set(units.map((u) => u.id));
-  const out: OrgUnit[] = [];
+  const out: T[] = [];
   const seen = new Set<string>();
   const add = (parentId: string | null) => {
     for (const unit of units) {
@@ -57,14 +65,17 @@ export type UnitOption = { id: string; label: string; inactive: boolean };
  * the record really is instead of quietly showing something else. The
  * record itself carries the unit's name, so nothing is looked up.
  */
-export function unitOptions(
-  units: OrgUnit[],
-  nameOf: (unit: OrgUnit) => string,
+export function unitOptions<T extends TreeUnit>(
+  units: T[],
+  nameOf: (unit: T) => string,
   stored?: { id: string; label: string } | null,
 ): UnitOption[] {
-  const out = inTreeOrder(units.filter((u) => u.active)).map((unit) => ({
+  const out = inTreeOrder(units.filter((u) => u.active !== false)).map((unit) => ({
     id: unit.id,
-    label: indent[unit.type] + nameOf(unit),
+    // An option holds no elements, so the name is isolated with
+    // U+2068 … U+2069: a name in the other direction ending in a bracket
+    // keeps the bracket at its own end.
+    label: `${indent[unit.type]}\u2068${nameOf(unit)}\u2069`,
     inactive: false,
   }));
   if (stored && !out.some((o) => o.id === stored.id)) {

@@ -7,11 +7,17 @@ export function LanguageSwitcher({
   lang,
   pathname,
   label,
+  query = "",
+  roomy = false,
 }: {
   lang: Locale;
   pathname: string;
   /** Names the group for screen readers, e.g. "Language". */
   label: string;
+  /** What follows the path and must be kept, such as `?unit=…`. */
+  query?: string;
+  /** Larger links, for the pages built for a phone first. */
+  roomy?: boolean;
 }) {
   const rest = pathname.split("/").slice(2).join("/");
 
@@ -23,9 +29,9 @@ export function LanguageSwitcher({
         .map((other) => (
           <Link
             key={other}
-            href={`/${other}/${rest}`}
+            href={`/${other}/${rest}${query}`}
             lang={other}
-            className="inline-flex h-9 items-center rounded-md px-2 hover:bg-surface hover:text-foreground"
+            className={`inline-flex items-center rounded-md hover:bg-surface hover:text-foreground ${roomy ? "h-11 px-3" : "h-9 px-2"}`}
           >
             {localeNames[other]}
           </Link>

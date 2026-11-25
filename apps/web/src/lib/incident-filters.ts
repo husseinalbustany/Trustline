@@ -16,6 +16,10 @@ import {
  */
 export type IncidentFilters = {
   status: KnownStatus | "";
+  /** Every status that is not an ending: what the dashboard counts as open. */
+  open: boolean;
+  /** Severe harm, a death or a sentinel event. */
+  serious: boolean;
   type: IncidentType | "";
   harmLevel: HarmLevel | "";
   /** Sentinel events only, everything but them, or both. */
@@ -35,6 +39,8 @@ export type IncidentFilters = {
 
 export const noFilters: IncidentFilters = {
   status: "",
+  open: false,
+  serious: false,
   type: "",
   harmLevel: "",
   sentinel: "",
@@ -74,8 +80,13 @@ export function readFilters(params: {
   get(name: string): string | null;
 }): IncidentFilters {
   const page = Number(params.get("page"));
+  const open = params.get("open") === "true";
   return {
-    status: oneOf(incidentStatuses, params.get("status")),
+    // "Open" is a group of statuses. Asked for together with one status, the
+    // group is what is shown: the two are one choice on the screen.
+    status: open ? "" : oneOf(incidentStatuses, params.get("status")),
+    open,
+    serious: params.get("serious") === "true",
     type: oneOf(incidentTypes, params.get("type")),
     harmLevel: oneOf(harmLevels, params.get("harmLevel")),
     sentinel: oneOf(["true", "false"] as const, params.get("sentinel")),

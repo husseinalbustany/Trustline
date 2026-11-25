@@ -27,6 +27,7 @@ import {
 } from './platform-auth.guard.js';
 import { PlatformAuthService } from './platform-auth.service.js';
 import { fitsLanguages, localeSchema, localizedText } from '../i18n/locales.js';
+import { isTimeZone } from '../i18n/time-zones.js';
 import { pgErrorCode } from '../database/errors.js';
 import { roleAssignments, roles, sessions, users } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
@@ -51,14 +52,25 @@ const settings = {
     .transform((v) => v || null),
 };
 
+// The hospital's own clock, as an IANA name ("Asia/Beirut"). Whether the
+// runtime knows the name is checked apart from the shape, so that a name it
+// does not know is answered with its own code.
+const timeZone = z.string().max(64);
+
 const createSchema = z.strictObject({
   // Lowercase letters, digits and hyphens. Fixed once created.
   slug: z.string().regex(/^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$/),
   ...settings,
+  // Left out, the client starts on UTC.
+  timeZone: timeZone.optional(),
 });
 
 const updateSchema = z
-  .strictObject({ ...settings, status: z.enum(['active', 'suspended']) })
+  .strictObject({
+    ...settings,
+    timeZone,
+    status: z.enum(['active', 'suspended']),
+  })
   .partial();
 
 const idSchema = z.uuid();
@@ -90,6 +102,7 @@ export class PlatformTenantsController {
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException();
     this.assertLanguages(parsed.data);
+    this.assertTimeZone(parsed.data.timeZone);
     try {
       // The client and its audit entry are saved together or not at all.
       const tenant = await this.db.transaction(async (tx) => {
@@ -110,6 +123,7 @@ export class PlatformTenantsController {
       await this.tenantDb.withTenant(tenant.id, async (tx) => {
         await this.provisioning.ensureSystemRoles(tx, tenant.id);
         await this.provisioning.ensureIncidentCategories(tx, tenant.id);
+        await this.provisioning.ensureResponseRules(tx, tenant.id);
       });
       return tenant;
     } catch (e) {
@@ -155,6 +169,7 @@ export class PlatformTenantsController {
     if (!parsed.success || Object.keys(parsed.data).length === 0) {
       throw new BadRequestException();
     }
+    this.assertTimeZone(parsed.data.timeZone);
     const tenantId = this.parseId(id);
     const tenant = await this.db.transaction(async (tx) => {
       const [before] = await tx
@@ -233,6 +248,7 @@ export class PlatformTenantsController {
       const result = await this.tenantDb.withTenant(tenant.id, async (tx) => {
         await this.provisioning.ensureSystemRoles(tx, tenant.id);
         await this.provisioning.ensureIncidentCategories(tx, tenant.id);
+        await this.provisioning.ensureResponseRules(tx, tenant.id);
         const [administrator] = await tx
           .select({ id: roles.id })
           .from(roles)
@@ -313,6 +329,17 @@ export class PlatformTenantsController {
       !fitsLanguages(settings.name, settings)
     ) {
       throw new BadRequestException({ code: 'language_mismatch' });
+    }
+  }
+
+  /**
+   * A time zone, when one is sent, is a name the runtime knows: every day
+   * the API works out for the client is counted on that clock, so a name it
+   * could not count with must never be stored.
+   */
+  private assertTimeZone(timeZone: string | undefined) {
+    if (timeZone !== undefined && !isTimeZone(timeZone)) {
+      throw new BadRequestException({ code: 'unknown_time_zone' });
     }
   }
 

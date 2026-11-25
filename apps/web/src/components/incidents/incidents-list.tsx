@@ -43,7 +43,7 @@ import { IncidentPills } from "./pills";
 import type { IncidentsProps } from "./types";
 
 const PAGE_SIZE = 20;
-const statusChips = ["", ...incidentStatuses] as const;
+const statusChips = ["", "open", ...incidentStatuses] as const;
 
 /** The answer to one question, and when it came, to say how long ago. */
 type Answer = { query: string; list: IncidentList; at: Date };
@@ -65,6 +65,13 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
   const dates = dateTimeFormat(lang);
   const numbers = numberFormat(lang);
   const ago = timeAgoFormat(lang);
+
+  // How long a report has waited, counted from when the list was fetched.
+  const reportedAgo = (reportedAt: string) => {
+    const then = new Date(reportedAt);
+    const span = ago(then, answer?.at ?? then);
+    return span ? fill(l.reportedAgo, { ago: span }) : l.reportedJustNow;
+  };
 
   // Text that cannot begin a reference finds nothing: no need to ask.
   const findsNothing = !canBeReference(filters.reference);
@@ -192,17 +199,36 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
             aria-label={l.filterLabel}
             className="flex flex-wrap gap-2"
           >
-            {statusChips.map((value) => (
-              <button
-                key={value}
-                type="button"
-                aria-pressed={filters.status === value}
-                onClick={() => ask({ status: value })}
-                className={`${chip} ${chipTone(filters.status === value)}`}
-              >
-                {value ? t.status[value] : l.all}
-              </button>
-            ))}
+            {statusChips.map((value) => {
+              // "Open" is not one status but every one that is not an
+              // ending, as the dashboard counts them. One chip is on at a
+              // time: choosing a status leaves "Open", and the reverse.
+              const on =
+                value === "open"
+                  ? filters.open
+                  : !filters.open && filters.status === value;
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() =>
+                    ask(
+                      value === "open"
+                        ? { open: true, status: "" }
+                        : { open: false, status: value },
+                    )
+                  }
+                  className={`${chip} ${chipTone(on)}`}
+                >
+                  {value === "open"
+                    ? l.open
+                    : value
+                      ? t.status[value]
+                      : l.all}
+                </button>
+              );
+            })}
           </div>
           <div className="flex flex-wrap gap-x-6">
             <label className={check}>
@@ -222,6 +248,15 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
                 onChange={(e) => ask({ assignedToMe: e.target.checked })}
               />
               {l.assignedToMe}
+            </label>
+            <label className={check} title={l.seriousHelp}>
+              <input
+                type="checkbox"
+                className="size-4 accent-accent"
+                checked={filters.serious}
+                onChange={(e) => ask({ serious: e.target.checked })}
+              />
+              {l.serious}
             </label>
           </div>
         </div>
@@ -434,12 +469,7 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
                   </p>
                   <p className="mt-1 text-xs text-muted">
                     <span className="font-medium text-foreground">
-                      {fill(l.reportedAgo, {
-                        ago: ago(
-                          new Date(item.reportedAt),
-                          answer?.at ?? new Date(item.reportedAt),
-                        ),
-                      })}
+                      {reportedAgo(item.reportedAt)}
                     </span>
                     {" · "}
                     <time dateTime={item.reportedAt}>

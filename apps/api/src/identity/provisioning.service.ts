@@ -5,6 +5,7 @@ import type { Transaction } from '../database/client.js';
 import {
   auditLog,
   incidentCategories,
+  incidentResponseRules,
   roleAssignments,
   roles,
   users,
@@ -12,6 +13,10 @@ import {
 } from '../database/schema.js';
 import type { Localized } from '../i18n/locales.js';
 import { DEFAULT_INCIDENT_CATEGORIES } from '../incidents/categories.js';
+import {
+  DEFAULT_RESPONSE_RULES,
+  HARM_LEVELS,
+} from '../incidents/response-rules.js';
 import { SYSTEM_ROLES } from './permissions.js';
 
 export const INVITE_HOURS = 72;
@@ -101,6 +106,29 @@ export class ProvisioningService {
       .values(DEFAULT_INCIDENT_CATEGORIES.map((c) => ({ ...c, tenantId })))
       .onConflictDoNothing({
         target: [incidentCategories.tenantId, incidentCategories.code],
+      });
+  }
+
+  /**
+   * Adds the starting response rules (how soon to triage and to close, by
+   * harm level) a client does not have yet. Ones it already has are left
+   * alone: they are the hospital's own decision. Safe to repeat.
+   */
+  async ensureResponseRules(tx: Transaction, tenantId: string) {
+    await tx
+      .insert(incidentResponseRules)
+      .values(
+        HARM_LEVELS.map((harmLevel) => ({
+          ...DEFAULT_RESPONSE_RULES[harmLevel],
+          harmLevel,
+          tenantId,
+        })),
+      )
+      .onConflictDoNothing({
+        target: [
+          incidentResponseRules.tenantId,
+          incidentResponseRules.harmLevel,
+        ],
       });
   }
 

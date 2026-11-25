@@ -88,6 +88,11 @@ export const tenants = pgTable(
     // hospital's link or QR code. Off until the hospital switches it on: it
     // is the one setting here that the hospital itself may change.
     publicReporting: boolean().notNull().default(false),
+    // The hospital's own clock, as an IANA name ("Asia/Beirut"). Every day
+    // the API works out for this hospital is a day there: the day a report
+    // was made, "the last 30 days", a deadline counted in days. Set from the
+    // admin portal, never by the hospital and never taken from a browser.
+    timeZone: text().notNull().default('UTC'),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   () => [
@@ -455,6 +460,26 @@ export const incidents = pgTable(
     // who signs off must be someone else.
     closureRequestedBy: uuid(),
     closureRequestedAt: timestamp({ withTimezone: true }),
+    // When it should have been triaged by, and closed by: the reported time
+    // plus what the hospital's response rules allowed when the report was
+    // made. The first never moves. The second is counted again, still from
+    // the reported time, when triage changes the harm level or the sentinel
+    // flag. A later change to the rules moves neither. Whether an incident
+    // is overdue is worked out from these when it is read, never stored.
+    // Nullable only so that a release still running during a deployment can
+    // go on storing reports: the deadline check fills in any it left empty.
+    triageDueAt: timestamp({ withTimezone: true }),
+    closeDueAt: timestamp({ withTimezone: true }),
+    // When it first left `new` by triage. `triagedAt` moves with every later
+    // correction, so it cannot say whether the first triage was on time.
+    firstTriagedAt: timestamp({ withTimezone: true }),
+    // When each deadline notification was sent, so each is sent once. The
+    // deadline check claims an incident by setting the column, in the same
+    // transaction as it writes the notifications.
+    triageDueSoonAt: timestamp({ withTimezone: true }),
+    triageOverdueAt: timestamp({ withTimezone: true }),
+    closeDueSoonAt: timestamp({ withTimezone: true }),
+    closeOverdueAt: timestamp({ withTimezone: true }),
     // Raised by every triage and every change of status, and by nothing
     // else. Someone saving a decision says which revision they were looking
     // at, so a decision made on an out-of-date screen is refused. A comment
@@ -524,6 +549,10 @@ export const incidents = pgTable(
     // "Assigned to me", and the assignee's part of who may see an incident:
     // without it every list for a reporter or assignee reads the whole table.
     index('incidents_assigned_to_idx').on(t.tenantId, t.assignedTo),
+    // What the deadline check looks for every five minutes, and the order of
+    // the list "by deadline".
+    index('incidents_triage_due_idx').on(t.tenantId, t.status, t.triageDueAt),
+    index('incidents_close_due_idx').on(t.tenantId, t.status, t.closeDueAt),
     tenantIsolation(),
   ],
 );
@@ -609,6 +638,93 @@ export const incidentComments = pgTable(
       'incident_comments_has_writer',
       sql`${t.authorId} is not null or ${t.byReporter}`,
     ),
+    tenantIsolation(),
+  ],
+);
+
+// How quickly a hospital means to triage and to close an incident, by harm
+// level. One row per level; a sentinel event uses the `death` row. Every
+// client starts with the values in incidents/response-rules.ts and is
+// expected to change them. The application role cannot delete a row.
+export const incidentResponseRules = pgTable(
+  'incident_response_rules',
+  {
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    harmLevel: incidentHarmLevel().notNull(),
+    // Calendar time: hours on the clock, days on the hospital's calendar.
+    triageWithinHours: integer().notNull(),
+    closeWithinDays: integer().notNull(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({
+      name: 'incident_response_rules_pkey',
+      columns: [t.tenantId, t.harmLevel],
+    }),
+    check(
+      'incident_response_rules_triage_hours',
+      sql`${t.triageWithinHours} between 1 and 720`,
+    ),
+    check(
+      'incident_response_rules_close_days',
+      sql`${t.closeWithinDays} between 1 and 365`,
+    ),
+    tenantIsolation(),
+  ],
+);
+
+export const notificationKind = pgEnum('notification_kind', [
+  'incident_reported',
+  'incident_assigned',
+  'incident_handed_over',
+  'comment_added',
+  'status_changed',
+  'sign_off_requested',
+  'sign_off_decided',
+  'due_soon',
+  'overdue',
+]);
+
+// Something a user is told about an incident they can see. Stored so that it
+// can be shown in the app now and sent by email later. The application role
+// can add and read rows and set `read_at`, nothing else: what was sent to
+// whom cannot be rewritten.
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    // Who it is for. Never anyone who could not see the incident at the time.
+    userId: uuid().notNull(),
+    kind: notificationKind().notNull(),
+    incidentId: uuid().notNull(),
+    // The incident's reference and, for some kinds, which deadline or which
+    // outcome. Never a name, a description or the text of a comment: nothing
+    // a patient, a reporter or a member of staff could be identified from.
+    data: jsonb().$type<Record<string, string>>().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    readAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [
+    foreignKey({
+      name: 'notifications_user_fk',
+      columns: [t.tenantId, t.userId],
+      foreignColumns: [users.tenantId, users.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'notifications_incident_fk',
+      columns: [t.tenantId, t.incidentId],
+      foreignColumns: [incidents.tenantId, incidents.id],
+    }),
+    // A user's own, newest first; and the count of those not yet read.
+    index('notifications_user_idx').on(t.tenantId, t.userId, t.createdAt),
+    index('notifications_unread_idx')
+      .on(t.tenantId, t.userId)
+      .where(sql`${t.readAt} is null`),
     tenantIsolation(),
   ],
 );

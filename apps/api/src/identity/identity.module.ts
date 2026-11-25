@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { OrganizationModule } from '../organization/organization.module.js';
+import { AccessService } from './access.service.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { ProvisioningService } from './provisioning.service.js';
@@ -15,6 +16,7 @@ import { UsersController } from './users.controller.js';
   imports: [OrganizationModule],
   controllers: [AuthController, UsersController, RolesController],
   providers: [
+    AccessService,
     AuthService,
     ProvisioningService,
     SessionGuard,
@@ -22,6 +24,7 @@ import { UsersController } from './users.controller.js';
   ],
   // Global so any module can protect its routes with SessionGuard.
   exports: [
+    AccessService,
     AuthService,
     ProvisioningService,
     SessionGuard,

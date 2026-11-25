@@ -19,15 +19,16 @@ export const numberFormat = (lang: string) =>
 /**
  * How long ago a moment was, in the reader's words: "3 days ago". Counted in
  * days for the first three months, because that is how a waiting report is
- * talked about; then in months and years.
+ * talked about; then in months and years. Null for less than a minute ago:
+ * the dictionary has its own words for "just now".
  */
 export function timeAgoFormat(lang: string) {
-  const locale = withWesternDigits(lang);
-  const counted = new Intl.RelativeTimeFormat(locale, { numeric: "always" });
-  const worded = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+  const counted = new Intl.RelativeTimeFormat(withWesternDigits(lang), {
+    numeric: "always",
+  });
   return (then: Date, now: Date) => {
     const minutes = Math.floor((now.getTime() - then.getTime()) / 60_000);
-    if (minutes < 1) return worded.format(0, "second");
+    if (minutes < 1) return null;
     if (minutes < 60) return counted.format(-minutes, "minute");
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return counted.format(-hours, "hour");
@@ -39,39 +40,36 @@ export function timeAgoFormat(lang: string) {
   };
 }
 
-/** A length of time, short: "45 sec", "1 min 24 sec", "2 hr 5 min". */
-export function durationFormat(lang: string) {
-  const locale = withWesternDigits(lang);
-  const part = (unit: "hour" | "minute" | "second") =>
-    new Intl.NumberFormat(locale, {
-      style: "unit",
-      unit,
-      unitDisplay: "short",
-    });
-  const [hours, minutes, seconds] = [
-    part("hour"),
-    part("minute"),
-    part("second"),
-  ];
-  const joined = new Intl.ListFormat(locale, { style: "narrow", type: "unit" });
-  return (totalSeconds: number) => {
-    const total = Math.max(0, Math.round(totalSeconds));
-    const [h, m, s] = [
-      Math.floor(total / 3600),
-      Math.floor((total % 3600) / 60),
-      total % 60,
-    ];
-    if (h > 0) {
-      return joined.format([hours.format(h), ...(m ? [minutes.format(m)] : [])]);
-    }
-    if (m > 0) {
-      return joined.format([
-        minutes.format(m),
-        ...(s ? [seconds.format(s)] : []),
-      ]);
-    }
-    return seconds.format(s);
+/** How long from now, in the reader's words: "in 12 minutes", "in 1 hour". */
+export function timeUntilFormat(lang: string) {
+  const counted = new Intl.RelativeTimeFormat(withWesternDigits(lang), {
+    numeric: "always",
+  });
+  return (seconds: number) => {
+    const minutes = Math.max(1, Math.ceil(seconds / 60));
+    return minutes < 60
+      ? counted.format(minutes, "minute")
+      : counted.format(Math.ceil(minutes / 60), "hour");
   };
+}
+
+/**
+ * A length of time as a clock figure, the same in every language: 96 seconds
+ * is `1:36` in minutes, and from an hour up `1:05` in hours. The dictionary
+ * names the unit beside it ("1:36 min").
+ */
+export function clockOf(totalSeconds: number): {
+  unit: "minutes" | "hours";
+  time: string;
+} {
+  const total = Math.max(0, Math.round(totalSeconds));
+  const two = (n: number) => String(n).padStart(2, "0");
+  return total < 3600
+    ? { unit: "minutes", time: `${Math.floor(total / 60)}:${two(total % 60)}` }
+    : {
+        unit: "hours",
+        time: `${Math.floor(total / 3600)}:${two(Math.floor((total % 3600) / 60))}`,
+      };
 }
 
 /**

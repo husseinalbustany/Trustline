@@ -35,6 +35,11 @@ export type AuthContext = {
     accreditationStandard: string;
     /** Whether the hospital takes reports without sign-in. */
     publicReporting: boolean;
+    /**
+     * The hospital's own clock, as an IANA name. Screens show dates and
+     * times in it, so everyone in a hospital reads the same day.
+     */
+    timeZone: string;
   };
   user: {
     id: string;
@@ -237,6 +242,7 @@ export class AuthService {
           defaultLocale: tenant.defaultLocale,
           accreditationStandard: tenant.accreditationStandard,
           publicReporting: tenant.publicReporting,
+          timeZone: tenant.timeZone,
         },
         user: {
           id: user.id,

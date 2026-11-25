@@ -11,12 +11,7 @@ import { EmptyState, Panel } from "@/components/ui/panel";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/dictionaries";
 import { api } from "@/lib/api";
-import {
-  dateTimeFormat,
-  durationFormat,
-  fill,
-  numberFormat,
-} from "@/lib/format";
+import { clockOf, dateTimeFormat, fill, numberFormat } from "@/lib/format";
 import { incidentsPath } from "@/lib/incident-filters";
 import type { IncidentList, IncidentSummary } from "@/lib/incidents";
 import { pick } from "@/lib/localized";
@@ -52,7 +47,11 @@ export function DashboardView({
   const [problem, setProblem] = useState(false);
   const numbers = numberFormat(lang);
   const dates = dateTimeFormat(lang);
-  const duration = durationFormat(lang);
+  // A clock figure with its unit beside it: "1:36 min".
+  const duration = (seconds: number) => {
+    const { unit, time } = clockOf(seconds);
+    return fill(t.clock[unit], { time });
+  };
 
   useEffect(() => {
     let current = true;
@@ -81,7 +80,13 @@ export function DashboardView({
     can(session, "incidents.triage") || can(session, "incidents.view");
 
   const tiles: Tile[] = [
-    { key: "openIncidents", live: true, figure: count(summary?.open) },
+    // Each count links to the list of exactly the incidents it counts.
+    {
+      key: "openIncidents",
+      live: true,
+      figure: count(summary?.open),
+      href: incidentsPath(lang, { open: true }),
+    },
     {
       key: "awaitingTriage",
       live: true,
@@ -94,8 +99,7 @@ export function DashboardView({
       live: true,
       figure: count(summary?.serious),
       help: t.seriousHelp,
-      // The nearest list there is: every incident, the most harm first.
-      href: incidentsPath(lang, { sort: "harm" }),
+      href: incidentsPath(lang, { open: true, serious: true, sort: "harm" }),
       alert: !!summary && summary.serious > 0,
     },
     ...(handles
@@ -241,7 +245,7 @@ export function DashboardView({
               </p>
               <p className="text-sm">
                 <Link
-                  href={incidentsPath(lang, { assignedToMe: true })}
+                  href={incidentsPath(lang, { open: true, assignedToMe: true })}
                   className="text-accent hover:underline"
                 >
                   {t.viewTasks}

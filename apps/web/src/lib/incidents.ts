@@ -17,6 +17,7 @@ export const incidentStatuses = [
   "new",
   "triaged",
   "in_progress",
+  "awaiting_sign_off",
   "closed",
   "rejected",
 ] as const;
@@ -72,6 +73,30 @@ export type IncidentList = { items: IncidentListItem[]; total: number };
 
 type Note = { note: string | null } | null;
 
+/**
+ * What a change of status is, whatever status it leads to. The API names it
+ * on every move it offers; buttons, notes and timeline wording follow it.
+ */
+export const moveKinds = [
+  "start",
+  "close",
+  "reject",
+  "reopen",
+  "request_sign_off",
+  "sign_off",
+  "send_back",
+  "withdraw",
+] as const;
+export type MoveKind = (typeof moveKinds)[number] | (string & {});
+
+/**
+ * Who did something, when no person is named. `byReporter`: the reporter,
+ * whose name this reader may not see (or who gave none). `byStaff`: someone
+ * at the hospital, for a reader who came with a follow-up code and is not
+ * shown staff names.
+ */
+type Unnamed = { byReporter: boolean; byStaff?: boolean };
+
 /** A changed value as an event records it: the new shape, or the older plain one. */
 export type Was<T> = T | { from: T; to: T };
 
@@ -79,11 +104,11 @@ export type Was<T> = T | { from: T; to: T };
 export type IncidentEvent = {
   id: string;
   occurredAt: string;
-  /** Null for the report of an anonymous incident. */
+  /** Null when the reader is not shown who it was: see `Unnamed`. */
   actor: Named | null;
   fromStatus: IncidentStatus | null;
   toStatus: IncidentStatus | null;
-} & (
+} & Unnamed & (
   | { kind: "reported"; details: null }
   | {
       kind: "triaged";
@@ -103,7 +128,22 @@ export type IncidentEvent = {
       details: { ownerUnitId: string; assignedTo: string | null };
     }
   | {
-      kind: "status_changed" | "closed" | "rejected" | "reopened";
+      kind: "closed" | "rejected" | "reopened" | "signed_off";
+      details: Note;
+    }
+  | {
+      /** A request for sign-off taken back carries `withdrawn`. */
+      kind: "status_changed";
+      details: { note: string | null; withdrawn?: boolean } | null;
+    }
+  | {
+      /** The note is the closure summary being proposed. */
+      kind: "sign_off_requested";
+      details: Note;
+    }
+  | {
+      /** Its note is not for the reporter: null in the reporter's view. */
+      kind: "sent_back";
       details: Note;
     }
   | {
@@ -112,9 +152,10 @@ export type IncidentEvent = {
     }
 );
 
-export type IncidentComment = {
+export type IncidentComment = Unnamed & {
   id: string;
-  author: Named;
+  /** Null when the reader is not shown who wrote it. */
+  author: Named | null;
   body: string;
   visibility: CommentVisibility;
   createdAt: string;
@@ -124,7 +165,12 @@ export type IncidentComment = {
 type Unit = Named & { active: boolean };
 
 /** A change of status the caller may make now, as the API offers it. */
-export type StatusMove = { to: IncidentStatus; noteRequired: boolean };
+export type StatusMove = {
+  to: IncidentStatus;
+  noteRequired: boolean;
+  /** Sent back with the change: two moves can lead to the same status. */
+  kind: MoveKind;
+};
 
 export type Incident = Omit<
   IncidentListItem,
@@ -134,12 +180,25 @@ export type Incident = Omit<
   ownerUnit: Unit | null;
   description: string;
   immediateAction: string | null;
-  /** Null when it was reported anonymously. */
+  /**
+   * Whether this reader may know who reported it. When false, `reporter` is
+   * null and says nothing: a named and an anonymous report look the same.
+   */
+  reporterShown: boolean;
+  /** With `reporterShown`: null means it was reported anonymously. */
   reporter: Named | null;
+  /** How it arrived. Null when the reporter is not shown. */
+  channel: "app" | "public" | null;
+  /** A sentinel event or a death: closing it takes a second person. */
+  needsSignOff: boolean;
+  /** Who asked for it to be closed, while it awaits sign-off. */
+  closureRequestedBy: Named | null;
+  closureRequestedAt: string | null;
   /** Always null for someone who sees the incident only as its reporter. */
   assignedTo: Named | null;
   triagedAt: string | null;
   closedAt: string | null;
+  /** While it awaits sign-off: the summary being proposed. */
   closureSummary: string | null;
   rejectionReason: string | null;
   access: "full" | "reporter";
@@ -167,26 +226,6 @@ export type AssignableUser = {
   orgUnitId: string | null;
 };
 
-export type StatusAction = "start" | "close" | "reject" | "reopen";
-
-/**
- * Which wording a status change gets. This is about words only: which
- * changes are allowed, and whether a note is needed, comes from `moves` on
- * the incident. A change this app has no wording for returns null and is
- * shown as "Move to …".
- */
-export function moveAction(
-  from: IncidentStatus,
-  to: IncidentStatus,
-): StatusAction | null {
-  if (to === "closed") return "close";
-  if (to === "rejected") return "reject";
-  if (to !== "in_progress") return null;
-  // Work that starts for the first time, or again after the incident ended.
-  if (from === "triaged") return "start";
-  return from === "closed" || from === "rejected" ? "reopen" : null;
-}
-
 /**
  * The wording for a code the API sent, or `other` when this app has none
  * for it yet: a raw code is never shown.
@@ -202,6 +241,7 @@ const statusTone: Record<KnownStatus, "ok" | "neutral"> = {
   new: "neutral",
   triaged: "ok",
   in_progress: "ok",
+  awaiting_sign_off: "ok",
   closed: "neutral",
   rejected: "neutral",
 };
@@ -227,3 +267,26 @@ export const harmTone = {
   severe: "alert",
   death: "alert",
 } as const;
+
+/** What the API answers when a report is sent. */
+export type ReportSent = {
+  /** Absent for a report sent without signing in. */
+  id?: string;
+  reference: string;
+  /** Only for an anonymous report, and only this once. */
+  followUpCode?: string;
+};
+
+/** What the report form needs, for someone who has not signed in. */
+export type PublicReporting = {
+  name: Localized;
+  locales: string[];
+  defaultLocale: string;
+  orgUnits: {
+    id: string;
+    parentId: string | null;
+    type: "facility" | "department" | "unit";
+    name: Localized;
+  }[];
+  categories: IncidentCategory[];
+};

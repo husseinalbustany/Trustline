@@ -238,3 +238,66 @@ export function chooseMove(
   }
   return caller.canSignOff ? 'same_person' : 'missing_sign_off_permission';
 }
+
+/**
+ * Deadlines. An incident has two, both counted from when it was reported:
+ * one to be triaged by and one to be closed by. Each matters only while the
+ * incident is in a status where that work is still to be done.
+ */
+export const DEADLINES = ['triage', 'closure'] as const;
+export type Deadline = (typeof DEADLINES)[number];
+
+/**
+ * The statuses in which each deadline is live. The triage deadline stops
+ * mattering once the incident leaves `new`, by triage or by being set aside;
+ * the closure deadline once it is `closed` or `rejected`. Reopening brings
+ * the closure deadline back as it was: it does not give a new one.
+ */
+export const DEADLINE_LIVE_IN: Record<Deadline, IncidentStatus[]> = {
+  triage: ['new'],
+  closure: ['triaged', 'in_progress', 'awaiting_sign_off'],
+};
+
+/** The deadline an incident in this status is working towards, if any. */
+export const liveDeadline = (status: IncidentStatus): Deadline | null =>
+  DEADLINES.find((d) => DEADLINE_LIVE_IN[d].includes(status)) ?? null;
+
+type Timed = {
+  status: IncidentStatus;
+  triageDueAt: Date | null;
+  closeDueAt: Date | null;
+};
+
+/** When the deadline an incident is working towards falls, if it has one. */
+export const liveDueAt = (incident: Timed): Date | null => {
+  const deadline = liveDeadline(incident.status);
+  if (deadline === 'triage') return incident.triageDueAt;
+  if (deadline === 'closure') return incident.closeDueAt;
+  return null;
+};
+
+/**
+ * Which deadline an incident has missed, as things stand at `now`: overdue
+ * for triage when it is still `new` past its triage deadline, overdue for
+ * closure when it is being worked on past its closure deadline. Worked out
+ * whenever it is asked, never stored.
+ */
+export const overdueOf = (incident: Timed, now: Date): Deadline | null => {
+  const due = liveDueAt(incident);
+  return due && due.getTime() < now.getTime()
+    ? liveDeadline(incident.status)
+    : null;
+};
+
+/**
+ * The share of the allowed time that is left when "due soon" is announced:
+ * a quarter. For 72 hours to triage, 18 hours before the deadline.
+ */
+export const DUE_SOON_SHARE = 0.25;
+
+/**
+ * The response rule an incident falls under: the one for its harm level, and
+ * for a sentinel event the one for a death, whatever its harm level.
+ */
+export const ruleLevelOf = (incident: Gravity): HarmLevel =>
+  incident.isSentinel ? 'death' : incident.harmLevel;

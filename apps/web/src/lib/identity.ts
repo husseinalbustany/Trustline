@@ -9,6 +9,8 @@ export type Session = {
     locales: string[];
     defaultLocale: string;
     accreditationStandard: string;
+    /** Whether the hospital takes reports from people who have not signed in. */
+    publicReporting: boolean;
   };
   user: {
     id: string;
@@ -81,3 +83,13 @@ export type Invite = { token: string; expiresAt: string; org: string };
 /** The link a new user opens. The token sits after #, so it is never sent to a server log. */
 export const inviteUrl = (lang: string, invite: Invite) =>
   `${window.location.origin}/${lang}/invite#org=${encodeURIComponent(invite.org)}&token=${encodeURIComponent(invite.token)}`;
+
+/**
+ * The pages open to everyone. Their links carry no language: each reader is
+ * sent to the one their own browser asks for.
+ */
+export const publicReportUrl = (slug: string, unitId?: string) =>
+  `${window.location.origin}/report/${encodeURIComponent(slug)}${unitId ? `?unit=${encodeURIComponent(unitId)}` : ""}`;
+
+export const followUpUrl = (slug: string) =>
+  `${window.location.origin}/follow-up/${encodeURIComponent(slug)}`;

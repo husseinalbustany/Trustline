@@ -11,7 +11,6 @@ import { fill } from "@/lib/format";
 import type { OrgUnit } from "@/lib/identity";
 import {
   harmLevels,
-  moveAction,
   wordFor,
   type AssignableUser,
   type Incident,
@@ -33,9 +32,19 @@ type Message = {
   revision?: number;
 };
 
-/** The incident changed since this page loaded it: it must be read again. */
+/**
+ * The incident is no longer as this page shows it, or the page offered
+ * something the API will not take: it must be read again, so the choices
+ * shown are the ones there really are.
+ */
 const isStale = (err: unknown) =>
-  codeOf(err) === "invalid_transition" || codeOf(err) === "stale_incident";
+  [
+    "invalid_transition",
+    "stale_incident",
+    "sign_off_required",
+    "same_person",
+    "kind_required",
+  ].includes(codeOf(err) ?? "");
 
 function Note({ message }: { message: Message | null | false }) {
   if (!message) return null;
@@ -350,19 +359,23 @@ function StatusActions({ t, incident, onChange, onStale, message, say }: Part) {
   const { moves } = incident;
   const move = chosen === null ? undefined : moves[chosen];
 
-  // Wording only. A move this app has no words for yet (a status added to
-  // the API since) is still offered, as "Move to …".
-  const label = (m: StatusMove) => {
-    const action = moveAction(incident.status, m.to);
-    return action
-      ? a[action]
-      : fill(a.moveTo, { status: wordFor(t.status, m.to, t.statusOther) });
-  };
-  const noteLabel = (m: StatusMove) => {
-    const action = moveAction(incident.status, m.to);
-    if (action && action !== "start") return a.note[action];
-    return m.noteRequired ? a.note.required : a.note.start;
-  };
+  // Wording only, by the kind of move the API names. A kind this app has
+  // no words for yet (added to the API since) is still offered, as
+  // "Change status to …".
+  const label = (m: StatusMove) =>
+    wordFor(
+      a.kinds,
+      m.kind,
+      fill(a.moveTo, { status: wordFor(t.status, m.to, t.statusOther) }),
+    );
+  const noteLabel = (m: StatusMove) =>
+    wordFor(a.note, m.kind, m.noteRequired ? a.note.required : a.note.optional);
+  // What the move means, for the ones that are not said by their name.
+  const help = (m: StatusMove) => wordFor(a.help, m.kind, "");
+  // The reason for sending a closure back is for the people handling the
+  // incident; every other note is on the reporter's timeline.
+  const noteHelp = (m: StatusMove) =>
+    m.kind === "send_back" ? a.noteHelpInternal : a.noteHelp;
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -375,6 +388,8 @@ function StatusActions({ t, incident, onChange, onStale, message, say }: Part) {
         method: "POST",
         body: {
           to: move.to,
+          // Two moves can lead to the same status: this says which is meant.
+          kind: move.kind,
           note: note || null,
           revision: incident.revision,
         },
@@ -400,8 +415,8 @@ function StatusActions({ t, incident, onChange, onStale, message, say }: Part) {
           <div className="flex flex-wrap gap-2">
             {moves.map((m, index) => (
               <Button
-                // The same status can be offered twice, for different reasons.
-                key={`${m.to}:${index}`}
+                // Two moves can lead to the same status.
+                key={`${m.kind}:${index}`}
                 variant="secondary"
                 onClick={() => {
                   say(null);
@@ -415,8 +430,13 @@ function StatusActions({ t, incident, onChange, onStale, message, say }: Part) {
         )}
         {move && (
           <form onSubmit={submit} className="flex flex-col gap-4">
-            <p className="text-sm font-medium">{label(move)}</p>
-            <Field label={noteLabel(move)} help={a.noteHelp}>
+            <div>
+              <p className="text-sm font-medium">{label(move)}</p>
+              {help(move) && (
+                <p className="mt-1 text-sm text-muted">{help(move)}</p>
+              )}
+            </div>
+            <Field label={noteLabel(move)} help={noteHelp(move)}>
               <textarea
                 name="note"
                 rows={3}

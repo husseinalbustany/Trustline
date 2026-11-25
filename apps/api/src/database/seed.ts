@@ -4,7 +4,17 @@ import { createDatabase } from './client.js';
 import type { Locale, Localized } from '../i18n/locales.js';
 import { SYSTEM_ROLES } from '../identity/permissions.js';
 import { DEFAULT_INCIDENT_CATEGORIES } from '../incidents/categories.js';
-import { incidentCategories, orgUnits, roles, tenants } from './schema.js';
+import {
+  DEFAULT_RESPONSE_RULES,
+  HARM_LEVELS,
+} from '../incidents/response-rules.js';
+import {
+  incidentCategories,
+  incidentResponseRules,
+  orgUnits,
+  roles,
+  tenants,
+} from './schema.js';
 
 type UnitSeed = {
   type: 'facility' | 'department' | 'unit';
@@ -181,6 +191,24 @@ export async function seed() {
           .values(DEFAULT_INCIDENT_CATEGORIES.map((c) => ({ ...c, tenantId })))
           .onConflictDoNothing({
             target: [incidentCategories.tenantId, incidentCategories.code],
+          });
+
+        // The starting response rules, kept as they are once a hospital has
+        // changed them.
+        await tx
+          .insert(incidentResponseRules)
+          .values(
+            HARM_LEVELS.map((harmLevel) => ({
+              ...DEFAULT_RESPONSE_RULES[harmLevel],
+              harmLevel,
+              tenantId,
+            })),
+          )
+          .onConflictDoNothing({
+            target: [
+              incidentResponseRules.tenantId,
+              incidentResponseRules.harmLevel,
+            ],
           });
       });
     }

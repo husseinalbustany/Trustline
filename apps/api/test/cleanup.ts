@@ -5,7 +5,9 @@ import {
   incidentCategories,
   incidentComments,
   incidentEvents,
+  incidentResponseRules,
   incidents,
+  notifications,
   orgUnits,
   platformAdmins,
   platformAuditLog,
@@ -39,9 +41,11 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
           inArray(platformAuditLog.adminId, admins),
         ),
       );
-    // Children before what they point to: the timeline and comments before
-    // incidents, incidents before categories, users and org units.
+    // Children before what they point to: notifications, the timeline and
+    // comments before incidents, incidents before categories, users and org units.
     for (const table of [
+      notifications,
+      incidentResponseRules,
       incidentEvents,
       incidentComments,
       incidents,

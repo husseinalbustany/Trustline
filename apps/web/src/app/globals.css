@@ -58,3 +58,22 @@ body {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+@layer base {
+  /* An email, a code, a date or a number is typed left to right in every
+     language. On a right-to-left page it still starts under its label, at
+     the far edge, instead of at the other side of the box. */
+  [dir="rtl"] :is(input, textarea)[dir="ltr"] {
+    text-align: end;
+  }
+}
+
+@media print {
+  /* Paper is white whatever the screen is set to. */
+  :root {
+    --background: #ffffff;
+    --foreground: #000000;
+    --muted: #333333;
+    --line: #999999;
+  }
+}
