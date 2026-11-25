@@ -111,6 +111,35 @@ Protection, since these routes are open to the internet:
   come back with no person and `byStaff: true`, and the `people` map is
   empty. A named reporter who is signed in sees names as before.
 
+### Decided after the security review
+
+- **A public report gives no incident number.** The numbers run in one
+  series, so handing one to anyone who files a public report would tell them
+  how many incidents the hospital has had. `POST /public/reporting/:slug`
+  answers `{ followUpCode }` only. Follow-up takes the code alone:
+  `POST /public/follow-up/:slug` body `{ code }`, and the comments route
+  `{ code, body }`. The view read with a code carries no `reference` and no
+  internal `id`. A signed-in member of staff who reports anonymously still
+  gets their reference with the code, and follows up with the code alone like
+  everyone else.
+- **Once an incident has needed sign-off, it needs it to close.** Lowering
+  the harm level or clearing the sentinel flag afterwards does not remove the
+  second signature (`incidents.sign_off_needed`, set when the incident is
+  reported or triaged as sentinel or death, never cleared).
+- **"By the reporter" is decided when a comment is written,** not when it is
+  read: it is true only when the writer had no more than the reporter's own
+  access, or used a follow-up code. A handler who also reported the incident
+  comments under their own name like any other handler, so nothing about a
+  comment tells a reader who reported.
+- **A withdrawal note is not shown to the reporter,** like a sent-back note.
+- **Signing off needs the `revision`** the signer was looking at.
+- **The address limit is not the only limit.** Each hospital also has a
+  ceiling of 60 public reports an hour whatever addresses they come from; when
+  it is reached the public form answers 429 until the hour moves on, and the
+  quality office is not buried. The limiter only accepts a real IP address as
+  a key. The README states what must sit in front of the web app for the
+  address limit to mean anything.
+
 ### Comments by an anonymous reporter
 
 `incident_comments.author_id` becomes nullable and gains `by_reporter`
