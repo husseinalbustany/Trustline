@@ -136,7 +136,9 @@ factor, and self-service "forgot password" by email.
   its hash is stored; it cannot be shown again or reissued. It works for
   every active hospital, whether or not that hospital takes reports without
   sign-in. Whoever reads with a code is given no name or id of anyone working
-  at the hospital, and neither the incident's id nor its number.
+  at the hospital, and neither the incident's id nor its number. A wrong
+  code, an unknown hospital and a suspended one are all answered with the
+  same 404 after the same 50 milliseconds.
 - **Limits on the public routes:** one address may send 10 reports and make
   30 follow-up attempts an hour; more are answered 429. The count is kept in
   the memory of each API process: with several processes the real limit is

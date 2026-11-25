@@ -47,6 +47,17 @@ const SLUG = /^[a-z0-9-]{1,40}$/i;
 const NO_SLUG = '-';
 
 /**
+ * How long a refused follow-up takes, at the least, in milliseconds. Every
+ * refusal takes the same steps whether the hospital exists, is suspended, or
+ * the code is simply wrong; but the same steps are not the same time to the
+ * last tenth of a millisecond (a hospital that is found is read, one that
+ * has reports has an index to walk). So no refusal is answered before this
+ * much time has passed since the request was taken up, which is well beyond
+ * what any of them needs: how long the work took no longer shows.
+ */
+export const FOLLOW_UP_REFUSAL_MS = 50;
+
+/**
  * Reporting an incident, and coming back to an anonymous report, without
  * signing in. Open to the internet: there is no guard on this controller,
  * and no route here reads a session even when the caller has one, so a
@@ -140,6 +151,25 @@ export class PublicReportingController {
     };
   }
 
+  /**
+   * Runs a follow-up, and if it ends in "not found", holds that answer until
+   * FOLLOW_UP_REFUSAL_MS have passed since it began. Only that answer: one
+   * that succeeds, or is refused for its form before anything was looked up,
+   * says nothing by how long it took.
+   */
+  private async refusedAlike<T>(work: () => Promise<T>): Promise<T> {
+    const began = performance.now();
+    try {
+      return await work();
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        const left = FOLLOW_UP_REFUSAL_MS - (performance.now() - began);
+        if (left > 0) await new Promise((done) => setTimeout(done, left));
+      }
+      throw error;
+    }
+  }
+
   /** The reporter's view of their anonymous report. */
   @Post('follow-up/:slug')
   @HttpCode(200)
@@ -152,14 +182,17 @@ export class PublicReportingController {
     this.limits.count('followUp', req, res);
     const parsed = followUpSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException();
-    const tenant = await this.active(slug);
-    // With no hospital the service still takes every step, and answers 404.
-    const view = await this.incidents.followUp(
-      tenant?.id ?? null,
-      parsed.data.code,
-    );
-    // A view was found, so there is a hospital it was found in.
-    return { ...view, ...this.named(tenant!) };
+    return this.refusedAlike(async () => {
+      const tenant = await this.active(slug);
+      // With no hospital the service still takes every step, and answers
+      // 404.
+      const view = await this.incidents.followUp(
+        tenant?.id ?? null,
+        parsed.data.code,
+      );
+      // A view was found, so there is a hospital it was found in.
+      return { ...view, ...this.named(tenant!) };
+    });
   }
 
   /**
@@ -176,12 +209,14 @@ export class PublicReportingController {
     this.limits.count('followUp', req, res);
     const parsed = followUpCommentSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException();
-    const tenant = await this.active(slug);
-    const view = await this.incidents.followUpComment(
-      tenant?.id ?? null,
-      parsed.data.code,
-      parsed.data.body,
-    );
-    return { ...view, ...this.named(tenant!) };
+    return this.refusedAlike(async () => {
+      const tenant = await this.active(slug);
+      const view = await this.incidents.followUpComment(
+        tenant?.id ?? null,
+        parsed.data.code,
+        parsed.data.body,
+      );
+      return { ...view, ...this.named(tenant!) };
+    });
   }
 }

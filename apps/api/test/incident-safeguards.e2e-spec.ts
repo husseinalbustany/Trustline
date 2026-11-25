@@ -10,6 +10,7 @@ import { setupApp } from '../src/app.setup.js';
 import { createDatabase } from '../src/database/client.js';
 import { orgUnits } from '../src/database/schema.js';
 import { requireEnv } from '../src/env.js';
+import { FOLLOW_UP_REFUSAL_MS } from '../src/incidents/public.controller.js';
 import {
   FOLLOW_UP_ATTEMPTS_PER_HOUR,
   PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR,
@@ -2145,6 +2146,46 @@ describe('incident safeguards', () => {
       await followUp(b.slug, theirs.followUpCode).expect(200);
       // The suspended hospital's code really was one.
       expect((await byCode(suspended.id, goneCode)).id).toBeTruthy();
+    });
+
+    it('takes as long to refuse whatever the reason, and no longer to accept', async () => {
+      const limits = app.get(PublicLimits, { strict: false });
+      const timed = async (slug: string, code: string, route = '') => {
+        limits.forget();
+        const began = performance.now();
+        const res = await publicPost(`/public/follow-up/${slug}${route}`, {
+          code,
+          ...(route && { body: 'Hello' }),
+        });
+        return { status: res.status, ms: performance.now() - began };
+      };
+      const refusals: [string, string][] = [
+        [a.slug, 'K7QM-2RXD-9FHT-WB3N'],
+        [a.slug, theirs.followUpCode],
+        [off.slug, mine.followUpCode],
+        [`${prefix}-nowhere`, mine.followUpCode],
+        [suspended.slug, goneCode],
+        ['%00', mine.followUpCode],
+      ];
+      for (const route of ['', '/comments']) {
+        for (const [slug, code] of refusals) {
+          const { status, ms } = await timed(slug, code, route);
+          expect([slug, status]).toEqual([slug, 404]);
+          // Held to the same floor, which is far more than the work takes:
+          // how long that was no longer shows. (A timer may fire a
+          // millisecond early.)
+          expect(ms).toBeGreaterThanOrEqual(FOLLOW_UP_REFUSAL_MS - 2);
+          expect(ms).toBeLessThan(FOLLOW_UP_REFUSAL_MS + 250);
+        }
+      }
+      // The right code is answered as soon as it is read: nothing to hide.
+      const fast = [];
+      for (let i = 0; i < 5; i++) {
+        const { status, ms } = await timed(a.slug, mine.followUpCode);
+        expect(status).toBe(200);
+        fast.push(ms);
+      }
+      expect(Math.min(...fast)).toBeLessThan(FOLLOW_UP_REFUSAL_MS - 10);
     });
 
     it('refuses a request that is not a code, before anything is looked up', async () => {
