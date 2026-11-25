@@ -1,6 +1,6 @@
 import '../src/env.js';
 import { createHash, randomBytes } from 'node:crypto';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, Logger, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { sql } from 'drizzle-orm';
 import request from 'supertest';
@@ -10,6 +10,8 @@ import { setupApp } from '../src/app.setup.js';
 import { createDatabase } from '../src/database/client.js';
 import { orgUnits } from '../src/database/schema.js';
 import { requireEnv } from '../src/env.js';
+import { AuthService } from '../src/identity/auth.service.js';
+import { IncidentsService } from '../src/incidents/incidents.service.js';
 import {
   heldFor,
   REFUSAL_STEP_MS,
@@ -998,7 +1000,7 @@ describe('incident safeguards', () => {
         ]);
       });
 
-      it('reads a comment stored before this was recorded as the reporter\'s only where it can have been', async () => {
+      it("reads a comment stored before this was recorded as the reporter's only where it can have been", async () => {
         // As an earlier release stored them: by the reporter's account, with
         // nothing said about the capacity each was written in.
         const { id } = await report(quality2);
@@ -1284,11 +1286,13 @@ describe('incident safeguards', () => {
         'locales',
         'name',
         'orgUnits',
+        'timeZone',
       ]);
       expect(res.body).toMatchObject({
         name: { en: 'Hospital a' },
         locales: ['en'],
         defaultLocale: 'en',
+        timeZone: 'UTC',
       });
       const units = res.body.orgUnits as Record<string, unknown>[];
       for (const unit of units) {
@@ -1319,6 +1323,168 @@ describe('incident safeguards', () => {
 
     it('finds the hospital whatever the letter case of its identifier', async () => {
       await form(a.slug.toUpperCase()).expect(200);
+    });
+
+    it("tells the form the hospital's own clock, as Trustline staff have set it", async () => {
+      const set = (timeZone: string) =>
+        http()
+          .patch(`/platform/tenants/${b.id}`)
+          .set('Cookie', platform)
+          .send({ timeZone })
+          .expect(200);
+      await set('Asia/Beirut');
+      try {
+        expect((await form(b.slug).expect(200)).body.timeZone).toBe(
+          'Asia/Beirut',
+        );
+      } finally {
+        await set('UTC');
+      }
+      expect((await form(b.slug).expect(200)).body.timeZone).toBe('UTC');
+    });
+
+    it('is opened at most sixty times an hour from one address, whichever hospital is asked for', async () => {
+      const from = (slug: string, address: string) =>
+        form(slug).set('X-Forwarded-For', address);
+      const address = '203.0.113.200';
+      for (let i = 0; i < PUBLIC_FORM_READS_PER_HOUR; i++) {
+        // Every attempt counts, whether or not there is a form to show.
+        const slug = i % 20 === 19 ? `${prefix}-nowhere-${i}` : a.slug;
+        const res = await from(slug, address);
+        expect([i, res.status]).toEqual([i, i % 20 === 19 ? 404 : 200]);
+      }
+      const res = await from(a.slug, address).expect(429);
+      expect(res.body).toEqual({ statusCode: 429, code: 'too_many_requests' });
+      expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
+      expect(Number(res.headers['retry-after'])).toBeLessThanOrEqual(3600);
+      // Not by asking for another hospital, real or not, or spelling the
+      // route another way: a list of names cannot be gone through.
+      await from(b.slug, address).expect(429);
+      await from(`${prefix}-nowhere`, address).expect(429);
+      await from(off.slug, address).expect(429);
+      await http()
+        .get(`/PUBLIC/Reporting/${a.slug.toUpperCase()}/`)
+        .set('X-Forwarded-For', address)
+        .expect(429);
+      // Someone else opens it as before, and the same address can still
+      // send a report and follow one up: those are counted apart.
+      await from(a.slug, '203.0.113.201').expect(200);
+      await reportPublicly(a.slug, {}, address).expect(201);
+      await followUp(a.slug, 'x', address).expect(404);
+    });
+
+    it('is refused on the same step of time whatever the reason, and shown at once', async () => {
+      const limits = app.get(PublicLimits, { strict: false });
+      const timed = async (send: () => request.Test) => {
+        limits.forget();
+        const began = performance.now();
+        const res = await send();
+        return { status: res.status, ms: performance.now() - began };
+      };
+      for (const slug of [
+        `${prefix}-nowhere`,
+        off.slug,
+        suspended.slug,
+        '%00',
+        'x'.repeat(41),
+      ]) {
+        for (const send of [() => form(slug), () => reportPublicly(slug)]) {
+          const { status, ms } = await timed(send);
+          expect([slug, status]).toEqual([slug, 404]);
+          // (A timer may fire a millisecond early.)
+          expect(ms).toBeGreaterThanOrEqual(REFUSAL_STEP_MS - 2);
+          expect(ms).toBeLessThan(REFUSAL_STEP_MS + 250);
+        }
+      }
+      // A form that is there is shown as soon as it is read.
+      const fast = [];
+      for (let i = 0; i < 5; i++) {
+        const { status, ms } = await timed(() => form(a.slug));
+        expect(status).toBe(200);
+        fast.push(ms);
+      }
+      expect(Math.min(...fast)).toBeLessThan(REFUSAL_STEP_MS - 10);
+    });
+
+    it('holds a refusal to the next step when the work took longer than one', async () => {
+      // To the next multiple of the step, and a whole step at the least.
+      expect(heldFor(0)).toBe(REFUSAL_STEP_MS);
+      expect(heldFor(10)).toBe(REFUSAL_STEP_MS - 10);
+      expect(heldFor(REFUSAL_STEP_MS - 0.5)).toBe(0.5);
+      expect(heldFor(REFUSAL_STEP_MS)).toBe(0);
+      expect(heldFor(REFUSAL_STEP_MS + 1)).toBe(REFUSAL_STEP_MS - 1);
+      expect(heldFor(2.4 * REFUSAL_STEP_MS)).toBeCloseTo(0.6 * REFUSAL_STEP_MS);
+      expect(heldFor(7 * REFUSAL_STEP_MS + 20)).toBe(REFUSAL_STEP_MS - 20);
+      for (let elapsed = 0; elapsed < 1000; elapsed += 7.3) {
+        const wait = heldFor(elapsed);
+        expect(wait).toBeGreaterThanOrEqual(0);
+        expect(wait).toBeLessThanOrEqual(REFUSAL_STEP_MS);
+        expect((elapsed + wait) % REFUSAL_STEP_MS).toBeCloseTo(0, 6);
+      }
+
+      // A server so busy that looking the hospital up takes longer than a
+      // step: the refusal is not sent when the work happens to end, as it
+      // was before, but on the step after.
+      const SLOW = 1.4 * REFUSAL_STEP_MS;
+      const slow = <T>(answer: () => T) =>
+        new Promise<T>((done, failed) =>
+          setTimeout(() => {
+            try {
+              done(answer());
+            } catch (error) {
+              failed(error as Error);
+            }
+          }, SLOW),
+        );
+      const limits = app.get(PublicLimits, { strict: false });
+      const timed = async (send: () => request.Test) => {
+        limits.forget();
+        const began = performance.now();
+        const res = await send();
+        return { status: res.status, ms: performance.now() - began };
+      };
+      const auth = app.get(AuthService, { strict: false });
+      const incidents = app.get(IncidentsService, { strict: false });
+      for (const send of [
+        () => form(`${prefix}-nowhere`),
+        () => reportPublicly(`${prefix}-nowhere`),
+        () => followUp(`${prefix}-nowhere`, 'K7QM-2RXD-9FHT-WB3N'),
+      ]) {
+        const lookup = vi
+          .spyOn(auth, 'findTenant')
+          .mockImplementationOnce(() => slow(() => null));
+        try {
+          const { status, ms } = await timed(send);
+          expect(status).toBe(404);
+          expect(lookup).toHaveBeenCalledTimes(1);
+          expect(ms).toBeGreaterThanOrEqual(2 * REFUSAL_STEP_MS - 2);
+          expect(ms).toBeLessThan(2 * REFUSAL_STEP_MS + 250);
+        } finally {
+          lookup.mockRestore();
+        }
+      }
+      // The same when it is the look for the code that is slow.
+      for (const send of [
+        () => followUp(a.slug, 'K7QM-2RXD-9FHT-WB3N'),
+        () => followUpComment(a.slug, 'K7QM-2RXD-9FHT-WB3N', 'Hello'),
+      ]) {
+        const refuse = () =>
+          slow<never>(() => {
+            throw new NotFoundException();
+          });
+        const spies = [
+          vi.spyOn(incidents, 'followUp').mockImplementationOnce(refuse),
+          vi.spyOn(incidents, 'followUpComment').mockImplementationOnce(refuse),
+        ];
+        try {
+          const { status, ms } = await timed(send);
+          expect(status).toBe(404);
+          expect(ms).toBeGreaterThanOrEqual(2 * REFUSAL_STEP_MS - 2);
+          expect(ms).toBeLessThan(2 * REFUSAL_STEP_MS + 250);
+        } finally {
+          for (const spy of spies) spy.mockRestore();
+        }
+      }
     });
 
     it('answers the same 404 for no hospital, a suspended one, and one that has it off', async () => {
@@ -1744,6 +1910,107 @@ describe('incident safeguards', () => {
       await toLim({}, '203.0.113.50').expect(201);
     });
 
+    it('counts a whole IPv6 /56 as one caller: what one home connection is handed', async () => {
+      // Ten reports, each from another of the 256 networks of 64 bits that
+      // one subscriber's /56 holds, and from another address in it.
+      const inPrefix = (n: number) =>
+        `2001:db8:5:${(0xab00 + n).toString(16)}::${(n + 1).toString(16)}`;
+      for (let i = 0; i < PUBLIC_REPORTS_PER_HOUR; i++) {
+        const res = await toLim({}, inPrefix(i * 20));
+        expect([inPrefix(i * 20), res.status]).toEqual([inPrefix(i * 20), 201]);
+      }
+      // The eleventh, from yet another of them, and from the last one.
+      await toLim({}, inPrefix(7)).expect(429);
+      await toLim({}, '2001:db8:5:abff:ffff:ffff:ffff:ffff').expect(429);
+      await toLim({}, '2001:0DB8:0005:AB00::1').expect(429);
+      // The neighbouring /56 is somebody else.
+      await toLim({}, '2001:db8:5:ac00::1').expect(201);
+      await toLim({}, '2001:db8:5:aaff::1').expect(201);
+    });
+
+    it('does not wait when another report to the same hospital is being stored, and keeps nobody else waiting', async () => {
+      const audited = async () =>
+        (
+          await owner.db.execute(
+            sql`select 1 from audit_log where tenant_id = ${lim.id} and action = 'public_reporting_limit_reached'`,
+          )
+        ).rows.length;
+      const [before, auditedBefore] = [await countOf(lim.id), await audited()];
+      // Someone is storing a public report to this hospital, and is slow
+      // about it: they hold its turn.
+      const holder = await owner.pool.connect();
+      try {
+        await holder.query('begin');
+        await holder.query(
+          `select pg_advisory_xact_lock(hashtext('trustline.public_reports'), hashtext($1::text))`,
+          [lim.id],
+        );
+        const began = Date.now();
+        const res = await toLim({}, '203.0.113.150').expect(429);
+        expect(res.body).toEqual({
+          statusCode: 429,
+          code: 'too_many_requests',
+        });
+        // Try again in a moment, not in an hour.
+        expect(res.headers['retry-after']).toBe(String(BUSY_RETRY_SECONDS));
+        // Many at once: each is answered, none stands in a queue holding a
+        // database connection (the pool has ten for every hospital).
+        const burst = await Promise.all(
+          Array.from({ length: 25 }, (_, i) => toLim({}, `203.0.114.${i + 1}`)),
+        );
+        expect(burst.map((r) => r.status)).toEqual(Array(25).fill(429));
+        expect(Date.now() - began).toBeLessThan(4_000);
+
+        // A report that would be refused for what it says is refused for
+        // that, without asking for the turn: sending such reports cannot
+        // keep the form shut.
+        const wrong = await toLim(
+          { categoryId: b.categories.equipment },
+          '203.0.113.151',
+        ).expect(400);
+        expect(wrong.body.code).toBe('unknown_category');
+        const nowhere = await toLim(
+          { orgUnitId: bUnit },
+          '203.0.113.151',
+        ).expect(400);
+        expect(nowhere.body.code).toBe('unknown_org_unit');
+        await toLim(
+          { type: 'near_miss', harmLevel: 'mild' },
+          '203.0.113.151',
+        ).expect(400);
+
+        // Everything else goes on: another hospital's form, this
+        // hospital's own staff, its form's page, a follow-up.
+        await reportPublicly(
+          b.slug,
+          { categoryId: b.categories.equipment, orgUnitId: bUnit },
+          '203.0.113.152',
+        ).expect(201);
+        await http()
+          .post('/incidents')
+          .set('Cookie', lim.cookie)
+          .send(
+            reportBody({
+              anonymous: false,
+              categoryId: lim.categories.equipment,
+              orgUnitId: limUnit,
+            }),
+          )
+          .expect(201);
+        await http().get(`/public/reporting/${lim.slug}`).expect(200);
+        await followUp(lim.slug, 'x', '203.0.113.152').expect(404);
+        // Nothing was stored for those turned away, and being busy is not
+        // the ceiling: nothing says the form was shut.
+        expect(await countOf(lim.id)).toBe(before + 1);
+        expect(await audited()).toBe(auditedBefore);
+      } finally {
+        await holder.query('rollback');
+        holder.release();
+      }
+      // The turn is free again: the next report is taken.
+      await toLim({}, '203.0.113.150').expect(201);
+    }, 30_000);
+
     it('counts a very long value as that same caller, and keeps none of it', async () => {
       const limits = app.get(PublicLimits, { strict: false }) as unknown as {
         limiters: Record<string, { attempts: Map<string, number[]> }>;
@@ -1814,6 +2081,29 @@ describe('incident safeguards', () => {
         expect([i, res.status]).toEqual([i, 201]);
       }
       expect(await countOf(cap.id)).toBe(PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR);
+      // Up to here nothing said the form was shut: it was not.
+      const shut = async () =>
+        (
+          await owner.db.execute<{
+            actor_id: string | null;
+            ip_address: string | null;
+            entity_type: string | null;
+            entity_id: string | null;
+            changes: unknown;
+          }>(
+            sql`select actor_id, ip_address, entity_type, entity_id, changes from audit_log
+                where tenant_id = ${cap.id} and action = 'public_reporting_limit_reached' order by occurred_at, id`,
+          )
+        ).rows;
+      expect(await shut()).toEqual([]);
+      const warned: string[] = [];
+      const warn = vi
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation((message) => {
+          warned.push(String(message));
+        });
+      onTestFinished(() => warn.mockRestore());
+      const aboutCap = () => warned.filter((line) => line.includes(cap.id));
       // The hospital has had its hour's worth. Refused like any other limit,
       // from addresses never seen before and from none at all.
       for (const address of ['198.51.77.1', '2001:db8:7::1', undefined]) {
@@ -1835,6 +2125,35 @@ describe('incident safeguards', () => {
       );
       expect(burst.map((r) => r.status)).toEqual(Array(8).fill(429));
       expect(await countOf(cap.id)).toBe(PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR);
+
+      // Eleven were turned away. The hospital's audit log says once that its
+      // form stopped taking reports, for its quality office to see: no
+      // actor, and nothing of any sender.
+      const ENTRY = {
+        actor_id: null,
+        ip_address: null,
+        entity_type: 'tenant',
+        entity_id: cap.id,
+        changes: {
+          limit: PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR,
+          perMinutes: 60,
+        },
+      };
+      expect(await shut()).toEqual([ENTRY]);
+      // And the server's log says it once, with the hospital's id, for
+      // whoever runs the server.
+      expect(aboutCap()).toHaveLength(1);
+      expect(aboutCap()[0]).toContain('Public reporting limit reached');
+      for (const line of warned) {
+        expect(line).not.toMatch(/198\.51\.|2001:db8/);
+        expect(line).not.toContain('infusion pump');
+      }
+      const everything = await owner.db.execute<{ row: string }>(
+        sql`select to_jsonb(t)::text as row from audit_log t where t.tenant_id = ${cap.id}`,
+      );
+      for (const { row } of everything.rows) {
+        expect(row).not.toMatch(/198\.51\.|2001:db8/);
+      }
       expect(
         (
           await owner.db.execute(
@@ -1879,6 +2198,21 @@ describe('incident safeguards', () => {
       await toCap('198.51.99.3').expect(201);
       await toCap('198.51.99.4').expect(201);
       await toCap('198.51.99.5').expect(429);
+      // Shut again within the hour of the entry: it is not said twice.
+      expect(await shut()).toEqual([ENTRY]);
+      expect(aboutCap()).toHaveLength(1);
+      // An hour after it was said, and still shut: said again, once.
+      await owner.db.execute(
+        sql`update audit_log set occurred_at = occurred_at - interval '61 minutes'
+            where tenant_id = ${cap.id} and action = 'public_reporting_limit_reached'`,
+      );
+      await toCap('198.51.99.6').expect(429);
+      await toCap('198.51.99.7').expect(429);
+      await Promise.all(
+        Array.from({ length: 6 }, (_, i) => toCap(`198.51.98.${i + 1}`)),
+      );
+      expect(await shut()).toEqual([ENTRY, ENTRY]);
+      expect(aboutCap()).toHaveLength(2);
     }, 60_000);
 
     it('allows thirty follow-up attempts an hour from one address, opening and commenting together', async () => {
@@ -2072,6 +2406,45 @@ describe('incident safeguards', () => {
       ]) {
         await followUp(a.slug, code).expect(200);
       }
+    });
+
+    it('is read whatever came with it when it was pasted, without costing an attempt', async () => {
+      const code = mine.followUpCode;
+      const groups = code.split('-');
+      // Built from their numbers: none of these can be seen in a file.
+      const mark = (...points: number[]) => String.fromCodePoint(...points);
+      const RLM = mark(0x200f);
+      const LRM = mark(0x200e);
+      const pasted = {
+        'between right-to-left marks': `${RLM}${code}${RLM}`,
+        'between left-to-right marks': `${LRM}${code}${LRM}`,
+        'isolated, as a right-to-left page shows it': `${mark(0x2068)}${code}${mark(0x2069)}`,
+        'after an Arabic letter mark': `${mark(0x061c)}${code}`,
+        'with non-breaking spaces for hyphens': groups.join(mark(0x00a0)),
+        'with a zero-width space after each group': groups.join(mark(0x200b)),
+        'with dots': groups.join('.'),
+        'with long dashes': groups.join(mark(0x2014)),
+        'in quotation marks': `${mark(0x201c)}${code}${mark(0x201d)}`,
+        'with the punctuation that stood around it': `: ${code}.`,
+      };
+      // All of them from one address, which has thirty attempts an hour: a
+      // refusal would have cost one and shown as a 404.
+      for (const [how, typed] of Object.entries(pasted)) {
+        const res = await followUp(a.slug, typed, '203.0.113.60');
+        expect([how, res.status]).toEqual([how, 200]);
+      }
+      const said = await followUpComment(
+        a.slug,
+        `${RLM}${code.toLowerCase()}${RLM}`,
+        'Pasted from my notes.',
+        '203.0.113.60',
+      ).expect(201);
+      expect((said.body.comments as Comment[]).at(-1)?.body).toBe(
+        'Pasted from my notes.',
+      );
+      // What is not the code stays not the code, marks or no marks.
+      await followUp(a.slug, `${RLM}${code.slice(0, -1)}${RLM}`).expect(404);
+      await followUp(a.slug, `${RLM}${RLM}`).expect(404);
     });
 
     it('works for a report made anonymously while signed in, with or without a session', async () => {
@@ -2487,8 +2860,12 @@ describe('incident safeguards', () => {
         ).expect(429);
         expect(Number(res.headers['retry-after'])).toBeLessThanOrEqual(3600);
         await followUp(a.slug, codes[3], address).expect(429);
-        await followUpComment(a.slug, codes[3], 'From elsewhere', '203.0.113.91')
-          .expect(201);
+        await followUpComment(
+          a.slug,
+          codes[3],
+          'From elsewhere',
+          '203.0.113.91',
+        ).expect(201);
       });
 
       it('has no author, and nothing records who wrote it', async () => {
@@ -2622,6 +2999,236 @@ describe('incident safeguards', () => {
           sql`select 1 from incident_comments where incident_id = ${inApp.id}`,
         );
         expect(count.rows).toHaveLength(1);
+      });
+    });
+
+    describe('how much a code may write, and until when', () => {
+      const fresh = async () => {
+        const sent = await reportPublicly(a.slug).expect(201);
+        const code = sent.body.followUpCode as string;
+        return { code, ...(await byCode(a.id, code)) };
+      };
+      const written = async (id: string) =>
+        (
+          await owner.db.execute<{ comments: number; events: number }>(
+            sql`select
+                  (select count(*)::int from incident_comments where incident_id = ${id}) as comments,
+                  (select count(*)::int from incident_events where incident_id = ${id} and kind = 'commented') as events`,
+          )
+        ).rows[0];
+      const TOO_MANY = { statusCode: 429, code: 'too_many_requests' };
+      const DAY_SECONDS = 86_400;
+
+      it('takes ten comments by code on one incident in a day, whatever addresses they come from', async () => {
+        const { code, id } = await fresh();
+        for (let i = 0; i < FOLLOW_UP_COMMENTS_PER_INCIDENT_PER_DAY; i++) {
+          // Each from an address never seen before: the limit per address
+          // has nothing against any of them.
+          const res = await followUpComment(
+            a.slug,
+            code,
+            `Word ${i}`,
+            `203.0.115.${i + 1}`,
+          );
+          expect([i, res.status]).toEqual([i, 201]);
+        }
+        const res = await followUpComment(
+          a.slug,
+          code,
+          'One too many',
+          '203.0.115.100',
+        ).expect(429);
+        expect(res.body).toEqual(TOO_MANY);
+        // Until the oldest of the ten is a day old: most of a day from now.
+        const wait = Number(res.headers['retry-after']);
+        expect(wait).toBeGreaterThan(DAY_SECONDS - 300);
+        expect(wait).toBeLessThanOrEqual(DAY_SECONDS);
+        // Not by writing the code another way, nor by sending at once.
+        await followUpComment(
+          a.slug,
+          ` ${code.toLowerCase().replaceAll('-', '')} `,
+          'Another way',
+          '203.0.115.101',
+        ).expect(429);
+        const burst = await Promise.all(
+          Array.from({ length: 6 }, (_, i) =>
+            followUpComment(a.slug, code, 'At once', `203.0.115.${110 + i}`),
+          ),
+        );
+        expect(burst.map((r) => r.status)).toEqual(Array(6).fill(429));
+        // Nothing of what was refused is kept, anywhere.
+        expect(await written(id)).toEqual({ comments: 10, events: 10 });
+        const kept = await owner.db.execute(
+          sql`select 1 from audit_log where tenant_id = ${a.id} and entity_id = ${id} and action = 'incident_commented'`,
+        );
+        expect(kept.rows).toHaveLength(10);
+
+        // The code still reads the report, comments and all.
+        const read = await followUp(a.slug, code, '203.0.115.120').expect(200);
+        expect(read.body.comments).toHaveLength(10);
+        // Another report is not held up by this one's.
+        const other = await fresh();
+        await followUpComment(a.slug, other.code, 'Mine is new.').expect(201);
+        // Nor is the hospital's own staff, whose comments are not counted.
+        await triage(quality.cookie, id).expect(200);
+        for (let i = 0; i < 3; i++) {
+          await comment(quality.cookie, id, `Read ${i}.`, 'everyone').expect(
+            201,
+          );
+        }
+        await followUpComment(a.slug, code, 'Still one too many').expect(429);
+
+        // When the oldest of the ten is a day old there is room for one
+        // more, and for one only.
+        await owner.db.execute(
+          sql`update incident_comments set created_at = created_at - interval '24 hours 1 minute'
+              where id = (select id from incident_comments where incident_id = ${id} and author_id is null order by created_at limit 1)`,
+        );
+        await followUpComment(a.slug, code, 'A day later.').expect(201);
+        const again = await followUpComment(a.slug, code, 'And again.').expect(
+          429,
+        );
+        expect(again.body).toEqual(TOO_MANY);
+        expect(await written(id)).toEqual({ comments: 14, events: 14 });
+      });
+
+      it('cannot be overrun by sending the last ones at once', async () => {
+        const { code, id } = await fresh();
+        for (let i = 0; i < FOLLOW_UP_COMMENTS_PER_INCIDENT_PER_DAY - 2; i++) {
+          await followUpComment(a.slug, code, `Word ${i}`).expect(201);
+        }
+        // Room for two, and eight arrive together from eight addresses.
+        const burst = await Promise.all(
+          Array.from({ length: 8 }, (_, i) =>
+            followUpComment(
+              a.slug,
+              code,
+              `Together ${i}`,
+              `203.0.116.${i + 1}`,
+            ),
+          ),
+        );
+        expect(burst.map((r) => r.status).sort()).toEqual([
+          201, 201, 429, 429, 429, 429, 429, 429,
+        ]);
+        expect(await written(id)).toEqual({
+          comments: FOLLOW_UP_COMMENTS_PER_INCIDENT_PER_DAY,
+          events: FOLLOW_UP_COMMENTS_PER_INCIDENT_PER_DAY,
+        });
+      });
+
+      it('takes no comment by code once the incident has ended, still reads it, and takes them again when it is reopened', async () => {
+        const { code, id } = await fresh();
+        const say = (body: string) => followUpComment(a.slug, code, body);
+        // While anyone is still working on it: yes, at every stage.
+        await say('While new.').expect(201);
+        await triage(quality.cookie, id).expect(200);
+        await say('While triaged.').expect(201);
+        await move(quality.cookie, id, 'in_progress').expect(200);
+        await say('While in progress.').expect(201);
+        await move(quality.cookie, id, 'closed', 'Done.').expect(200);
+
+        const ended = await say('After it was closed.').expect(409);
+        expect(ended.body.code).toBe('incident_ended');
+        expect(ended.headers['retry-after']).toBeUndefined();
+        // Said to whoever holds the code, and to nobody else: a wrong code
+        // on the same incident's hospital is the 404 it always was.
+        const wrong = await followUpComment(
+          a.slug,
+          'K7QM-2RXD-9FHT-WB3N',
+          'After it was closed.',
+        ).expect(404);
+        expect(wrong.body).toEqual(NOT_FOUND);
+        // Nothing was stored, and nobody was told of anything.
+        expect(await written(id)).toEqual({ comments: 3, events: 3 });
+        const body = await owner.db.execute(
+          sql`select 1 from incident_comments where incident_id = ${id} and body = 'After it was closed.'`,
+        );
+        expect(body.rows).toHaveLength(0);
+        // The code still reads the report, its ending included.
+        const read = await followUp(a.slug, code).expect(200);
+        expect(read.body).toMatchObject({
+          status: 'closed',
+          access: 'reporter',
+        });
+        expect(read.body.comments).toHaveLength(3);
+        // Staff who are signed in may still write on it.
+        await comment(quality.cookie, id, 'Filed.', 'everyone').expect(201);
+
+        // Reopened: somebody is working on it again, and the reporter may
+        // write again.
+        await move(
+          quality.cookie,
+          id,
+          'in_progress',
+          'It happened again.',
+        ).expect(200);
+        const back = await say('Thank you for looking again.').expect(201);
+        expect((back.body.comments as Comment[]).at(-1)).toMatchObject({
+          body: 'Thank you for looking again.',
+          byReporter: true,
+        });
+
+        // The same for a report that was not taken forward.
+        const aside = await fresh();
+        await move(
+          quality.cookie,
+          aside.id,
+          'rejected',
+          'Not an incident.',
+        ).expect(200);
+        const refused = await followUpComment(
+          a.slug,
+          aside.code,
+          'But it was.',
+        ).expect(409);
+        expect(refused.body.code).toBe('incident_ended');
+        expect(
+          (await followUp(a.slug, aside.code).expect(200)).body.status,
+        ).toBe('rejected');
+        await move(
+          quality.cookie,
+          aside.id,
+          'in_progress',
+          'Looked again.',
+        ).expect(200);
+        await followUpComment(a.slug, aside.code, 'Thank you.').expect(201);
+      });
+
+      it('still takes them while a closure awaits its second signature', async () => {
+        const sent = await reportPublicly(a.slug, {
+          harmLevel: 'death',
+        }).expect(201);
+        const code = sent.body.followUpCode as string;
+        const { id } = await byCode(a.id, code);
+        await triage(quality.cookie, id, { harmLevel: 'death' }).expect(200);
+        await move(quality.cookie, id, 'awaiting_sign_off', PROPOSAL).expect(
+          200,
+        );
+        // Not closed yet: one more person has to agree.
+        await followUpComment(a.slug, code, 'One thing more.').expect(201);
+        await signOff(200, quality2.cookie, id);
+        const res = await followUpComment(a.slug, code, 'Too late.').expect(
+          409,
+        );
+        expect(res.body.code).toBe('incident_ended');
+      });
+
+      it('answers both refusals at once: they come only with a right code, which has nothing left to hide', async () => {
+        const limits = app.get(PublicLimits, { strict: false });
+        const { code, id } = await fresh();
+        await move(quality.cookie, id, 'rejected', 'Not an incident.').expect(
+          200,
+        );
+        const times: number[] = [];
+        for (let i = 0; i < 5; i++) {
+          limits.forget();
+          const began = performance.now();
+          await followUpComment(a.slug, code, 'Hello?').expect(409);
+          times.push(performance.now() - began);
+        }
+        // Not held to the step a "not found" is held to.
+        expect(Math.min(...times)).toBeLessThan(REFUSAL_STEP_MS - 10);
       });
     });
   });

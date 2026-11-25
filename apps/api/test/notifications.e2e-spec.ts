@@ -1,5 +1,6 @@
 import '../src/env.js';
 import { randomBytes } from 'node:crypto';
+import { Logger } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { sql } from 'drizzle-orm';
 import { AppModule } from '../src/app.module.js';
@@ -1452,6 +1453,10 @@ describe('notifications', () => {
     let assignee: Staff; // reports; gets incidents assigned
     let viewer: Staff; // department manager: sees, does not triage
     let check: DeadlineCheck;
+    // A hospital no test here ever runs the check for, with a report whose
+    // triage deadline has passed: see the last test.
+    let bystander: Hospital;
+    let overdueThere: string;
     const zone = { timeZone: 'UTC' };
     const hospital = () => ({ id: d.id, ...zone });
 
@@ -1534,6 +1539,30 @@ describe('notifications', () => {
         names.set(person.id, person.name);
       }
       check = bench.app.get(DeadlineCheck, { strict: false });
+
+      bystander = await bench.createHospital('bystander');
+      const there = await bench.createUnit(bystander, 'facility', 'MAIN', null);
+      overdueThere = (
+        await http()
+          .post('/incidents')
+          .set('Cookie', bystander.cookie)
+          .send(
+            reportBody({
+              anonymous: true,
+              categoryId: bystander.categories.equipment,
+              orgUnitId: there,
+            }),
+          )
+          .expect(201)
+      ).body.id as string;
+      // Reported eighty hours ago: eight past its 72 hours for triage.
+      await bench.owner.db.execute(
+        sql`update incidents set
+              reported_at = reported_at - interval '80 hours',
+              triage_due_at = triage_due_at - interval '80 hours',
+              close_due_at = close_due_at - interval '80 hours'
+            where id = ${overdueThere}`,
+      );
     });
 
     // Each test is about the incidents it makes. Those of the tests before
@@ -1770,8 +1799,8 @@ describe('notifications', () => {
           other.checkHospital(hospital(), moment),
           check.checkHospital(hospital(), moment),
           other.checkHospital(hospital(), moment),
-          check.run(moment),
-          other.run(moment),
+          check.run(moment, [d.id]),
+          other.run(moment, [d.id]),
         ]);
         const sent = await bench.owner.db.execute<{
           incident_id: string;
@@ -1819,7 +1848,7 @@ describe('notifications', () => {
       }
     }, 120_000);
 
-    it('goes through every active hospital, each on its own, and leaves a suspended one alone', async () => {
+    it('goes through every active hospital it is run for, each on its own, and leaves a suspended one alone', async () => {
       const s = await bench.createHospital('asleep');
       const sUnit = await bench.createUnit(s, 'facility', 'MAIN', null);
       const res = await http()
@@ -1845,16 +1874,14 @@ describe('notifications', () => {
         .send({ status: 'suspended' })
         .expect(200);
 
-      const active = await bench.owner.db.execute<{ n: number }>(
-        sql`select count(*)::int as n from tenants where status = 'active'`,
-      );
-      // As the timer runs it: every hospital, as of now.
-      const result = await check.run();
-      expect(result.failed).toBe(0);
-      // Other test files create and remove hospitals while this runs.
-      expect(Math.abs(result.hospitals - active.rows[0].n)).toBeLessThan(10);
-      expect(result.hospitals).toBeGreaterThanOrEqual(4);
-      expect(result.notified).toBeGreaterThanOrEqual(2);
+      // As the timer runs it, as of now; but for this test's own hospitals
+      // only. The database is shared with hospitals this suite did not make.
+      const ours = [d.id, s.id];
+      const result = await check.run(new Date(), ours);
+      expect(result).toMatchObject({ listed: true, failed: 0, filled: 0 });
+      // Two were named; the suspended one is not among those checked.
+      expect(result.hospitals).toBe(1);
+      expect(result.notified).toBe(2);
       expect(await told(mine.id)).toEqual({ overdue: sorted(boss, officer) });
       // The suspended hospital was not touched.
       expect(await rowsFor(res.body.id)).toEqual([]);
@@ -1864,8 +1891,9 @@ describe('notifications', () => {
         .set('Cookie', bench.platform)
         .send({ status: 'active' })
         .expect(200);
-      await check.run();
-      await check.run();
+      const again = await check.run(new Date(), ours);
+      expect(again).toMatchObject({ hospitals: 2, failed: 0, notified: 1 });
+      expect((await check.run(new Date(), ours)).notified).toBe(0);
       const theirs = await rowsFor(res.body.id);
       expect(theirs.map((r) => [r.kind, r.user_id])).toEqual([
         ['overdue', s.adminId],
@@ -1877,6 +1905,12 @@ describe('notifications', () => {
             where u.tenant_id <> n.tenant_id or i.tenant_id <> n.tenant_id`,
       );
       expect(crossed.rows).toEqual([]);
+      // Run for nobody, it checks nobody.
+      expect(await check.run(new Date(), [])).toMatchObject({
+        listed: true,
+        hospitals: 0,
+        notified: 0,
+      });
     });
 
     it('gives its deadlines to an incident stored without them by an older release', async () => {
@@ -1902,6 +1936,180 @@ describe('notifications', () => {
       await clear(id);
     });
 
+    it('gives up a statement that does not return, says for which hospital, and announces it at the next run', async () => {
+      const { id } = await fresh();
+      await clear(id);
+      const { triageDue } = await timesOf(id);
+      const moment = new Date(triageDue + HOUR);
+      const said: string[] = [];
+      const spies = (['error', 'warn'] as const).map((level) =>
+        vi.spyOn(Logger.prototype, level).mockImplementation((message) => {
+          said.push(`${level}: ${String(message)}`);
+        }),
+      );
+      // Somebody holds the record of a person to be told, and does not let
+      // go: the notification for them cannot be written while they do.
+      const holder = await bench.owner.pool.connect();
+      const usual = check.statementTimeoutMs;
+      check.statementTimeoutMs = 500;
+      try {
+        await holder.query('begin');
+        await holder.query('select 1 from users where id = $1 for update', [
+          officer.id,
+        ]);
+        const began = Date.now();
+        const result = await check.run(moment, [d.id]);
+        // The run ended, and on the check's own limit: well before the five
+        // seconds after which the database would have given up the wait.
+        expect(Date.now() - began).toBeLessThan(4_000);
+        expect(result).toEqual({
+          listed: true,
+          hospitals: 1,
+          failed: 1,
+          notified: 0,
+          filled: 0,
+        });
+        // Which hospital and what kind of failure (57014: a statement that
+        // ran out of time), and how the run ended. Nothing else.
+        expect(said).toEqual([
+          `error: Deadline check failed for hospital ${d.id}: DrizzleQueryError (57014)`,
+          'warn: Deadline check: 0 notifications written, 0 incidents given their deadlines, 1 of 1 hospitals failed',
+        ]);
+        // Nothing was half done: not announced, and not marked as if it were.
+        expect((await timesOf(id)).sent.triageOverdue).toBe(false);
+        expect(await told(id)).toEqual({});
+      } finally {
+        check.statementTimeoutMs = usual;
+        await holder.query('rollback');
+        holder.release();
+        for (const spy of spies) spy.mockRestore();
+      }
+      // The next run finds it as it was, and announces it.
+      expect(await check.run(moment, [d.id])).toMatchObject({
+        failed: 0,
+        notified: 2,
+      });
+      expect(await told(id)).toEqual({ overdue: sorted(boss, officer) });
+    });
+
+    it('says in one line what a run did', async () => {
+      const { id } = await fresh();
+      await clear(id);
+      const { triageDue } = await timesOf(id);
+      const said: string[] = [];
+      const spy = vi
+        .spyOn(Logger.prototype, 'log')
+        .mockImplementation((message) => {
+          said.push(String(message));
+        });
+      try {
+        await check.run(new Date(triageDue + HOUR), [d.id]);
+        // And nothing when there was nothing to do.
+        await check.run(new Date(triageDue + HOUR), [d.id]);
+      } finally {
+        spy.mockRestore();
+      }
+      expect(said.filter((line) => line.startsWith('Deadline check'))).toEqual([
+        'Deadline check: 2 notifications written, 0 incidents given their deadlines, 0 of 1 hospitals failed',
+      ]);
+    });
+
+    it('does not announce a missed closing deadline again when triage moves it to another moment already past', async () => {
+      const now = () => check.checkHospital(hospital(), new Date());
+      const regrade = (id: string, harmLevel: string) =>
+        triage(boss, id, {
+          ownerUnitId: unit,
+          assignedTo: assignee.id,
+          harmLevel,
+        }).expect(200);
+      const aged = async (days: number) => {
+        const reported = await triaged({ assignedTo: assignee.id });
+        await bench.owner.db.execute(
+          sql`update incidents set
+                reported_at = reported_at - make_interval(days => ${days}),
+                triage_due_at = triage_due_at - make_interval(days => ${days}),
+                close_due_at = close_due_at - make_interval(days => ${days})
+              where id = ${reported.id}`,
+        );
+        return reported.id;
+      };
+
+      // Reported fifty days ago with mild harm: to be closed within thirty,
+      // so twenty days overdue. Announced, once.
+      const id = await aged(50);
+      expect(await now()).toBe(2);
+      expect(await told(id)).toEqual({ overdue: sorted(assignee, boss) });
+      await clear(id);
+      // Called severe: forty-five days from the report, which was five days
+      // ago. Another moment, and past like the first.
+      await regrade(id, 'severe');
+      await clear(id);
+      const moved = await timesOf(id);
+      expect(moved.closeDue - moved.reported).toBe(45 * DAY);
+      expect(moved.closeDue).toBeLessThan(Date.now());
+      // What was announced stands, and nobody is told again.
+      expect(moved.sent).toMatchObject({
+        closeDueSoon: true,
+        closeOverdue: true,
+      });
+      expect(await now()).toBe(0);
+      // However often it is called something else.
+      for (const harmLevel of ['mild', 'severe', 'none', 'death', 'moderate']) {
+        await regrade(id, harmLevel);
+        await clear(id);
+        expect([harmLevel, await now()]).toEqual([harmLevel, 0]);
+      }
+      expect(await told(id)).toEqual({});
+      // It is overdue all the same, for whoever reads it.
+      const seen = await http()
+        .get(`/incidents/${id}`)
+        .set('Cookie', boss.cookie)
+        .expect(200);
+      expect(seen.body.overdue).toBe('closure');
+
+      // Moved to a moment still to come, it is another deadline: no longer
+      // overdue, and announced in its turn.
+      const other = await aged(40);
+      expect(await now()).toBe(2);
+      expect(await told(other)).toEqual({ overdue: sorted(assignee, boss) });
+      await regrade(other, 'severe');
+      await clear(other);
+      const ahead = await timesOf(other);
+      expect(ahead.closeDue).toBeGreaterThan(Date.now());
+      expect(ahead.sent).toMatchObject({
+        closeDueSoon: false,
+        closeOverdue: false,
+      });
+      expect(
+        (
+          await http()
+            .get(`/incidents/${other}`)
+            .set('Cookie', boss.cookie)
+            .expect(200)
+        ).body.overdue,
+      ).toBeNull();
+      // Five days to go of forty-five: in its last quarter already.
+      expect(await now()).toBe(1);
+      expect(await told(other)).toEqual({ due_soon: sorted(assignee) });
+      await clear(other);
+      expect(await at(ahead.closeDue + HOUR)).toBe(2);
+      expect(await told(other)).toEqual({ overdue: sorted(assignee, boss) });
+
+      // One that was not overdue yet, and is once it is called something
+      // milder: nobody was told, so the next check tells them, once.
+      const fresher = await aged(35);
+      await regrade(fresher, 'severe');
+      await clear(fresher);
+      expect(await now()).toBe(1);
+      expect(await told(fresher)).toEqual({ due_soon: sorted(assignee) });
+      await clear(fresher);
+      await regrade(fresher, 'mild');
+      await clear(fresher);
+      expect(await now()).toBe(2);
+      expect(await told(fresher)).toEqual({ overdue: sorted(assignee, boss) });
+      expect(await now()).toBe(0);
+    });
+
     it('starts when told to, checks again and again, and stops with the application', async () => {
       const moduleRef = await Test.createTestingModule({
         imports: [AppModule],
@@ -1912,8 +2120,9 @@ describe('notifications', () => {
       const timed = third.get(DeadlineCheck, { strict: false });
       const runs = vi.spyOn(timed, 'run');
       expect(timed.active).toBe(false);
-      timed.start(25);
-      timed.start(25); // a second start changes nothing
+      // For this test's hospital only: see the bystander below.
+      timed.start(25, [d.id]);
+      timed.start(25, [d.id]); // a second start changes nothing
       expect(timed.active).toBe(true);
       await vi.waitFor(
         () => expect(runs.mock.calls.length).toBeGreaterThan(1),
@@ -1941,5 +2150,51 @@ describe('notifications', () => {
         await expect(result.value).resolves.toMatchObject({ failed: 0 });
       }
     }, 60_000);
+    it('has left alone, in every check this suite ran, a hospital it was not run for', async () => {
+      const there = async () => {
+        const [row] = (
+          await bench.owner.db.execute<{
+            triage_due_soon_at: string | null;
+            triage_overdue_at: string | null;
+            close_due_soon_at: string | null;
+            close_overdue_at: string | null;
+            overdue: boolean;
+          }>(
+            sql`select triage_due_soon_at, triage_overdue_at, close_due_soon_at, close_overdue_at,
+                       (triage_due_at < now()) as overdue
+                from incidents where id = ${overdueThere}`,
+          )
+        ).rows;
+        const kinds = (await rowsFor(overdueThere)).map((r) => r.kind);
+        return { ...row, kinds };
+      };
+      // Once more what the tests above did: a check for this suite's own
+      // hospital as of a month from now, when every deadline in the
+      // database has passed, and a check as of now.
+      await check.run(new Date(Date.now() + 45 * DAY), [d.id]);
+      await check.run(new Date(), [d.id]);
+      // The bystander's report has been overdue since before the first of
+      // these tests. Nobody there was told anything by any of them, and
+      // nothing was recorded as announced: its own check has it all to do.
+      expect(await there()).toEqual({
+        triage_due_soon_at: null,
+        triage_overdue_at: null,
+        close_due_soon_at: null,
+        close_overdue_at: null,
+        overdue: true,
+        // Told of the report itself when it was made, and of nothing since.
+        kinds: ['incident_reported'],
+      });
+      // Run for it by name, the check finds it and announces it, once.
+      expect(await check.run(new Date(), [bystander.id])).toMatchObject({
+        hospitals: 1,
+        failed: 0,
+        notified: 1,
+      });
+      const after = await there();
+      expect(after.triage_overdue_at).not.toBeNull();
+      expect(after.kinds).toEqual(['incident_reported', 'overdue']);
+      expect((await check.run(new Date(), [bystander.id])).notified).toBe(0);
+    });
   });
 });

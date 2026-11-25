@@ -146,13 +146,15 @@ export class DeadlineCheck implements OnModuleDestroy {
   /**
    * Starts checking: once shortly after start, then every `everyMs` counted
    * from the end of the run before, so two runs of one process never overlap.
+   * Every active hospital, as `main.ts` starts it; `only` is for tests, as
+   * in `run()`.
    */
-  start(everyMs = CHECK_EVERY_MS) {
+  start(everyMs = CHECK_EVERY_MS, only?: string[]) {
     if (!this.stopped) return;
     this.stopped = false;
     const next = (delay: number) => {
       this.timer = setTimeout(() => {
-        this.current = this.run()
+        this.current = this.run(new Date(), only)
           // run() does not throw; this is for the unforeseen, which is
           // said too: a check that fails must not fail in silence.
           .catch((error: unknown) => {
@@ -198,8 +200,13 @@ export class DeadlineCheck implements OnModuleDestroy {
    * unsaid. What is logged is the hospital's id and the kind of failure,
    * never anything from a record. A run that did something says so in one
    * line; one that found nothing to do says nothing.
+   *
+   * `only` narrows the pass to the hospitals with these ids. The API never
+   * passes it: it is there so that a test, which shares its database with
+   * hospitals it did not make and may check as of a moment that is not now,
+   * announces nothing to anyone else's.
    */
-  async run(now = new Date()): Promise<CheckResult> {
+  async run(now = new Date(), only?: string[]): Promise<CheckResult> {
     const result: CheckResult = {
       listed: false,
       hospitals: 0,
@@ -216,7 +223,12 @@ export class DeadlineCheck implements OnModuleDestroy {
         return tx
           .select({ id: tenants.id, timeZone: tenants.timeZone })
           .from(tenants)
-          .where(eq(tenants.status, 'active'))
+          .where(
+            and(
+              eq(tenants.status, 'active'),
+              only ? inArray(tenants.id, only) : undefined,
+            ),
+          )
           .orderBy(asc(tenants.id));
       });
     } catch (error) {

@@ -127,6 +127,9 @@ export class PublicReportingController {
         name: tenant.name,
         locales: tenant.locales,
         defaultLocale: tenant.defaultLocale,
+        // The hospital's own clock, so the form can ask when it happened in
+        // the hospital's time whatever the sender's device is set to.
+        timeZone: tenant.timeZone,
         ...(await this.incidents.publicForm(tenant.id)),
       };
     });
