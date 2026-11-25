@@ -99,9 +99,7 @@ export function FollowUp({
     const status = statusOf(err);
     if (status === 429) {
       const wait = retryAfterOf(err);
-      return wait
-        ? fill(u.tooMany, { time: clockTime(wait) })
-        : u.tooManyLater;
+      return wait ? fill(u.tooMany, { time: clockTime(wait) }) : u.tooManyLater;
     }
     // A code that is wrong, a hospital that does not exist: one answer.
     return status === 404 ? u.wrong : u.error;

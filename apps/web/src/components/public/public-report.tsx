@@ -99,8 +99,9 @@ export function PublicReport({
       const tooMany = wait
         ? fill(p.tooMany, { time: clockTime(wait) })
         : p.tooManyLater;
-      // Someone who cannot send now is told again what to do if it is urgent.
-      return `${tooMany} ${p.urgent}`;
+      // Someone who cannot send now is told again what to do if it is
+      // urgent, on a line of its own.
+      return `${tooMany}\n${p.urgent}`;
     }
     // Switched off while the form was open.
     if (status === 404) return p.notSent;

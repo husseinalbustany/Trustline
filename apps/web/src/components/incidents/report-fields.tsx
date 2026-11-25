@@ -221,11 +221,13 @@ export function ReportFields({
             <option value="" disabled>
               {f.choose}
             </option>
-            {unitOptions(units, (u) => inLang(u.name), null, unitTree).map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.label}
-              </option>
-            ))}
+            {unitOptions(units, (u) => inLang(u.name), null, unitTree).map(
+              (u) => (
+                <option key={u.id} value={u.id}>
+                  {u.label}
+                </option>
+              ),
+            )}
           </select>
         </Field>
       </div>
@@ -312,7 +314,8 @@ export function ReportFields({
       {error && (
         <p
           role="alert"
-          className={`text-danger ${roomy ? "text-base" : "text-sm"}`}
+          // A refusal may be two sentences on two lines.
+          className={`whitespace-pre-line text-danger ${roomy ? "text-base" : "text-sm"}`}
         >
           {error}
         </p>
