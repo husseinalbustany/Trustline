@@ -23,7 +23,12 @@ export function LanguageSwitcher({
 
   return (
     <nav aria-label={label} className="flex items-center text-sm text-muted">
-      <Languages className="mx-1 size-4 shrink-0" aria-hidden />
+      {/* Decoration: the names say it. Left out of the app's bar on a
+          phone, where the room goes to the names themselves. */}
+      <Languages
+        className={`mx-1 size-4 shrink-0 ${roomy ? "" : "max-sm:hidden"}`}
+        aria-hidden
+      />
       {locales
         .filter((other) => other !== lang)
         .map((other) => (
@@ -31,7 +36,7 @@ export function LanguageSwitcher({
             key={other}
             href={`/${other}/${rest}${query}`}
             lang={other}
-            className={`inline-flex items-center rounded-md hover:bg-surface hover:text-foreground ${roomy ? "h-11 px-3" : "h-9 px-2"}`}
+            className={`inline-flex items-center rounded-md hover:bg-surface hover:text-foreground ${roomy ? "h-11 px-3" : "h-9 px-1.5 sm:px-2"}`}
           >
             {localeNames[other]}
           </Link>

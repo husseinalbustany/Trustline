@@ -107,16 +107,26 @@ export const percentFormat = (lang: string) => {
  *
  * On the clock of the reader's own device: it is the one they will look at
  * to know when to try again.
+ *
+ * `withDay` is for a wait that can run past midnight (a limit counted over
+ * a day): the time is then given with its day of the week when it is not
+ * today, "Thursday 14:32", so "after 14:32" is not read as this afternoon.
  */
-export function clockTimeIn(lang: string) {
-  const clock = dateTimeFormat(lang, deviceTime, {
-    hour: "numeric",
-    minute: "2-digit",
+export function clockTimeIn(lang: string, { withDay = false } = {}) {
+  const hour = { hour: "numeric", minute: "2-digit" } as const;
+  const clock = dateTimeFormat(lang, deviceTime, hour);
+  const dayAndClock = dateTimeFormat(lang, deviceTime, {
+    weekday: "long",
+    ...hour,
   });
-  return (seconds: number) =>
-    clock.format(
-      new Date(Math.ceil((Date.now() + seconds * 1000) / 60_000) * 60_000),
+  const day = dateTimeFormat("en", deviceTime, { dateStyle: "short" });
+  return (seconds: number) => {
+    const then = new Date(
+      Math.ceil((Date.now() + seconds * 1000) / 60_000) * 60_000,
     );
+    const today = day.format(then) === day.format(new Date());
+    return (withDay && !today ? dayAndClock : clock).format(then);
+  };
 }
 
 /**

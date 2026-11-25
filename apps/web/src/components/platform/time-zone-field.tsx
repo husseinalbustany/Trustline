@@ -16,6 +16,24 @@ export type TimeZoneText = {
   none: string;
 };
 
+/**
+ * The clock of each zone in the list, made once: the list is some four
+ * hundred names long and is drawn again at every key press.
+ */
+const clocks = new Map<string, Intl.DateTimeFormat>();
+function clockIn(lang: string, timeZone: string) {
+  const key = `${lang} ${timeZone}`;
+  let clock = clocks.get(key);
+  if (!clock) {
+    clock = dateTimeFormat(lang, timeZone, {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    clocks.set(key, clock);
+  }
+  return clock;
+}
+
 /** Typed loosely: "new york" finds `America/New_York`. */
 const loose = (text: string) =>
   text
@@ -47,6 +65,7 @@ export function TimeZoneField({
 }) {
   const listId = useId();
   const list = useRef<HTMLUListElement>(null);
+  const input = useRef<HTMLInputElement>(null);
   // What is typed while searching; null when the field shows the choice.
   const [typed, setTyped] = useState<string | null>(null);
   const [active, setActive] = useState(0);
@@ -70,9 +89,17 @@ export function TimeZoneField({
     list.current?.children[next]?.scrollIntoView({ block: "nearest" });
   };
   const close = () => setTyped(null);
+  // Back to showing the choice, with all of it selected: whatever is typed
+  // next starts a new search instead of being added to the name.
+  const settle = () => {
+    close();
+    requestAnimationFrame(() => {
+      if (document.activeElement === input.current) input.current?.select();
+    });
+  };
   const choose = (name: string) => {
     onChange(name);
-    close();
+    settle();
   };
   const search = (text: string) => {
     setTyped(text);
@@ -97,7 +124,7 @@ export function TimeZoneField({
       if (matches[active]) choose(matches[active]);
     } else if (e.key === "Escape" && open) {
       e.preventDefault();
-      close();
+      settle();
     }
   }
 
@@ -106,6 +133,7 @@ export function TimeZoneField({
       <div className="relative">
         <Field label={t.label}>
           <input
+            ref={input}
             role="combobox"
             aria-expanded={open}
             aria-controls={listId}
@@ -155,10 +183,7 @@ export function TimeZoneField({
                 <bdi dir="ltr">{name}</bdi>
                 {now && (
                   <span className="shrink-0 text-xs text-muted tabular-nums">
-                    {dateTimeFormat(lang, name, {
-                      hour: "numeric",
-                      minute: "2-digit",
-                    }).format(now)}
+                    {clockIn(lang, name).format(now)}
                   </span>
                 )}
               </li>

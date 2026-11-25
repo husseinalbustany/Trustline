@@ -1,6 +1,13 @@
 "use client";
 
-import { useLayoutEffect, useState, type FormEvent } from "react";
+import { ExternalLink } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useState,
+  type FormEvent,
+} from "react";
 import {
   IncidentComments,
   IncidentReport,
@@ -15,7 +22,7 @@ import { Button } from "@/components/ui/button";
 import { Field, roomyInputClass } from "@/components/ui/field";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/dictionaries";
-import { api, retryAfterOf, statusOf } from "@/lib/api";
+import { api, codeOf, retryAfterOf, statusOf } from "@/lib/api";
 import { clockTimeIn, fill } from "@/lib/format";
 import type { FollowUpView } from "@/lib/incidents";
 import { pick } from "@/lib/localized";
@@ -80,18 +87,44 @@ export function FollowUp({
   const [open, setOpen] = useState<Open | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The API refused a comment because work on the report ended while the
+  // reader was writing: the page still shows it as it was when opened.
+  const [endedSince, setEndedSince] = useState(false);
+  // Whether this hospital takes reports without sign-in, asked only once a
+  // report is seen to have ended: a link to the form is offered if it does.
+  const [formOpen, setFormOpen] = useState(false);
   const path = `/public/follow-up/${encodeURIComponent(slug)}`;
   const clockTime = clockTimeIn(lang);
+  // A limit on comments is counted over a day: the time may be tomorrow.
+  const dayAndTime = clockTimeIn(lang, { withDay: true });
 
+  // Closed or not taken forward: such a report can be read, not added to.
+  const ended =
+    open?.view.status === "closed" || open?.view.status === "rejected";
+  const over = !!open && (ended || endedSince);
+  useEffect(() => {
+    if (!over) return;
+    let current = true;
+    api(`/public/reporting/${encodeURIComponent(slug)}`, {
+      withoutSession: true,
+    })
+      .then(() => current && setFormOpen(true))
+      // Off, or not to be known now: no link, and the line reads without.
+      .catch(() => current && setFormOpen(false));
+    return () => {
+      current = false;
+    };
+  }, [over, slug]);
+
+  const forget = useCallback(() => {
+    setOpen(null);
+    setError(null);
+    setEndedSince(false);
+    setFormOpen(false);
+  }, []);
   // Visited pages stay mounted: the code and the report it opened do not
   // wait here for whoever comes to this page next.
-  useLayoutEffect(
-    () => () => {
-      setOpen(null);
-      setError(null);
-    },
-    [],
-  );
+  useLayoutEffect(() => forget, [forget]);
 
   const refusal = (err: unknown) => {
     const status = statusOf(err);
@@ -117,6 +150,7 @@ export function FollowUp({
       });
       // The field is emptied: the code is now in memory only.
       form.reset();
+      setEndedSince(false);
       setOpen({ code, view: withoutNames(view) });
     } catch (err) {
       setError(refusal(err));
@@ -145,15 +179,41 @@ export function FollowUp({
         now?.code === open.code ? { ...now, view: withoutNames(view) } : now,
       );
     } catch (err) {
-      setError(refusal(err));
+      // Nothing typed is thrown away by a refusal: the box keeps it.
+      if (statusOf(err) === 409 && codeOf(err) === "incident_ended") {
+        setEndedSince(true);
+      } else if (statusOf(err) === 429) {
+        // Too many attempts from this address, or too many comments on this
+        // report in a day: the page cannot tell which, and says neither.
+        const wait = retryAfterOf(err);
+        setError(
+          wait
+            ? fill(u.commentTooMany, { time: dayAndTime(wait) })
+            : u.commentTooManyLater,
+        );
+      } else {
+        setError(refusal(err));
+      }
     }
     setBusy(false);
   }
 
-  const close = () => {
-    setOpen(null);
-    setError(null);
-  };
+  const close = forget;
+
+  // Where to say more once a report has ended. In a new tab: this page, the
+  // report and anything typed on it stay open.
+  const newReport = formOpen && (
+    <a
+      href={`/${lang}/report/${encodeURIComponent(slug)}`}
+      target="_blank"
+      rel="noopener"
+      className="inline-flex min-h-11 items-center gap-1 font-medium text-accent underline"
+    >
+      {u.newReport}
+      <ExternalLink className="size-3.5 rtl:-scale-x-100" aria-hidden />
+      <span className="sr-only">{t.code.newTab}</span>
+    </a>
+  );
 
   // Whose page this is comes with the report, once the code has opened it.
   // Until then nothing is known of the hospital, not even that it exists.
@@ -250,26 +310,43 @@ export function FollowUp({
         <IncidentReport {...view} />
         <IncidentTimeline {...view} />
         <IncidentComments {...view}>
-          <form onSubmit={comment} className="flex flex-col gap-3 p-4">
-            <Field label={t.comments.body} help={t.comments.reporterHelp}>
-              <textarea
-                name="body"
-                required
-                rows={3}
-                maxLength={2000}
-                dir="auto"
-                className={`${textareaClass} text-base`}
-              />
-            </Field>
-            {alert}
-            <Button
-              type="submit"
-              disabled={busy}
-              className="h-12 px-5 text-base max-sm:w-full"
-            >
-              {t.comments.submit}
-            </Button>
-          </form>
+          {ended ? (
+            // Nothing to type into: the report can be read, not added to.
+            <div className="p-4 text-base">
+              <p>{u.ended}</p>
+              {newReport}
+            </div>
+          ) : (
+            <form onSubmit={comment} className="flex flex-col gap-3 p-4">
+              <Field label={t.comments.body} help={t.comments.reporterHelp}>
+                <textarea
+                  name="body"
+                  required
+                  rows={3}
+                  maxLength={2000}
+                  dir="auto"
+                  className={`${textareaClass} text-base`}
+                />
+              </Field>
+              {alert}
+              {endedSince ? (
+                // It ended while they were writing. The box stays, with
+                // what they wrote in it, to copy into a new report.
+                <div role="alert" className="text-base">
+                  <p className="text-danger">{u.endedSince}</p>
+                  {newReport}
+                </div>
+              ) : (
+                <Button
+                  type="submit"
+                  disabled={busy}
+                  className="h-12 px-5 text-base max-sm:w-full"
+                >
+                  {t.comments.submit}
+                </Button>
+              )}
+            </form>
+          )}
         </IncidentComments>
         <div className="flex flex-col gap-2">
           <Button

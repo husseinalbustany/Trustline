@@ -47,7 +47,9 @@ export function PublicReport({
   unit?: string;
 }) {
   const [form, setForm] = useState<PublicReporting | null>(null);
-  const [problem, setProblem] = useState<"unavailable" | "error" | null>(null);
+  const [problem, setProblem] = useState<
+    "unavailable" | "error" | { tooMany: number | undefined } | null
+  >(null);
   // The follow-up code of the report just sent: kept here and nowhere else,
   // and only until this page is left.
   const [code, setCode] = useState<string | null>(null);
@@ -69,13 +71,21 @@ export function PublicReport({
         setProblem(null);
         shown();
       })
-      .catch(
-        (err) =>
-          current &&
-          // A hospital that does not exist, is suspended or has not switched
-          // this on: one answer, and one page, for all three.
-          setProblem(statusOf(err) === 404 ? "unavailable" : "error"),
-      );
+      .catch((err) => {
+        if (!current) return;
+        const status = statusOf(err);
+        setProblem(
+          // The form has been asked for too often from this address: it is
+          // there, and can be opened again a little later.
+          status === 429
+            ? { tooMany: retryAfterOf(err) }
+            : // A hospital that does not exist, is suspended or has not
+              // switched this on: one answer, and one page, for all three.
+              status === 404
+              ? "unavailable"
+              : "error",
+        );
+      });
     return () => {
       current = false;
     };
@@ -132,17 +142,29 @@ export function PublicReport({
       {children}
     </PublicFrame>
   );
-  const notice = (title: string, text?: string) =>
+  const notice = (title: string, text?: string, more?: string) =>
     frame(
       <div className="rounded-lg border border-line bg-background p-5">
         <h1 className="text-xl font-semibold">{title}</h1>
         {text && <p className="mt-2 text-base text-muted">{text}</p>}
+        {more && <p className="mt-3 text-base">{more}</p>}
       </div>,
     );
 
   // A hospital with nowhere to say it happened cannot take a report.
   if (problem === "unavailable" || form?.orgUnits.length === 0) {
     return notice(p.unavailableTitle, p.unavailable);
+  }
+  if (problem && typeof problem === "object") {
+    // Someone who cannot open the form now is told what to do if it is
+    // urgent, as on the form itself.
+    return notice(
+      p.loadTooManyTitle,
+      problem.tooMany
+        ? fill(p.loadTooMany, { time: clockTime(problem.tooMany) })
+        : p.loadTooManyLater,
+      p.urgent,
+    );
   }
   if (problem) return notice(p.loadErrorTitle, p.loadError);
   if (!form) return notice(t.loading);

@@ -189,7 +189,7 @@ export function AppShell({
 
             <div className="flex min-w-0 flex-1 flex-col">
               {/* Paper gets the page, not the menu or the bar above it. */}
-              <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b border-line bg-background px-4 sm:px-6 lg:px-8 print:hidden">
+              <header className="sticky top-0 z-20 flex h-14 items-center gap-2 border-b border-line bg-background px-3 sm:gap-3 sm:px-6 lg:px-8 print:hidden">
                 <button
                   type="button"
                   onClick={() => setMenuOpen(true)}
@@ -198,10 +198,13 @@ export function AppShell({
                 >
                   <Menu className="size-5" aria-hidden />
                 </button>
-                <span className="font-semibold tracking-tight lg:hidden">
+                <span className="min-w-0 truncate font-semibold tracking-tight lg:hidden">
                   {labels.appName}
                 </span>
-                <div className="ms-auto flex items-center gap-2">
+                {/* Closer together on a phone, where the bar holds the menu,
+                  the languages, the report button, the bell and the way
+                  out in 390 pixels. */}
+                <div className="ms-auto flex shrink-0 items-center gap-1 sm:gap-2">
                   <LanguageSwitcher
                     lang={lang}
                     pathname={pathname}
