@@ -28,8 +28,12 @@ export function CopyLink({
           {url}
         </code>
         <Button variant="secondary" onClick={() => copy(url)}>
-          <span role="status">{copied ? t.copied : t.copy}</span>
+          {copied ? t.copied : t.copy}
         </Button>
+        {/* Said aloud once, for someone who does not see the button change. */}
+        <span role="status" className="sr-only">
+          {copied ? t.copied : ""}
+        </span>
       </div>
       {help && <p className="text-xs text-muted">{help}</p>}
     </div>

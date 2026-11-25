@@ -12,6 +12,17 @@ export function useSession(): Session {
   return session;
 }
 
+/** Set by the app shell: reads the session again from the API. */
+export const SessionRefreshContext = createContext<() => Promise<void>>(
+  async () => {},
+);
+
+/**
+ * For a screen that changes something the session carries, such as a
+ * hospital setting: the rest of the app then sees it without a reload.
+ */
+export const useRefreshSession = () => useContext(SessionRefreshContext);
+
 export const can = (session: Session, permission: string) =>
   session.permissions.includes(permission);
 

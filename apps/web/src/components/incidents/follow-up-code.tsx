@@ -20,7 +20,7 @@ export function FollowUpCode({
 }: {
   t: IncidentsText["code"];
   code: string;
-  /** The page where the reference and this code are typed back. */
+  /** The page where this code is typed back. */
   followUpHref: string;
 }) {
   const [copied, copy] = useCopy();
@@ -48,8 +48,12 @@ export function FollowUpCode({
           className="h-12 w-full px-5 text-base sm:w-auto"
           onClick={() => copy(groups.join("-"))}
         >
-          <span role="status">{copied ? t.copied : t.copy}</span>
+          {copied ? t.copied : t.copy}
         </Button>
+        {/* Said aloud once, for someone who does not see the button change. */}
+        <span role="status" className="sr-only">
+          {copied ? t.copied : ""}
+        </span>
       </div>
       <div className="flex gap-3 rounded-md bg-danger-soft p-3 text-sm text-danger">
         <TriangleAlert className="mt-0.5 size-5 shrink-0" aria-hidden />

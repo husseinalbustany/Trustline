@@ -46,14 +46,22 @@ export function useReportClock() {
     return () => clearInterval(timer);
   }, [tick]);
 
-  /** A fresh form: called when it is first shown, and for each new report. */
-  const start = useCallback(() => {
-    setOccurredAt(null);
+  /**
+   * The form is on screen: called each time it is shown, also when the
+   * reporter comes back to a draft. A time they chose is theirs and stays.
+   */
+  const shown = useCallback(() => {
     setNow(localMinute(new Date()));
     setStartedAt(new Date().toISOString());
   }, []);
 
-  return { now, occurredAt, startedAt, setOccurredAt, tick, start };
+  /** A fresh form, for the next report: "when" is the present again. */
+  const start = useCallback(() => {
+    setOccurredAt(null);
+    shown();
+  }, [shown]);
+
+  return { now, occurredAt, startedAt, setOccurredAt, tick, shown, start };
 }
 
 /** What a report form sends, whoever sends it. */
@@ -296,7 +304,10 @@ export function ReportFields({
       )}
 
       {error && (
-        <p role="alert" className="text-sm text-danger">
+        <p
+          role="alert"
+          className={`text-danger ${roomy ? "text-base" : "text-sm"}`}
+        >
           {error}
         </p>
       )}

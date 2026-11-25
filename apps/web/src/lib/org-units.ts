@@ -70,14 +70,16 @@ export function unitOptions<T extends TreeUnit>(
   nameOf: (unit: T) => string,
   stored?: { id: string; label: string } | null,
 ): UnitOption[] {
-  const out = inTreeOrder(units.filter((u) => u.active !== false)).map((unit) => ({
-    id: unit.id,
-    // An option holds no elements, so the name is isolated with
-    // U+2068 … U+2069: a name in the other direction ending in a bracket
-    // keeps the bracket at its own end.
-    label: `${indent[unit.type]}\u2068${nameOf(unit)}\u2069`,
-    inactive: false,
-  }));
+  const out = inTreeOrder(units.filter((u) => u.active !== false)).map(
+    (unit) => ({
+      id: unit.id,
+      // An option holds no elements, so the name is isolated with
+      // U+2068 … U+2069: a name in the other direction ending in a bracket
+      // keeps the bracket at its own end.
+      label: `${indent[unit.type]}\u2068${nameOf(unit)}\u2069`,
+      inactive: false,
+    }),
+  );
   if (stored && !out.some((o) => o.id === stored.id)) {
     out.unshift({ id: stored.id, label: stored.label, inactive: true });
   }

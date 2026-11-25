@@ -27,6 +27,7 @@ import {
   type UnitType,
 } from "@/lib/org-units";
 import type { AdminProps } from "./types";
+import { UnitPoster, UnitReporting } from "./unit-reporting";
 
 type Message = { kind: "ok" | "error"; text: string; at?: "status" };
 
@@ -58,7 +59,16 @@ export function OrgUnitForm({
   t,
   mode,
   id,
-}: AdminProps & { mode: "new" | "edit"; id?: string }) {
+  posterLines,
+}: AdminProps & {
+  mode: "new" | "edit";
+  id?: string;
+  /**
+   * The line printed under a unit's QR code, in each interface language:
+   * the poster is written in the hospital's languages, not the reader's.
+   */
+  posterLines?: Record<string, string>;
+}) {
   const router = useRouter();
   const session = useSession();
   const allowed = can(session, "organization.manage");
@@ -211,8 +221,10 @@ export function OrgUnitForm({
   // switched off, so those are shown but cannot be chosen.
   const parentOption = (p: OrgUnit) => (
     <option key={p.id} value={p.id} disabled={!p.active && unit?.active}>
+      {/* An option holds no elements, so the name is isolated with
+          U+2068 … U+2069 (`fill` does the same) to keep its own direction. */}
       {p.active
-        ? nameOf(p)
+        ? `\u2068${nameOf(p)}\u2069`
         : fill(o.inactiveNamed[p.type], { name: nameOf(p) })}
     </option>
   );
@@ -228,7 +240,7 @@ export function OrgUnitForm({
       }))
       .filter((group) => group.departments.length > 0)
       .map(({ facility, departments }) => (
-        <optgroup key={facility.id} label={nameOf(facility)}>
+        <optgroup key={facility.id} label={`\u2068${nameOf(facility)}\u2069`}>
           {departments.map(parentOption)}
         </optgroup>
       ));
@@ -245,145 +257,157 @@ export function OrgUnitForm({
       </p>
     );
 
+  // While the hospital takes reports without sign-in, a unit in use has its
+  // own link and QR code. On paper the page is the poster and nothing else.
+  const reporting =
+    unit?.active && session.tenant.publicReporting && posterLines
+      ? { lang, t, unit, posterLines }
+      : null;
+
   return (
     <>
-      <PageHeader
-        title={unit ? nameOf(unit) : o.add[type]}
-        description={
-          unit ? (
-            <>
-              {o.type[unit.type]} · <bdi dir="ltr">{unit.code}</bdi>
-            </>
-          ) : (
-            f.newDescription
-          )
-        }
-        actions={
-          unit &&
-          !unit.active && <Pill tone="neutral">{o.inactive[unit.type]}</Pill>
-        }
-      />
+      {reporting && <UnitPoster {...reporting} />}
+      <div className={reporting ? "print:hidden" : undefined}>
+        <PageHeader
+          title={unit ? <bdi>{nameOf(unit)}</bdi> : o.add[type]}
+          description={
+            unit ? (
+              <>
+                {o.type[unit.type]} · <bdi dir="ltr">{unit.code}</bdi>
+              </>
+            ) : (
+              f.newDescription
+            )
+          }
+          actions={
+            unit &&
+            !unit.active && <Pill tone="neutral">{o.inactive[unit.type]}</Pill>
+          }
+        />
 
-      <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <form
-          key={unit?.id ?? visit}
-          onSubmit={submit}
-          className="flex flex-col gap-5 rounded-lg border border-line p-4 sm:p-6"
-        >
-          <LocalizedField
-            label={f.name}
-            name="name"
-            locales={languages.locales}
-            required={languages.defaultLocale}
-            value={unit?.name}
-          />
-          <div className="grid gap-5 sm:grid-cols-2">
-            <Field label={f.code} help={unit ? f.codeFixed : f.codeHelp}>
-              {unit ? (
-                <input
-                  disabled
-                  dir="ltr"
-                  value={unit.code}
-                  className={fixedClass}
-                />
-              ) : (
-                <input
-                  name="code"
-                  required
-                  pattern="[A-Z0-9\-]{2,40}"
-                  maxLength={40}
-                  dir="ltr"
-                  autoCapitalize="characters"
-                  autoComplete="off"
-                  spellCheck={false}
-                  onInput={uppercase}
-                  className={inputClass}
-                />
-              )}
-            </Field>
-            <Field label={f.type} help={unit ? f.typeFixed : f.typeHelp}>
-              {unit ? (
-                <input disabled value={o.type[type]} className={fixedClass} />
-              ) : (
-                <select
-                  defaultValue={type}
-                  onChange={(e) => setPickedType(e.target.value as UnitType)}
-                  className={inputClass}
-                >
-                  {unitTypes.map((option) => {
-                    const needs = parentType[option];
-                    return (
-                      <option
-                        key={option}
-                        value={option}
-                        // Nothing to put it under yet.
-                        disabled={
-                          !!needs && !units.some((u) => u.type === needs)
-                        }
-                      >
-                        {o.type[option]}
-                      </option>
-                    );
-                  })}
-                </select>
-              )}
-            </Field>
-            {above && (
-              <Field
-                label={f.parent[type as "department" | "unit"]}
-                help={unit ? f.parentHelp : undefined}
-              >
-                <select
-                  // Another type sits under other units: start the choice again.
-                  key={type}
-                  name="parentId"
-                  required
-                  defaultValue={
-                    unit?.parentId ??
-                    (under?.type === above ? under.id : "")
-                  }
-                  className={inputClass}
-                >
-                  <option value="" disabled>
-                    {f.choose}
-                  </option>
-                  {parentOptions}
-                </select>
+        <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <form
+            key={unit?.id ?? visit}
+            onSubmit={submit}
+            className="flex flex-col gap-5 rounded-lg border border-line p-4 sm:p-6"
+          >
+            <LocalizedField
+              label={f.name}
+              name="name"
+              locales={languages.locales}
+              required={languages.defaultLocale}
+              value={unit?.name}
+            />
+            <div className="grid gap-5 sm:grid-cols-2">
+              <Field label={f.code} help={unit ? f.codeFixed : f.codeHelp}>
+                {unit ? (
+                  <input
+                    disabled
+                    dir="ltr"
+                    value={unit.code}
+                    className={fixedClass}
+                  />
+                ) : (
+                  <input
+                    name="code"
+                    required
+                    pattern="[A-Z0-9\-]{2,40}"
+                    maxLength={40}
+                    dir="ltr"
+                    autoCapitalize="characters"
+                    autoComplete="off"
+                    spellCheck={false}
+                    onInput={uppercase}
+                    className={inputClass}
+                  />
+                )}
               </Field>
-            )}
-          </div>
-
-          {note()}
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" disabled={busy}>
-              {unit ? f.save : o.add[type]}
-            </Button>
-            <Link
-              href={listPath}
-              className="inline-flex h-9 items-center rounded-md px-3 text-sm text-muted hover:bg-surface hover:text-foreground"
-            >
-              {unit ? o.back : f.cancel}
-            </Link>
-          </div>
-        </form>
-
-        {unit && (
-          <Panel title={f.status}>
-            <div className="flex flex-col items-start gap-3 p-4">
-              <p className="text-sm text-muted">
-                {unit.active ? f.activeHelp : f.inactiveHelp}
-              </p>
-              {note("status")}
-              <Button
-                variant="secondary"
-                disabled={busy}
-                onClick={() => setActive(!unit.active)}
-              >
-                {unit.active ? f.switchOff : f.switchOn}
-              </Button>
+              <Field label={f.type} help={unit ? f.typeFixed : f.typeHelp}>
+                {unit ? (
+                  <input disabled value={o.type[type]} className={fixedClass} />
+                ) : (
+                  <select
+                    defaultValue={type}
+                    onChange={(e) => setPickedType(e.target.value as UnitType)}
+                    className={inputClass}
+                  >
+                    {unitTypes.map((option) => {
+                      const needs = parentType[option];
+                      return (
+                        <option
+                          key={option}
+                          value={option}
+                          // Nothing to put it under yet.
+                          disabled={
+                            !!needs && !units.some((u) => u.type === needs)
+                          }
+                        >
+                          {o.type[option]}
+                        </option>
+                      );
+                    })}
+                  </select>
+                )}
+              </Field>
+              {above && (
+                <Field
+                  label={f.parent[type as "department" | "unit"]}
+                  help={unit ? f.parentHelp : undefined}
+                >
+                  <select
+                    // Another type sits under other units: start the choice again.
+                    key={type}
+                    name="parentId"
+                    required
+                    defaultValue={
+                      unit?.parentId ?? (under?.type === above ? under.id : "")
+                    }
+                    className={inputClass}
+                  >
+                    <option value="" disabled>
+                      {f.choose}
+                    </option>
+                    {parentOptions}
+                  </select>
+                </Field>
+              )}
             </div>
-          </Panel>
-        )}
+
+            {note()}
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" disabled={busy}>
+                {unit ? f.save : o.add[type]}
+              </Button>
+              <Link
+                href={listPath}
+                className="inline-flex h-9 items-center rounded-md px-3 text-sm text-muted hover:bg-surface hover:text-foreground"
+              >
+                {unit ? o.back : f.cancel}
+              </Link>
+            </div>
+          </form>
+
+          {unit && (
+            <div className="flex flex-col gap-6">
+              <Panel title={f.status}>
+                <div className="flex flex-col items-start gap-3 p-4">
+                  <p className="text-sm text-muted">
+                    {unit.active ? f.activeHelp : f.inactiveHelp}
+                  </p>
+                  {note("status")}
+                  <Button
+                    variant="secondary"
+                    disabled={busy}
+                    onClick={() => setActive(!unit.active)}
+                  >
+                    {unit.active ? f.switchOff : f.switchOn}
+                  </Button>
+                </div>
+              </Panel>
+              {reporting && <UnitReporting {...reporting} />}
+            </div>
+          )}
+        </div>
       </div>
     </>
   );

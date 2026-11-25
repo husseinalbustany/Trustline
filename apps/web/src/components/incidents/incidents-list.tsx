@@ -221,11 +221,7 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
                   }
                   className={`${chip} ${chipTone(on)}`}
                 >
-                  {value === "open"
-                    ? l.open
-                    : value
-                      ? t.status[value]
-                      : l.all}
+                  {value === "open" ? l.open : value ? t.status[value] : l.all}
                 </button>
               );
             })}

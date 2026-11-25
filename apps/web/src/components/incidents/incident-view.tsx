@@ -5,7 +5,7 @@ import { Pill } from "@/components/ui/pill";
 import { dateTimeFormat, fill } from "@/lib/format";
 import {
   wordFor,
-  type Incident,
+  type FollowUpView,
   type IncidentEvent,
   type Was,
 } from "@/lib/incidents";
@@ -18,7 +18,7 @@ import type { IncidentsProps } from "./types";
  * who came with a code) are built from them.
  */
 export type ViewProps = IncidentsProps & {
-  incident: Incident;
+  incident: FollowUpView;
   /** The hospital's own language, for text not written in the reader's. */
   fallback?: string;
   /**

@@ -74,6 +74,13 @@ body {
     --background: #ffffff;
     --foreground: #000000;
     --muted: #333333;
+    --surface: #f1f4f6;
     --line: #999999;
+    --accent: #0f6b6b;
+    --accent-hover: #0b5656;
+    --accent-fg: #ffffff;
+    --accent-soft: #dff0ef;
+    --danger: #b3261e;
+    --danger-soft: #fbe9e7;
   }
 }

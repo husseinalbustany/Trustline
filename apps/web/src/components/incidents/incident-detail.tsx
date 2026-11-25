@@ -132,8 +132,9 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
         description={
           // Names a client wrote: each keeps its own direction.
           <>
-            {t.type[incident.type]} · <bdi>{inLang(incident.category.name)}</bdi>{" "}
-            · <bdi>{inLang(incident.orgUnit.name)}</bdi>
+            {t.type[incident.type]} ·{" "}
+            <bdi>{inLang(incident.category.name)}</bdi> ·{" "}
+            <bdi>{inLang(incident.orgUnit.name)}</bdi>
           </>
         }
         actions={

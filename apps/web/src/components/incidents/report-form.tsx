@@ -10,11 +10,7 @@ import { api } from "@/lib/api";
 import type { OrgUnit } from "@/lib/identity";
 import type { IncidentCategory, ReportSent } from "@/lib/incidents";
 import { FollowUpCode } from "./follow-up-code";
-import {
-  ReportFields,
-  useReportClock,
-  type ReportBody,
-} from "./report-fields";
+import { ReportFields, useReportClock, type ReportBody } from "./report-fields";
 import { explain, type IncidentsProps } from "./types";
 
 type Lists = { categories: IncidentCategory[]; units: OrgUnit[] };
@@ -33,7 +29,7 @@ export function ReportForm({
   // else, and only until this page is left.
   const [sent, setSent] = useState<ReportSent | null>(null);
   const clock = useReportClock();
-  const { start } = clock;
+  const { shown, start } = clock;
   const f = t.form;
   const listPath = `/${lang}/incidents`;
 
@@ -45,11 +41,11 @@ export function ReportForm({
     ])
       .then(([categories, units]) => {
         setLists({ categories, units });
-        start();
+        shown();
         setProblem(false);
       })
       .catch(() => setProblem(true));
-  }, [allowed, start]);
+  }, [allowed, shown]);
 
   const startAgain = () => {
     setSent(null);
@@ -95,12 +91,14 @@ export function ReportForm({
             className="flex flex-col gap-4 rounded-lg border border-accent bg-accent-soft p-4 sm:p-6"
           >
             <p className="text-sm">{f.doneHelp}</p>
-            <p
-              dir="ltr"
-              className="text-center text-3xl font-semibold tracking-tight break-all tabular-nums select-all"
-            >
-              {sent.reference}
-            </p>
+            {sent.reference && (
+              <p
+                dir="ltr"
+                className="text-center text-3xl font-semibold tracking-tight break-all tabular-nums select-all"
+              >
+                {sent.reference}
+              </p>
+            )}
           </div>
           {sent.followUpCode && (
             <FollowUpCode

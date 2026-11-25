@@ -63,7 +63,7 @@ export function Sidebar({
     <>
       {open && (
         <div
-          className="fixed inset-0 z-30 bg-black/40 lg:hidden"
+          className="fixed inset-0 z-30 bg-black/40 lg:hidden print:hidden"
           onClick={onClose}
           aria-hidden
         />
@@ -71,7 +71,7 @@ export function Sidebar({
       <aside
         className={`${
           open ? "flex" : "hidden"
-        } fixed inset-y-0 start-0 z-40 w-72 flex-col border-e border-line bg-surface lg:sticky lg:top-0 lg:z-auto lg:flex lg:h-dvh lg:w-64 lg:shrink-0`}
+        } fixed inset-y-0 start-0 z-40 w-72 flex-col border-e border-line bg-surface lg:sticky lg:top-0 lg:z-auto lg:flex lg:h-dvh lg:w-64 lg:shrink-0 print:hidden!`}
       >
         <div className="flex h-14 shrink-0 items-center justify-between px-4">
           <Link

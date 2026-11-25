@@ -57,7 +57,8 @@ export const noFilters: IncidentFilters = {
 const oneOf = <T extends string>(
   allowed: readonly T[],
   value: string | null,
-): T | "" => (allowed as readonly string[]).includes(value ?? "") ? (value as T) : "";
+): T | "" =>
+  (allowed as readonly string[]).includes(value ?? "") ? (value as T) : "";
 
 const uuid = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 

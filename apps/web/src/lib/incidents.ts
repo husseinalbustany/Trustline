@@ -108,49 +108,50 @@ export type IncidentEvent = {
   actor: Named | null;
   fromStatus: IncidentStatus | null;
   toStatus: IncidentStatus | null;
-} & Unnamed & (
-  | { kind: "reported"; details: null }
-  | {
-      kind: "triaged";
-      /**
-       * Only what the triage changed, each as `{ from, to }`. Events stored
-       * before that hold every field as a plain value.
-       */
-      details: {
-        harmLevel?: Was<HarmLevel>;
-        isSentinel?: Was<boolean>;
-        ownerUnitId?: Was<string | null>;
-        categoryId?: Was<string>;
-      } | null;
-    }
-  | {
-      kind: "assigned";
-      details: { ownerUnitId: string; assignedTo: string | null };
-    }
-  | {
-      kind: "closed" | "rejected" | "reopened" | "signed_off";
-      details: Note;
-    }
-  | {
-      /** A request for sign-off taken back carries `withdrawn`. */
-      kind: "status_changed";
-      details: { note: string | null; withdrawn?: boolean } | null;
-    }
-  | {
-      /** The note is the closure summary being proposed. */
-      kind: "sign_off_requested";
-      details: Note;
-    }
-  | {
-      /** Its note is not for the reporter: null in the reporter's view. */
-      kind: "sent_back";
-      details: Note;
-    }
-  | {
-      kind: "commented";
-      details: { commentId: string; visibility: CommentVisibility };
-    }
-);
+} & Unnamed &
+  (
+    | { kind: "reported"; details: null }
+    | {
+        kind: "triaged";
+        /**
+         * Only what the triage changed, each as `{ from, to }`. Events stored
+         * before that hold every field as a plain value.
+         */
+        details: {
+          harmLevel?: Was<HarmLevel>;
+          isSentinel?: Was<boolean>;
+          ownerUnitId?: Was<string | null>;
+          categoryId?: Was<string>;
+        } | null;
+      }
+    | {
+        kind: "assigned";
+        details: { ownerUnitId: string; assignedTo: string | null };
+      }
+    | {
+        kind: "closed" | "rejected" | "reopened" | "signed_off";
+        details: Note;
+      }
+    | {
+        /** A request for sign-off taken back carries `withdrawn`. */
+        kind: "status_changed";
+        details: { note: string | null; withdrawn?: boolean } | null;
+      }
+    | {
+        /** The note is the closure summary being proposed. */
+        kind: "sign_off_requested";
+        details: Note;
+      }
+    | {
+        /** Its note is not for the reporter: null in the reporter's view. */
+        kind: "sent_back";
+        details: Note;
+      }
+    | {
+        kind: "commented";
+        details: { commentId: string; visibility: CommentVisibility };
+      }
+  );
 
 export type IncidentComment = Unnamed & {
   id: string;
@@ -268,14 +269,24 @@ export const harmTone = {
   death: "alert",
 } as const;
 
-/** What the API answers when a report is sent. */
+/**
+ * What the API answers when a report is sent. Someone signed in gets the
+ * incident and its reference. Someone who is not gets neither: references
+ * run in one series, and one of them would tell a stranger how many
+ * incidents the hospital has had.
+ */
 export type ReportSent = {
-  /** Absent for a report sent without signing in. */
   id?: string;
-  reference: string;
+  reference?: string;
   /** Only for an anonymous report, and only this once. */
   followUpCode?: string;
 };
+
+/**
+ * An incident as someone holding its follow-up code reads it: the
+ * reporter's view, without its number and with no person named.
+ */
+export type FollowUpView = Omit<Incident, "id" | "reference">;
 
 /** What the report form needs, for someone who has not signed in. */
 export type PublicReporting = {

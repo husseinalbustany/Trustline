@@ -44,6 +44,7 @@ const isStale = (err: unknown) =>
     "sign_off_required",
     "same_person",
     "kind_required",
+    "revision_required",
   ].includes(codeOf(err) ?? "");
 
 function Note({ message }: { message: Message | null | false }) {
@@ -372,10 +373,13 @@ function StatusActions({ t, incident, onChange, onStale, message, say }: Part) {
     wordFor(a.note, m.kind, m.noteRequired ? a.note.required : a.note.optional);
   // What the move means, for the ones that are not said by their name.
   const help = (m: StatusMove) => wordFor(a.help, m.kind, "");
-  // The reason for sending a closure back is for the people handling the
-  // incident; every other note is on the reporter's timeline.
+  // Why a closure was sent back, or its request withdrawn, is for the
+  // people handling the incident; every other note is on the reporter's
+  // timeline. (The API withholds them; this only says so beforehand.)
   const noteHelp = (m: StatusMove) =>
-    m.kind === "send_back" ? a.noteHelpInternal : a.noteHelp;
+    m.kind === "send_back" || m.kind === "withdraw"
+      ? a.noteHelpInternal
+      : a.noteHelp;
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -396,7 +400,12 @@ function StatusActions({ t, incident, onChange, onStale, message, say }: Part) {
       });
       // Said before the incident is replaced: this panel then starts again,
       // with the moves open from the new status and an empty note.
-      say({ kind: "ok", text: a.done, at: "status", revision: result.revision });
+      say({
+        kind: "ok",
+        text: a.done,
+        at: "status",
+        revision: result.revision,
+      });
       onChange(result);
     } catch (err) {
       if (isStale(err)) {

@@ -132,7 +132,14 @@ export function OrgTree({ lang, t }: AdminProps) {
                           href={`${base}/${unit.id}`}
                           className={`font-medium break-words hover:text-accent hover:underline ${unit.active ? "" : "text-muted"}`}
                         >
-                          {pick(unit.name, lang, session.tenant.defaultLocale)}
+                          {/* A name a client wrote keeps its own direction. */}
+                          <bdi>
+                            {pick(
+                              unit.name,
+                              lang,
+                              session.tenant.defaultLocale,
+                            )}
+                          </bdi>
                         </Link>
                         {!unit.active && (
                           <Pill tone="neutral">{o.inactive[unit.type]}</Pill>
