@@ -33,6 +33,8 @@ export type AuthContext = {
     locales: string[];
     defaultLocale: string;
     accreditationStandard: string;
+    /** Whether the hospital takes reports without sign-in. */
+    publicReporting: boolean;
   };
   user: {
     id: string;
@@ -65,8 +67,13 @@ export class AuthService {
     await verifyPassword(password, await this.dummyHash);
   }
 
-  /** A client that exists, is active, and allows password sign-in. */
-  private async findTenant(slug: string, forPassword: boolean) {
+  /**
+   * A client by its identifier, for a request that has no session yet: null
+   * unless it exists and is active, and, when the request is about a
+   * password, allows password sign-in. Sign-in and the public reporting
+   * routes both find the hospital this way, and only this way.
+   */
+  async findTenant(slug: string, forPassword: boolean) {
     const [tenant] = await this.db
       .select()
       .from(tenants)
@@ -229,6 +236,7 @@ export class AuthService {
           locales: tenant.locales,
           defaultLocale: tenant.defaultLocale,
           accreditationStandard: tenant.accreditationStandard,
+          publicReporting: tenant.publicReporting,
         },
         user: {
           id: user.id,

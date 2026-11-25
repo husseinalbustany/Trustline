@@ -118,11 +118,41 @@ factor, and self-service "forgot password" by email.
 - **Who sees what:** a reporter sees their own reports; a handler sees the
   incidents that happened in, or were handed to, the departments their role
   covers; an assignee sees what is assigned to them.
+- **Who sees the reporter:** the reporter, and those holding
+  `incidents.see_reporter` for the incident's unit or handling department
+  (built in: Administrator and Quality officer). Everyone else who handles the
+  incident, its assignee included, gets no name and is not told whether the
+  report was named or anonymous.
+- **Reporting without sign-in:** off for every hospital until someone holding
+  `settings.manage` for the whole organization switches it on. While it is
+  on, anyone with the hospital's link can report, always anonymously. The
+  routes are under `/api/v1/public` and answer 404 for a hospital that does
+  not exist, is suspended, or has it off.
+- **Follow-up code:** every anonymous report, made signed in or not, is
+  answered once with a code such as `K7QM-2RXD-9FHT-WB3N`. With the reference
+  it opens the reporter's view of the report and lets them add a comment.
+  Only its hash is stored; it cannot be shown again or reissued. It works
+  through the public routes, so only while the hospital has reporting without
+  sign-in switched on.
+- **Limits on the public routes:** one address may send 10 reports and make
+  30 follow-up attempts an hour; more are answered 429. The count is kept in
+  the memory of each API process: with several processes the real limit is
+  that many times higher, and a restart clears it. It reads the caller's
+  address from the proxy setting (`TRUST_PROXY_HOPS`), so that must match how
+  the API is deployed. A shared store is needed before this is a precise
+  quota.
+- **Second sign-off:** a sentinel event, or an incident with harm level
+  death, is not closed by one person. Whoever handles it asks for closure
+  with the summary they propose; someone else holding `incidents.sign_off`
+  signs it off or sends it back.
 
-The rules are in `docs/specs/incident-reporting.md`.
+The rules are in `docs/specs/incident-reporting.md` and
+`docs/specs/incident-safeguards-and-deadlines.md`.
 
-Not built yet: deadlines, reminders and escalation; notifications; reporting
-without signing in (QR code); attachments; investigations and actions.
+Not built yet: deadlines, reminders and escalation; notifications;
+attachments; investigations and actions. The three safeguards above are in
+the API; their screens (the public report and follow-up pages, the QR code,
+the settings switch, the sign-off actions) are not built yet.
 
 ## API
 
@@ -210,3 +240,6 @@ work in any one or several of them.
   in it.
 - `data_region`: where the tenant's data must be hosted. Empty until launch
   regions are decided.
+- `public_reporting`: whether incidents can be reported without sign-in. The
+  only one of these the hospital changes itself; the rest belong to the admin
+  portal, and the database lets the application role write no other column.

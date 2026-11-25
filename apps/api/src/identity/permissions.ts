@@ -5,6 +5,10 @@ export const PERMISSIONS = [
   'incidents.report',
   'incidents.view',
   'incidents.triage',
+  // See who reported an incident. Without it a handler is not told.
+  'incidents.see_reporter',
+  // Give the second signature that closes a sentinel event or a death.
+  'incidents.sign_off',
   'actions.manage',
   'policies.view',
   'policies.manage',
@@ -20,6 +24,11 @@ export type Permission = (typeof PERMISSIONS)[number];
 /**
  * Roles every client starts with. They cannot be edited or deleted. Named
  * and described in every supported language; a client sees its own.
+ *
+ * A change here reaches a new client through ensureSystemRoles() and the demo
+ * hospitals through the seed. Clients that already exist get it only from a
+ * migration: write one with the change, as
+ * 0020_built_in_roles_reporter_and_sign_off.sql does.
  */
 export const SYSTEM_ROLES: {
   code: string;
@@ -53,6 +62,8 @@ export const SYSTEM_ROLES: {
       'incidents.report',
       'incidents.view',
       'incidents.triage',
+      'incidents.see_reporter',
+      'incidents.sign_off',
       'actions.manage',
       'policies.view',
       'policies.manage',

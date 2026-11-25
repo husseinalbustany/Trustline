@@ -13,6 +13,8 @@ import { requireEnv } from '../src/env.js';
 import { createPlatformAdmin } from '../src/platform/create-admin.js';
 import { removeTestData } from './cleanup.js';
 
+// Awaiting sign-off, the sixth status, is reached only by a sentinel event
+// or a death: test/incident-safeguards.e2e-spec.ts covers it.
 type Status = 'new' | 'triaged' | 'in_progress' | 'closed' | 'rejected';
 const STATUSES: Status[] = [
   'new',
@@ -397,6 +399,11 @@ describe('incident reporting', () => {
       await http().post(`/incidents/${id}/triage`).send({}).expect(401);
       await http().post(`/incidents/${id}/status`).send({}).expect(401);
       await http().post(`/incidents/${id}/comments`).send({}).expect(401);
+      await http().get('/settings/reporting').expect(401);
+      await http()
+        .put('/settings/reporting')
+        .send({ publicReporting: true })
+        .expect(401);
     });
   });
 
@@ -1563,7 +1570,8 @@ describe('incident reporting', () => {
         expect(summary.open).toBe(
           (await total('new')) +
             (await total('triaged')) +
-            (await total('in_progress')),
+            (await total('in_progress')) +
+            (await listOf(who.cookie, '&status=awaiting_sign_off')).total,
         );
         expect(summary.closedLast30Days).toBe(await total('closed'));
       }
@@ -1714,15 +1722,15 @@ describe('incident reporting', () => {
       const mild = await report(reporter);
       const offered = await open(quality.cookie, mild.id).expect(200);
       expect(offered.body.moves).toEqual([
-        { to: 'rejected', noteRequired: true },
+        { to: 'rejected', noteRequired: true, action: 'reject' },
       ]);
       // Nothing is offered to someone who may not triage.
       const theirs = await open(reporter.cookie, mild.id).expect(200);
       expect(theirs.body).toMatchObject({ moves: [], canRetriage: false });
       const triaged = await triage(quality.cookie, mild.id).expect(200);
       expect(triaged.body.moves).toEqual([
-        { to: 'in_progress', noteRequired: false },
-        { to: 'closed', noteRequired: true },
+        { to: 'in_progress', noteRequired: false, action: 'start' },
+        { to: 'closed', noteRequired: true, action: 'close' },
       ]);
     });
 

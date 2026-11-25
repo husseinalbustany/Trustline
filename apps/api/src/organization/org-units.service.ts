@@ -73,6 +73,24 @@ export class OrgUnitsService {
   }
 
   /**
+   * For the other areas: the units that can be chosen for something new, in
+   * code order, with what a form needs to show them as a tree and no more.
+   * `tx` is already scoped to the hospital.
+   */
+  choosable(tx: Transaction) {
+    return tx
+      .select({
+        id: orgUnits.id,
+        parentId: orgUnits.parentId,
+        type: orgUnits.type,
+        name: orgUnits.name,
+      })
+      .from(orgUnits)
+      .where(eq(orgUnits.active, true))
+      .orderBy(asc(orgUnits.code));
+  }
+
+  /**
    * For the other areas: refuses (400 `unknown_org_unit`) org units that
    * cannot be chosen for something new, because they do not exist in this
    * hospital or are switched off. Holds them until the transaction ends, so

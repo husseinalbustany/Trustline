@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  check,
   foreignKey,
   index,
   boolean,
@@ -20,6 +21,10 @@ import type { Localized } from '../i18n/locales.js';
 // The role the API connects as. It owns nothing and cannot bypass row-level
 // security. migrate.ts creates it before the migrations run.
 export const appRole = pgRole('trustline_app').existing();
+
+// The role the admin portal connects as. It manages the client records and
+// reaches no hospital data.
+export const platformRole = pgRole('trustline_platform').existing();
 
 // The tenant the current transaction acts for, set by TenantDb.withTenant().
 // Unset means no tenant, so every policy below matches no rows.
@@ -59,26 +64,60 @@ export const signInMethod = pgEnum('sign_in_method', [
   'both',
 ]);
 
-export const tenants = pgTable('tenants', {
-  id: uuid().primaryKey().defaultRandom(),
-  slug: text().notNull().unique(),
-  // The client's name in each of its languages.
-  name: jsonb().$type<Localized>().notNull(),
-  // The languages this client works in. Its text is written in these only.
-  locales: text()
-    .array()
-    .notNull()
-    .default(sql`'{en}'::text[]`),
-  accreditationStandard: accreditationStandard().notNull(),
-  defaultLocale: text().notNull().default('en'),
-  // Where this tenant's data must be hosted. Null until the launch regions
-  // are decided.
-  dataRegion: text(),
-  status: tenantStatus().notNull().default('active'),
-  plan: tenantPlan().notNull().default('starter'),
-  signInMethod: signInMethod().notNull().default('password'),
-  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
-});
+export const tenants = pgTable(
+  'tenants',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    slug: text().notNull().unique(),
+    // The client's name in each of its languages.
+    name: jsonb().$type<Localized>().notNull(),
+    // The languages this client works in. Its text is written in these only.
+    locales: text()
+      .array()
+      .notNull()
+      .default(sql`'{en}'::text[]`),
+    accreditationStandard: accreditationStandard().notNull(),
+    defaultLocale: text().notNull().default('en'),
+    // Where this tenant's data must be hosted. Null until the launch regions
+    // are decided.
+    dataRegion: text(),
+    status: tenantStatus().notNull().default('active'),
+    plan: tenantPlan().notNull().default('starter'),
+    signInMethod: signInMethod().notNull().default('password'),
+    // Whether an incident can be reported without signing in, through the
+    // hospital's link or QR code. Off until the hospital switches it on: it
+    // is the one setting here that the hospital itself may change.
+    publicReporting: boolean().notNull().default(false),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  () => [
+    // The application reads every client record: it has to find one by its
+    // identifier before anyone has signed in.
+    pgPolicy('tenants_app_read', {
+      as: 'permissive',
+      for: 'select',
+      to: appRole,
+      using: sql`true`,
+    }),
+    // It may change only the record of the hospital it is acting for, and a
+    // migration grants it only the column above. So one hospital can never
+    // open another to the internet.
+    pgPolicy('tenants_app_own_settings', {
+      as: 'permissive',
+      for: 'update',
+      to: appRole,
+      using: sql`id = ${currentTenant}`,
+      withCheck: sql`id = ${currentTenant}`,
+    }),
+    pgPolicy('tenants_platform', {
+      as: 'permissive',
+      for: 'all',
+      to: platformRole,
+      using: sql`true`,
+      withCheck: sql`true`,
+    }),
+  ],
+);
 
 // A hospital's structure: facilities, their departments, and the units in
 // those. The application role cannot delete one.
@@ -314,6 +353,8 @@ export const incidentStatus = pgEnum('incident_status', [
   'new',
   'triaged',
   'in_progress',
+  // A sentinel event or a death, whose closure waits for a second person.
+  'awaiting_sign_off',
   'closed',
   'rejected',
 ]);
@@ -327,7 +368,15 @@ export const incidentEventKind = pgEnum('incident_event_kind', [
   'reopened',
   'closed',
   'rejected',
+  // Closure that needs a second person: asked for, given, or refused.
+  'sign_off_requested',
+  'signed_off',
+  'sent_back',
 ]);
+
+// How a report arrived: from a signed-in member of staff, or through the
+// hospital's public link, which is always anonymous.
+export const incidentChannel = pgEnum('incident_channel', ['app', 'public']);
 
 export const incidentCommentVisibility = pgEnum('incident_comment_visibility', [
   'everyone',
@@ -377,6 +426,11 @@ export const incidents = pgTable(
     immediateAction: text(),
     // Null when reported anonymously. Nothing else may record who it was.
     reportedBy: uuid(),
+    channel: incidentChannel().notNull().default('app'),
+    // SHA-256 of the follow-up code an anonymous reporter was shown once, so
+    // they can come back to their report. The code itself is stored nowhere.
+    // Null for a named report: its reporter signs in instead.
+    followUpCodeHash: text(),
     reportedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     // When the reporter opened the form, as their device told it, to measure
     // how long reporting takes. Null when not sent or not believable. It is
@@ -395,6 +449,12 @@ export const incidents = pgTable(
     closedAt: timestamp({ withTimezone: true }),
     closureSummary: text(),
     rejectionReason: text(),
+    // Who asked for a sentinel event or a death to be closed, and when. Set
+    // while it awaits sign-off and kept once signed off; cleared when the
+    // request is sent back or withdrawn, or the incident reopened. The person
+    // who signs off must be someone else.
+    closureRequestedBy: uuid(),
+    closureRequestedAt: timestamp({ withTimezone: true }),
     // Raised by every triage and every change of status, and by nothing
     // else. Someone saving a decision says which revision they were looking
     // at, so a decision made on an out-of-date screen is refused. A comment
@@ -441,6 +501,21 @@ export const incidents = pgTable(
       columns: [t.tenantId, t.closedBy],
       foreignColumns: [users.tenantId, users.id],
     }),
+    foreignKey({
+      name: 'incidents_closure_requested_by_fk',
+      columns: [t.tenantId, t.closureRequestedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    // A report through the public link names nobody, and only a report that
+    // names nobody has a follow-up code: the code can never lead to a person.
+    check(
+      'incidents_public_is_anonymous',
+      sql`${t.channel} <> 'public' or ${t.reportedBy} is null`,
+    ),
+    check(
+      'incidents_follow_up_code_is_anonymous',
+      sql`${t.followUpCodeHash} is null or ${t.reportedBy} is null`,
+    ),
     // The list is filtered by status and shown newest first.
     index('incidents_status_idx').on(t.tenantId, t.status, t.reportedAt),
     index('incidents_reported_by_idx').on(t.tenantId, t.reportedBy),
@@ -503,7 +578,11 @@ export const incidentComments = pgTable(
       .notNull()
       .references(() => tenants.id),
     incidentId: uuid().notNull(),
-    authorId: uuid().notNull(),
+    // Null for a comment written with a follow-up code: its author is the
+    // anonymous reporter, and nothing may record who that is.
+    authorId: uuid(),
+    // Written by the reporter with a follow-up code.
+    byReporter: boolean().notNull().default(false),
     body: text().notNull(),
     // No default: whoever writes a comment must say who may read it.
     visibility: incidentCommentVisibility().notNull(),
@@ -524,6 +603,11 @@ export const incidentComments = pgTable(
       t.tenantId,
       t.incidentId,
       t.createdAt,
+    ),
+    // Every comment is written by a user or by the anonymous reporter.
+    check(
+      'incident_comments_has_writer',
+      sql`${t.authorId} is not null or ${t.byReporter}`,
     ),
     tenantIsolation(),
   ],

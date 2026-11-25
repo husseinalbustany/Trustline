@@ -120,6 +120,34 @@
       "when": 1795548581138,
       "tag": "0016_incident_assigned_to_index",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1795590619484,
+      "tag": "0017_incident_sign_off_values",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1795590648446,
+      "tag": "0018_incident_safeguards",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795590657937,
+      "tag": "0019_incident_safeguards_grants",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1795590658674,
+      "tag": "0020_built_in_roles_reporter_and_sign_off",
+      "breakpoints": true
     }
   ]
 }

@@ -34,14 +34,30 @@ import type { Localized } from '../i18n/locales.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
 import { covers, reachOf } from '../identity/scope.js';
 import { OrgUnitsService } from '../organization/org-units.service.js';
+import {
+  hashFollowUpCode,
+  matchesFollowUpCode,
+  newFollowUpCode,
+} from './follow-up-code.js';
 import { nextReference } from './reference.js';
+import {
+  chooseMove,
+  hasSay,
+  movesFor,
+  needsSignOff,
+  OPEN_STATUSES,
+  TRIAGE_FROM,
+  type Caller,
+  type EventKind,
+  type HarmLevel,
+  type IncidentStatus,
+} from './status.js';
 
-export type IncidentStatus = (typeof incidents.status.enumValues)[number];
+export type { HarmLevel, IncidentStatus } from './status.js';
 export type IncidentType = (typeof incidents.type.enumValues)[number];
-export type HarmLevel = (typeof incidents.harmLevel.enumValues)[number];
+export type IncidentChannel = (typeof incidents.channel.enumValues)[number];
 export type CommentVisibility =
   (typeof incidentComments.visibility.enumValues)[number];
-type EventKind = (typeof incidentEvents.kind.enumValues)[number];
 
 /** How far ahead of the server a reporter's clock may be. */
 export const CLOCK_TOLERANCE_MINUTES = 5;
@@ -50,61 +66,6 @@ export const EARLIEST_OCCURRED_AT = new Date('1900-01-01T00:00:00Z');
 /** A form opened longer ago than this was not being filled in all that time. */
 export const LONGEST_REPORT_HOURS = 24;
 export const EXCERPT_LENGTH = 140;
-
-/** An incident can be triaged, and triaged again, until it has ended. */
-const TRIAGE_FROM: IncidentStatus[] = ['new', 'triaged', 'in_progress'];
-const SERIOUS_HARM: HarmLevel[] = ['severe', 'death'];
-
-/** Severe harm, a death, or a sentinel event: never set aside unexamined. */
-const isSerious = (incident: { harmLevel: HarmLevel; isSentinel: boolean }) =>
-  incident.isSentinel || SERIOUS_HARM.includes(incident.harmLevel);
-
-/**
- * Every allowed change of status outside triage, and the timeline entry it
- * leaves. `note` says whether the person must explain the change.
- */
-const MOVES: {
-  from: IncidentStatus[];
-  to: IncidentStatus;
-  kind: EventKind;
-  note: 'required' | 'optional';
-}[] = [
-  {
-    from: ['triaged'],
-    to: 'in_progress',
-    kind: 'status_changed',
-    note: 'optional',
-  },
-  {
-    from: ['triaged', 'in_progress'],
-    to: 'closed',
-    kind: 'closed',
-    note: 'required',
-  },
-  { from: ['new'], to: 'rejected', kind: 'rejected', note: 'required' },
-  {
-    from: ['closed', 'rejected'],
-    to: 'in_progress',
-    kind: 'reopened',
-    note: 'required',
-  },
-];
-
-/**
- * The moves open from where an incident stands. A serious one cannot be
- * rejected: its harm level has to be lowered at triage first, which leaves a
- * trace of who decided so.
- */
-const movesFrom = (incident: {
-  status: IncidentStatus;
-  harmLevel: HarmLevel;
-  isSentinel: boolean;
-}) =>
-  MOVES.filter(
-    (m) =>
-      m.from.includes(incident.status) &&
-      !(m.to === 'rejected' && isSerious(incident)),
-  );
 
 export type ReportInput = {
   type: IncidentType;
@@ -118,6 +79,39 @@ export type ReportInput = {
   /** When the reporter opened the form, by their own clock. */
   startedAt?: Date;
 };
+
+/** A report through the public link: always anonymous, so it does not say. */
+export type PublicReportInput = Omit<ReportInput, 'anonymous'>;
+
+/**
+ * What one reader is to one incident: what they may do to it, how much of it
+ * they see, and whether they are told who reported it.
+ */
+type Reader = Caller & {
+  /** Sees the internal parts too, not only what its reporter sees. */
+  full: boolean;
+  /** Reported it, or holds the right to see who did. */
+  seesReporter: boolean;
+};
+
+/**
+ * Someone who proved with the follow-up code that an anonymous report is
+ * theirs. They see what a reporter sees and may do nothing but comment.
+ */
+const ANONYMOUS_REPORTER: Reader = {
+  full: false,
+  canTriage: false,
+  canSignOff: false,
+  isRequester: false,
+  seesReporter: true,
+};
+
+/**
+ * Stands in for the hospital when there is none to act for. A transaction
+ * scoped to it sees no rows, so a request for an unknown hospital can be put
+ * through the same steps as any other and fail the same way.
+ */
+const NO_TENANT = '00000000-0000-0000-0000-000000000000';
 
 export type ListSort = 'newest' | 'oldest' | 'harm';
 
@@ -166,6 +160,7 @@ const reporter = alias(users, 'reporter');
 const assignee = alias(users, 'assignee');
 const actor = alias(users, 'actor');
 const author = alias(users, 'author');
+const requester = alias(users, 'requester');
 
 /** The rules of incident reporting: who sees what, and what may change. */
 @Injectable()
@@ -218,7 +213,11 @@ export class IncidentsService {
   /** Whether a permission covers where the incident happened or who owns it. */
   private holds(
     auth: AuthContext,
-    permission: 'incidents.view' | 'incidents.triage',
+    permission:
+      | 'incidents.view'
+      | 'incidents.triage'
+      | 'incidents.see_reporter'
+      | 'incidents.sign_off',
     incident: { orgUnitId: string; ownerUnitId: string | null },
   ) {
     return (
@@ -226,6 +225,38 @@ export class IncidentsService {
       (incident.ownerUnitId !== null &&
         covers(auth, permission, incident.ownerUnitId))
     );
+  }
+
+  /**
+   * What a signed-in user is to an incident they can see.
+   *
+   * Who reported it is told to the reporter and to those holding the right
+   * to see it for the incident's unit or its handling department. Handling
+   * the incident, even being assigned to it, does not tell.
+   */
+  private readerOf(
+    auth: AuthContext,
+    incident: {
+      orgUnitId: string;
+      ownerUnitId: string | null;
+      assignedTo: string | null;
+      reportedBy: string | null;
+      status: IncidentStatus;
+      closureRequestedBy: string | null;
+    },
+  ): Reader {
+    return {
+      full: this.seesAll(auth, incident),
+      canTriage: this.holds(auth, 'incidents.triage', incident),
+      canSignOff: this.holds(auth, 'incidents.sign_off', incident),
+      // Read from the stored request, never from anything the caller sends.
+      isRequester:
+        incident.status === 'awaiting_sign_off' &&
+        incident.closureRequestedBy === auth.user.id,
+      seesReporter:
+        incident.reportedBy === auth.user.id ||
+        this.holds(auth, 'incidents.see_reporter', incident),
+    };
   }
 
   private async assertCategory(tx: Transaction, categoryId: string) {
@@ -276,7 +307,7 @@ export class IncidentsService {
    */
   private async addEvent(
     tx: Transaction,
-    auth: AuthContext,
+    tenantId: string,
     incidentId: string,
     event: {
       kind: EventKind;
@@ -288,28 +319,41 @@ export class IncidentsService {
     },
   ) {
     await tx.insert(incidentEvents).values({
-      tenantId: auth.tenant.id,
+      tenantId,
       incidentId,
       occurredAt: sql`clock_timestamp()`,
       ...event,
     });
   }
 
+  /** The categories a report can be filed under, in display order. */
+  private activeCategories(tx: Transaction) {
+    return tx
+      .select({
+        id: incidentCategories.id,
+        code: incidentCategories.code,
+        name: incidentCategories.name,
+      })
+      .from(incidentCategories)
+      .where(eq(incidentCategories.active, true))
+      .orderBy(asc(incidentCategories.position), asc(incidentCategories.code));
+  }
+
   categories(auth: AuthContext) {
     return this.tenantDb.withTenant(auth.tenant.id, (tx) =>
-      tx
-        .select({
-          id: incidentCategories.id,
-          code: incidentCategories.code,
-          name: incidentCategories.name,
-        })
-        .from(incidentCategories)
-        .where(eq(incidentCategories.active, true))
-        .orderBy(
-          asc(incidentCategories.position),
-          asc(incidentCategories.code),
-        ),
+      this.activeCategories(tx),
     );
+  }
+
+  /**
+   * What the public report form offers: where it can have happened and what
+   * kind of thing it was. Nothing else about the hospital.
+   */
+  publicForm(tenantId: string) {
+    return this.tenantDb.withTenant(tenantId, async (tx) => ({
+      orgUnits: await this.orgUnits.choosable(tx),
+      categories: await this.activeCategories(tx),
+    }));
   }
 
   /**
@@ -330,60 +374,112 @@ export class IncidentsService {
     );
   }
 
+  /**
+   * A report by a signed-in member of staff. Reported anonymously, it is
+   * stored with no trace of who made it and answered with the follow-up code
+   * that is the only way back to it.
+   */
   report(auth: AuthContext, input: ReportInput) {
     const { tenant, user } = auth;
-    const { anonymous, startedAt, ...fields } = input;
+    const { anonymous, ...report } = input;
     return this.tenantDb.withTenant(tenant.id, async (tx) => {
-      this.assertHarmFits(input.type, input.harmLevel, false);
-      await this.assertCategory(tx, input.categoryId);
-      // Where it happened: a unit of this hospital that is still in use.
-      await this.orgUnits.assertActive(tx, [input.orgUnitId]);
-
-      // An anonymous report is stored with no trace of who made it: not on
-      // the incident, not on its timeline, not in the audit log.
-      const reporterId = anonymous ? null : user.id;
-      const now = new Date();
-      // Kept only when believable. A device with a wrong clock sends a time
-      // that is not; the report is taken all the same, without the measure.
-      const believable =
-        startedAt !== undefined &&
-        startedAt.getTime() >=
-          now.getTime() - LONGEST_REPORT_HOURS * 3_600_000 &&
-        startedAt.getTime() <= now.getTime() + CLOCK_TOLERANCE_MINUTES * 60_000;
-      const reference = await nextReference(
+      const { id, reference, followUpCode } = await this.store(
         tx,
         tenant.id,
-        'INC',
-        now.getUTCFullYear(),
+        report,
+        anonymous ? null : user.id,
+        'app',
       );
-      const [incident] = await tx
-        .insert(incidents)
-        .values({
-          ...fields,
-          tenantId: tenant.id,
-          reference,
-          reportedBy: reporterId,
-          reportedAt: now,
-          reportStartedAt: believable ? startedAt : null,
-        })
-        .returning({ id: incidents.id, reference: incidents.reference });
-      await this.addEvent(tx, auth, incident.id, {
-        kind: 'reported',
-        actorId: reporterId,
-        toStatus: 'new',
-        visibleToReporter: true,
-      });
-      await this.provisioning.audit(
-        tx,
-        tenant.id,
-        reporterId,
-        'incident_reported',
-        'incident',
-        incident.id,
-        { reference, type: input.type, anonymous },
-      );
-      return incident;
+      return followUpCode ? { id, reference, followUpCode } : { id, reference };
     });
+  }
+
+  /**
+   * A report through the hospital's public link. Nobody is signed in and
+   * nothing about the sender is passed in here, so nothing about them can be
+   * stored: not on the incident, its timeline or the audit log.
+   */
+  reportPublicly(tenantId: string, input: PublicReportInput) {
+    return this.tenantDb.withTenant(tenantId, async (tx) => {
+      const { reference, followUpCode } = await this.store(
+        tx,
+        tenantId,
+        input,
+        null,
+        'public',
+      );
+      return { reference, followUpCode: followUpCode! };
+    });
+  }
+
+  /**
+   * Stores a report, its first timeline entry and its audit entry. With no
+   * reporter it is anonymous: nothing records who made it, and it gets a
+   * follow-up code, of which only the hash is kept.
+   */
+  private async store(
+    tx: Transaction,
+    tenantId: string,
+    input: PublicReportInput,
+    reporterId: string | null,
+    channel: IncidentChannel,
+  ) {
+    const { startedAt, ...fields } = input;
+    this.assertHarmFits(input.type, input.harmLevel, false);
+    await this.assertCategory(tx, input.categoryId);
+    // Where it happened: a unit of this hospital that is still in use.
+    await this.orgUnits.assertActive(tx, [input.orgUnitId]);
+
+    const now = new Date();
+    // Kept only when believable. A device with a wrong clock sends a time
+    // that is not; the report is taken all the same, without the measure.
+    const believable =
+      startedAt !== undefined &&
+      startedAt.getTime() >= now.getTime() - LONGEST_REPORT_HOURS * 3_600_000 &&
+      startedAt.getTime() <= now.getTime() + CLOCK_TOLERANCE_MINUTES * 60_000;
+    const reference = await nextReference(
+      tx,
+      tenantId,
+      'INC',
+      now.getUTCFullYear(),
+    );
+    const followUpCode = reporterId === null ? newFollowUpCode() : null;
+    const [incident] = await tx
+      .insert(incidents)
+      .values({
+        ...fields,
+        tenantId,
+        reference,
+        channel,
+        reportedBy: reporterId,
+        followUpCodeHash: followUpCode && hashFollowUpCode(followUpCode),
+        reportedAt: now,
+        reportStartedAt: believable ? startedAt : null,
+      })
+      .returning({ id: incidents.id, reference: incidents.reference });
+    await this.addEvent(tx, tenantId, incident.id, {
+      kind: 'reported',
+      actorId: reporterId,
+      toStatus: 'new',
+      visibleToReporter: true,
+    });
+    // For a public report the entry says that one was received, and nothing
+    // more: no address, no device, nothing of what was written.
+    await this.provisioning.audit(
+      tx,
+      tenantId,
+      reporterId,
+      'incident_reported',
+      'incident',
+      incident.id,
+      {
+        reference,
+        type: input.type,
+        anonymous: reporterId === null,
+        ...(channel === 'public' && { channel }),
+      },
+    );
+    return { ...incident, followUpCode };
   }
 
   list(auth: AuthContext, input: ListInput) {
@@ -467,7 +563,8 @@ export class IncidentsService {
   summary(auth: AuthContext) {
     const number = (condition: SQL) =>
       sql<number>`count(*) filter (where ${condition})`.mapWith(Number);
-    const open = sql`${incidents.status} in ('new', 'triaged', 'in_progress')`;
+    // Awaiting sign-off is still open: it is not closed until it is signed.
+    const open = inArray(incidents.status, OPEN_STATUSES);
     // How long reporting took, from opening the form to sending it.
     const seconds = sql`greatest(extract(epoch from ${incidents.reportedAt} - ${incidents.reportStartedAt}), 0)`;
     return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
@@ -510,7 +607,43 @@ export class IncidentsService {
   }
 
   /** One incident as this user may see it, or null if they may not. */
-  private async find(tx: Transaction, auth: AuthContext, id: string) {
+  private find(tx: Transaction, auth: AuthContext, id: string) {
+    return this.view(
+      tx,
+      and(eq(incidents.id, id), this.visibleTo(auth))!,
+      (incident) => this.readerOf(auth, incident),
+    );
+  }
+
+  /**
+   * One incident as one reader may see it, or null if `where` finds none.
+   * Every response that shows an incident is built here, so what is hidden
+   * from a reader is hidden in one place:
+   *
+   * - Without full access: no internal comment, no internal timeline entry,
+   *   not the person it is assigned to, not who asked for its closure, and
+   *   not the note it was sent back with.
+   * - Without the right to see the reporter: nobody is named as reporter, as
+   *   author of a comment the reporter wrote, or as the one behind the
+   *   timeline entries of the report and of those comments. They are marked
+   *   `byReporter` instead. Nor is the reader told how the report arrived,
+   *   because a report through the public link is always anonymous: to this
+   *   reader a named report and an anonymous one look the same.
+   *
+   * The reporter's id is read only to decide this and is never returned.
+   */
+  private async view(
+    tx: Transaction,
+    where: SQL,
+    readerOf: (incident: {
+      orgUnitId: string;
+      ownerUnitId: string | null;
+      assignedTo: string | null;
+      reportedBy: string | null;
+      status: IncidentStatus;
+      closureRequestedBy: string | null;
+    }) => Reader,
+  ) {
     const [row] = await tx
       .select({
         id: incidents.id,
@@ -532,12 +665,16 @@ export class IncidentsService {
         isSentinel: incidents.isSentinel,
         status: incidents.status,
         revision: incidents.revision,
+        channel: incidents.channel,
+        reportedBy: incidents.reportedBy,
         reporter: { id: reporter.id, name: reporter.name },
         assignedTo: { id: assignee.id, name: assignee.name },
         triagedAt: incidents.triagedAt,
         closedAt: incidents.closedAt,
         closureSummary: incidents.closureSummary,
         rejectionReason: incidents.rejectionReason,
+        closureRequestedBy: { id: requester.id, name: requester.name },
+        closureRequestedAt: incidents.closureRequestedAt,
       })
       .from(incidents)
       .innerJoin(
@@ -548,24 +685,37 @@ export class IncidentsService {
       .leftJoin(ownerUnit, eq(ownerUnit.id, incidents.ownerUnitId))
       .leftJoin(reporter, eq(reporter.id, incidents.reportedBy))
       .leftJoin(assignee, eq(assignee.id, incidents.assignedTo))
-      .where(and(eq(incidents.id, id), this.visibleTo(auth)));
+      .leftJoin(requester, eq(requester.id, incidents.closureRequestedBy))
+      .where(where);
     if (!row) return null;
 
-    const where = {
+    // Taken apart here so that nothing below can pass the reporter on by
+    // spreading the row.
+    const {
+      reportedBy,
+      reporter: namedReporter,
+      channel,
+      assignedTo,
+      closureRequestedBy,
+      closureRequestedAt,
+      ...incident
+    } = row;
+    const reader = readerOf({
       orgUnitId: row.orgUnit.id,
       ownerUnitId: row.ownerUnit?.id ?? null,
-    };
-    const canTriage = this.holds(auth, 'incidents.triage', where);
-    const full = this.seesAll(auth, {
-      ...where,
-      assignedTo: row.assignedTo?.id ?? null,
+      assignedTo: assignedTo?.id ?? null,
+      reportedBy,
+      status: row.status,
+      closureRequestedBy: closureRequestedBy?.id ?? null,
     });
+    const { full, canTriage, seesReporter } = reader;
 
-    const events = await tx
+    const eventRows = await tx
       .select({
         id: incidentEvents.id,
         kind: incidentEvents.kind,
         occurredAt: incidentEvents.occurredAt,
+        actorId: incidentEvents.actorId,
         actor: { id: actor.id, name: actor.name },
         fromStatus: incidentEvents.fromStatus,
         toStatus: incidentEvents.toStatus,
@@ -575,45 +725,92 @@ export class IncidentsService {
       .leftJoin(actor, eq(actor.id, incidentEvents.actorId))
       .where(
         and(
-          eq(incidentEvents.incidentId, id),
+          eq(incidentEvents.incidentId, row.id),
           full ? undefined : eq(incidentEvents.visibleToReporter, true),
         ),
       )
       .orderBy(asc(incidentEvents.occurredAt), asc(incidentEvents.id));
-    const comments = await tx
+    const events = eventRows.map(({ actorId, actor: person, ...event }) => {
+      // The report itself, and each comment the reporter wrote: by a named
+      // reporter under their own account, or with a follow-up code, which
+      // leaves no actor at all. Whatever else the same person did on the
+      // incident (triaging it, say) they did as a handler, and it is shown
+      // under their name like anyone else's.
+      const byReporter =
+        event.kind === 'reported' ||
+        (event.kind === 'commented' &&
+          (actorId === null || actorId === reportedBy));
+      return {
+        ...event,
+        actor: byReporter && !seesReporter ? null : person,
+        byReporter,
+        // Why it was sent back is between the people handling it.
+        details: event.kind === 'sent_back' && !full ? null : event.details,
+      };
+    });
+
+    const commentRows = await tx
       .select({
         id: incidentComments.id,
+        authorId: incidentComments.authorId,
         author: { id: author.id, name: author.name },
+        byReporter: incidentComments.byReporter,
         body: incidentComments.body,
         visibility: incidentComments.visibility,
         createdAt: incidentComments.createdAt,
       })
       .from(incidentComments)
-      .innerJoin(author, eq(author.id, incidentComments.authorId))
+      .leftJoin(author, eq(author.id, incidentComments.authorId))
       .where(
         and(
-          eq(incidentComments.incidentId, id),
+          eq(incidentComments.incidentId, row.id),
           full ? undefined : eq(incidentComments.visibility, 'everyone'),
         ),
       )
       .orderBy(asc(incidentComments.createdAt), asc(incidentComments.id));
+    const comments = commentRows.map(
+      ({ authorId, author: person, byReporter: withCode, ...comment }) => {
+        const byReporter =
+          withCode || (authorId !== null && authorId === reportedBy);
+        return {
+          id: comment.id,
+          author: byReporter && !seesReporter ? null : person,
+          byReporter,
+          body: comment.body,
+          visibility: comment.visibility,
+          createdAt: comment.createdAt,
+        };
+      },
+    );
 
     return {
-      ...row,
+      ...incident,
+      // Null to a reader who is not told who reported: knowing it came
+      // through the public link would tell them it was anonymous.
+      channel: seesReporter ? channel : null,
+      // With `reporterShown`, null means it was reported anonymously.
+      // Without, it means nothing either way.
+      reporter: seesReporter ? namedReporter : null,
+      reporterShown: seesReporter,
       // The reporter learns which department has it, not which person.
-      assignedTo: full ? row.assignedTo : null,
+      assignedTo: full ? assignedTo : null,
+      needsSignOff: needsSignOff(row),
+      // While it awaits sign-off, `closureSummary` is the one proposed.
+      closureRequestedBy: full ? closureRequestedBy : null,
+      closureRequestedAt: full ? closureRequestedAt : null,
       access: full ? ('full' as const) : ('reporter' as const),
       canTriage,
-      // What this caller may do next, so no screen has to know the rules.
+      // What this reader may do next, so no screen has to know the rules.
       canRetriage: canTriage && TRIAGE_FROM.includes(row.status),
-      moves: canTriage
-        ? movesFrom(row).map((m) => ({
-            to: m.to,
-            noteRequired: m.note === 'required',
-          }))
-        : [],
+      moves: movesFor(row, reader).map((m) => ({
+        to: m.to,
+        noteRequired: m.note === 'required',
+        action: m.action,
+      })),
       events,
       comments,
+      // People are named here only where a timeline entry points at them as
+      // the one an incident was assigned to, never as its reporter.
       ...(await this.namesIn(tx, events)),
     };
   }
@@ -665,10 +862,11 @@ export class IncidentsService {
   }
 
   /**
-   * Locks an incident for a change by someone with triage rights over it.
-   * 404 if they may not see it, 403 if they see it but may not triage it.
+   * Locks an incident the caller can see, for a decision on it. 404 if they
+   * may not see it. Whether they may make the decision is for the caller of
+   * this to check, on what is read here under the lock.
    */
-  private async lockForTriage(tx: Transaction, auth: AuthContext, id: string) {
+  private async lock(tx: Transaction, auth: AuthContext, id: string) {
     const [incident] = await tx
       .select({
         id: incidents.id,
@@ -682,22 +880,26 @@ export class IncidentsService {
         orgUnitId: incidents.orgUnitId,
         ownerUnitId: incidents.ownerUnitId,
         assignedTo: incidents.assignedTo,
+        reportedBy: incidents.reportedBy,
+        closureRequestedBy: incidents.closureRequestedBy,
       })
       .from(incidents)
       .where(and(eq(incidents.id, id), this.visibleTo(auth)))
       .for('update');
     if (!incident) throw new NotFoundException();
-    if (!this.holds(auth, 'incidents.triage', incident)) {
-      throw new ForbiddenException({ code: 'outside_scope' });
-    }
     return incident;
   }
 
   triage(auth: AuthContext, id: string, input: TriageInput) {
     const { tenant, user } = auth;
     return this.tenantDb.withTenant(tenant.id, async (tx) => {
-      const incident = await this.lockForTriage(tx, auth, id);
+      const incident = await this.lock(tx, auth, id);
+      // They see it, but their right to triage is for somewhere else.
+      if (!this.holds(auth, 'incidents.triage', incident)) {
+        throw new ForbiddenException({ code: 'outside_scope' });
+      }
       this.assertFresh(incident, input.revision);
+      // Not once it has ended, and not while its closure awaits sign-off.
       if (!TRIAGE_FROM.includes(incident.status)) {
         throw new ConflictException({ code: 'invalid_transition' });
       }
@@ -762,7 +964,7 @@ export class IncidentsService {
         .where(eq(incidents.id, id));
 
       if (decided) {
-        await this.addEvent(tx, auth, id, {
+        await this.addEvent(tx, tenant.id, id, {
           kind: 'triaged',
           actorId: user.id,
           fromStatus: incident.status,
@@ -773,7 +975,7 @@ export class IncidentsService {
         });
       }
       if (reassigned) {
-        await this.addEvent(tx, auth, id, {
+        await this.addEvent(tx, tenant.id, id, {
           kind: 'assigned',
           actorId: user.id,
           details: {
@@ -815,6 +1017,15 @@ export class IncidentsService {
     });
   }
 
+  /**
+   * Moves an incident to another status. Who may make which move, and what
+   * each needs, is decided in status.ts; this applies the decision.
+   *
+   * Closing a sentinel event or a death takes two people: one asks, with the
+   * closure summary they propose, and another signs it off or sends it back.
+   * "Another" is checked against who is stored as having asked, read under
+   * the same lock as the change.
+   */
   changeStatus(
     auth: AuthContext,
     id: string,
@@ -824,46 +1035,90 @@ export class IncidentsService {
   ) {
     const { tenant, user } = auth;
     return this.tenantDb.withTenant(tenant.id, async (tx) => {
-      const incident = await this.lockForTriage(tx, auth, id);
+      const incident = await this.lock(tx, auth, id);
+      const caller = this.readerOf(auth, incident);
+      // First of all: someone with no say over it is told only that.
+      if (!hasSay(incident, caller)) {
+        if (incident.status === 'awaiting_sign_off') {
+          throw new ForbiddenException({
+            code: 'missing_permission',
+            permission: 'incidents.sign_off',
+          });
+        }
+        throw new ForbiddenException(
+          auth.permissions.includes('incidents.triage')
+            ? { code: 'outside_scope' }
+            : { code: 'missing_permission', permission: 'incidents.triage' },
+        );
+      }
       this.assertFresh(incident, revision);
       const from = incident.status;
-      const move = MOVES.find((m) => m.to === to && m.from.includes(from));
-      if (!move) throw new ConflictException({ code: 'invalid_transition' });
-      if (move.kind === 'rejected' && isSerious(incident)) {
-        throw new ConflictException({ code: 'serious_cannot_be_rejected' });
+      const move = chooseMove(incident, to, caller);
+      if (move === 'missing_sign_off_permission') {
+        throw new ForbiddenException({
+          code: 'missing_permission',
+          permission: 'incidents.sign_off',
+        });
       }
+      if (move === 'same_person') {
+        throw new ForbiddenException({ code: 'same_person' });
+      }
+      if (typeof move === 'string') throw new ConflictException({ code: move });
       if (move.note === 'required' && !note) {
         throw new BadRequestException({ code: 'note_required' });
       }
 
       const now = new Date();
+      const noRequest = { closureRequestedBy: null, closureRequestedAt: null };
+      const fields: Record<
+        typeof move.action,
+        Partial<typeof incidents.$inferInsert>
+      > = {
+        start: {},
+        close: { closedBy: user.id, closedAt: now, closureSummary: note },
+        // Not closed yet: the summary is the one proposed, and nobody has
+        // closed it until the second person signs.
+        request_sign_off: {
+          closureSummary: note,
+          closureRequestedBy: user.id,
+          closureRequestedAt: now,
+        },
+        // Who asked stays on the record next to who signed.
+        sign_off: { closedBy: user.id, closedAt: now },
+        // The proposal falls; it stays on the timeline only.
+        send_back: { closureSummary: null, ...noRequest },
+        withdraw: { closureSummary: null, ...noRequest },
+        reject: { rejectionReason: note },
+        // Open again: the earlier ending stays on the timeline only.
+        reopen: {
+          closedBy: null,
+          closedAt: null,
+          closureSummary: null,
+          rejectionReason: null,
+          ...noRequest,
+        },
+      };
       await tx
         .update(incidents)
         .set({
           status: to,
           revision: incident.revision + 1,
           updatedAt: now,
-          ...(move.kind === 'closed' && {
-            closedBy: user.id,
-            closedAt: now,
-            closureSummary: note,
-          }),
-          ...(move.kind === 'rejected' && { rejectionReason: note }),
-          // Open again: the earlier ending stays on the timeline only.
-          ...(move.kind === 'reopened' && {
-            closedBy: null,
-            closedAt: null,
-            closureSummary: null,
-            rejectionReason: null,
-          }),
+          ...fields[move.action],
         })
         .where(eq(incidents.id, id));
-      await this.addEvent(tx, auth, id, {
+      const details = {
+        ...(note && { note }),
+        ...(move.action === 'withdraw' && { withdrawn: true }),
+      };
+      await this.addEvent(tx, tenant.id, id, {
         kind: move.kind,
         actorId: user.id,
         fromStatus: from,
         toStatus: to,
-        ...(note && { details: { note } }),
+        ...(Object.keys(details).length > 0 && { details }),
+        // The reporter is told of every step. What a `sent_back` note says
+        // is kept from them when the incident is read, in view().
         visibleToReporter: true,
       });
       // The note may hold sensitive detail, so the audit log gets none of it.
@@ -874,7 +1129,7 @@ export class IncidentsService {
         'incident_status_changed',
         'incident',
         id,
-        { from, to },
+        { from, to, action: move.action },
       );
       return this.detail(tx, auth, id);
     });
@@ -904,42 +1159,121 @@ export class IncidentsService {
       if (!full && input.visibility === 'internal') {
         throw new ForbiddenException({ code: 'internal_not_allowed' });
       }
+      return this.addComment(tx, tenant.id, id, user.id, input);
+    });
+  }
 
-      const [created] = await tx
-        .insert(incidentComments)
-        .values({
-          tenantId: tenant.id,
-          incidentId: id,
-          authorId: user.id,
-          body: input.body,
-          visibility: input.visibility,
-          createdAt: sql`clock_timestamp()`,
-        })
-        .returning({
-          id: incidentComments.id,
-          visibility: incidentComments.visibility,
-          createdAt: incidentComments.createdAt,
-        });
-      await this.addEvent(tx, auth, id, {
-        kind: 'commented',
-        actorId: user.id,
-        details: { commentId: created.id, visibility: input.visibility },
-        visibleToReporter: input.visibility === 'everyone',
+  /**
+   * Stores a comment with its timeline and audit entries. With no author it
+   * is the anonymous reporter's, written with their follow-up code: nothing
+   * names anyone, anywhere.
+   */
+  private async addComment(
+    tx: Transaction,
+    tenantId: string,
+    incidentId: string,
+    authorId: string | null,
+    input: { body: string; visibility: CommentVisibility },
+  ) {
+    const byReporter = authorId === null;
+    const [created] = await tx
+      .insert(incidentComments)
+      .values({
+        tenantId,
+        incidentId,
+        authorId,
+        byReporter,
+        body: input.body,
+        visibility: input.visibility,
+        createdAt: sql`clock_timestamp()`,
+      })
+      .returning({
+        id: incidentComments.id,
+        visibility: incidentComments.visibility,
+        createdAt: incidentComments.createdAt,
       });
-      await tx
-        .update(incidents)
-        .set({ updatedAt: new Date() })
-        .where(eq(incidents.id, id));
-      await this.provisioning.audit(
-        tx,
-        tenant.id,
-        user.id,
-        'incident_commented',
-        'incident',
-        id,
-        { commentId: created.id, visibility: input.visibility },
-      );
-      return created;
+    await this.addEvent(tx, tenantId, incidentId, {
+      kind: 'commented',
+      actorId: authorId,
+      details: { commentId: created.id, visibility: input.visibility },
+      visibleToReporter: input.visibility === 'everyone',
+    });
+    await tx
+      .update(incidents)
+      .set({ updatedAt: new Date() })
+      .where(eq(incidents.id, incidentId));
+    await this.provisioning.audit(
+      tx,
+      tenantId,
+      authorId,
+      'incident_commented',
+      'incident',
+      incidentId,
+      {
+        commentId: created.id,
+        visibility: input.visibility,
+        ...(byReporter && { byReporter }),
+      },
+    );
+    return created;
+  }
+
+  /**
+   * Finds the anonymous report a follow-up code belongs to, or null.
+   *
+   * A wrong reference and a wrong code must be indistinguishable, in what is
+   * answered and in how long it takes. So both take the same steps: one
+   * lookup by reference, then one comparison of hashes in constant time,
+   * against a stand-in when there is no report or it has no code.
+   */
+  private async byFollowUpCode(
+    tx: Transaction,
+    reference: string,
+    code: string,
+  ) {
+    const [found] = await tx
+      .select({ id: incidents.id, hash: incidents.followUpCodeHash })
+      .from(incidents)
+      .where(eq(incidents.reference, reference.trim().toUpperCase()));
+    const matches = matchesFollowUpCode(code, found?.hash ?? null);
+    return found && matches ? found.id : null;
+  }
+
+  /**
+   * An anonymous report as its reporter sees it, opened with the follow-up
+   * code. `tenantId` is null when there is no hospital to ask (unknown,
+   * suspended, or not taking public reports): the same steps are taken and
+   * the same 404 answered, so the cases cannot be told apart.
+   *
+   * No session is involved even if the caller has one: nothing here knows,
+   * and so nothing can record, who is holding the code.
+   */
+  followUp(tenantId: string | null, reference: string, code: string) {
+    return this.tenantDb.withTenant(tenantId ?? NO_TENANT, async (tx) => {
+      const id = await this.byFollowUpCode(tx, reference, code);
+      const view =
+        id &&
+        (await this.view(tx, eq(incidents.id, id), () => ANONYMOUS_REPORTER));
+      if (!view) throw new NotFoundException();
+      return view;
+    });
+  }
+
+  /** A comment by the anonymous reporter, for everyone on the incident. */
+  followUpComment(
+    tenantId: string | null,
+    reference: string,
+    code: string,
+    body: string,
+  ) {
+    const scope = tenantId ?? NO_TENANT;
+    return this.tenantDb.withTenant(scope, async (tx) => {
+      const id = await this.byFollowUpCode(tx, reference, code);
+      if (!id) throw new NotFoundException();
+      return this.addComment(tx, scope, id, null, {
+        body,
+        visibility: 'everyone',
+      });
     });
   }
 }

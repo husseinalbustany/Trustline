@@ -23,42 +23,13 @@ import {
   SessionGuard,
   type AuthedRequest,
 } from '../identity/session.guard.js';
+import { IncidentsService } from './incidents.service.js';
 import {
-  CLOCK_TOLERANCE_MINUTES,
-  EARLIEST_OCCURRED_AT,
-  IncidentsService,
-} from './incidents.service.js';
-
-/** Free text: trimmed, within its limits, and storable (no NUL character). */
-const text = (min: number, max: number) =>
-  z
-    .string()
-    .trim()
-    .min(min)
-    .max(max)
-    .refine((v) => !v.includes('\u0000'));
-
-const optionalText = (max: number) =>
-  text(0, max)
-    .nullish()
-    .transform((v) => v || null);
-
-const reportSchema = z.strictObject({
-  type: z.enum(incidentType.enumValues),
-  categoryId: z.uuid(),
-  orgUnitId: z.uuid(),
-  occurredAt: z.iso.datetime({ offset: true }).transform((v) => new Date(v)),
-  description: text(1, 5000),
-  immediateAction: optionalText(2000),
-  harmLevel: z.enum(incidentHarmLevel.enumValues),
-  anonymous: z.boolean(),
-  // When the reporter opened the form. Read leniently on purpose: a device
-  // with a wrong clock, or one that writes the time oddly, must never have
-  // its report refused over a measurement. What cannot be used is dropped.
-  startedAt: z.string().max(64).nullish(),
-});
-
-const isoMoment = z.iso.datetime({ offset: true });
+  optionalText,
+  parseReport,
+  reportSchema,
+  text,
+} from './report-input.js';
 
 const flag = z.enum(['true', 'false']).transform((v) => v === 'true');
 
@@ -140,21 +111,7 @@ export class IncidentsController {
   @Post()
   report(@Body() body: unknown, @Req() req: AuthedRequest) {
     requirePermission(req, 'incidents.report');
-    const parsed = reportSchema.safeParse(body);
-    if (!parsed.success) throw new BadRequestException();
-    const { startedAt, ...input } = parsed.data;
-    const latest = Date.now() + CLOCK_TOLERANCE_MINUTES * 60_000;
-    if (input.occurredAt.getTime() > latest) {
-      throw new BadRequestException({ code: 'occurred_in_future' });
-    }
-    if (input.occurredAt.getTime() < EARLIEST_OCCURRED_AT.getTime()) {
-      throw new BadRequestException({ code: 'occurred_too_long_ago' });
-    }
-    const started = isoMoment.safeParse(startedAt);
-    return this.incidents.report(req.auth, {
-      ...input,
-      ...(started.success && { startedAt: new Date(started.data) }),
-    });
+    return this.incidents.report(req.auth, parseReport(reportSchema, body));
   }
 
   /**
@@ -208,6 +165,13 @@ export class IncidentsController {
     return this.incidents.triage(req.auth, incidentId, parsed.data);
   }
 
+  /**
+   * No single permission opens this route, because the right depends on the
+   * move: most need the right to triage, signing off a closure needs the
+   * right to sign off, and whoever asked for a closure may withdraw it. The
+   * service checks the right for the move asked for, on the incident itself,
+   * before anything else about the incident can show in the answer.
+   */
   @Post(':id/status')
   @HttpCode(200)
   changeStatus(
@@ -215,7 +179,6 @@ export class IncidentsController {
     @Body() body: unknown,
     @Req() req: AuthedRequest,
   ) {
-    requirePermission(req, 'incidents.triage');
     const incidentId = this.parseId(id);
     const parsed = statusSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException();

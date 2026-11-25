@@ -37,6 +37,13 @@ by `ensureSystemRoles`, whichever the code already uses for built-in roles.
   actor of the matching `commented` events, and the `people` map. Those come
   back with no person and `byReporter: true`, so the screen can say "the
   reporter".
+  > **Changed while building (API engineer, section 1): the `people` map is
+  > not altered.** It names only the people that timeline entries point at as
+  > the one an incident was *assigned to*; the reporter was never in it as
+  > reporter, so there is nothing to hide. A reporter who is also the assignee
+  > stays in it, as the assignee: taking them out would make the one missing
+  > name the giveaway. `byReporter` is carried by timeline entries and
+  > comments (always present, true or false), not by the map.
 - The reporter's own view is unchanged.
 - Assignable users, lists and summaries never carried the reporter; check
   that this is still true.
