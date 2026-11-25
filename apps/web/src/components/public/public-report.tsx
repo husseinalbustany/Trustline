@@ -17,6 +17,7 @@ import { clockTimeIn, fill } from "@/lib/format";
 import { followUpUrl } from "@/lib/identity";
 import type { PublicReporting, ReportSent } from "@/lib/incidents";
 import { pick } from "@/lib/localized";
+import { deviceTime, zoneLabel } from "@/lib/time-zone";
 import { PublicFrame } from "./public-frame";
 
 /**
@@ -50,7 +51,10 @@ export function PublicReport({
   // The follow-up code of the report just sent: kept here and nowhere else,
   // and only until this page is left.
   const [code, setCode] = useState<string | null>(null);
-  const clock = useReportClock();
+  // The form is told nothing of the hospital's clock, and its reader is not
+  // staff: "when it happened" is typed on the clock of their own device,
+  // and the form says so.
+  const clock = useReportClock(deviceTime);
   const { shown, start } = clock;
   const followUpPath = `/${lang}/follow-up/${slug}`;
 
@@ -200,6 +204,7 @@ export function PublicReport({
         defaultLocale={form.defaultLocale}
         startUnit={startUnit}
         clock={clock}
+        timeNote={fill(p.deviceTime, { zone: zoneLabel(lang, deviceTime) })}
         anonymousChoice={false}
         privacy={() => p.privacy}
         roomy

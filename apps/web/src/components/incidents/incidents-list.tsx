@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Search, SlidersHorizontal } from "lucide-react";
+import { Clock, Plus, Search, SlidersHorizontal } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, type FormEvent } from "react";
@@ -14,6 +14,7 @@ import { Pill } from "@/components/ui/pill";
 import { api } from "@/lib/api";
 import {
   dateTimeFormat,
+  deadlineFormat,
   fill,
   numberFormat,
   timeAgoFormat,
@@ -34,11 +35,14 @@ import {
   incidentStatuses,
   incidentTypes,
   isSerious,
+  liveDeadline,
   sortOrders,
   type IncidentList,
+  type IncidentListItem,
 } from "@/lib/incidents";
 import { pick, type Localized } from "@/lib/localized";
 import { unitOptions } from "@/lib/org-units";
+import { zoneLabel } from "@/lib/time-zone";
 import { IncidentPills } from "./pills";
 import type { IncidentsProps } from "./types";
 
@@ -62,15 +66,37 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
   const l = t.list;
   const inLang = (text: Localized) =>
     pick(text, lang, session.tenant.defaultLocale);
-  const dates = dateTimeFormat(lang);
+  // Every date here is on the hospital's clock, not this device's.
+  const { timeZone } = session.tenant;
+  const dates = dateTimeFormat(lang, timeZone);
   const numbers = numberFormat(lang);
   const ago = timeAgoFormat(lang);
+  const untilDue = deadlineFormat(lang);
+  // Deadlines are for the people who handle incidents: someone who only
+  // reports is sent none, so is not offered a filter that finds nothing.
+  const handles =
+    can(session, "incidents.triage") || can(session, "incidents.view");
 
   // How long a report has waited, counted from when the list was fetched.
   const reportedAgo = (reportedAt: string) => {
     const then = new Date(reportedAt);
     const span = ago(then, answer?.at ?? then);
     return span ? fill(l.reportedAgo, { ago: span }) : l.reportedJustNow;
+  };
+
+  // The deadline an incident is held to now, in words, counted from when
+  // the list was fetched. Null where there is none to show: the incident
+  // has ended, or the reader sees it only as its reporter.
+  const deadlineOf = (item: IncidentListItem) => {
+    const live = answer && liveDeadline(item, answer.at);
+    if (!live) return null;
+    return {
+      late: live.late,
+      due: live.due,
+      text: fill(t.deadline[live.late ? "late" : "due"][live.kind], {
+        when: untilDue(live.due, answer.at),
+      }),
+    };
   };
 
   // Text that cannot begin a reference finds nothing: no need to ask.
@@ -257,6 +283,20 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
               {l.serious}
               <span className="text-xs text-muted">{l.seriousHelp}</span>
             </label>
+            {/* Still shown to anyone whose address asks for it, so that it
+                can be taken off again. */}
+            {(handles || filters.overdue) && (
+              <label className="flex min-h-9 flex-wrap items-center gap-x-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="size-4 accent-accent"
+                  checked={filters.overdue}
+                  onChange={(e) => ask({ overdue: e.target.checked })}
+                />
+                {l.overdue}
+                <span className="text-xs text-muted">{l.overdueHelp}</span>
+              </label>
+            )}
           </div>
         </div>
 
@@ -300,11 +340,16 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
                 }
                 className={inputClass}
               >
-                {sortOrders.map((order) => (
-                  <option key={order} value={order}>
-                    {l.sort[order]}
-                  </option>
-                ))}
+                {sortOrders
+                  .filter(
+                    (order) =>
+                      order !== "due" || handles || filters.sort === "due",
+                  )
+                  .map((order) => (
+                    <option key={order} value={order}>
+                      {l.sort[order]}
+                    </option>
+                  ))}
               </select>
             </Field>
           </div>
@@ -415,6 +460,10 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
                 className={inputClass}
               />
             </Field>
+            {/* A day begins and ends on the hospital's clock. */}
+            <p className="col-span-full text-xs text-muted">
+              {fill(l.hospitalDays, { zone: zoneLabel(lang, timeZone) })}
+            </p>
           </div>
         )}
       </div>
@@ -429,76 +478,109 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
             <EmptyState>{narrowed ? l.emptyFiltered : l.empty}</EmptyState>
           ) : (
             <ul className="overflow-hidden rounded-lg">
-              {data.items.map((item) => (
-                <li
-                  key={item.id}
-                  className={`border-b border-line py-3 pe-4 last:border-b-0 ${
-                    // A bar down the leading edge, with the solid marks, so a
-                    // severe, fatal or sentinel report is seen when scanning.
-                    isSerious(item) ? "border-s-4 border-s-danger ps-3" : "ps-4"
-                  }`}
-                >
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                    <Link
-                      href={`/${lang}/incidents/${item.id}`}
-                      className="font-medium text-accent hover:underline"
-                    >
-                      <bdi dir="ltr">{item.reference}</bdi>
-                    </Link>
-                    <IncidentPills
-                      t={t}
-                      status={item.status}
-                      harmLevel={item.harmLevel}
-                      isSentinel={item.isSentinel}
-                    />
-                    {item.assignedToMe && (
-                      <Pill tone="ok">{l.assignedToYou}</Pill>
-                    )}
-                  </div>
-                  {/* Each dot stays with the piece after it when the line
+              {data.items.map((item) => {
+                const deadline = deadlineOf(item);
+                return (
+                  <li
+                    key={item.id}
+                    className={`border-b border-line py-3 pe-4 last:border-b-0 ${
+                      // A bar down the leading edge, with the solid marks, so a
+                      // severe, fatal or sentinel report is seen when scanning.
+                      isSerious(item)
+                        ? "border-s-4 border-s-danger ps-3"
+                        : "ps-4"
+                    }`}
+                  >
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                      <Link
+                        href={`/${lang}/incidents/${item.id}`}
+                        className="font-medium text-accent hover:underline"
+                      >
+                        <bdi dir="ltr">{item.reference}</bdi>
+                      </Link>
+                      <IncidentPills
+                        t={t}
+                        status={item.status}
+                        harmLevel={item.harmLevel}
+                        isSentinel={item.isSentinel}
+                      />
+                      {deadline?.late && (
+                        <Pill
+                          tone="danger"
+                          icon={
+                            <Clock className="size-3 shrink-0" aria-hidden />
+                          }
+                        >
+                          {t.deadline.overdue}
+                        </Pill>
+                      )}
+                      {item.assignedToMe && (
+                        <Pill tone="ok">{l.assignedToYou}</Pill>
+                      )}
+                    </div>
+                    {/* Each dot stays with the piece after it when the line
                       breaks, so none is left alone at the end of a line. */}
-                  <p className="mt-1.5 text-sm">
-                    {t.type[item.type]}{" "}
-                    <span className="inline-block">
-                      <span className="text-muted">· </span>
-                      {/* Names a client wrote: each keeps its own direction. */}
-                      <bdi>{inLang(item.category.name)}</bdi>
-                    </span>{" "}
-                    <span className="inline-block">
-                      <span className="text-muted">· </span>
-                      <bdi>{inLang(item.orgUnit.name)}</bdi>
-                    </span>
-                  </p>
-                  <p dir="auto" className="mt-1 text-sm break-words text-muted">
-                    {item.descriptionExcerpt}
-                  </p>
-                  <p className="mt-1 text-xs text-muted">
-                    <span className="font-medium text-foreground">
-                      {reportedAgo(item.reportedAt)}
-                    </span>{" "}
-                    <span className="inline-block">
-                      {"· "}
-                      <time dateTime={item.reportedAt}>
-                        {dates.format(new Date(item.reportedAt))}
-                      </time>
-                    </span>
-                    {/* Who has it, when it has been handed on: the
+                    <p className="mt-1.5 text-sm">
+                      {t.type[item.type]}{" "}
+                      <span className="inline-block">
+                        <span className="text-muted">· </span>
+                        {/* Names a client wrote: each keeps its own direction. */}
+                        <bdi>{inLang(item.category.name)}</bdi>
+                      </span>{" "}
+                      <span className="inline-block">
+                        <span className="text-muted">· </span>
+                        <bdi>{inLang(item.orgUnit.name)}</bdi>
+                      </span>
+                    </p>
+                    <p
+                      dir="auto"
+                      className="mt-1 text-sm break-words text-muted"
+                    >
+                      {item.descriptionExcerpt}
+                    </p>
+                    {/* What it is waiting for and by when, in words; the date
+                      itself beside it. */}
+                    {deadline && (
+                      <p
+                        className={`mt-1.5 text-sm font-medium ${deadline.late ? "text-danger" : ""}`}
+                      >
+                        {deadline.text}{" "}
+                        <span className="inline-block text-xs font-normal text-muted">
+                          {"· "}
+                          <time dateTime={deadline.due.toISOString()}>
+                            {dates.format(deadline.due)}
+                          </time>
+                        </span>
+                      </p>
+                    )}
+                    <p className="mt-1 text-xs text-muted">
+                      <span className="font-medium text-foreground">
+                        {reportedAgo(item.reportedAt)}
+                      </span>{" "}
+                      <span className="inline-block">
+                        {"· "}
+                        <time dateTime={item.reportedAt}>
+                          {dates.format(new Date(item.reportedAt))}
+                        </time>
+                      </span>
+                      {/* Who has it, when it has been handed on: the
                         department filter finds an incident by this too.
                         Kept together, dot included, when the line has to
                         break. */}
-                    {item.ownerUnit && (
-                      <>
-                        {" "}
-                        <span className="inline-block">
-                          {"· "}
-                          {t.timeline.changed.ownerUnitId}{" "}
-                          <bdi>{inLang(item.ownerUnit.name)}</bdi>
-                        </span>
-                      </>
-                    )}
-                  </p>
-                </li>
-              ))}
+                      {item.ownerUnit && (
+                        <>
+                          {" "}
+                          <span className="inline-block">
+                            {"· "}
+                            {t.timeline.changed.ownerUnitId}{" "}
+                            <bdi>{inLang(item.ownerUnit.name)}</bdi>
+                          </span>
+                        </>
+                      )}
+                    </p>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </Panel>

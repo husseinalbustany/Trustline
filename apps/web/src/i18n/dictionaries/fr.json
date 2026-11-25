@@ -13,7 +13,10 @@
     "signOut": "Se déconnecter",
     "signOutFailed": "Déconnexion impossible. Réessayez.",
     "sessionError": "Serveur injoignable. Rechargez la page.",
-    "language": "Langue"
+    "language": "Langue",
+    "notifications": "Notifications",
+    "notificationsUnread": "Notifications, non lues : {count}",
+    "unreadMany": "99+"
   },
   "nav": {
     "groups": {
@@ -45,11 +48,15 @@
       "openIncidents": "Incidents ouverts",
       "awaitingTriage": "En attente de tri",
       "seriousOpen": "Incidents graves ouverts",
+      "overdueIncidents": "Incidents en retard",
+      "triagedOnTime": "Triés dans les délais",
       "timeToReport": "Durée médiane de saisie",
       "overdueActions": "Actions correctives en retard",
       "policiesDue": "Politiques à réviser"
     },
     "seriousHelp": "Préjudice grave, décès ou événement sentinelle",
+    "overdueHelp": "Échéance de tri ou de clôture dépassée",
+    "triagedOnTimeHelp": "Parmi les déclarations des 30 derniers jours déjà triées",
     "timeToReportHelp": "De l'ouverture du formulaire à l'envoi, sur les 30 derniers jours",
     "clock": {
       "minutes": "{time} min",
@@ -112,6 +119,8 @@
       "assignedToMe": "Attribués à moi",
       "serious": "Graves uniquement",
       "seriousHelp": "Préjudice grave, décès ou événement sentinelle",
+      "overdue": "En retard uniquement",
+      "overdueHelp": "Échéance de tri ou de clôture dépassée",
       "reference": "La référence commence par",
       "referenceExample": "INC-2026-00042",
       "search": "Rechercher",
@@ -119,7 +128,8 @@
       "sort": {
         "newest": "Plus récents d'abord",
         "oldest": "Plus anciens d'abord",
-        "harm": "Plus graves d'abord"
+        "harm": "Plus graves d'abord",
+        "due": "Par échéance"
       },
       "filters": "Plus de filtres",
       "filtersCount": "Plus de filtres ({count})",
@@ -128,6 +138,7 @@
       "departmentHelp": "Lieu de l'événement ou service chargé du traitement.",
       "from": "Déclaré à partir du",
       "to": "Déclaré jusqu'au",
+      "hospitalDays": "Les jours sont comptés à l'heure de l'hôpital : {zone}.",
       "empty": "Aucun incident à afficher. Dès qu'un incident est déclaré, il apparaît ici.",
       "emptyFiltered": "Aucun incident ne correspond à ces filtres. Modifiez-les, ou effacez-les pour voir tous les incidents.",
       "reported": "Déclaré le {date}",
@@ -149,6 +160,7 @@
       "where": "Lieu de l'événement",
       "occurredAt": "Date et heure de l'événement",
       "occurredAtHelp": "Par défaut, la date et l'heure actuelles. Modifiez-les si l'événement s'est produit plus tôt ; elles ne peuvent pas être dans le futur.",
+      "hospitalTime": "Saisissez-les à l'heure de l'hôpital : {zone}.",
       "description": "Que s'est-il passé ?",
       "descriptionHelp": "Écrivez avec vos propres mots. N'indiquez ni nom de patient ni numéro de dossier.",
       "immediateAction": "Mesures immédiates prises (facultatif)",
@@ -204,6 +216,23 @@
       "rejectionReason": "Motif du classement sans suite",
       "loadError": "Impossible de charger cet incident. Rechargez la page.",
       "behind": "Cette page n'a pas pu être actualisée et n'affiche peut-être pas les dernières modifications. Rechargez la page."
+    },
+    "deadline": {
+      "title": "Échéances",
+      "by": {
+        "triage": "Échéance de tri",
+        "closure": "Échéance de clôture"
+      },
+      "due": {
+        "triage": "À trier {when}",
+        "closure": "À clôturer {when}"
+      },
+      "late": {
+        "triage": "Échéance de tri dépassée {when}",
+        "closure": "Échéance de clôture dépassée {when}"
+      },
+      "overdue": "En retard",
+      "current": "Échéance en cours"
     },
     "timeline": {
       "title": "Chronologie",
@@ -298,6 +327,7 @@
       },
       "noteHelp": "Le déclarant peut lire cette note. N'indiquez ni nom de patient ni numéro de dossier.",
       "noteHelpInternal": "Le déclarant ne peut pas lire cette note. N'indiquez ni nom de patient ni numéro de dossier.",
+      "revisionHelp": "Votre décision porte sur l'incident tel que cette page l'affiche. Si quelqu'un l'a modifié entre-temps, rien n'est enregistré et la page affiche sa dernière version pour que vous la vérifiiez.",
       "confirm": "Confirmer",
       "cancel": "Annuler",
       "done": "Statut modifié."
@@ -333,6 +363,7 @@
     "title": "Déclarer un incident",
     "description": "Un incident, un incident évité de justesse ou une situation dangereuse. Cela prend environ deux minutes.",
     "urgent": "Ce formulaire n'est pas suivi en continu. Si quelqu'un est en danger maintenant, prévenez tout de suite un membre du personnel.",
+    "deviceTime": "Saisissez-les à l'heure affichée sur cet appareil : {zone}.",
     "form": {
       "category": "De quoi s'agit-il ?",
       "immediateAction": "Ce qui a été fait tout de suite (facultatif)",
@@ -377,9 +408,55 @@
     "lost": "Un code perdu ne peut être ni retrouvé ni remplacé. Votre déclaration, elle, a bien été reçue.",
     "viewTitle": "Votre déclaration",
     "viewHelp": "Voici votre déclaration, ce qui a été fait jusqu'ici et les réponses qui vous sont destinées.",
-    "behind": "Votre commentaire a été envoyé, mais cette page n'a pas pu être actualisée. Pour voir les dernières modifications, quittez puis rouvrez la déclaration avec votre code.",
     "close": "Quitter et masquer la déclaration",
     "closeHelp": "Utilisez ce bouton lorsque vous avez terminé, surtout sur un appareil partagé. Il vous faudra le code pour rouvrir la déclaration."
+  },
+  "notifications": {
+    "title": "Notifications",
+    "description": "Ce qui s'est passé sur les incidents que vous avez déclarés ou que vous traitez. Une notification ne nomme personne : ouvrez l'incident pour en voir le détail.",
+    "filterLabel": "Filtrer les notifications",
+    "all": "Toutes",
+    "unread": "Non lues",
+    "markAll": "Tout marquer comme lu",
+    "markRead": "Marquer comme lue",
+    "unreadMark": "Non lue :",
+    "loading": "Chargement…",
+    "loadError": "Impossible de charger vos notifications. Rechargez la page.",
+    "actionError": "Impossible de marquer la notification comme lue. Vérifiez votre connexion puis réessayez.",
+    "empty": "Vous n'avez encore aucune notification. Dès qu'il se passe quelque chose sur un incident que vous avez déclaré ou que vous traitez, cela apparaît ici.",
+    "emptyUnread": "Vous avez tout lu. Choisissez « Toutes » pour revoir les notifications précédentes.",
+    "unavailable": "Vous n'avez plus accès à cet incident.",
+    "justNow": "À l'instant",
+    "kinds": {
+      "incident_reported": "Nouvelle déclaration en attente de tri : {reference}.",
+      "incident_assigned": "L'incident {reference} vous a été attribué.",
+      "incident_handed_over": "L'incident {reference} a été transmis à un service dont vous assurez le tri.",
+      "comment_added": "Nouveau commentaire sur l'incident {reference}.",
+      "status_changed": {
+        "closed": "L'incident {reference} a été clôturé.",
+        "rejected": "La déclaration {reference} a été classée sans suite.",
+        "reopened": "L'incident {reference} a été rouvert.",
+        "other": "Le statut de l'incident {reference} a changé."
+      },
+      "sign_off_requested": "La clôture de l'incident {reference} attend la validation d'une deuxième personne.",
+      "sign_off_decided": {
+        "signed_off": "La clôture de l'incident {reference} a été validée.",
+        "sent_back": "L'incident {reference} a été renvoyé pour complément : sa clôture n'a pas été validée.",
+        "withdrawn": "Votre demande de validation de la clôture de l'incident {reference} a été retirée par une autre personne.",
+        "other": "Une décision a été prise sur la demande de clôture de l'incident {reference}."
+      },
+      "due_soon": {
+        "triage": "L'échéance de tri de la déclaration {reference} approche.",
+        "closure": "L'échéance de clôture de l'incident {reference} approche.",
+        "other": "Une échéance approche pour l'incident {reference}."
+      },
+      "overdue": {
+        "triage": "L'échéance de tri de la déclaration {reference} est dépassée.",
+        "closure": "L'échéance de clôture de l'incident {reference} est dépassée.",
+        "other": "Une échéance est dépassée pour l'incident {reference}."
+      },
+      "other": "Du nouveau concernant l'incident {reference}."
+    }
   },
   "modulePage": {
     "scopeTitle": "Ce que cette partie couvrira",
@@ -515,6 +592,14 @@
       "signInMethod": "Mode de connexion",
       "dataRegion": "Région des données",
       "dataRegionHelp": "Le lieu où les données de ce client doivent être hébergées. Laissez vide si ce n'est pas encore décidé.",
+      "timeZone": {
+        "label": "Fuseau horaire",
+        "help": "L'heure de l'hôpital. Chaque date, chaque échéance et les « 30 derniers jours » que voit son personnel la suivent. Pour chercher, saisissez une partie du nom d'une ville ou d'une région, par exemple Riyadh.",
+        "list": "Fuseaux horaires",
+        "now": "Heure sur place en ce moment : {time} ({zone})",
+        "none": "Aucun fuseau horaire ne correspond. Essayez le nom d'une grande ville du même fuseau.",
+        "unknown": "Le serveur ne connaît pas ce fuseau horaire. Choisissez-en un autre dans la liste."
+      },
       "create": "Ajouter le client",
       "save": "Enregistrer",
       "saved": "Modifications enregistrées.",
@@ -815,6 +900,20 @@
         "followUpHelp": "C'est là qu'une personne ayant déclaré anonymement saisit son code de suivi pour lire vos réponses. Ce lien fonctionne que la déclaration sans authentification soit activée ou non, car le personnel connecté peut aussi déclarer anonymement.",
         "copy": "Copier le lien",
         "copied": "Copié"
+      },
+      "deadlines": {
+        "title": "Délais de tri et de clôture",
+        "what": "Ces chiffres fixent le temps que votre établissement se donne pour trier une nouvelle déclaration et pour clôturer un incident, selon le niveau de préjudice. Ce qui dépasse son délai apparaît en retard dans la liste des incidents et sur le tableau de bord, et les personnes qui en ont la charge en sont averties.",
+        "applies": "Une modification ne s'applique qu'aux nouvelles déclarations : les échéances déjà fixées ne bougent pas. Les heures et les jours sont comptés en continu, nuits, week-ends et jours fériés compris.",
+        "sentinel": "Un événement sentinelle suit la ligne « Décès », quel que soit son niveau de préjudice.",
+        "level": "Niveau de préjudice",
+        "hours": "Tri sous (heures)",
+        "days": "Clôture sous (jours)",
+        "limits": "Heures : un nombre entier de 1 à 720. Jours : un nombre entier de 1 à 365.",
+        "save": "Enregistrer les délais",
+        "saved": "Délais enregistrés.",
+        "invalid": "Rien n'a été enregistré. Saisissez des nombres entiers : de 1 à 720 pour les heures, de 1 à 365 pour les jours.",
+        "readOnly": "Seule une personne dont le rôle permet de modifier les paramètres de tout l'établissement peut changer ces chiffres."
       }
     },
     "permissions": {

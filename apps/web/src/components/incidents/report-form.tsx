@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/panel";
 import { api } from "@/lib/api";
+import { fill } from "@/lib/format";
 import { followUpUrl, type OrgUnit } from "@/lib/identity";
 import type { IncidentCategory, ReportSent } from "@/lib/incidents";
+import { zoneLabel } from "@/lib/time-zone";
 import { FollowUpCode } from "./follow-up-code";
 import { ReportFields, useReportClock, type ReportBody } from "./report-fields";
 import { explain, type IncidentsProps } from "./types";
@@ -28,7 +30,9 @@ export function ReportForm({
   // What the API answered, follow-up code included: kept here and nowhere
   // else, and only until this page is left.
   const [sent, setSent] = useState<ReportSent | null>(null);
-  const clock = useReportClock();
+  // "When it happened" is typed and sent on the hospital's clock.
+  const { timeZone } = session.tenant;
+  const clock = useReportClock(timeZone);
   const { shown, start } = clock;
   const f = t.form;
   const listPath = `/${lang}/incidents`;
@@ -151,6 +155,7 @@ export function ReportForm({
           defaultLocale={session.tenant.defaultLocale}
           startUnit={ownUnit}
           clock={clock}
+          timeNote={fill(f.hospitalTime, { zone: zoneLabel(lang, timeZone) })}
           anonymousChoice
           privacy={(anonymous) =>
             anonymous ? f.anonymousWarning : f.whoSeesName

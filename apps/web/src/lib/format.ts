@@ -1,3 +1,5 @@
+import { deviceTime, usableZone, type TimeZone } from "./time-zone";
+
 /**
  * Dates and numbers in the reader's language, always with Western digits
  * (0-9), which is what clinical staff here read in every language.
@@ -5,13 +7,34 @@
 const withWesternDigits = (lang: string) =>
   new Intl.Locale(lang, { numberingSystem: "latn" }).toString();
 
+/**
+ * Dates and times in the reader's language, on the clock of `timeZone`: the
+ * hospital's for everything its staff see, `deviceTime` for the pages that
+ * belong to no hospital's staff. It is asked for every time, so that no
+ * screen falls back to the browser's zone by forgetting it.
+ */
 export const dateTimeFormat = (
   lang: string,
+  timeZone: TimeZone,
   options: Intl.DateTimeFormatOptions = {
     dateStyle: "medium",
     timeStyle: "short",
   },
-) => new Intl.DateTimeFormat(withWesternDigits(lang), options);
+) =>
+  new Intl.DateTimeFormat(withWesternDigits(lang), {
+    ...options,
+    timeZone: usableZone(timeZone),
+  });
+
+/**
+ * A moment the API sent, as a date, or null when there is none or it cannot
+ * be read: a missing deadline is shown as nothing, never "Invalid Date".
+ */
+export function momentFrom(iso: string | null | undefined): Date | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
 
 export const numberFormat = (lang: string) =>
   new Intl.NumberFormat(withWesternDigits(lang));
@@ -41,13 +64,55 @@ export function timeAgoFormat(lang: string) {
 }
 
 /**
+ * How far away a deadline is, in the reader's words, either side of it:
+ * "in 5 hours", "2 days ago". The whole phrase comes from `Intl`, which
+ * knows each language's plural forms (Arabic has six); the dictionary
+ * writes its sentence around the phrase. Counted in minutes for the first
+ * hour, in hours for the first two days, then in days, and always rounded
+ * towards the deadline: "in 5 hours" means at least five.
+ */
+export function deadlineFormat(lang: string) {
+  const counted = new Intl.RelativeTimeFormat(withWesternDigits(lang), {
+    numeric: "always",
+  });
+  return (due: Date, now: Date) => {
+    const late = due.getTime() < now.getTime();
+    const sign = late ? -1 : 1;
+    // Never "in 0 minutes": the last minute is still a minute.
+    const minutes = Math.max(
+      1,
+      Math.floor(Math.abs(due.getTime() - now.getTime()) / 60_000),
+    );
+    if (minutes < 60) return counted.format(sign * minutes, "minute");
+    const hours = Math.floor(minutes / 60);
+    if (hours < 48) return counted.format(sign * hours, "hour");
+    return counted.format(sign * Math.floor(hours / 24), "day");
+  };
+}
+
+/** A whole percentage as the reader's language writes it: "83%", "83 %". */
+export const percentFormat = (lang: string) => {
+  const percent = new Intl.NumberFormat(withWesternDigits(lang), {
+    style: "percent",
+    maximumFractionDigits: 0,
+  });
+  return (wholePercentage: number) => percent.format(wholePercentage / 100);
+};
+
+/**
  * The time on the clock a number of seconds from now, as the reader's
  * language writes it: "14:32", "2:32 PM". Rounded up to the minute, so
  * "after 14:32" is never too early. A clock time and not "in 12 minutes":
  * it needs no plural form, and cannot be read as "during".
+ *
+ * On the clock of the reader's own device: it is the one they will look at
+ * to know when to try again.
  */
 export function clockTimeIn(lang: string) {
-  const clock = dateTimeFormat(lang, { hour: "numeric", minute: "2-digit" });
+  const clock = dateTimeFormat(lang, deviceTime, {
+    hour: "numeric",
+    minute: "2-digit",
+  });
   return (seconds: number) =>
     clock.format(
       new Date(Math.ceil((Date.now() + seconds * 1000) / 60_000) * 60_000),

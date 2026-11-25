@@ -17,6 +17,7 @@ import type {
   IncidentCategory,
 } from "@/lib/incidents";
 import { pick, readForm, type Localized } from "@/lib/localized";
+import { IncidentDeadlines } from "./deadlines";
 import {
   IncidentComments,
   IncidentReport,
@@ -30,7 +31,11 @@ import { explain, textareaClass, type IncidentsProps } from "./types";
 export function IncidentDetail({ lang, t }: IncidentsProps) {
   const session = useSession();
   const { id } = useParams<{ id: string }>();
-  const [loaded, setLoaded] = useState<Incident | null>(null);
+  // The incident as last read, and when: what "due in 5 hours" counts from.
+  const [loaded, setLoaded] = useState<{ incident: Incident; at: Date } | null>(
+    null,
+  );
+  const adopt = (incident: Incident) => setLoaded({ incident, at: new Date() });
   const [units, setUnits] = useState<OrgUnit[]>([]);
   const [categories, setCategories] = useState<IncidentCategory[]>([]);
   const [staff, setStaff] = useState<AssignableUser[]>([]);
@@ -51,7 +56,7 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
     ])
       .then(([incident, u, c]) => {
         if (!current) return;
-        setLoaded(incident);
+        setLoaded({ incident, at: new Date() });
         setUnits(u);
         setCategories(c);
         setProblem(null);
@@ -82,7 +87,7 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
   const refresh = () =>
     api<Incident>(`/incidents/${id}`)
       .then((incident) => {
-        setLoaded(incident);
+        adopt(incident);
         setProblem(null);
         setBehind(false);
       })
@@ -97,8 +102,8 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
       </Link>
     </p>
   );
-  const incident = loaded?.id === id ? loaded : null;
-  if (problem || !incident) {
+  const incident = loaded?.incident.id === id ? loaded.incident : null;
+  if (problem || !incident || !loaded) {
     return (
       <>
         <EmptyState>{problem ?? t.loading}</EmptyState>
@@ -110,7 +115,15 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
   const inLang = (text: Localized | null | undefined) =>
     pick(text, lang, session.tenant.defaultLocale);
   const d = t.detail;
-  const view = { lang, t, incident, fallback: session.tenant.defaultLocale };
+  // Every date and time is on the hospital's clock, not this device's.
+  const { timeZone } = session.tenant;
+  const view = {
+    lang,
+    t,
+    incident,
+    fallback: session.tenant.defaultLocale,
+    timeZone,
+  };
   // While it waits for a second person: who asked, and when. Someone who
   // sees only their own report is told that it waits, not who asked.
   const requested =
@@ -119,7 +132,7 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
       : incident.closureRequestedBy && incident.closureRequestedAt
         ? fill(d.awaiting, {
             name: inLang(incident.closureRequestedBy.name),
-            date: dateTimeFormat(lang).format(
+            date: dateTimeFormat(lang, timeZone).format(
               new Date(incident.closureRequestedAt),
             ),
           })
@@ -169,6 +182,17 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
         </p>
       )}
 
+      {/* Draws nothing for a reader who is sent no deadlines. */}
+      <div className="mt-6 empty:hidden">
+        <IncidentDeadlines
+          lang={lang}
+          t={t}
+          incident={incident}
+          timeZone={timeZone}
+          at={loaded.at}
+        />
+      </div>
+
       <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <IncidentReport {...view} />
 
@@ -183,7 +207,7 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
               categories={categories}
               staff={staff}
               staffProblem={staffProblem}
-              onChange={setLoaded}
+              onChange={adopt}
               onStale={refresh}
             />
           </div>

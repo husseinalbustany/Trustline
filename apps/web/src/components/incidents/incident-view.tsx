@@ -5,11 +5,12 @@ import { Pill } from "@/components/ui/pill";
 import { dateTimeFormat, fill } from "@/lib/format";
 import {
   wordFor,
-  type FollowUpView,
+  type IncidentView,
   type IncidentEvent,
   type Was,
 } from "@/lib/incidents";
 import { pick, type Localized } from "@/lib/localized";
+import type { TimeZone } from "@/lib/time-zone";
 import type { IncidentsProps } from "./types";
 
 /**
@@ -18,39 +19,42 @@ import type { IncidentsProps } from "./types";
  * who came with a code) are built from them.
  */
 export type ViewProps = IncidentsProps & {
-  incident: FollowUpView;
+  incident: IncidentView;
   /** The hospital's own language, for text not written in the reader's. */
   fallback?: string;
   /**
-   * `hidden` for a reader who came with a follow-up code: they are never
-   * shown a person's name, whatever the answer holds.
+   * The clock every date and time is shown on: the hospital's for its
+   * staff, the reader's own device for someone who came with a code.
    */
-  names?: "shown" | "hidden";
+  timeZone: TimeZone;
 };
 
 /** One thing a triage set or changed: "Harm level: Mild harm → Severe harm". */
 type Change = { label: string; from?: string; to: string };
 
-type Doer = { byReporter: boolean; byStaff?: boolean };
+type Doer = { byReporter: boolean; byStaff: boolean };
 
-/** Who did something, in words: a name only where the reader may have it. */
+/**
+ * Who did something, in words. The API decides who is named to this
+ * reader: a person it sends is shown, and one it does not is said by the
+ * capacity it gives, as the reporter or as a member of staff. Nothing here
+ * works out who the reporter is.
+ */
 function doer(
-  { t, lang, fallback, names }: ViewProps,
+  { t, lang, fallback }: ViewProps,
   person: { name: Localized } | null,
   { byReporter, byStaff }: Doer,
 ) {
-  if (person && names !== "hidden") return pick(person.name, lang, fallback);
+  if (person) return pick(person.name, lang, fallback);
   if (byReporter) return t.timeline.theReporter;
-  return byStaff || names === "hidden"
-    ? t.timeline.staff
-    : t.timeline.unknownPerson;
+  return byStaff ? t.timeline.staff : t.timeline.unknownPerson;
 }
 
 /** What was reported: the text, then the facts. */
 export function IncidentReport(props: ViewProps) {
-  const { lang, t, incident, fallback } = props;
+  const { lang, t, incident, fallback, timeZone } = props;
   const d = t.detail;
-  const dates = dateTimeFormat(lang);
+  const dates = dateTimeFormat(lang, timeZone);
   const when = (iso: string) => dates.format(new Date(iso));
   // A name a client wrote keeps its own direction.
   const name = (text: Localized) => <bdi>{pick(text, lang, fallback)}</bdi>;
@@ -130,9 +134,9 @@ export function IncidentReport(props: ViewProps) {
 
 /** What has happened to the incident, oldest first. */
 export function IncidentTimeline(props: ViewProps) {
-  const { lang, t, incident, fallback, names } = props;
+  const { lang, t, incident, fallback, timeZone } = props;
   const d = t.detail;
-  const dates = dateTimeFormat(lang);
+  const dates = dateTimeFormat(lang, timeZone);
   const inLang = (text: Localized | null | undefined) =>
     pick(text, lang, fallback);
   // The incident carries the name of everything its timeline mentions,
@@ -197,12 +201,10 @@ export function IncidentTimeline(props: ViewProps) {
         if (!assignedTo) return [fill(e.assignedUnit, { unit }), []];
         // The event names the person by id only.
         const person =
-          names === "hidden"
-            ? null
-            : (incident.people?.[assignedTo] ??
-              (incident.assignedTo?.id === assignedTo
-                ? incident.assignedTo.name
-                : null));
+          incident.people?.[assignedTo] ??
+          (incident.assignedTo?.id === assignedTo
+            ? incident.assignedTo.name
+            : null);
         return [
           person
             ? fill(e.assigned, { name: inLang(person), unit })
@@ -316,8 +318,8 @@ export function IncidentComments({
   children,
   ...props
 }: ViewProps & { children?: ReactNode }) {
-  const { lang, t, incident } = props;
-  const dates = dateTimeFormat(lang);
+  const { lang, t, incident, timeZone } = props;
+  const dates = dateTimeFormat(lang, timeZone);
 
   return (
     <Panel title={t.comments.title}>

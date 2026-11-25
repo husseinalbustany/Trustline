@@ -11,6 +11,8 @@ export type Client = {
   plan: "starter" | "professional" | "enterprise";
   signInMethod: "password" | "sso" | "both";
   dataRegion: string | null;
+  /** The hospital's own clock: an IANA name, `UTC` until one is chosen. */
+  timeZone: string;
   status: "active" | "suspended";
   createdAt: string;
 };

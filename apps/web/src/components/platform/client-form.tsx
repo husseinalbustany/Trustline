@@ -8,6 +8,7 @@ import { Field, inputClass } from "@/components/ui/field";
 import { InviteLink } from "@/components/ui/invite-link";
 import { PageHeader } from "@/components/ui/page-header";
 import { dateTimeFormat } from "@/lib/format";
+import { deviceTime } from "@/lib/time-zone";
 import { EmptyState, Panel } from "@/components/ui/panel";
 import {
   ApiError,
@@ -20,6 +21,7 @@ import { hasLocale, localeNames, locales } from "@/i18n/config";
 import { pick, readForm } from "@/lib/localized";
 import { LocalizedField } from "@/components/ui/localized-field";
 import { StatusPill } from "./status-pill";
+import { TimeZoneField } from "./time-zone-field";
 import type { PlatformProps } from "./types";
 
 type Loaded = Client & { activity: Activity[] };
@@ -62,10 +64,13 @@ export function ClientForm({
   // The client's languages and default, edited here and sent with the form.
   const [langs, setLangs] = useState<string[]>([lang]);
   const [defaultLang, setDefaultLang] = useState<string>(lang);
+  // The hospital's own clock. UTC until one is chosen, as the API has it.
+  const [timeZone, setTimeZone] = useState("UTC");
   const adopt = (loaded: Loaded) => {
     setClient(loaded);
     setLangs(loaded.locales);
     setDefaultLang(loaded.defaultLocale);
+    setTimeZone(loaded.timeZone ?? "UTC");
   };
   const listPath = `/${lang}/platform/clients`;
   const f = t.form;
@@ -94,6 +99,7 @@ export function ClientForm({
         await platformApi("/tenants", { method: "POST", body });
         // Visited pages stay mounted, so leave this one empty for next time.
         form?.reset();
+        setTimeZone("UTC");
         setBusy(false);
         router.push(listPath);
         return;
@@ -109,11 +115,13 @@ export function ClientForm({
         text:
           code === "language_mismatch"
             ? f.languageMismatch
-            : status === 409
-              ? f.slugTaken
-              : status === 400
-                ? f.invalid
-                : f.error,
+            : code === "unknown_time_zone"
+              ? f.timeZone.unknown
+              : status === 409
+                ? f.slugTaken
+                : status === 400
+                  ? f.invalid
+                  : f.error,
       });
     }
     setBusy(false);
@@ -153,9 +161,15 @@ export function ClientForm({
   function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
-    // Languages are held in state; the rest is read from the form.
+    // Languages and the time zone are held in state; the rest is read from
+    // the form.
     const { slug, ...fields } = readForm(form);
-    const settings = { ...fields, locales: langs, defaultLocale: defaultLang };
+    const settings = {
+      ...fields,
+      locales: langs,
+      defaultLocale: defaultLang,
+      timeZone,
+    };
     void save(mode === "new" ? { slug, ...settings } : settings, form);
   }
 
@@ -163,7 +177,9 @@ export function ClientForm({
   if (mode === "edit" && !client) return <EmptyState>{t.loading}</EmptyState>;
 
   const suspended = client?.status === "suspended";
-  const dateFormat = dateTimeFormat(lang);
+  // The portal belongs to no hospital: its own dates are on the clock of
+  // whoever is reading them.
+  const dateFormat = dateTimeFormat(lang, deviceTime);
 
   return (
     <>
@@ -270,6 +286,13 @@ export function ClientForm({
               />
             </Field>
           </div>
+
+          <TimeZoneField
+            lang={lang}
+            t={f.timeZone}
+            value={timeZone}
+            onChange={setTimeZone}
+          />
 
           <Field label={f.dataRegion} help={f.dataRegionHelp}>
             <input

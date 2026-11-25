@@ -17,21 +17,21 @@ import {
   type IncidentType,
 } from "@/lib/incidents";
 import { pick, readForm } from "@/lib/localized";
+import { momentOf, wallClock, type TimeZone } from "@/lib/time-zone";
 import { unitOptions, type TreeUnit } from "@/lib/org-units";
 import { textareaClass, type IncidentsProps } from "./types";
-
-const two = (n: number) => String(n).padStart(2, "0");
-/** A moment as a `datetime-local` input writes it, in the user's own time. */
-const localMinute = (d: Date) =>
-  `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}T${two(d.getHours())}:${two(d.getMinutes())}`;
 
 /**
  * The times a report form keeps: the present minute, which is the latest
  * time it accepts and what "when" shows until the reporter changes it; the
  * time they chose, if they did; and when the form was opened, so the time a
  * report takes can be measured.
+ *
+ * "When" is read and written on the clock of `timeZone`: the hospital's for
+ * its staff, whatever zone their device is set to, so 14:00 typed on a
+ * laptop set to another country is still 14:00 at the hospital.
  */
-export function useReportClock() {
+export function useReportClock(timeZone: TimeZone) {
   const [now, setNow] = useState("");
   const [occurredAt, setOccurredAt] = useState<string | null>(null);
   const [startedAt, setStartedAt] = useState<string | null>(null);
@@ -40,20 +40,29 @@ export function useReportClock() {
   // present moment is what is then sent. So the minute shown keeps up with
   // the clock for as long as the form is open: what the reporter sees is
   // what is stored, even on a workstation left on this page for hours.
-  const tick = useCallback(() => setNow(localMinute(new Date())), []);
+  const tick = useCallback(
+    () => setNow(wallClock(new Date(), timeZone)),
+    [timeZone],
+  );
   useEffect(() => {
     const timer = setInterval(tick, 10_000);
     return () => clearInterval(timer);
   }, [tick]);
+
+  /** The moment the reporter chose, or null while "when" is still "now". */
+  const chosen = useCallback(
+    () => (occurredAt ? momentOf(occurredAt, timeZone) : null),
+    [occurredAt, timeZone],
+  );
 
   /**
    * The form is on screen: called each time it is shown, also when the
    * reporter comes back to a draft. A time they chose is theirs and stays.
    */
   const shown = useCallback(() => {
-    setNow(localMinute(new Date()));
+    tick();
     setStartedAt(new Date().toISOString());
-  }, []);
+  }, [tick]);
 
   /** A fresh form, for the next report: "when" is the present again. */
   const start = useCallback(() => {
@@ -61,7 +70,16 @@ export function useReportClock() {
     shown();
   }, [shown]);
 
-  return { now, occurredAt, startedAt, setOccurredAt, tick, shown, start };
+  return {
+    now,
+    occurredAt,
+    startedAt,
+    setOccurredAt,
+    chosen,
+    tick,
+    shown,
+    start,
+  };
 }
 
 /** What a report form sends, whoever sends it. */
@@ -79,6 +97,7 @@ export function ReportFields({
   defaultLocale,
   startUnit,
   clock,
+  timeNote,
   anonymousChoice,
   privacy,
   roomy = false,
@@ -95,6 +114,8 @@ export function ReportFields({
   /** Where "where it happened" starts; the reporter can change it. */
   startUnit: string;
   clock: ReturnType<typeof useReportClock>;
+  /** Which clock "when it happened" is typed on, said under the field. */
+  timeNote: string;
   /** Whether the reporter chooses between giving their name and not. */
   anonymousChoice: boolean;
   /** Who will see the reporter's name: said before they send. */
@@ -117,7 +138,7 @@ export function ReportFields({
   const [type, setType] = useState<IncidentType | null>(null);
   const [anonymous, setAnonymous] = useState(false);
   const f = { ...t.form, ...labels };
-  const { now, occurredAt, startedAt, setOccurredAt, tick } = clock;
+  const { now, occurredAt, startedAt, setOccurredAt, chosen, tick } = clock;
 
   // Visited pages stay mounted: a refusal of the last attempt must not be
   // waiting here when the page is shown again.
@@ -137,11 +158,9 @@ export function ReportFields({
           ...fields,
           // A near miss or a hazard harmed no one, so the form does not ask.
           harmLevel: type === "incident" ? fields.harmLevel : "none",
-          // Left as it was, "when" means the moment of sending.
-          occurredAt: (occurredAt
-            ? new Date(occurredAt)
-            : new Date()
-          ).toISOString(),
+          // Left as it was, "when" means the moment of sending. Changed, it
+          // is the moment the clock named under the field showed that time.
+          occurredAt: (chosen() ?? new Date()).toISOString(),
           immediateAction: immediateAction || null,
           startedAt,
         },
@@ -232,7 +251,7 @@ export function ReportFields({
         </Field>
       </div>
 
-      <Field label={f.occurredAt} help={f.occurredAtHelp}>
+      <Field label={f.occurredAt} help={`${f.occurredAtHelp} ${timeNote}`}>
         <input
           type="datetime-local"
           required

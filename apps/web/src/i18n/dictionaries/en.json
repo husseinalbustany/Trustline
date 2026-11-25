@@ -13,7 +13,10 @@
     "signOut": "Sign out",
     "signOutFailed": "Could not sign out. Try again.",
     "sessionError": "Could not reach the server. Reload the page.",
-    "language": "Language"
+    "language": "Language",
+    "notifications": "Notifications",
+    "notificationsUnread": "Notifications, unread: {count}",
+    "unreadMany": "99+"
   },
   "nav": {
     "groups": {
@@ -45,11 +48,15 @@
       "openIncidents": "Open incidents",
       "awaitingTriage": "Awaiting triage",
       "seriousOpen": "Serious open incidents",
+      "overdueIncidents": "Overdue incidents",
+      "triagedOnTime": "Triaged on time",
       "timeToReport": "Median time to fill in a report",
       "overdueActions": "Overdue actions",
       "policiesDue": "Policies due for review"
     },
     "seriousHelp": "Severe harm, death or sentinel event",
+    "overdueHelp": "Past the deadline for triage or closure",
+    "triagedOnTimeHelp": "Of the reports from the last 30 days that have been triaged",
     "timeToReportHelp": "From opening the form to sending it, over the last 30 days",
     "clock": {
       "minutes": "{time} min",
@@ -112,6 +119,8 @@
       "assignedToMe": "Assigned to me",
       "serious": "Serious only",
       "seriousHelp": "Severe harm, death or sentinel event",
+      "overdue": "Overdue only",
+      "overdueHelp": "Past the deadline for triage or closure",
       "reference": "Reference starts with",
       "referenceExample": "INC-2026-00042",
       "search": "Search",
@@ -119,7 +128,8 @@
       "sort": {
         "newest": "Newest first",
         "oldest": "Oldest first",
-        "harm": "Most harm first"
+        "harm": "Most harm first",
+        "due": "By deadline"
       },
       "filters": "More filters",
       "filtersCount": "More filters ({count})",
@@ -128,6 +138,7 @@
       "departmentHelp": "Where it happened, or the department handling it.",
       "from": "Reported from",
       "to": "Reported up to",
+      "hospitalDays": "Days are counted in the hospital's time: {zone}.",
       "empty": "No incidents to show. When one is reported, it appears here.",
       "emptyFiltered": "No incidents match these filters. Change them, or clear them to see every incident.",
       "reported": "Reported {date}",
@@ -149,6 +160,7 @@
       "where": "Where it happened",
       "occurredAt": "When it happened",
       "occurredAtHelp": "Set to now. Change it if it happened earlier; it cannot be in the future.",
+      "hospitalTime": "Enter it in the hospital's time: {zone}.",
       "description": "What happened",
       "descriptionHelp": "Use your own words. Do not type patient names or record numbers.",
       "immediateAction": "What was done immediately (optional)",
@@ -204,6 +216,23 @@
       "rejectionReason": "Reason for not taking it forward",
       "loadError": "Could not load this incident. Reload the page.",
       "behind": "This page could not be updated and may not show the latest changes. Reload the page."
+    },
+    "deadline": {
+      "title": "Deadlines",
+      "by": {
+        "triage": "Triage deadline",
+        "closure": "Closure deadline"
+      },
+      "due": {
+        "triage": "Triage due {when}",
+        "closure": "Closure due {when}"
+      },
+      "late": {
+        "triage": "Triage was due {when}",
+        "closure": "Closure was due {when}"
+      },
+      "overdue": "Overdue",
+      "current": "Current deadline"
     },
     "timeline": {
       "title": "Timeline",
@@ -298,6 +327,7 @@
       },
       "noteHelp": "The reporter can read this note. Do not type patient names or record numbers.",
       "noteHelpInternal": "The reporter cannot read this note. Do not type patient names or record numbers.",
+      "revisionHelp": "Your decision is recorded for the incident as this page shows it. If someone has changed it since, nothing is saved and the page shows the latest version for you to check.",
       "confirm": "Confirm",
       "cancel": "Cancel",
       "done": "Status changed."
@@ -333,6 +363,7 @@
     "title": "Report an incident",
     "description": "Tell the hospital about something that went wrong, nearly went wrong, or could cause harm. It takes about two minutes.",
     "urgent": "This form is not watched around the clock. If someone is in danger now, tell a member of staff straight away.",
+    "deviceTime": "Enter it in the time shown on this device: {zone}.",
     "form": {
       "category": "What it is about",
       "immediateAction": "What was done straight away (optional)",
@@ -377,9 +408,55 @@
     "lost": "A lost code cannot be recovered or replaced. Your report itself has still been received.",
     "viewTitle": "Your report",
     "viewHelp": "Here is your report, what has happened to it so far, and the replies written to you.",
-    "behind": "Your comment was sent, but this page could not be updated. To see the latest, finish and open the report again with your code.",
     "close": "Finish and hide this report",
     "closeHelp": "Use this when you have finished, above all on a shared computer or phone. You will need the code to open the report again."
+  },
+  "notifications": {
+    "title": "Notifications",
+    "description": "What has happened on the incidents you reported or are handling. A notification names no one: open the incident for the details.",
+    "filterLabel": "Filter notifications",
+    "all": "All",
+    "unread": "Unread",
+    "markAll": "Mark all as read",
+    "markRead": "Mark as read",
+    "unreadMark": "Unread:",
+    "loading": "Loading…",
+    "loadError": "Could not load your notifications. Reload the page.",
+    "actionError": "Could not mark it as read. Check your connection and try again.",
+    "empty": "You have no notifications yet. When something happens on an incident you reported or are handling, it appears here.",
+    "emptyUnread": "You have read everything. Choose “All” to see earlier notifications.",
+    "unavailable": "This incident is no longer available to you.",
+    "justNow": "Just now",
+    "kinds": {
+      "incident_reported": "New report {reference} is waiting for triage.",
+      "incident_assigned": "{reference} has been assigned to you.",
+      "incident_handed_over": "{reference} has been handed to a department you triage for.",
+      "comment_added": "There is a new comment on {reference}.",
+      "status_changed": {
+        "closed": "{reference} has been closed.",
+        "rejected": "{reference} will not be taken forward.",
+        "reopened": "{reference} has been reopened.",
+        "other": "The status of {reference} has changed."
+      },
+      "sign_off_requested": "{reference} is waiting for a second person to sign off its closure.",
+      "sign_off_decided": {
+        "signed_off": "{reference} has been signed off and closed.",
+        "sent_back": "{reference} was sent back for more work: its closure was not signed off.",
+        "withdrawn": "Your request to close {reference} has been withdrawn by someone else.",
+        "other": "A decision has been made on the request to close {reference}."
+      },
+      "due_soon": {
+        "triage": "The deadline to triage {reference} is close.",
+        "closure": "The deadline to close {reference} is close.",
+        "other": "A deadline for {reference} is close."
+      },
+      "overdue": {
+        "triage": "{reference} is overdue for triage.",
+        "closure": "{reference} is overdue for closure.",
+        "other": "A deadline for {reference} has passed."
+      },
+      "other": "There is an update on {reference}."
+    }
   },
   "modulePage": {
     "scopeTitle": "What this area will cover",
@@ -515,6 +592,14 @@
       "signInMethod": "Sign-in method",
       "dataRegion": "Data region",
       "dataRegionHelp": "Where this client's data must be hosted. Leave empty if not decided.",
+      "timeZone": {
+        "label": "Time zone",
+        "help": "The hospital's own clock. Every date, deadline and “last 30 days” its staff see follows it. Type part of a city or region to search, for example Riyadh.",
+        "list": "Time zones",
+        "now": "Time there now: {time} ({zone})",
+        "none": "No time zone matches. Try the name of a large city in the same zone.",
+        "unknown": "The server does not know this time zone. Choose another one from the list."
+      },
       "create": "Add client",
       "save": "Save changes",
       "saved": "Changes saved.",
@@ -815,6 +900,20 @@
         "followUpHelp": "Where someone who reported anonymously types their follow-up code to read your replies. It works whether reporting without sign-in is on or off, because staff who sign in can report anonymously too.",
         "copy": "Copy link",
         "copied": "Copied"
+      },
+      "deadlines": {
+        "title": "Deadlines for triage and closure",
+        "what": "These numbers set how long your hospital allows itself to triage a new report and to close an incident, by harm level. Anything past its time shows as overdue in the incidents list and on the dashboard, and the people responsible for it are notified.",
+        "applies": "A change applies to new reports only: deadlines already set do not move. Hours and days are calendar time, so nights, weekends and holidays count.",
+        "sentinel": "A sentinel event follows the row for a death, whatever its harm level.",
+        "level": "Harm level",
+        "hours": "Triage within (hours)",
+        "days": "Close within (days)",
+        "limits": "Hours: a whole number from 1 to 720. Days: a whole number from 1 to 365.",
+        "save": "Save deadlines",
+        "saved": "Deadlines saved.",
+        "invalid": "Not saved. Enter whole numbers: from 1 to 720 for the hours, from 1 to 365 for the days.",
+        "readOnly": "Only someone whose role lets them change settings for the whole organization can change these numbers."
       }
     },
     "permissions": {

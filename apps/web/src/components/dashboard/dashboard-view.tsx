@@ -11,7 +11,13 @@ import { EmptyState, Panel } from "@/components/ui/panel";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/dictionaries";
 import { api } from "@/lib/api";
-import { clockOf, dateTimeFormat, fill, numberFormat } from "@/lib/format";
+import {
+  clockOf,
+  dateTimeFormat,
+  fill,
+  numberFormat,
+  percentFormat,
+} from "@/lib/format";
 import { incidentsPath } from "@/lib/incident-filters";
 import type { IncidentList, IncidentSummary } from "@/lib/incidents";
 import { pick } from "@/lib/localized";
@@ -46,7 +52,9 @@ export function DashboardView({
   const [data, setData] = useState<Loaded | null>(null);
   const [problem, setProblem] = useState(false);
   const numbers = numberFormat(lang);
-  const dates = dateTimeFormat(lang);
+  const percent = percentFormat(lang);
+  // On the hospital's clock, not this device's.
+  const dates = dateTimeFormat(lang, session.tenant.timeZone);
   // A clock figure with its unit beside it: "1:36 min".
   const duration = (seconds: number) => {
     const { unit, time } = clockOf(seconds);
@@ -74,6 +82,13 @@ export function DashboardView({
   const count = (n: number | undefined) =>
     n === undefined ? undefined : numbers.format(n);
   const median = summary?.medianSecondsToReport;
+  const onTime = summary?.triagedOnTime;
+  // "The last 30 days" as the API counted them: days on the hospital's
+  // calendar. The list takes the same two days, so a figure and the list
+  // behind it cover the same reports.
+  const last30Days = summary?.last30Days
+    ? incidentsPath(lang, summary.last30Days)
+    : undefined;
   // How long reporting takes says something about the form, not about one
   // person's own reports: it is for the people who handle incidents.
   const handles =
@@ -102,8 +117,32 @@ export function DashboardView({
       href: incidentsPath(lang, { open: true, serious: true, sort: "harm" }),
       alert: !!summary && summary.serious > 0,
     },
+    // Deadlines and how reporting goes are for the people who handle
+    // incidents: someone who only reports is sent no deadline at all.
     ...(handles
       ? [
+          {
+            key: "overdueIncidents" as const,
+            live: true,
+            figure: count(summary?.overdue),
+            help: t.overdueHelp,
+            // The most overdue first.
+            href: incidentsPath(lang, { overdue: true, sort: "due" }),
+            alert: !!summary && summary.overdue > 0,
+          },
+          {
+            key: "triagedOnTime" as const,
+            live: true,
+            // Null when nothing reported in those days has been triaged.
+            figure:
+              onTime === undefined
+                ? undefined
+                : onTime === null
+                  ? null
+                  : percent(onTime),
+            help: t.triagedOnTimeHelp,
+            href: last30Days,
+          },
           {
             key: "timeToReport" as const,
             live: true,
@@ -114,6 +153,7 @@ export function DashboardView({
                   ? null
                   : duration(median),
             help: t.timeToReportHelp,
+            href: last30Days,
           },
         ]
       : []),

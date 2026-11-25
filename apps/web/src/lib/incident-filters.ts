@@ -20,13 +20,18 @@ export type IncidentFilters = {
   open: boolean;
   /** Severe harm, a death or a sentinel event. */
   serious: boolean;
+  /** Past the deadline for triage or for closure. */
+  overdue: boolean;
   type: IncidentType | "";
   harmLevel: HarmLevel | "";
   /** Sentinel events only, everything but them, or both. */
   sentinel: "true" | "false" | "";
   /** Where it happened, or the department handling it. */
   orgUnitId: string;
-  /** Days of reporting, `2026-11-25`, both included. */
+  /**
+   * Days of reporting, `2026-11-25`, both included. They are days on the
+   * hospital's calendar: the API counts them in the hospital's time zone.
+   */
   from: string;
   to: string;
   /** The start of a reference, or all of it. */
@@ -41,6 +46,7 @@ export const noFilters: IncidentFilters = {
   status: "",
   open: false,
   serious: false,
+  overdue: false,
   type: "",
   harmLevel: "",
   sentinel: "",
@@ -88,6 +94,7 @@ export function readFilters(params: {
     status: open ? "" : oneOf(incidentStatuses, params.get("status")),
     open,
     serious: params.get("serious") === "true",
+    overdue: params.get("overdue") === "true",
     type: oneOf(incidentTypes, params.get("type")),
     harmLevel: oneOf(harmLevels, params.get("harmLevel")),
     sentinel: oneOf(["true", "false"] as const, params.get("sentinel")),

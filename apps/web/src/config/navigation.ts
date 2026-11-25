@@ -96,7 +96,8 @@ export const navigation: { key: NavGroupKey; items: NavItem[] }[] = [
         key: "settings",
         href: "/admin/settings",
         icon: Settings,
-        permissions: ["settings.manage"],
+        // Someone who may triage reads the deadlines there, and no more.
+        permissions: ["settings.manage", "incidents.triage"],
       },
     ],
   },

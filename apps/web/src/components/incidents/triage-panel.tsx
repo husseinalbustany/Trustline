@@ -395,6 +395,9 @@ function StatusActions({ t, incident, onChange, onStale, message, say }: Part) {
           // Two moves can lead to the same status: this says which is meant.
           kind: move.kind,
           note: note || null,
+          // The version of the incident this page shows. Always sent: a
+          // change decided on a stale page is refused, and a move marked
+          // `revisionRequired` (a sign-off) is not taken at all without it.
           revision: incident.revision,
         },
       });
@@ -443,6 +446,11 @@ function StatusActions({ t, incident, onChange, onStale, message, say }: Part) {
               <p className="text-sm font-medium">{label(move)}</p>
               {help(move) && (
                 <p className="mt-1 text-sm text-muted">{help(move)}</p>
+              )}
+              {/* What the decision covers, where the API insists on being
+                  told which version of the incident it was taken on. */}
+              {move.revisionRequired && (
+                <p className="mt-1 text-sm text-muted">{a.revisionHelp}</p>
               )}
             </div>
             <Field label={noteLabel(move)} help={noteHelp(move)}>

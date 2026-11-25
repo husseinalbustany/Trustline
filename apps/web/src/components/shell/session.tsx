@@ -23,6 +23,18 @@ export const SessionRefreshContext = createContext<() => Promise<void>>(
  */
 export const useRefreshSession = () => useContext(SessionRefreshContext);
 
+/**
+ * How many notifications the user has not read, as the bell shows it (null
+ * until it has been counted), and the way to have it counted again.
+ */
+export const UnreadContext = createContext<{
+  unread: number | null;
+  refresh: () => Promise<void>;
+}>({ unread: null, refresh: async () => {} });
+
+/** For a screen that reads notifications: the bell then follows at once. */
+export const useUnread = () => useContext(UnreadContext);
+
 export const can = (session: Session, permission: string) =>
   session.permissions.includes(permission);
 

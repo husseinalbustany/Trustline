@@ -11,6 +11,11 @@ export type Session = {
     accreditationStandard: string;
     /** Whether the hospital takes reports from people who have not signed in. */
     publicReporting: boolean;
+    /**
+     * The hospital's own clock, an IANA name such as `Asia/Riyadh`. Every
+     * date and time its staff see or type is on it, wherever they are.
+     */
+    timeZone: string;
   };
   user: {
     id: string;
