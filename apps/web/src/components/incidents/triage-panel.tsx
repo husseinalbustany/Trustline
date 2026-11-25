@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useLayoutEffect, useState, type FormEvent } from "react";
 import { canIn, useSession } from "@/components/shell/session";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
@@ -10,25 +10,34 @@ import { api, codeOf } from "@/lib/api";
 import { fill } from "@/lib/format";
 import type { OrgUnit } from "@/lib/identity";
 import {
-  canBeTriaged,
   harmLevels,
-  statusMoves,
+  moveAction,
+  wordFor,
   type AssignableUser,
   type Incident,
   type IncidentCategory,
-  type StatusAction,
+  type StatusMove,
 } from "@/lib/incidents";
 import { pick, readForm, type Localized } from "@/lib/localized";
 import { unitOptions } from "@/lib/org-units";
 import { explain, textareaClass, type IncidentsProps } from "./types";
 
-type Message = { kind: "ok" | "error"; text: string };
+/**
+ * What a triage or a status change answered. A "saved" note belongs to the
+ * version of the incident it produced, and is not shown over a later one.
+ */
+type Message = {
+  kind: "ok" | "error";
+  text: string;
+  at: "triage" | "status";
+  revision?: number;
+};
 
 /** The incident changed since this page loaded it: it must be read again. */
 const isStale = (err: unknown) =>
   codeOf(err) === "invalid_transition" || codeOf(err) === "stale_incident";
 
-function Note({ message }: { message: Message | null }) {
+function Note({ message }: { message: Message | null | false }) {
   if (!message) return null;
   return (
     <p
@@ -48,29 +57,98 @@ type Shared = IncidentsProps & {
   onStale: () => void;
 };
 
-/** What someone with triage rights over this incident can do with it. */
+type Lists = {
+  units: OrgUnit[];
+  categories: IncidentCategory[];
+  staff: AssignableUser[];
+  staffProblem: boolean;
+};
+
+type Part = Shared & {
+  message: Message | null | false;
+  say: (message: Message | null) => void;
+};
+
+/**
+ * What someone with triage rights over this incident can do with it now.
+ * The API says what that is: `canRetriage` for the triage form, `moves` for
+ * the status changes. Nothing here knows the rules.
+ */
 export function TriagePanel({
   units,
   categories,
   staff,
   staffProblem,
   ...shared
-}: Shared & {
-  units: OrgUnit[];
-  categories: IncidentCategory[];
-  staff: AssignableUser[];
-  staffProblem: boolean;
-}) {
-  const { lang, t, incident, onChange, onStale } = shared;
+}: Shared & Lists) {
+  const { incident } = shared;
+  const [said, say] = useState<Message | null>(null);
+
+  // Visited pages stay mounted: "Triage saved." must not be waiting here
+  // when the page is shown again.
+  useLayoutEffect(() => () => say(null), []);
+
+  const message =
+    said && (said.kind === "error" || said.revision === incident.revision)
+      ? said
+      : null;
+  const about = (at: Message["at"]) => message?.at === at && message;
+
+  return (
+    <div className="flex flex-col gap-6">
+      {incident.canRetriage ? (
+        <TriageForm
+          // Starts again from what is stored whenever the incident is
+          // triaged or changes status, here or by someone else. A comment
+          // does not raise the revision, so it leaves unsaved choices alone.
+          // (The two keys differ: these are children of the same element.)
+          key={`triage:${incident.revision}`}
+          {...shared}
+          units={units}
+          categories={categories}
+          staff={staff}
+          staffProblem={staffProblem}
+          message={about("triage")}
+          say={say}
+        />
+      ) : (
+        // Triage was refused because the incident has since moved on.
+        <Note message={about("triage")} />
+      )}
+      {incident.moves.length > 0 ? (
+        <StatusActions
+          key={`status:${incident.revision}`}
+          {...shared}
+          message={about("status")}
+          say={say}
+        />
+      ) : (
+        <Note message={about("status")} />
+      )}
+    </div>
+  );
+}
+
+function TriageForm({
+  lang,
+  t,
+  incident,
+  onChange,
+  onStale,
+  units,
+  categories,
+  staff,
+  staffProblem,
+  message,
+  say,
+}: Part & Lists) {
   const session = useSession();
   const router = useRouter();
   const [ownerUnitId, setOwnerUnitId] = useState(incident.ownerUnit?.id ?? "");
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<Message | null>(null);
   const inLang = (text: Localized) =>
     pick(text, lang, session.tenant.defaultLocale);
   const g = t.triage;
-  const open = canBeTriaged(incident.status);
 
   // Triage rights come from where the incident happened or who owns it.
   // Handing it to a unit outside both ends this user's rights over it.
@@ -82,11 +160,14 @@ export function TriagePanel({
   // The department it was handed to may have been switched off since. It is
   // shown, marked inactive, but cannot be saved again: a new one is needed.
   const { ownerUnit } = incident;
-  const ownerOptions = unitOptions(units, (u) => inLang(u.name), {
-    id: ownerUnit?.id,
-    label: () =>
-      fill(g.ownerInactiveOption, { name: inLang(ownerUnit?.name ?? {}) }),
-  });
+  const ownerOptions = unitOptions(
+    units,
+    (u) => inLang(u.name),
+    ownerUnit && {
+      id: ownerUnit.id,
+      label: fill(g.ownerInactiveOption, { name: inLang(ownerUnit.name) }),
+    },
+  );
   const ownerInactive = ownerOptions.some(
     (o) => o.inactive && o.id === ownerUnitId,
   );
@@ -115,7 +196,7 @@ export function TriagePanel({
       e.currentTarget,
     );
     setBusy(true);
-    setMessage(null);
+    say(null);
     try {
       const result = await api<Incident | { handedOff: true }>(
         `/incidents/${incident.id}/triage`,
@@ -138,172 +219,176 @@ export function TriagePanel({
         setBusy(false);
         return router.push(`/${lang}/incidents`);
       }
+      // Said before the incident is replaced: this form is then put away.
+      say({
+        kind: "ok",
+        text: g.saved,
+        at: "triage",
+        revision: result.revision,
+      });
       onChange(result);
-      setMessage({ kind: "ok", text: g.saved });
     } catch (err) {
       if (isStale(err)) onStale();
-      setMessage({ kind: "error", text: explain(err, t.errors) });
+      say({ kind: "error", text: explain(err, t.errors), at: "triage" });
     }
     setBusy(false);
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      {open && (
-        <Panel title={incident.status === "new" ? g.title : g.retitle}>
-          <form
-            // Starts again from what was saved after every change.
-            key={incident.events.length}
-            onSubmit={submit}
-            className="flex flex-col gap-4 p-4"
+    <Panel title={incident.status === "new" ? g.title : g.retitle}>
+      <form onSubmit={submit} className="flex flex-col gap-4 p-4">
+        <p className="text-sm text-muted">{g.help}</p>
+        {!noHarm && (
+          <>
+            <Field label={g.harmLevel}>
+              <select
+                name="harmLevel"
+                required
+                defaultValue={incident.harmLevel}
+                className={inputClass}
+              >
+                {harmLevels.map((level) => (
+                  <option key={level} value={level}>
+                    {t.harm[level]}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <label className="flex items-center gap-3 text-sm font-medium">
+              <input
+                type="checkbox"
+                name="isSentinel"
+                defaultChecked={incident.isSentinel}
+                className="size-4 accent-accent"
+              />
+              {g.sentinel}
+            </label>
+          </>
+        )}
+        <Field label={g.category}>
+          <select
+            name="categoryId"
+            required
+            defaultValue={incident.category.id}
+            className={inputClass}
           >
-            <p className="text-sm text-muted">{g.help}</p>
-            {!noHarm && (
-              <>
-                <Field label={g.harmLevel}>
-                  <select
-                    name="harmLevel"
-                    required
-                    defaultValue={incident.harmLevel}
-                    className={inputClass}
-                  >
-                    {harmLevels.map((level) => (
-                      <option key={level} value={level}>
-                        {t.harm[level]}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <label className="flex items-center gap-3 text-sm font-medium">
-                  <input
-                    type="checkbox"
-                    name="isSentinel"
-                    defaultChecked={incident.isSentinel}
-                    className="size-4 accent-accent"
-                  />
-                  {g.sentinel}
-                </label>
-              </>
-            )}
-            <Field label={g.category}>
-              <select
-                name="categoryId"
-                required
-                defaultValue={incident.category.id}
-                className={inputClass}
-              >
-                {options.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {inLang(c.name)}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field
-              label={g.ownerUnit}
-              help={ownerInactive ? g.ownerInactive : undefined}
-            >
-              <select
-                // `required` does not refuse a disabled option, so this does.
-                ref={(select) => {
-                  select?.setCustomValidity(
-                    ownerInactive ? g.ownerInactive : "",
-                  );
-                }}
-                required
-                value={ownerUnitId}
-                onChange={(e) => setOwnerUnitId(e.target.value)}
-                className={inputClass}
-              >
-                <option value="" disabled>
-                  {t.form.choose}
-                </option>
-                {ownerOptions.map((u) => (
-                  <option key={u.id} value={u.id} disabled={u.inactive}>
-                    {u.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            {leavesScope && (
-              <p role="status" className="text-sm text-danger">
-                {g.leavesScope}
-              </p>
-            )}
-            <Field
-              label={g.assignee}
-              help={staffProblem ? g.usersError : undefined}
-            >
-              <select
-                name="assignedTo"
-                defaultValue={incident.assignedTo?.id ?? ""}
-                className={inputClass}
-              >
-                <option value="">{g.assigneeNone}</option>
-                {people.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {/* An option holds no elements, so each name is isolated
-                        with U+2068 … U+2069 to keep its own direction. */}
-                    {[inLang(p.name), p.orgUnitId && unitNames.get(p.orgUnitId)]
-                      .filter(Boolean)
-                      .map((part) => `\u2068${part}\u2069`)
-                      .join(" · ")}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Note message={message} />
-            <div>
-              <Button type="submit" disabled={busy}>
-                {g.submit}
-              </Button>
-            </div>
-          </form>
-        </Panel>
-      )}
-      {/* Triage was refused because the incident has since moved on. */}
-      {!open && message?.kind === "error" && <Note message={message} />}
-      <StatusActions {...shared} />
-    </div>
+            {options.map((c) => (
+              <option key={c.id} value={c.id}>
+                {inLang(c.name)}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field
+          label={g.ownerUnit}
+          help={ownerInactive ? g.ownerInactive : undefined}
+        >
+          <select
+            // `required` does not refuse a disabled option, so this does.
+            ref={(select) => {
+              select?.setCustomValidity(ownerInactive ? g.ownerInactive : "");
+            }}
+            required
+            value={ownerUnitId}
+            onChange={(e) => setOwnerUnitId(e.target.value)}
+            className={inputClass}
+          >
+            <option value="" disabled>
+              {t.form.choose}
+            </option>
+            {ownerOptions.map((u) => (
+              <option key={u.id} value={u.id} disabled={u.inactive}>
+                {u.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+        {leavesScope && (
+          <p role="status" className="text-sm text-danger">
+            {g.leavesScope}
+          </p>
+        )}
+        <Field
+          label={g.assignee}
+          help={staffProblem ? g.usersError : undefined}
+        >
+          <select
+            name="assignedTo"
+            defaultValue={incident.assignedTo?.id ?? ""}
+            className={inputClass}
+          >
+            <option value="">{g.assigneeNone}</option>
+            {people.map((p) => (
+              <option key={p.id} value={p.id}>
+                {/* An option holds no elements, so each name is isolated
+                    with U+2068 … U+2069 to keep its own direction. */}
+                {[inLang(p.name), p.orgUnitId && unitNames.get(p.orgUnitId)]
+                  .filter(Boolean)
+                  .map((part) => `\u2068${part}\u2069`)
+                  .join(" · ")}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Note message={message} />
+        <div>
+          <Button type="submit" disabled={busy}>
+            {g.submit}
+          </Button>
+        </div>
+      </form>
+    </Panel>
   );
 }
 
-/** Only the status changes the API accepts from the current status. */
-function StatusActions({ t, incident, onChange, onStale }: Shared) {
-  const [chosen, setChosen] = useState<StatusAction | null>(null);
+/** The status changes the API offers this user for this incident now. */
+function StatusActions({ t, incident, onChange, onStale, message, say }: Part) {
+  // Which of the offered moves was picked, by its place in the list.
+  const [chosen, setChosen] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState<Message | null>(null);
   const a = t.actions;
-  const moves = statusMoves[incident.status];
-  const move = moves.find((m) => m.action === chosen);
+  const { moves } = incident;
+  const move = chosen === null ? undefined : moves[chosen];
+
+  // Wording only. A move this app has no words for yet (a status added to
+  // the API since) is still offered, as "Move to …".
+  const label = (m: StatusMove) => {
+    const action = moveAction(incident.status, m.to);
+    return action
+      ? a[action]
+      : fill(a.moveTo, { status: wordFor(t.status, m.to, t.statusOther) });
+  };
+  const noteLabel = (m: StatusMove) => {
+    const action = moveAction(incident.status, m.to);
+    if (action && action !== "start") return a.note[action];
+    return m.noteRequired ? a.note.required : a.note.start;
+  };
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!move) return;
-    const form = e.currentTarget;
-    const { note } = readForm(form);
+    const { note } = readForm(e.currentTarget);
     setBusy(true);
-    setMessage(null);
+    say(null);
     try {
-      onChange(
-        await api<Incident>(`/incidents/${incident.id}/status`, {
-          method: "POST",
-          body: {
-            to: move.to,
-            note: note || null,
-            revision: incident.revision,
-          },
-        }),
-      );
-      form.reset();
-      setChosen(null);
-      setMessage({ kind: "ok", text: a.done });
+      const result = await api<Incident>(`/incidents/${incident.id}/status`, {
+        method: "POST",
+        body: {
+          to: move.to,
+          note: note || null,
+          revision: incident.revision,
+        },
+      });
+      // Said before the incident is replaced: this panel then starts again,
+      // with the moves open from the new status and an empty note.
+      say({ kind: "ok", text: a.done, at: "status", revision: result.revision });
+      onChange(result);
     } catch (err) {
       if (isStale(err)) {
         setChosen(null);
         onStale();
       }
-      setMessage({ kind: "error", text: explain(err, t.errors) });
+      say({ kind: "error", text: explain(err, t.errors), at: "status" });
     }
     setBusy(false);
   }
@@ -313,29 +398,30 @@ function StatusActions({ t, incident, onChange, onStale }: Shared) {
       <div className="flex flex-col gap-4 p-4">
         {!move && (
           <div className="flex flex-wrap gap-2">
-            {moves.map((m) => (
+            {moves.map((m, index) => (
               <Button
-                key={m.action}
+                // The same status can be offered twice, for different reasons.
+                key={`${m.to}:${index}`}
                 variant="secondary"
                 onClick={() => {
-                  setMessage(null);
-                  setChosen(m.action);
+                  say(null);
+                  setChosen(index);
                 }}
               >
-                {a[m.action]}
+                {label(m)}
               </Button>
             ))}
           </div>
         )}
         {move && (
           <form onSubmit={submit} className="flex flex-col gap-4">
-            <p className="text-sm font-medium">{a[move.action]}</p>
-            <Field label={a.note[move.action]} help={a.noteHelp}>
+            <p className="text-sm font-medium">{label(move)}</p>
+            <Field label={noteLabel(move)} help={a.noteHelp}>
               <textarea
                 name="note"
                 rows={3}
                 maxLength={2000}
-                required={move.note === "required"}
+                required={move.noteRequired}
                 dir="auto"
                 className={textareaClass}
               />

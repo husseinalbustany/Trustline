@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
@@ -13,16 +14,20 @@ import { api, statusOf } from "@/lib/api";
 import { dateTimeFormat, fill } from "@/lib/format";
 import type { OrgUnit } from "@/lib/identity";
 import {
-  valueAfter,
+  wordFor,
   type AssignableUser,
   type Incident,
   type IncidentCategory,
   type IncidentEvent,
+  type Was,
 } from "@/lib/incidents";
 import { pick, readForm, type Localized } from "@/lib/localized";
 import { IncidentPills } from "./pills";
 import { TriagePanel } from "./triage-panel";
 import { explain, textareaClass, type IncidentsProps } from "./types";
+
+/** One thing a triage set or changed: "Harm level: Mild harm → Severe harm". */
+type Change = { label: string; from?: string; to: string };
 
 /** One incident: the report, what has happened to it, and what can be done. */
 export function IncidentDetail({ lang, t }: IncidentsProps) {
@@ -34,6 +39,8 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
   const [staff, setStaff] = useState<AssignableUser[]>([]);
   const [staffProblem, setStaffProblem] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  // A later fetch failed: what is shown may be behind what is stored.
+  const [behind, setBehind] = useState(false);
   // The list of staff is for people who triage, wherever they do.
   const mayAssign = can(session, "incidents.triage");
   const listPath = `/${lang}/incidents`;
@@ -51,6 +58,7 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
         setUnits(u);
         setCategories(c);
         setProblem(null);
+        setBehind(false);
       })
       .catch(
         (err) =>
@@ -71,14 +79,18 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
     };
   }, [id, mayAssign, t]);
 
+  // After a comment, or when a change was refused because the incident had
+  // moved on. If this fails the page stays, with what was being written on
+  // it, and says it may be behind; only an incident that is gone replaces it.
   const refresh = () =>
     api<Incident>(`/incidents/${id}`)
       .then((incident) => {
         setLoaded(incident);
         setProblem(null);
+        setBehind(false);
       })
       .catch((err) =>
-        setProblem(statusOf(err) === 404 ? t.notFound : t.detail.loadError),
+        statusOf(err) === 404 ? setProblem(t.notFound) : setBehind(true),
       );
 
   const back = (
@@ -103,16 +115,22 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
   const dates = dateTimeFormat(lang);
   const when = (iso: string) => dates.format(new Date(iso));
   const d = t.detail;
-  // The list holds the units in use. One switched off since is named from
-  // the incident itself when it can be, and otherwise described.
+  // The incident carries the name of everything its timeline mentions,
+  // including units and categories switched off since and people who left.
   const unitName = (unitId: string) => {
     const known =
-      incident.units?.[unitId] ??
-      [...units, incident.orgUnit, incident.ownerUnit].find(
-        (u) => u?.id === unitId,
-      )?.name;
+      incident.units[unitId] ??
+      [incident.orgUnit, incident.ownerUnit].find((u) => u?.id === unitId)
+        ?.name;
     return known ? inLang(known) : t.inactiveUnit;
   };
+  const categoryName = (categoryId: string) =>
+    inLang(
+      incident.categories[categoryId] ??
+        (incident.category.id === categoryId ? incident.category.name : null),
+    );
+  const statusName = (status: string | null) =>
+    wordFor(t.status, status, t.statusOther);
 
   const facts: [string, ReactNode][] = [
     [d.type, t.type[incident.type]],
@@ -145,32 +163,43 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
     [d.rejectionReason, incident.rejectionReason],
   ];
 
-  /** A timeline entry in words: what happened, and the details under it. */
-  const describe = (event: IncidentEvent): [string, string[]] => {
+  /**
+   * What a triage did to one field, in words. A newer event holds
+   * `{ from, to }` and only for what changed; an older one holds the value
+   * it set, and nothing of what was there before.
+   */
+  const change = <T,>(
+    label: string,
+    was: Was<T> | undefined,
+    word: (value: T) => string,
+  ): Change | null => {
+    if (was === undefined) return null;
+    return was !== null && typeof was === "object" && "to" in was
+      ? { label, from: word(was.from), to: word(was.to) }
+      : { label, to: word(was as T) };
+  };
+
+  /** A timeline entry in words: what happened, and what it changed. */
+  const describe = (event: IncidentEvent): [string, Change[]] => {
     const e = t.timeline.events;
+    const c = t.timeline.changed;
     switch (event.kind) {
       case "triaged": {
-        // Newer events hold only what changed; each line shows what is there.
         const details = event.details ?? {};
-        const harmLevel = valueAfter(details.harmLevel);
-        const ownerUnitId = valueAfter(details.ownerUnitId);
-        const categoryId = valueAfter(details.categoryId);
-        const category = categoryId
-          ? inLang(
-              incident.categories?.[categoryId] ??
-                categories.find((c) => c.id === categoryId)?.name,
-            )
-          : "";
+        // An older event recorded "not sentinel" every time; it says
+        // nothing, so only a real change or a "yes" is shown.
+        const sentinel =
+          details.isSentinel === false ? undefined : details.isSentinel;
         return [
           e.triaged,
           [
-            harmLevel ? t.harm[harmLevel] : "",
-            valueAfter(details.isSentinel) ? t.sentinel : "",
-            ownerUnitId
-              ? fill(t.timeline.ownerUnit, { unit: unitName(ownerUnitId) })
-              : "",
-            category ? fill(t.timeline.category, { category }) : "",
-          ].filter(Boolean),
+            change(c.harmLevel, details.harmLevel, (v) => t.harm[v]),
+            change(c.isSentinel, sentinel, (v) => (v ? t.yes : t.no)),
+            change(c.categoryId, details.categoryId, categoryName),
+            change(c.ownerUnitId, details.ownerUnitId, (v) =>
+              v ? unitName(v) : d.ownerUnitNone,
+            ),
+          ].filter((line) => line !== null),
         ];
       }
       case "assigned": {
@@ -179,8 +208,7 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
         if (!assignedTo) return [fill(e.assignedUnit, { unit }), []];
         // The event names the person by id only.
         const person =
-          incident.people?.[assignedTo] ??
-          staff.find((p) => p.id === assignedTo)?.name ??
+          incident.people[assignedTo] ??
           (incident.assignedTo?.id === assignedTo
             ? incident.assignedTo.name
             : null);
@@ -191,16 +219,6 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
           [],
         ];
       }
-      case "status_changed":
-        return [
-          event.fromStatus && event.toStatus
-            ? fill(e.status_changed, {
-                from: t.status[event.fromStatus],
-                to: t.status[event.toStatus],
-              })
-            : t.actions.done,
-          [],
-        ];
       case "commented":
         return [
           event.details?.visibility === "internal"
@@ -208,17 +226,30 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
             : e.commented,
           [],
         ];
-      default:
+      case "reported":
+      case "closed":
+      case "rejected":
+      case "reopened":
         return [e[event.kind], []];
+      default:
+        // A plain change of status, or a kind of entry added to the API
+        // since: said by where the incident went, never by a raw code.
+        return [
+          event.fromStatus && event.toStatus
+            ? fill(e.status_changed, {
+                from: statusName(event.fromStatus),
+                to: statusName(event.toStatus),
+              })
+            : e.other,
+          [],
+        ];
     }
   };
-  const noteOf = (event: IncidentEvent) =>
-    event.kind === "status_changed" ||
-    event.kind === "closed" ||
-    event.kind === "rejected" ||
-    event.kind === "reopened"
-      ? event.details?.note
-      : null;
+  // Whatever the kind of entry, a note written with it is shown.
+  const noteOf = ({ details }: { details: object | null }) => {
+    const note = details && "note" in details ? details.note : null;
+    return typeof note === "string" ? note : null;
+  };
 
   return (
     <>
@@ -240,6 +271,14 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
           />
         }
       />
+      {behind && (
+        <p
+          role="status"
+          className="mt-4 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger"
+        >
+          {d.behind}
+        </p>
+      )}
       {incident.access === "reporter" && (
         <p className="mt-4 rounded-md bg-surface px-3 py-2 text-sm text-muted">
           {d.reporterView}
@@ -274,7 +313,8 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
           </div>
         </Panel>
 
-        {incident.canTriage && (
+        {/* What the API lets this user do now; nothing when that is nothing. */}
+        {(incident.canRetriage || incident.moves.length > 0) && (
           <div className="lg:col-start-2 lg:row-span-3 lg:row-start-1">
             <TriagePanel
               lang={lang}
@@ -293,7 +333,7 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
         <Panel title={t.timeline.title}>
           <ol className="flex flex-col gap-4 p-4">
             {incident.events.map((event) => {
-              const [headline, lines] = describe(event);
+              const [headline, changes] = describe(event);
               const note = noteOf(event);
               const name = event.actor
                 ? inLang(event.actor.name)
@@ -306,7 +346,30 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
                   className="border-s-2 border-line ps-3 text-sm"
                 >
                   <p className="font-medium">{headline}</p>
-                  {lines.length > 0 && <p>{lines.join(" · ")}</p>}
+                  {changes.length > 0 && (
+                    <ul className="mt-0.5 flex flex-col gap-0.5">
+                      {changes.map(({ label, from, to }) => (
+                        <li key={label}>
+                          <span className="text-muted">{label}</span>{" "}
+                          {from !== undefined && (
+                            <>
+                              <bdi>{from}</bdi>{" "}
+                              {/* Points the way the line is read: it is
+                                  turned round in a right-to-left language. */}
+                              <ArrowRight
+                                className="inline size-3.5 text-muted rtl:-scale-x-100"
+                                aria-hidden
+                              />
+                              <span className="sr-only">
+                                {t.timeline.changedTo}
+                              </span>{" "}
+                            </>
+                          )}
+                          <bdi>{to}</bdi>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   {note && (
                     <p className="mt-1">
                       <span className="text-muted">{t.timeline.note} </span>

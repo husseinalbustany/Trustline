@@ -10,6 +10,8 @@ export function explain(err: unknown, errors: IncidentsText["errors"]) {
   const code = codeOf(err);
   if (code && code in errors) return errors[code as keyof typeof errors];
   const status = statusOf(err);
+  // The session ended while the page was open (they last eight hours).
+  if (status === 401) return errors.signedOut;
   if (status === 404) return errors.notFound;
   if (status === 403) return errors.missing_permission;
   return status === 400 ? errors.invalid : errors.generic;

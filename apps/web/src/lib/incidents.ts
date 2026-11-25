@@ -12,12 +12,24 @@ export const harmLevels = [
 ] as const;
 export type HarmLevel = (typeof harmLevels)[number];
 
-export type IncidentStatus =
-  | "new"
-  | "triaged"
-  | "in_progress"
-  | "closed"
-  | "rejected";
+/** The statuses this app has wording for. */
+export const incidentStatuses = [
+  "new",
+  "triaged",
+  "in_progress",
+  "closed",
+  "rejected",
+] as const;
+export type KnownStatus = (typeof incidentStatuses)[number];
+/**
+ * A status as the API sends it. It may be one added to the API after this
+ * app was built, so nothing here may assume it is one of the known ones:
+ * word it with `wordFor`, colour it with `statusToneOf`.
+ */
+export type IncidentStatus = KnownStatus | (string & {});
+
+export const sortOrders = ["newest", "oldest", "harm"] as const;
+export type SortOrder = (typeof sortOrders)[number];
 
 export type CommentVisibility = "everyone" | "internal";
 
@@ -29,6 +41,15 @@ export type IncidentSummary = {
   open: number;
   awaitingTriage: number;
   closedLast30Days: number;
+  /** Open incidents assigned to the caller. */
+  assignedToMe: number;
+  /** Open incidents that are severe, a death, or a sentinel event. */
+  serious: number;
+  /**
+   * The median time from opening the report form to sending it, over the
+   * last 30 days. Null when no report in that time carries a start time.
+   */
+  medianSecondsToReport: number | null;
 };
 
 export type IncidentListItem = {
@@ -43,6 +64,7 @@ export type IncidentListItem = {
   harmLevel: HarmLevel;
   isSentinel: boolean;
   status: IncidentStatus;
+  assignedToMe: boolean;
   descriptionExcerpt: string;
 };
 
@@ -52,10 +74,6 @@ type Note = { note: string | null } | null;
 
 /** A changed value as an event records it: the new shape, or the older plain one. */
 export type Was<T> = T | { from: T; to: T };
-
-/** The value an event left behind, whichever way it was recorded. */
-export const valueAfter = <T,>(was: Was<T> | undefined): T | undefined =>
-  was !== null && typeof was === "object" && "to" in was ? was.to : was;
 
 /** One entry on the timeline. What `details` holds depends on the kind. */
 export type IncidentEvent = {
@@ -102,7 +120,18 @@ export type IncidentComment = {
   createdAt: string;
 };
 
-export type Incident = Omit<IncidentListItem, "descriptionExcerpt"> & {
+/** An org unit as an incident names it: still named when switched off. */
+type Unit = Named & { active: boolean };
+
+/** A change of status the caller may make now, as the API offers it. */
+export type StatusMove = { to: IncidentStatus; noteRequired: boolean };
+
+export type Incident = Omit<
+  IncidentListItem,
+  "descriptionExcerpt" | "assignedToMe" | "orgUnit" | "ownerUnit"
+> & {
+  orgUnit: Unit;
+  ownerUnit: Unit | null;
   description: string;
   immediateAction: string | null;
   /** Null when it was reported anonymously. */
@@ -114,13 +143,20 @@ export type Incident = Omit<IncidentListItem, "descriptionExcerpt"> & {
   closureSummary: string | null;
   rejectionReason: string | null;
   access: "full" | "reporter";
-  /** Changes with every write; sent back so a stale page is refused. */
-  revision?: number;
+  /**
+   * Raised by every triage and status change (not by a comment); sent back
+   * so a decision made on a stale page is refused.
+   */
+  revision: number;
   /** Names for the ids its events mention, including ones no longer listed. */
-  people?: Record<string, Localized>;
-  units?: Record<string, Localized>;
-  categories?: Record<string, Localized>;
+  people: Record<string, Localized>;
+  units: Record<string, Localized>;
+  categories: Record<string, Localized>;
   canTriage: boolean;
+  /** The caller may triage it, and its status still allows that. */
+  canRetriage: boolean;
+  /** The status changes the caller may make now. The API holds the rules. */
+  moves: StatusMove[];
   events: IncidentEvent[];
   comments: IncidentComment[];
 };
@@ -134,40 +170,60 @@ export type AssignableUser = {
 export type StatusAction = "start" | "close" | "reject" | "reopen";
 
 /**
- * The status changes the API accepts from each status, so the screen offers
- * exactly those. The API decides; this only mirrors POST /incidents/:id/status.
+ * Which wording a status change gets. This is about words only: which
+ * changes are allowed, and whether a note is needed, comes from `moves` on
+ * the incident. A change this app has no wording for returns null and is
+ * shown as "Move to …".
  */
-export const statusMoves: Record<
-  IncidentStatus,
-  { action: StatusAction; to: IncidentStatus; note: "required" | "optional" }[]
-> = {
-  new: [{ action: "reject", to: "rejected", note: "required" }],
-  triaged: [
-    { action: "start", to: "in_progress", note: "optional" },
-    { action: "close", to: "closed", note: "required" },
-  ],
-  in_progress: [{ action: "close", to: "closed", note: "required" }],
-  closed: [{ action: "reopen", to: "in_progress", note: "required" }],
-  rejected: [{ action: "reopen", to: "in_progress", note: "required" }],
-};
+export function moveAction(
+  from: IncidentStatus,
+  to: IncidentStatus,
+): StatusAction | null {
+  if (to === "closed") return "close";
+  if (to === "rejected") return "reject";
+  if (to !== "in_progress") return null;
+  // Work that starts for the first time, or again after the incident ended.
+  if (from === "triaged") return "start";
+  return from === "closed" || from === "rejected" ? "reopen" : null;
+}
 
-/** Triage is accepted only while an incident is new or already triaged. */
-export const canBeTriaged = (status: IncidentStatus) =>
-  status === "new" || status === "triaged";
+/**
+ * The wording for a code the API sent, or `other` when this app has none
+ * for it yet: a raw code is never shown.
+ */
+export const wordFor = (
+  words: Record<string, string>,
+  code: string | null | undefined,
+  other: string,
+): string => (code != null && Object.hasOwn(words, code) ? words[code] : other);
 
-export const statusTone = {
+const statusTone: Record<KnownStatus, "ok" | "neutral"> = {
   // Not red: a reporter's fresh report is waiting, not in trouble.
   new: "neutral",
   triaged: "ok",
   in_progress: "ok",
   closed: "neutral",
   rejected: "neutral",
-} as const;
+};
+
+export const statusToneOf = (status: IncidentStatus) =>
+  Object.hasOwn(statusTone, status)
+    ? statusTone[status as KnownStatus]
+    : "neutral";
+
+/** Severe harm, a death or a sentinel event: marked so it cannot be missed. */
+export const isSerious = (incident: {
+  harmLevel: HarmLevel;
+  isSentinel: boolean;
+}) =>
+  incident.isSentinel ||
+  incident.harmLevel === "severe" ||
+  incident.harmLevel === "death";
 
 export const harmTone = {
   none: "neutral",
   mild: "neutral",
   moderate: "danger",
-  severe: "danger",
-  death: "danger",
+  severe: "alert",
+  death: "alert",
 } as const;

@@ -25,9 +25,18 @@ export type Session = {
   scope: Record<string, "all" | string[]>;
 };
 
+/**
+ * An org unit as a user's record names it. The name comes with the record,
+ * so a unit switched off since is still shown by name, to everyone who may
+ * see the user, whether or not they may list inactive units.
+ */
+export type UnitRef = { id: string; name: Localized; active: boolean };
+
 export type RoleGrant = {
   roleId: string;
   orgUnitId: string | null;
+  /** The unit the role is granted for; null for the whole organization. */
+  orgUnit: UnitRef | null;
   code: string;
   name: Localized;
 };
@@ -37,6 +46,7 @@ export type User = {
   name: Localized;
   email: string;
   orgUnitId: string | null;
+  orgUnit: UnitRef | null;
   employeeNumber: string | null;
   jobTitle: string | null;
   phone: string | null;

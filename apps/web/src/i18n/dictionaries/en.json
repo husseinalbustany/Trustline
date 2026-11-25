@@ -44,11 +44,18 @@
     "tiles": {
       "openIncidents": "Open incidents",
       "awaitingTriage": "Awaiting triage",
+      "seriousOpen": "Serious open incidents",
+      "timeToReport": "Median time to report",
       "overdueActions": "Overdue actions",
       "policiesDue": "Policies due for review"
     },
+    "seriousHelp": "Severe harm, death or sentinel event",
+    "timeToReportHelp": "From opening the form to sending it, over the last 30 days",
     "recentIncidents": "Recent incidents",
     "myTasks": "My tasks",
+    "assignedToMe": "Open incidents assigned to you",
+    "noTasks": "No open incidents are assigned to you.",
+    "viewTasks": "View the incidents assigned to me",
     "loadError": "Could not load incidents. Reload the page.",
     "noIncidents": "No incidents to show yet.",
     "viewAll": "View all incidents"
@@ -81,6 +88,7 @@
       "closed": "Closed",
       "rejected": "Not taken forward"
     },
+    "statusOther": "Other status",
     "harm": {
       "none": "No harm",
       "mild": "Mild harm",
@@ -89,13 +97,34 @@
       "death": "Death"
     },
     "sentinel": "Sentinel event",
+    "yes": "Yes",
+    "no": "No",
     "list": {
       "filterLabel": "Filter by status",
       "all": "All",
       "mine": "Reported by me",
+      "assignedToMe": "Assigned to me",
+      "reference": "Reference starts with",
+      "referenceExample": "INC-2026-00042",
+      "search": "Search",
+      "sortLabel": "Order",
+      "sort": {
+        "newest": "Newest first",
+        "oldest": "Oldest first",
+        "harm": "Most harm first"
+      },
+      "filters": "More filters",
+      "filtersCount": "More filters ({count})",
+      "clear": "Clear filters",
+      "department": "Department",
+      "departmentHelp": "Where it happened, or the department handling it.",
+      "from": "Reported from",
+      "to": "Reported up to",
       "empty": "No incidents to show. When one is reported, it appears here.",
-      "emptyFiltered": "No incidents match these filters. Change the status or untick “Reported by me”.",
+      "emptyFiltered": "No incidents match these filters. Change them, or clear them to see every incident.",
       "reported": "Reported {date}",
+      "reportedAgo": "Reported {ago}",
+      "assignedToYou": "Assigned to you",
       "pagination": "Pages",
       "page": "Page {page} of {pages}",
       "total": "{total} in total",
@@ -147,7 +176,8 @@
       "assignedToNone": "No one yet",
       "closureSummary": "Closure summary",
       "rejectionReason": "Reason for not taking it forward",
-      "loadError": "Could not load this incident. Reload the page."
+      "loadError": "Could not load this incident. Reload the page.",
+      "behind": "This page could not be updated and may not show the latest changes. Reload the page."
     },
     "timeline": {
       "title": "Timeline",
@@ -155,8 +185,13 @@
       "anonymousReporter": "Anonymous reporter",
       "unknownPerson": "Unknown user",
       "note": "Note:",
-      "ownerUnit": "Handling department: {unit}",
-      "category": "Category: {category}",
+      "changed": {
+        "harmLevel": "Harm level:",
+        "isSentinel": "Sentinel event:",
+        "categoryId": "Category:",
+        "ownerUnitId": "Handling department:"
+      },
+      "changedTo": "changed to",
       "events": {
         "reported": "Reported",
         "triaged": "Triaged",
@@ -168,7 +203,8 @@
         "rejected": "Not taken forward",
         "reopened": "Reopened",
         "commented": "Comment added",
-        "commentedInternal": "Internal comment added"
+        "commentedInternal": "Internal comment added",
+        "other": "Incident updated"
       }
     },
     "comments": {
@@ -206,11 +242,13 @@
       "close": "Close incident",
       "reject": "Do not take forward",
       "reopen": "Reopen",
+      "moveTo": "Move to “{status}”",
       "note": {
         "start": "Note (optional)",
         "close": "Closure summary: what was found and what was done",
         "reject": "Why this report is not taken forward",
-        "reopen": "Why this incident is reopened"
+        "reopen": "Why this incident is reopened",
+        "required": "Note explaining this change"
       },
       "noteHelp": "The reporter can read this note. Do not type patient names or record numbers.",
       "confirm": "Confirm",
@@ -220,15 +258,20 @@
     "errors": {
       "invalid": "Check the fields and try again.",
       "occurred_in_future": "The time it happened is in the future. Correct it and send again.",
+      "occurred_too_long_ago": "The date it happened is too far in the past. Check the date, especially the year, then send again.",
       "unknown_category": "This category is no longer available. Reload the page and choose another.",
       "unknown_org_unit": "This department is no longer available: it has been switched off or removed. Reload the page and choose another.",
       "unknown_assignee": "This person can no longer be assigned: their account is not active. Choose someone else.",
+      "harm_not_applicable": "A near miss or a hazard harmed no one, so its harm level must be “No harm”. Choose “No harm”, then try again.",
+      "sentinel_not_applicable": "A near miss or a hazard cannot be a sentinel event. Untick “This is a sentinel event”, then save again.",
       "missing_permission": "Your role does not allow this. Ask your administrator.",
       "outside_scope": "Your role does not cover the department of this incident. Ask someone who triages for that department.",
       "invalid_transition": "Someone else has changed this incident in the meantime. The page now shows its current status; check it and try again.",
       "stale_incident": "Someone else changed this incident while you had it open. The page now shows its latest version: check it and save again. If this keeps happening, reload the page.",
+      "serious_cannot_be_rejected": "An incident with severe harm, a death or a sentinel event must be taken forward. If the harm level or the sentinel mark is wrong, correct it in the triage first, then try again.",
       "note_required": "Write a note explaining this change, then confirm again.",
       "internal_not_allowed": "You cannot add internal comments. Under “Who can read it”, choose the option that includes the reporter, then add the comment again.",
+      "signedOut": "Your session has ended, so this was not saved. Sign in again in another tab, then come back to this page and try again: what you typed is still here.",
       "notFound": "This incident does not exist, or your role does not let you see it. Go back to the list.",
       "generic": "Could not save. Check your connection and try again."
     },
@@ -526,7 +569,9 @@
         "name": "Name",
         "languageMismatch": "Fill in the name in the default language.",
         "departmentInactive": "This department is switched off. The user stays in it until you choose another.",
-        "unknownUnit": "A department chosen here has been switched off. Reload the page and choose another."
+        "unknownUnit": "A department chosen here has been switched off. Reload the page and choose another.",
+        "inactiveDepartment": "{name} (inactive)",
+        "outsideScope": "Your role does not cover this user, or the department chosen for them. Choose a department your role covers, or ask your administrator."
       }
     },
     "roles": {
@@ -565,7 +610,6 @@
         "languageMismatch": "Fill in the name in the default language."
       }
     },
-    "inactiveUnit": "Inactive unit",
     "organization": {
       "title": "Organization",
       "description": "The facilities, departments and units of your hospital. Incidents, users and role scopes point at them.",

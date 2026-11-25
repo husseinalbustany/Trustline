@@ -66,6 +66,15 @@ export function ReportForm({
       .catch(() => setProblem(true));
   }, [allowed]);
 
+  // "When" shows the present minute until the reporter changes it, and the
+  // present moment is what is then sent. So the minute shown keeps up with
+  // the clock for as long as the form is open: what the reporter sees is
+  // what is stored, even on a workstation left on this page for hours.
+  useEffect(() => {
+    const timer = setInterval(() => setNow(localMinute(new Date())), 10_000);
+    return () => clearInterval(timer);
+  }, []);
+
   // Visited pages stay mounted, so nothing of a sent report may be waiting
   // here when the page is shown again.
   const startAgain = () => {
@@ -264,6 +273,8 @@ export function ReportForm({
             type="datetime-local"
             required
             dir="ltr"
+            // The API takes nothing before 1900: a mistyped year is caught here.
+            min="1900-01-01T00:00"
             max={now}
             value={occurredAt ?? now}
             onFocus={() => setNow(localMinute(new Date()))}

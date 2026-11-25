@@ -44,11 +44,18 @@
     "tiles": {
       "openIncidents": "Incidents ouverts",
       "awaitingTriage": "En attente de tri",
+      "seriousOpen": "Incidents graves ouverts",
+      "timeToReport": "Durée médiane de déclaration",
       "overdueActions": "Actions correctives en retard",
       "policiesDue": "Politiques à réviser"
     },
+    "seriousHelp": "Préjudice grave, décès ou événement sentinelle",
+    "timeToReportHelp": "De l'ouverture du formulaire à l'envoi, sur les 30 derniers jours",
     "recentIncidents": "Incidents récents",
     "myTasks": "Mes tâches",
+    "assignedToMe": "Incidents ouverts qui vous sont attribués",
+    "noTasks": "Aucun incident ouvert ne vous est attribué.",
+    "viewTasks": "Voir les incidents qui me sont attribués",
     "loadError": "Impossible de charger les incidents. Rechargez la page.",
     "noIncidents": "Aucun incident à afficher pour l'instant.",
     "viewAll": "Voir tous les incidents"
@@ -81,6 +88,7 @@
       "closed": "Clôturé",
       "rejected": "Classé sans suite"
     },
+    "statusOther": "Autre statut",
     "harm": {
       "none": "Aucun préjudice",
       "mild": "Préjudice léger",
@@ -89,13 +97,34 @@
       "death": "Décès"
     },
     "sentinel": "Événement sentinelle",
+    "yes": "Oui",
+    "no": "Non",
     "list": {
       "filterLabel": "Filtrer par statut",
       "all": "Tous",
       "mine": "Déclarés par moi",
+      "assignedToMe": "Attribués à moi",
+      "reference": "La référence commence par",
+      "referenceExample": "INC-2026-00042",
+      "search": "Rechercher",
+      "sortLabel": "Ordre",
+      "sort": {
+        "newest": "Plus récents d'abord",
+        "oldest": "Plus anciens d'abord",
+        "harm": "Plus graves d'abord"
+      },
+      "filters": "Plus de filtres",
+      "filtersCount": "Plus de filtres ({count})",
+      "clear": "Effacer les filtres",
+      "department": "Service",
+      "departmentHelp": "Lieu de l'événement ou service chargé du traitement.",
+      "from": "Déclaré à partir du",
+      "to": "Déclaré jusqu'au",
       "empty": "Aucun incident à afficher. Dès qu'un incident est déclaré, il apparaît ici.",
-      "emptyFiltered": "Aucun incident ne correspond à ces filtres. Changez de statut ou décochez « Déclarés par moi ».",
+      "emptyFiltered": "Aucun incident ne correspond à ces filtres. Modifiez-les, ou effacez-les pour voir tous les incidents.",
       "reported": "Déclaré le {date}",
+      "reportedAgo": "Déclaré {ago}",
+      "assignedToYou": "Attribué à vous",
       "pagination": "Pages",
       "page": "Page {page} sur {pages}",
       "total": "{total} au total",
@@ -147,7 +176,8 @@
       "assignedToNone": "Personne pour l'instant",
       "closureSummary": "Synthèse de clôture",
       "rejectionReason": "Motif du classement sans suite",
-      "loadError": "Impossible de charger cet incident. Rechargez la page."
+      "loadError": "Impossible de charger cet incident. Rechargez la page.",
+      "behind": "Cette page n'a pas pu être actualisée et n'affiche peut-être pas les dernières modifications. Rechargez la page."
     },
     "timeline": {
       "title": "Chronologie",
@@ -155,8 +185,13 @@
       "anonymousReporter": "Déclarant anonyme",
       "unknownPerson": "Utilisateur inconnu",
       "note": "Note :",
-      "ownerUnit": "Service chargé du traitement : {unit}",
-      "category": "Catégorie : {category}",
+      "changed": {
+        "harmLevel": "Niveau de préjudice :",
+        "isSentinel": "Événement sentinelle :",
+        "categoryId": "Catégorie :",
+        "ownerUnitId": "Service chargé du traitement :"
+      },
+      "changedTo": "devient",
       "events": {
         "reported": "Déclaration",
         "triaged": "Tri",
@@ -168,7 +203,8 @@
         "rejected": "Classement sans suite",
         "reopened": "Réouverture",
         "commented": "Commentaire ajouté",
-        "commentedInternal": "Commentaire interne ajouté"
+        "commentedInternal": "Commentaire interne ajouté",
+        "other": "Mise à jour de l'incident"
       }
     },
     "comments": {
@@ -206,11 +242,13 @@
       "close": "Clôturer l'incident",
       "reject": "Classer sans suite",
       "reopen": "Rouvrir",
+      "moveTo": "Passer à « {status} »",
       "note": {
         "start": "Note (facultative)",
         "close": "Synthèse de clôture : ce qui a été constaté et ce qui a été fait",
         "reject": "Motif du classement sans suite de cette déclaration",
-        "reopen": "Motif de la réouverture de cet incident"
+        "reopen": "Motif de la réouverture de cet incident",
+        "required": "Note expliquant ce changement"
       },
       "noteHelp": "Le déclarant peut lire cette note. N'indiquez ni nom de patient ni numéro de dossier.",
       "confirm": "Confirmer",
@@ -220,15 +258,20 @@
     "errors": {
       "invalid": "Vérifiez les champs puis réessayez.",
       "occurred_in_future": "La date de l'événement est dans le futur. Corrigez-la, puis envoyez de nouveau la déclaration.",
+      "occurred_too_long_ago": "La date de l'événement est trop ancienne. Vérifiez la date, en particulier l'année, puis envoyez de nouveau la déclaration.",
       "unknown_category": "Cette catégorie n'est plus disponible. Rechargez la page et choisissez-en une autre.",
       "unknown_org_unit": "Ce service n'est plus disponible : il a été désactivé ou supprimé. Rechargez la page et choisissez-en un autre.",
       "unknown_assignee": "Cet incident ne peut plus être attribué à cette personne : son compte n'est pas actif. Choisissez quelqu'un d'autre.",
+      "harm_not_applicable": "Un presque-accident ou un danger n'a causé de préjudice à personne : son niveau de préjudice doit être « Aucun préjudice ». Choisissez « Aucun préjudice », puis réessayez.",
+      "sentinel_not_applicable": "Un presque-accident ou un danger ne peut pas être un événement sentinelle. Décochez « Il s'agit d'un événement sentinelle », puis enregistrez de nouveau.",
       "missing_permission": "Votre rôle ne le permet pas. Adressez-vous à votre administrateur.",
       "outside_scope": "Votre rôle ne couvre pas le service de cet incident. Adressez-vous à une personne chargée du tri pour ce service.",
       "invalid_transition": "Quelqu'un d'autre a modifié cet incident entre-temps. La page affiche maintenant son statut actuel ; vérifiez-le puis réessayez.",
       "stale_incident": "Quelqu'un d'autre a modifié cet incident pendant que vous l'aviez ouvert. La page affiche maintenant sa dernière version : vérifiez-la puis enregistrez de nouveau. Si cela se reproduit, rechargez la page.",
+      "serious_cannot_be_rejected": "Un incident comportant un préjudice grave, un décès ou un événement sentinelle ne peut pas être classé sans suite. Si le niveau de préjudice ou la mention d'événement sentinelle est inexact, corrigez-le d'abord dans le tri, puis réessayez.",
       "note_required": "Rédigez une note expliquant ce changement, puis confirmez à nouveau.",
       "internal_not_allowed": "Vous ne pouvez pas ajouter de commentaire interne. Sous « Qui peut le lire », choisissez l'option qui inclut le déclarant, puis ajoutez de nouveau le commentaire.",
+      "signedOut": "Votre session a expiré : rien n'a été enregistré. Reconnectez-vous dans un autre onglet, puis revenez sur cette page et réessayez : ce que vous avez saisi est toujours là.",
       "notFound": "Cet incident n'existe pas, ou votre rôle ne vous permet pas de le consulter. Revenez à la liste.",
       "generic": "Enregistrement impossible. Vérifiez votre connexion puis réessayez."
     },
@@ -526,7 +569,9 @@
         "name": "Nom",
         "languageMismatch": "Saisissez le nom dans la langue par défaut.",
         "departmentInactive": "Ce service est désactivé. L'utilisateur y reste tant que vous n'en choisissez pas un autre.",
-        "unknownUnit": "Un service choisi ici a été désactivé. Rechargez la page et choisissez-en un autre."
+        "unknownUnit": "Un service choisi ici a été désactivé. Rechargez la page et choisissez-en un autre.",
+        "inactiveDepartment": "{name} (inactif)",
+        "outsideScope": "Votre rôle ne couvre pas cet utilisateur, ou le service choisi pour lui. Choisissez un service couvert par votre rôle, ou adressez-vous à votre administrateur."
       }
     },
     "roles": {
@@ -565,7 +610,6 @@
         "languageMismatch": "Saisissez le nom dans la langue par défaut."
       }
     },
-    "inactiveUnit": "Unité inactive",
     "organization": {
       "title": "Organisation",
       "description": "Les sites, services et unités de votre établissement. Les incidents, les utilisateurs et les périmètres des rôles s'y rattachent.",

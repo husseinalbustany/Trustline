@@ -1,4 +1,3 @@
-import { api } from "./api";
 import type { OrgUnit } from "./identity";
 
 export type UnitType = OrgUnit["type"];
@@ -20,18 +19,6 @@ export const childType: Record<UnitType, UnitType | null> = {
   department: "unit",
   unit: null,
 };
-
-/**
- * The org units a form needs. Units switched off are only given to someone
- * who manages the structure; everyone else gets the ones that can be chosen.
- */
-export const loadUnits = (includeInactive: boolean) =>
-  includeInactive
-    ? api<OrgUnit[]>("/org-units?includeInactive=true").catch(() =>
-        // The permission may have been taken away since signing in.
-        api<OrgUnit[]>("/org-units"),
-      )
-    : api<OrgUnit[]>("/org-units");
 
 /**
  * Units in the order of the tree: each one followed by what sits under it.
@@ -64,30 +51,24 @@ export type UnitOption = { id: string; label: string; inactive: boolean };
  * Org units as the options of a select: the ones that can be chosen, each
  * under its parent and indented by level.
  *
- * `stored` is the unit already saved on the record being edited. When it has
- * been switched off it is no longer a choice, but it is listed first, marked
- * inactive, so the form shows where the record really is instead of quietly
- * showing something else. `label` gets the unit when its name is known.
+ * `stored` is the unit already saved on the record being edited, with the
+ * label to give it if it has been switched off since. It is then no longer
+ * a choice, but it is listed first, marked inactive, so the form shows where
+ * the record really is instead of quietly showing something else. The
+ * record itself carries the unit's name, so nothing is looked up.
  */
 export function unitOptions(
   units: OrgUnit[],
   nameOf: (unit: OrgUnit) => string,
-  stored?: {
-    id: string | null | undefined;
-    label: (unit: OrgUnit | undefined) => string;
-  },
+  stored?: { id: string; label: string } | null,
 ): UnitOption[] {
   const out = inTreeOrder(units.filter((u) => u.active)).map((unit) => ({
     id: unit.id,
     label: indent[unit.type] + nameOf(unit),
     inactive: false,
   }));
-  if (stored?.id && !out.some((o) => o.id === stored.id)) {
-    out.unshift({
-      id: stored.id,
-      label: stored.label(units.find((u) => u.id === stored.id)),
-      inactive: true,
-    });
+  if (stored && !out.some((o) => o.id === stored.id)) {
+    out.unshift({ id: stored.id, label: stored.label, inactive: true });
   }
   return out;
 }

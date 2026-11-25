@@ -9,10 +9,9 @@ import { EmptyState, Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
 import { api, statusOf } from "@/lib/api";
 import { fill } from "@/lib/format";
-import type { OrgUnit, User } from "@/lib/identity";
+import type { User } from "@/lib/identity";
 import { pick, type Localized } from "@/lib/localized";
-import { loadUnits } from "@/lib/org-units";
-import { can, useSession } from "@/components/shell/session";
+import { useSession } from "@/components/shell/session";
 import { AdminTabs } from "./admin-tabs";
 import type { AdminProps } from "./types";
 
@@ -24,37 +23,35 @@ export const statusTone = {
 
 export function UsersList({ lang, t }: AdminProps) {
   const [users, setUsers] = useState<User[] | null>(null);
-  const [units, setUnits] = useState<OrgUnit[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
   const session = useSession();
   const inLang = (text: Localized | null) =>
     pick(text, lang, session.tenant.defaultLocale);
-  // Someone who manages the structure can be shown units switched off by name.
-  const seesInactive = can(session, "organization.manage");
   const roleList = new Intl.ListFormat(lang, { style: "short", type: "unit" });
 
   useEffect(() => {
-    Promise.all([api<User[]>("/users"), loadUnits(seesInactive)])
-      .then(([u, o]) => {
+    api<User[]>("/users")
+      .then((u) => {
         setUsers(u);
-        setUnits(o);
         setProblem(null);
       })
       .catch((err) =>
         setProblem(statusOf(err) === 403 ? t.noAccess : t.loadError),
       );
-  }, [t, seesInactive]);
+  }, [t]);
 
-  const unitName = (id: string | null) => {
-    if (!id) return "";
-    const unit = units.find((u) => u.id === id);
-    // Still in a unit that was switched off: say so instead of showing none.
-    if (!unit) return t.inactiveUnit;
-    return unit.active
-      ? inLang(unit.name)
-      : fill(t.organization.inactiveNamed[unit.type], {
-          name: inLang(unit.name),
-        });
+  // Each user comes with the name of their unit, so one switched off since
+  // is still named, and marked, for everyone who may see this list.
+  // A name a client wrote keeps its own direction: in <bdi>, or isolated
+  // by `fill` inside the sentence that marks it.
+  const unitName = ({ orgUnit }: User) => {
+    if (!orgUnit) return null;
+    const name = inLang(orgUnit.name);
+    return orgUnit.active ? (
+      <bdi>{name}</bdi>
+    ) : (
+      fill(t.users.form.inactiveDepartment, { name })
+    );
   };
   const c = t.users.columns;
 
@@ -110,7 +107,7 @@ export function UsersList({ lang, t }: AdminProps) {
                           <span dir="ltr">{user.email}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-3">{unitName(user.orgUnitId)}</td>
+                      <td className="px-4 py-3">{unitName(user)}</td>
                       <td className="px-4 py-3">
                         {roleList.format([
                           ...new Set(user.roles.map((r) => inLang(r.name))),
