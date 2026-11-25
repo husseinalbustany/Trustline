@@ -40,17 +40,18 @@ export function timeAgoFormat(lang: string) {
   };
 }
 
-/** How long from now, in the reader's words: "in 12 minutes", "in 1 hour". */
-export function timeUntilFormat(lang: string) {
-  const counted = new Intl.RelativeTimeFormat(withWesternDigits(lang), {
-    numeric: "always",
-  });
-  return (seconds: number) => {
-    const minutes = Math.max(1, Math.ceil(seconds / 60));
-    return minutes < 60
-      ? counted.format(minutes, "minute")
-      : counted.format(Math.ceil(minutes / 60), "hour");
-  };
+/**
+ * The time on the clock a number of seconds from now, as the reader's
+ * language writes it: "14:32", "2:32 PM". Rounded up to the minute, so
+ * "after 14:32" is never too early. A clock time and not "in 12 minutes":
+ * it needs no plural form, and cannot be read as "during".
+ */
+export function clockTimeIn(lang: string) {
+  const clock = dateTimeFormat(lang, { hour: "numeric", minute: "2-digit" });
+  return (seconds: number) =>
+    clock.format(
+      new Date(Math.ceil((Date.now() + seconds * 1000) / 60_000) * 60_000),
+    );
 }
 
 /**

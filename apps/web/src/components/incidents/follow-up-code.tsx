@@ -2,6 +2,7 @@
 
 import { ExternalLink, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { CopyLink } from "@/components/ui/copy-link";
 import { useCopy } from "@/lib/use-copy";
 import type { IncidentsText } from "./types";
 
@@ -17,15 +18,21 @@ export function FollowUpCode({
   t,
   code,
   followUpHref,
+  followUpAddress,
 }: {
   t: IncidentsText["code"];
   code: string;
-  /** The page where this code is typed back. */
+  /** The page where this code is typed back, in the reader's language. */
   followUpHref: string;
+  /** The same page as an address to keep with the code. */
+  followUpAddress: string;
 }) {
   const [copied, copy] = useCopy();
-  // As the API writes it: groups of four.
-  const groups = code.replace(/[^A-Za-z0-9]/g, "").match(/.{1,4}/g) ?? [code];
+  // As the API writes it, as it is copied and as the follow-up page shows
+  // it: groups of four with hyphens between them.
+  const written = (
+    code.replace(/[^A-Za-z0-9]/g, "").match(/.{1,4}/g) ?? [code]
+  ).join("-");
 
   return (
     <section className="flex flex-col gap-4 rounded-lg border-2 border-accent bg-background p-4 sm:p-5">
@@ -33,20 +40,21 @@ export function FollowUpCode({
         <h2 className="text-base font-semibold">{t.title}</h2>
         <p className="mt-1 text-sm text-muted">{t.help}</p>
       </div>
+      {/* One string, left to right, on one line: in separate groups a
+          reader of a right-to-left page starts from the other end, and a
+          code written down in the wrong order is lost for good. */}
       <p
         dir="ltr"
         aria-label={t.label}
-        className="grid grid-cols-2 justify-items-center gap-x-4 gap-y-2 rounded-md bg-surface px-3 py-4 font-mono text-3xl font-semibold tracking-widest select-all min-[30rem]:grid-cols-4 min-[30rem]:text-2xl"
+        className="rounded-md bg-surface px-3 py-4 text-center font-mono text-lg font-semibold tracking-wide whitespace-nowrap select-all min-[22.5rem]:text-xl min-[30rem]:text-2xl"
       >
-        {groups.map((group, index) => (
-          <span key={index}>{group}</span>
-        ))}
+        {written}
       </p>
       <div>
         <Button
           variant="secondary"
           className="h-12 w-full px-5 text-base sm:w-auto"
-          onClick={() => copy(groups.join("-"))}
+          onClick={() => copy(written)}
         >
           {copied ? t.copied : t.copy}
         </Button>
@@ -62,8 +70,15 @@ export function FollowUpCode({
           <p>{t.keepSafe}</p>
         </div>
       </div>
+      {/* The address to keep with the code: this card is shown once, and it
+          may be the reader's only way back to the follow-up page. */}
+      <CopyLink
+        label={t.later}
+        url={followUpAddress}
+        t={{ copy: t.copyAddress, copied: t.copied }}
+        roomy
+      />
       <p className="text-sm">
-        {t.later}{" "}
         {/* In a new tab: this page, and the code on it, stays open. */}
         <a
           href={followUpHref}

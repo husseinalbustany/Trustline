@@ -66,6 +66,11 @@ body {
   [dir="rtl"] :is(input, textarea)[dir="ltr"] {
     text-align: end;
   }
+  /* A date or a date and time is drawn as a flex box, which does not follow
+     `text-align`: its parts are pushed to the same edge. */
+  [dir="rtl"] input[dir="ltr"]::-webkit-datetime-edit {
+    justify-content: flex-end;
+  }
 }
 
 @media print {

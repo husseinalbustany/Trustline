@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/panel";
 import { api } from "@/lib/api";
-import type { OrgUnit } from "@/lib/identity";
+import { followUpUrl, type OrgUnit } from "@/lib/identity";
 import type { IncidentCategory, ReportSent } from "@/lib/incidents";
 import { FollowUpCode } from "./follow-up-code";
 import { ReportFields, useReportClock, type ReportBody } from "./report-fields";
@@ -105,6 +105,7 @@ export function ReportForm({
               t={t.code}
               code={sent.followUpCode}
               followUpHref={`/${lang}/follow-up/${session.tenant.slug}`}
+              followUpAddress={followUpUrl(session.tenant.slug)}
             />
           )}
           <div className="flex flex-wrap gap-2">

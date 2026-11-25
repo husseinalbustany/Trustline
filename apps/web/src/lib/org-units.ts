@@ -64,11 +64,15 @@ export type UnitOption = { id: string; label: string; inactive: boolean };
  * a choice, but it is listed first, marked inactive, so the form shows where
  * the record really is instead of quietly showing something else. The
  * record itself carries the unit's name, so nothing is looked up.
+ *
+ * `indented` is false where the reader does not know the hospital's tree,
+ * and the dashes in front of a name would only be noise.
  */
 export function unitOptions<T extends TreeUnit>(
   units: T[],
   nameOf: (unit: T) => string,
   stored?: { id: string; label: string } | null,
+  indented = true,
 ): UnitOption[] {
   const out = inTreeOrder(units.filter((u) => u.active !== false)).map(
     (unit) => ({
@@ -76,7 +80,7 @@ export function unitOptions<T extends TreeUnit>(
       // An option holds no elements, so the name is isolated with
       // U+2068 … U+2069: a name in the other direction ending in a bracket
       // keeps the bracket at its own end.
-      label: `${indent[unit.type]}\u2068${nameOf(unit)}\u2069`,
+      label: `${indented ? indent[unit.type] : ""}\u2068${nameOf(unit)}\u2069`,
       inactive: false,
     }),
   );

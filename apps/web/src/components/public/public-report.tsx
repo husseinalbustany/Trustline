@@ -8,12 +8,13 @@ import {
   useReportClock,
   type ReportBody,
 } from "@/components/incidents/report-fields";
-import { explain, type IncidentsText } from "@/components/incidents/types";
+import type { IncidentsText } from "@/components/incidents/types";
 import { Button } from "@/components/ui/button";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/dictionaries";
-import { api, retryAfterOf, statusOf } from "@/lib/api";
-import { fill, timeUntilFormat } from "@/lib/format";
+import { api, codeOf, retryAfterOf, statusOf } from "@/lib/api";
+import { clockTimeIn, fill } from "@/lib/format";
+import { followUpUrl } from "@/lib/identity";
 import type { PublicReporting, ReportSent } from "@/lib/incidents";
 import { pick } from "@/lib/localized";
 import { PublicFrame } from "./public-frame";
@@ -88,16 +89,26 @@ export function PublicReport({
     setCode(sent.followUpCode ?? "");
   }
 
-  const until = timeUntilFormat(lang);
+  const clockTime = clockTimeIn(lang);
+  // The form's own answers to a refusal. None of them is the staff wording:
+  // "reload the page" would throw away what this reader has written.
   const refusal = (err: unknown) => {
     const status = statusOf(err);
     if (status === 429) {
       const wait = retryAfterOf(err);
-      return wait ? fill(p.tooMany, { when: until(wait) }) : p.tooManyLater;
+      const tooMany = wait
+        ? fill(p.tooMany, { time: clockTime(wait) })
+        : p.tooManyLater;
+      // Someone who cannot send now is told again what to do if it is urgent.
+      return `${tooMany} ${p.urgent}`;
     }
     // Switched off while the form was open.
-    if (status === 404) return p.unavailable;
-    return explain(err, t.errors);
+    if (status === 404) return p.notSent;
+    const code = codeOf(err);
+    if (code && Object.hasOwn(p.errors, code)) {
+      return p.errors[code as keyof typeof p.errors];
+    }
+    return status === 400 ? p.errors.invalid : p.errors.generic;
   };
 
   const hospital = form ? (
@@ -144,7 +155,12 @@ export function PublicReport({
           <p className="mt-1 text-base">{p.sentHelp}</p>
         </div>
         {code && (
-          <FollowUpCode t={t.code} code={code} followUpHref={followUpPath} />
+          <FollowUpCode
+            t={t.code}
+            code={code}
+            followUpHref={followUpPath}
+            followUpAddress={followUpUrl(slug)}
+          />
         )}
         <Button
           variant="secondary"
@@ -170,6 +186,10 @@ export function PublicReport({
         <h1 className="text-2xl font-semibold ltr:tracking-tight">{p.title}</h1>
         <p className="mt-1 text-base text-muted">{p.description}</p>
         <p className="mt-3 text-base">{t.form.intro}</p>
+        {/* Before they write: nobody is watching this form for emergencies. */}
+        <p className="mt-3 rounded-lg border border-line bg-background p-3 text-sm">
+          {p.urgent}
+        </p>
       </div>
       <ReportFields
         lang={lang}
@@ -182,6 +202,8 @@ export function PublicReport({
         anonymousChoice={false}
         privacy={() => p.privacy}
         roomy
+        labels={p.form}
+        unitTree={false}
         send={send}
         explain={refusal}
       />

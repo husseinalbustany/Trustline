@@ -82,6 +82,8 @@ export function ReportFields({
   anonymousChoice,
   privacy,
   roomy = false,
+  labels,
+  unitTree = true,
   send,
   explain,
   cancel,
@@ -99,6 +101,10 @@ export function ReportFields({
   privacy: (anonymous: boolean) => ReactNode;
   /** Larger controls, for the page built for a phone first. */
   roomy?: boolean;
+  /** Plainer words for some questions, where the reader is not staff. */
+  labels?: Partial<IncidentsProps["t"]["form"]>;
+  /** False to list places by name alone, without the marks of the tree. */
+  unitTree?: boolean;
   /** Sends the report. The form is emptied once this has succeeded. */
   send: (body: ReportBody, anonymous: boolean) => Promise<void>;
   explain: (err: unknown) => string;
@@ -110,7 +116,7 @@ export function ReportFields({
   // harm level to ask about.
   const [type, setType] = useState<IncidentType | null>(null);
   const [anonymous, setAnonymous] = useState(false);
-  const f = t.form;
+  const f = { ...t.form, ...labels };
   const { now, occurredAt, startedAt, setOccurredAt, tick } = clock;
 
   // Visited pages stay mounted: a refusal of the last attempt must not be
@@ -215,7 +221,7 @@ export function ReportFields({
             <option value="" disabled>
               {f.choose}
             </option>
-            {unitOptions(units, (u) => inLang(u.name)).map((u) => (
+            {unitOptions(units, (u) => inLang(u.name), null, unitTree).map((u) => (
               <option key={u.id} value={u.id}>
                 {u.label}
               </option>

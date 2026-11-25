@@ -245,7 +245,9 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
               />
               {l.assignedToMe}
             </label>
-            <label className={check} title={l.seriousHelp}>
+            {/* What "serious" covers is written out: a tooltip is never
+                seen on a phone or from the keyboard. */}
+            <label className="flex min-h-9 flex-wrap items-center gap-x-2 text-sm">
               <input
                 type="checkbox"
                 className="size-4 accent-accent"
@@ -253,6 +255,7 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
                 onChange={(e) => ask({ serious: e.target.checked })}
               />
               {l.serious}
+              <span className="text-xs text-muted">{l.seriousHelp}</span>
             </label>
           </div>
         </div>
@@ -452,13 +455,19 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
                       <Pill tone="ok">{l.assignedToYou}</Pill>
                     )}
                   </div>
+                  {/* Each dot stays with the piece after it when the line
+                      breaks, so none is left alone at the end of a line. */}
                   <p className="mt-1.5 text-sm">
-                    {t.type[item.type]}
-                    <span className="text-muted"> · </span>
-                    {/* Names a client wrote: each keeps its own direction. */}
-                    <bdi>{inLang(item.category.name)}</bdi>
-                    <span className="text-muted"> · </span>
-                    <bdi>{inLang(item.orgUnit.name)}</bdi>
+                    {t.type[item.type]}{" "}
+                    <span className="inline-block">
+                      <span className="text-muted">· </span>
+                      {/* Names a client wrote: each keeps its own direction. */}
+                      <bdi>{inLang(item.category.name)}</bdi>
+                    </span>{" "}
+                    <span className="inline-block">
+                      <span className="text-muted">· </span>
+                      <bdi>{inLang(item.orgUnit.name)}</bdi>
+                    </span>
                   </p>
                   <p dir="auto" className="mt-1 text-sm break-words text-muted">
                     {item.descriptionExcerpt}
@@ -466,18 +475,22 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
                   <p className="mt-1 text-xs text-muted">
                     <span className="font-medium text-foreground">
                       {reportedAgo(item.reportedAt)}
+                    </span>{" "}
+                    <span className="inline-block">
+                      {"· "}
+                      <time dateTime={item.reportedAt}>
+                        {dates.format(new Date(item.reportedAt))}
+                      </time>
                     </span>
-                    {" · "}
-                    <time dateTime={item.reportedAt}>
-                      {dates.format(new Date(item.reportedAt))}
-                    </time>
                     {/* Who has it, when it has been handed on: the
                         department filter finds an incident by this too.
-                        Kept together when the line has to break. */}
+                        Kept together, dot included, when the line has to
+                        break. */}
                     {item.ownerUnit && (
                       <>
-                        {" · "}
+                        {" "}
                         <span className="inline-block">
+                          {"· "}
                           {t.timeline.changed.ownerUnitId}{" "}
                           <bdi>{inLang(item.ownerUnit.name)}</bdi>
                         </span>
@@ -500,9 +513,11 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
             {fill(l.page, {
               page: numbers.format(filters.page),
               pages: numbers.format(pages),
-            })}
-            {" · "}
-            {fill(l.total, { total: numbers.format(data.total) })}
+            })}{" "}
+            <span className="inline-block">
+              {"· "}
+              {fill(l.total, { total: numbers.format(data.total) })}
+            </span>
           </span>
           <span className="flex gap-2">
             <Button

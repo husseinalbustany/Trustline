@@ -16,7 +16,7 @@ import { Field, roomyInputClass } from "@/components/ui/field";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/dictionaries";
 import { api, retryAfterOf, statusOf } from "@/lib/api";
-import { fill, timeUntilFormat } from "@/lib/format";
+import { clockTimeIn, fill } from "@/lib/format";
 import type {
   FollowUpView,
   IncidentComment,
@@ -67,7 +67,7 @@ export function FollowUp({
   // A comment was sent but the report could not be read again after it.
   const [behind, setBehind] = useState(false);
   const path = `/public/follow-up/${encodeURIComponent(slug)}`;
-  const until = timeUntilFormat(lang);
+  const clockTime = clockTimeIn(lang);
 
   useEffect(() => {
     let current = true;
@@ -99,7 +99,9 @@ export function FollowUp({
     const status = statusOf(err);
     if (status === 429) {
       const wait = retryAfterOf(err);
-      return wait ? fill(u.tooMany, { when: until(wait) }) : u.tooManyLater;
+      return wait
+        ? fill(u.tooMany, { time: clockTime(wait) })
+        : u.tooManyLater;
     }
     // A code that is wrong, a hospital that does not exist: one answer.
     return status === 404 ? u.wrong : u.error;
@@ -271,7 +273,7 @@ export function FollowUp({
             role="status"
             className="rounded-md bg-danger-soft px-3 py-2 text-sm text-danger"
           >
-            {t.detail.behind}
+            {u.behind}
           </p>
         )}
         <IncidentReport {...view} />
