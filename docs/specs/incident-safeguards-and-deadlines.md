@@ -1,0 +1,237 @@
+# Incident reporting, second step: safeguards, deadlines and notifications
+
+Read `CLAUDE.md`, `README.md` and `docs/specs/incident-reporting.md` first.
+This file adds to that one and wins where they differ. If something here is
+impossible or wrong, say so in your report rather than quietly doing
+something else.
+
+Four decisions taken by the business after the quality review:
+
+1. Only the quality office sees who reported an incident.
+2. A report can be made without signing in (a link or QR code), and an
+   anonymous reporter gets a follow-up code to come back to their report.
+3. Closing a sentinel event needs a second person to sign it off.
+4. Deadlines and notifications are in the first release.
+
+Still out of scope: patient identifiers, attachments, investigations,
+actions, regulator reports, working-hours calendars, SMS, and sending email
+(notifications are stored so that an email sender can be added once the
+hospital's mail server is known; nothing is sent by email in this step).
+
+## 1. Who sees the reporter
+
+New permission `incidents.see_reporter`. The built-in Administrator and
+Quality officer roles hold it; Department manager and Reporter do not.
+Existing clients get it added to those two built-in roles by a migration or
+by `ensureSystemRoles`, whichever the code already uses for built-in roles.
+
+- A caller sees the reporter's identity on an incident only if they are the
+  reporter, or hold `incidents.see_reporter` covering the incident's
+  `org_unit_id` or `owner_unit_id`.
+- Everyone else who can see the incident gets `reporter: null` and
+  `reporterShown: false`. They are not told whether the report was anonymous
+  or named: both look the same to them. Someone allowed to see it gets
+  `reporterShown: true`, and `reporter: null` then means anonymous.
+- The same hiding applies everywhere the reporter could leak: the actor of
+  the `reported` event, the author of any comment the reporter wrote, the
+  actor of the matching `commented` events, and the `people` map. Those come
+  back with no person and `byReporter: true`, so the screen can say "the
+  reporter".
+- The reporter's own view is unchanged.
+- Assignable users, lists and summaries never carried the reporter; check
+  that this is still true.
+
+## 2. Reporting without signing in, and the follow-up code
+
+### Switching it on
+
+`tenants.public_reporting` boolean, default false. A hospital user holding
+`settings.manage` for the whole organization turns it on or off
+(`GET /settings/reporting`, `PUT /settings/reporting`), audited. While it is
+off, every public route below answers 404 for that hospital.
+
+### Public routes (no session; under `/api/v1/public`)
+
+- `GET /public/reporting/:slug` → the hospital's name, languages and default
+  language, its active org units (id, parent, type, name) and active
+  categories. 404 if the hospital does not exist, is suspended, or has public
+  reporting off: the three cases must look the same.
+- `POST /public/reporting/:slug` → the same body as `POST /incidents` without
+  `anonymous` (a public report is always anonymous). Stored with
+  `reported_by` NULL and `channel = 'public'`. Answers 201
+  `{ reference, followUpCode }`.
+- `POST /public/follow-up/:slug` body `{ reference, code }` → the reporter's
+  view of the incident (what `access: "reporter"` gives today).
+- `POST /public/follow-up/:slug/comments` body `{ reference, code, body }` →
+  adds an `everyone` comment written by the reporter.
+
+`incidents.channel`: `app` (default, signed in) | `public`.
+
+Protection, since these routes are open to the internet:
+- A limit per IP address: 10 reports an hour and 30 follow-up attempts an
+  hour, answered with 429 `too_many_requests`. An in-memory limiter is
+  acceptable for now; say so in the README (it is per server process).
+- A wrong reference and a wrong code answer the same 404, in the same time
+  (compare hashes in constant time; do the same work on both paths).
+- The body limits of `POST /incidents` apply. No free text reaches a log.
+- Nothing about the sender (IP address, user agent) is stored with the
+  incident, its events or the audit log. The audit row says a public report
+  was received and nothing more.
+
+### The follow-up code
+
+- Every anonymous report gets one, whether it was made signed in with
+  "report anonymously" or through the public route. So `POST /incidents`
+  answers `{ id, reference, followUpCode }` when `anonymous` is true.
+- 16 characters from an alphabet without look-alikes (no 0/O, 1/I/L), shown in
+  groups of four (`K7QM-2RXD-9FHT-WB3N`), generated with the system's secure
+  random source. Only a hash is stored (`incidents.follow_up_code_hash`).
+  Case and hyphens are ignored when it is typed back.
+- It is shown once and cannot be recovered or reissued.
+- A signed-in user can also use it: the follow-up page works with or without
+  a session, and never links the code to the session.
+
+### Comments by an anonymous reporter
+
+`incident_comments.author_id` becomes nullable and gains `by_reporter`
+boolean default false. A comment made with a follow-up code has no author and
+`by_reporter = true`. The `commented` event has no actor. Handlers see it as
+written by "the reporter".
+
+## 3. Second sign-off for a sentinel event
+
+Applies to an incident that is sentinel or whose harm level is death (below:
+"needs sign-off").
+
+- New status `awaiting_sign_off` and new permission `incidents.sign_off`,
+  held by the built-in Administrator and Quality officer roles.
+- For an incident that needs sign-off, the move to `closed` from `triaged` or
+  `in_progress` is replaced by a move to `awaiting_sign_off` (note required;
+  it is the proposed closure summary). `incidents.closure_requested_by` and
+  `closure_requested_at` record who asked and when.
+- From `awaiting_sign_off`:
+  - `closed`, by someone who holds `incidents.sign_off` covering the incident
+    and is not the person who requested closure: 403 `same_person` if they
+    are, 403 `missing_permission` without the right. An optional note is
+    added to the timeline.
+  - `in_progress` (sent back), by the same kind of person, note required.
+  - `in_progress` (withdrawn), by the person who requested it or anyone who
+    may triage it, note required.
+- Triage is not possible while `awaiting_sign_off`. If an incident stops
+  needing sign-off it could only be by triage, so that cannot happen while it
+  waits.
+- An incident that does not need sign-off closes as today.
+- `moves` on `GET /incidents/:id` reflects all of this for the caller.
+- New event kinds: `sign_off_requested`, `signed_off`, `sent_back`. All
+  visible to the reporter except the notes of `sent_back`.
+- `awaiting_sign_off` counts as open in the summary.
+
+## 4. Deadlines
+
+### Rules
+
+`incident_response_rules`, one row per hospital per harm level:
+`triage_within_hours`, `close_within_days`. Created with the hospital (and
+for existing hospitals) with these starting values, which each hospital is
+expected to change:
+
+| Harm level | Triage within | Close within |
+|---|---|---|
+| none | 72 hours | 30 days |
+| mild | 72 hours | 30 days |
+| moderate | 48 hours | 30 days |
+| severe | 24 hours | 45 days |
+| death | 24 hours | 45 days |
+
+A sentinel incident uses the `death` row whatever its harm level.
+
+`GET /settings/response-rules` (anyone who may triage or holds
+`settings.manage`), `PUT /settings/response-rules` (`settings.manage` for the
+whole organization; hours 1 to 720, days 1 to 365), audited with from and to.
+
+Hours and days are calendar time. Working-hours calendars come later.
+
+### On the incident
+
+- `triage_due_at` = reported time + the rule's hours. `close_due_at` =
+  reported time + the rule's days. Both are set when the report is made, from
+  the harm level the reporter gave, and recalculated at each triage that
+  changes harm level or the sentinel flag (always counted from the reported
+  time). A change to the rules does not move deadlines already set.
+- `triage_due_at` stops mattering once the incident leaves `new`.
+  `close_due_at` stops mattering once it is `closed` or `rejected`; reopening
+  does not give a new deadline.
+- An incident is **overdue for triage** when it is `new` and past
+  `triage_due_at`; **overdue for closure** when it is `triaged`,
+  `in_progress` or `awaiting_sign_off` and past `close_due_at`. This is
+  worked out when the incident is read, never stored.
+- List items and the detail carry `triageDueAt`, `closeDueAt` and
+  `overdue: "triage" | "closure" | null`. Someone who sees the incident only
+  as its reporter does not get these.
+- `GET /incidents` gains `overdue=true` and `sort=due` (the nearest live
+  deadline first, overdue at the top). The summary gains `overdue` (count)
+  and `triagedOnTime`: of the incidents reported in the last 30 days that
+  have been triaged, the share triaged before `triage_due_at`, as a whole
+  percentage, null if none.
+
+## 5. Notifications
+
+`notifications`: `user_id`, `kind`, `incident_id`, `created_at`, `read_at`,
+`data` jsonb (reference and nothing a patient could be identified from: no
+description, no comment text, no names of people).
+
+| Kind | Sent when | To |
+|---|---|---|
+| `incident_reported` | a report is made | everyone who may triage the unit where it happened |
+| `incident_assigned` | a person is assigned | that person |
+| `incident_handed_over` | the handling department changes | everyone who may triage the new department |
+| `comment_added` | a comment is written | the reporter (for `everyone` comments, if named), the assignee, and whoever triaged it; never the author |
+| `status_changed` | closed, not taken forward, reopened | the reporter (if named) and the assignee |
+| `sign_off_requested` | closure of a sentinel event is requested | everyone who may sign it off, except the requester |
+| `sign_off_decided` | signed off or sent back | the requester |
+| `due_soon` | a quarter of the allowed time is left | for triage: those who may triage it; for closure: the assignee, or those who may triage it if nobody is assigned |
+| `overdue` | the deadline passes | the same people, plus everyone who may triage for the whole organization |
+
+- Nobody is notified of their own action. A person who would be notified
+  twice for one event gets one notification.
+- A notification is written in the same transaction as the change it
+  announces.
+- `due_soon` and `overdue` come from a background check that runs every five
+  minutes in the API process. Each is sent once per incident per deadline
+  (`triage_due_soon_at`, `triage_overdue_at`, `close_due_soon_at`,
+  `close_overdue_at` on the incident record when it was sent). It must be
+  safe with several API processes running: two of them must not both send.
+  It works one hospital at a time inside `TenantDb.withTenant`.
+- `GET /notifications?unread=&page=&pageSize=` → the caller's own, newest
+  first, each with the incident's reference and whether the caller can still
+  open it. `GET /notifications/count` → `{ unread }`.
+  `POST /notifications/:id/read`, `POST /notifications/read-all`.
+- A user only ever reads and marks their own.
+
+## Web
+
+- **Reporter:** the incident page shows "Reported by" only when
+  `reporterShown`. Otherwise it says the name is kept by the quality office.
+  Comments and timeline entries by the reporter say "The reporter".
+- **Report form:** tells the reporter who will see their name. After an
+  anonymous report, the follow-up code is shown once, large, with a copy
+  button and a plain warning that it cannot be shown again.
+- **Public report page** `/[lang]/report/[slug]` (no sign-in, no app shell):
+  the same form without the anonymous box, with `?unit=<id>` preselecting
+  where it happened. Works on a phone. After sending: the reference and the
+  follow-up code.
+- **Follow-up page** `/[lang]/follow-up/[slug]`: reference and code, then the
+  reporter's view with the comment box.
+- **Settings** (`/[lang]/admin/settings`, `settings.manage`): the switch for
+  reporting without sign-in, with the link; and the deadline table.
+- **Organization:** when public reporting is on, each unit's page shows its
+  reporting link and a QR code that can be printed.
+- **Sign-off:** the status actions follow `moves` from the API (the screen no
+  longer keeps its own copy of the rules). An incident awaiting sign-off says
+  who asked and offers Sign off / Send back to those who may.
+- **Deadlines:** the list shows the live deadline and an overdue mark, with
+  an "Overdue" filter and "By deadline" order; the detail shows both dates;
+  the dashboard shows the overdue count and the share triaged on time.
+- **Notifications:** a bell in the shell with the unread count and a
+  notifications page. Opening one marks it read and goes to the incident.
+- All wording in the three dictionaries with identical keys.
