@@ -1994,13 +1994,22 @@ describe('incident safeguards', () => {
       expect(body).not.toContain('followUpCode');
 
       // What a signed-in reporter gets for a report of theirs, field for
-      // field, without the incident's id and its number.
+      // field, without the incident's id and its number, and with what the
+      // page needs to say whose report form this is.
       const own = await open(reporter.cookie, named.id).expect(200);
       expect(Object.keys(res.body).sort()).toEqual(
-        Object.keys(own.body)
-          .filter((key) => key !== 'id' && key !== 'reference')
-          .sort(),
+        [
+          ...Object.keys(own.body).filter(
+            (key) => key !== 'id' && key !== 'reference',
+          ),
+          'hospital',
+        ].sort(),
       );
+      expect(res.body.hospital).toEqual({
+        name: { en: 'Hospital a' },
+        locales: ['en'],
+        defaultLocale: 'en',
+      });
       expect(own.body).toMatchObject({
         id: named.id,
         reference: named.reference,
@@ -2042,12 +2051,22 @@ describe('incident safeguards', () => {
       await http().get(`/public/reporting/${off.slug}`).expect(404);
       const view = await followUp(off.slug, elsewhere.followUpCode).expect(200);
       expect(view.body).toMatchObject({ access: 'reporter', status: 'new' });
+      // The page can say which hospital it is, though its form is closed.
+      expect(view.body.hospital).toEqual({
+        name: { en: 'Hospital off' },
+        locales: ['en'],
+        defaultLocale: 'en',
+      });
       const said = await followUpComment(
         off.slug,
         elsewhere.followUpCode,
         'Is anyone looking at this?',
       ).expect(201);
-      expect(said.body.visibility).toBe('everyone');
+      expect((said.body.comments as Comment[]).at(-1)).toMatchObject({
+        body: 'Is anyone looking at this?',
+        visibility: 'everyone',
+        byReporter: true,
+      });
       const handler = await http()
         .get(`/incidents/${elsewhere.id}`)
         .set('Cookie', off.cookie)
@@ -2106,7 +2125,9 @@ describe('incident safeguards', () => {
         limits.forget();
         const res = await followUp(slug, code);
         expect([slug, code, res.status]).toEqual([slug, code, 404]);
+        // Nothing of any hospital: not its name, not that there is one.
         expect(res.body).toEqual(NOT_FOUND);
+        expect(JSON.stringify(res.body)).not.toContain('Hospital');
         expect(res.headers['retry-after']).toBeUndefined();
         const said = await followUpComment(slug, code, 'Hello');
         expect(said.status).toBe(404);
@@ -2299,10 +2320,11 @@ describe('incident safeguards', () => {
     describe('a comment by the anonymous reporter', () => {
       const WORDS = `reporter-words-${run}`;
       const SENDER = '203.0.113.88';
+      let answer: request.Response;
       let written: { id: string; visibility: string; createdAt: string };
 
       beforeAll(async () => {
-        const res = await http()
+        answer = await http()
           .post(`/public/follow-up/${a.slug}/comments`)
           .set('X-Forwarded-For', SENDER)
           // Signed in while commenting with the code: it must not show.
@@ -2312,16 +2334,59 @@ describe('incident safeguards', () => {
             body: `  ${WORDS}  `,
           })
           .expect(201);
-        written = res.body;
+        written = (answer.body.comments as (typeof written)[]).at(-1)!;
       });
 
-      it('is for everyone, and answered like any other comment', () => {
-        expect(Object.keys(written).sort()).toEqual([
-          'createdAt',
-          'id',
-          'visibility',
+      it('is for everyone, and answered with the report as it now reads', async () => {
+        // The same as opening the report with the code straight after, so
+        // the page need not spend a second attempt on reading it again.
+        const read = await followUp(a.slug, inApp.followUpCode).expect(200);
+        expect(answer.body).toEqual(read.body);
+        expect(answer.body.comments).toEqual([
+          {
+            id: expect.any(String),
+            author: null,
+            byReporter: true,
+            byStaff: false,
+            body: WORDS,
+            visibility: 'everyone',
+            createdAt: expect.any(String),
+          },
         ]);
-        expect(written.visibility).toBe('everyone');
+        expect((answer.body.events as Event[]).at(-1)).toMatchObject({
+          kind: 'commented',
+          actor: null,
+          byReporter: true,
+        });
+        expect(answer.body).toMatchObject({
+          access: 'reporter',
+          hospital: {
+            name: { en: 'Hospital a' },
+            locales: ['en'],
+            defaultLocale: 'en',
+          },
+        });
+        expect(answer.body).not.toHaveProperty('id');
+        expect(answer.body).not.toHaveProperty('reference');
+        const body = JSON.stringify(answer.body);
+        expect(body).not.toContain(inApp.id);
+        expect(body).not.toContain(inApp.reference);
+        expect(body).not.toContain(reporter.id);
+      });
+
+      it('costs one attempt at the code, not two', async () => {
+        const sent = await reportPublicly(a.slug).expect(201);
+        const code = sent.body.followUpCode as string;
+        const address = '203.0.113.90';
+        // Thirty comments, each answered with the report: thirty attempts.
+        for (let i = 0; i < FOLLOW_UP_ATTEMPTS_PER_HOUR; i++) {
+          const res = await followUpComment(a.slug, code, `Word ${i}`, address);
+          expect(res.status).toBe(201);
+          expect(res.body.comments).toHaveLength(i + 1);
+        }
+        await followUpComment(a.slug, code, 'One too many', address).expect(
+          429,
+        );
       });
 
       it('has no author, and nothing records who wrote it', async () => {
@@ -3222,6 +3287,28 @@ describe('incident safeguards', () => {
       );
       expect(row.rows[0].sign_off_needed).toBe(false);
       await move(quality.cookie, plain.id, 'closed', 'Done.').expect(200);
+    });
+
+    it('goes on needing it for a sentinel event stored by a release that did not keep track', async () => {
+      const { id } = await sentinel();
+      // As the release before this one left it: sentinel, and nothing
+      // stored about ever having needed sign-off.
+      await owner.db.execute(
+        sql`update incidents set sign_off_needed = false where id = ${id}`,
+      );
+      expect((await open(quality.cookie, id)).body.needsSignOff).toBe(true);
+      await move(quality.cookie, id, 'closed', 'Done.').expect(409);
+      // Called something else now: what it was until then still counts.
+      await triage(quality.cookie, id, {
+        harmLevel: 'mild',
+        isSentinel: false,
+      }).expect(200);
+      const kept = await owner.db.execute<{ sign_off_needed: boolean }>(
+        sql`select sign_off_needed from incidents where id = ${id}`,
+      );
+      expect(kept.rows[0].sign_off_needed).toBe(true);
+      const res = await move(quality.cookie, id, 'closed', 'Done.').expect(409);
+      expect(res.body.code).toBe('sign_off_required');
     });
 
     it('is signed on the revision the signer read, and not without one', async () => {

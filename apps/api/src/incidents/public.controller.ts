@@ -121,6 +121,25 @@ export class PublicReportingController {
     return result;
   }
 
+  /**
+   * What the follow-up page shows of the hospital, once the code has proved
+   * right: its name and languages. Never part of a refusal, so nothing about
+   * a hospital is learnt without a valid code, not even that it exists.
+   */
+  private named(tenant: {
+    name: unknown;
+    locales: string[];
+    defaultLocale: string;
+  }) {
+    return {
+      hospital: {
+        name: tenant.name,
+        locales: tenant.locales,
+        defaultLocale: tenant.defaultLocale,
+      },
+    };
+  }
+
   /** The reporter's view of their anonymous report. */
   @Post('follow-up/:slug')
   @HttpCode(200)
@@ -135,9 +154,18 @@ export class PublicReportingController {
     if (!parsed.success) throw new BadRequestException();
     const tenant = await this.active(slug);
     // With no hospital the service still takes every step, and answers 404.
-    return this.incidents.followUp(tenant?.id ?? null, parsed.data.code);
+    const view = await this.incidents.followUp(
+      tenant?.id ?? null,
+      parsed.data.code,
+    );
+    // A view was found, so there is a hospital it was found in.
+    return { ...view, ...this.named(tenant!) };
   }
 
+  /**
+   * Adds the reporter's comment and answers with the report as it now
+   * reads: the same as the route above, in one call.
+   */
   @Post('follow-up/:slug/comments')
   async comment(
     @Param('slug') slug: string,
@@ -149,10 +177,11 @@ export class PublicReportingController {
     const parsed = followUpCommentSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException();
     const tenant = await this.active(slug);
-    return this.incidents.followUpComment(
+    const view = await this.incidents.followUpComment(
       tenant?.id ?? null,
       parsed.data.code,
       parsed.data.body,
     );
+    return { ...view, ...this.named(tenant!) };
   }
 }

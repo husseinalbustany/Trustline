@@ -1237,8 +1237,13 @@ export class IncidentsService {
           assignedTo: input.assignedTo,
           status: to,
           // Never cleared: what has once called for a second person to
-          // close it goes on needing one, whatever it is called later.
-          signOffNeeded: incident.signOffNeeded || callsForSignOff(next),
+          // close it goes on needing one, whatever it is called later. What
+          // it was until this triage counts too, in case it was stored by a
+          // release that did not keep this.
+          signOffNeeded:
+            incident.signOffNeeded ||
+            callsForSignOff(incident) ||
+            callsForSignOff(next),
           ...(decided && { triagedBy: user.id, triagedAt: now }),
           ...(incident.status === 'new' && { firstTriagedAt: now }),
           // A deadline that moved is another deadline: what was announced
@@ -1704,19 +1709,30 @@ export class IncidentsService {
     });
   }
 
-  /** A comment by the anonymous reporter, for everyone on the incident. */
+  /**
+   * A comment by the anonymous reporter, for everyone on the incident.
+   * Answered with the report as it now reads, their comment included, so
+   * that writing one costs one attempt at the code and not two.
+   */
   followUpComment(tenantId: string | null, code: string, body: string) {
     const scope = tenantId ?? NO_TENANT;
     return this.tenantDb.withTenant(scope, async (tx) => {
       const found = await this.byFollowUpCode(tx, code);
       if (!found) throw new NotFoundException();
-      return this.addComment(
+      await this.addComment(
         tx,
         scope,
         found,
         { as: 'reporter', authorId: null },
         { body, visibility: 'everyone' },
       );
+      const view = await this.view(
+        tx,
+        eq(incidents.id, found.id),
+        () => ANONYMOUS_REPORTER,
+      );
+      if (!view) throw new NotFoundException();
+      return view;
     });
   }
 }

@@ -131,6 +131,14 @@ Protection, since these routes are open to the internet:
   access, or used a follow-up code. A handler who also reported the incident
   comments under their own name like any other handler, so nothing about a
   comment tells a reader who reported.
+  > **Added while building (API engineer): comments stored before this.**
+  > What access a writer had was never recorded, so it cannot be decided
+  > afterwards for an old comment. Every stored comment whose author is the
+  > incident's reporter is therefore kept as "by the reporter", exactly as
+  > each reader has been shown it so far; no name appears where none did.
+  > New comments also record the other capacity (`as_handler`), so that a
+  > comment written by a release that records neither is read the same
+  > cautious way instead of showing the reporter's name.
 - **A withdrawal note is not shown to the reporter,** like a sent-back note.
 - **Signing off needs the `revision`** the signer was looking at.
 - **The address limit is not the only limit.** Each hospital also has a
@@ -229,6 +237,18 @@ browser's. The client is never asked for an offset.
   the harm level the reporter gave, and recalculated at each triage that
   changes harm level or the sentinel flag (always counted from the reported
   time). A change to the rules does not move deadlines already set.
+  > **Changed while building (API engineer, section 4): only `close_due_at`
+  > is recalculated at triage. `triage_due_at` never moves.** Every triage
+  > takes the incident out of `new`, so a recalculated triage deadline could
+  > never again be waited for; all it would change is whether the triage
+  > just made counts as on time. Recalculated, a late triage becomes "on
+  > time" by lowering the harm level in the same step, and a timely one
+  > becomes "late" by raising it: the person being measured could move the
+  > mark, and would be discouraged from raising a harm level. So the triage
+  > deadline stays the one the triage was made under. When `close_due_at`
+  > moves, what was announced about the old one is forgotten
+  > (`close_due_soon_at`, `close_overdue_at` are cleared): it is another
+  > deadline.
 - `triage_due_at` stops mattering once the incident leaves `new`.
   `close_due_at` stops mattering once it is `closed` or `rejected`; reopening
   does not give a new deadline.
@@ -244,6 +264,18 @@ browser's. The client is never asked for an offset.
   and `triagedOnTime`: of the incidents reported in the last 30 days that
   have been triaged, the share triaged before `triage_due_at`, as a whole
   percentage, null if none.
+  > **Added while building (API engineer, section 4).**
+  > - "Triaged" is the first triage, kept in `incidents.first_triaged_at`:
+  >   `triaged_at` moves with every later correction and would turn a timely
+  >   triage into a late one.
+  > - `overdue`, `triagedOnTime`, the `overdue=true` filter and `sort=due`
+  >   count only incidents the caller sees in full. Otherwise a reporter
+  >   would learn their own report's deadlines from a count or an order.
+  > - The summary also returns `last30Days: { from, to }`, the hospital's
+  >   days those 30 are, in the form the list's `from` and `to` take.
+  > - `triage_due_at` and `close_due_at` may be null for an incident stored
+  >   by a release that did not know of deadlines and was still running
+  >   during a deployment. The deadline check fills them in on its next run.
 
 ## 5. Notifications
 
@@ -265,6 +297,22 @@ description, no comment text, no names of people).
 
 - Nobody is notified of their own action. A person who would be notified
   twice for one event gets one notification.
+  > **Changed while building (API engineer, section 5).**
+  > - **An anonymous report is told to everyone who may triage the unit, the
+  >   reporter included if they are one of them.** Leaving them out would
+  >   store, in who was not notified, exactly who made the report.
+  > - **Nobody is notified who cannot open the incident**, whatever the table
+  >   above says: only active users, and for `sign_off_requested` only those
+  >   holders of `incidents.sign_off` who can also see the incident (the
+  >   right to sign off opens nothing by itself); for a comment, whoever
+  >   triaged it only while they can still see it; an internal comment never
+  >   reaches someone who sees the incident only as its reporter.
+  > - **`due_soon` for closure goes to those who may triage it also when the
+  >   assignee's account has been switched off**, not only when nobody is
+  >   assigned.
+  > - **A notification names nobody.** `data` is the reference plus, by kind,
+  >   `deadline` (`triage` | `closure`), `decision` (`signed_off` |
+  >   `sent_back`) or `change` (`closed` | `rejected` | `reopened`).
 - A notification is written in the same transaction as the change it
   announces.
 - `due_soon` and `overdue` come from a background check that runs every five
@@ -273,6 +321,16 @@ description, no comment text, no names of people).
   `close_overdue_at` on the incident record when it was sent). It must be
   safe with several API processes running: two of them must not both send.
   It works one hospital at a time inside `TenantDb.withTenant`.
+  > **Added while building (API engineer, section 5).**
+  > - A deadline already past when the migration ran, or already in its last
+  >   quarter, is recorded as announced without anyone being notified.
+  >   Otherwise a hospital would get one notification per old incident, per
+  >   recipient, on the day it receives this release. Those incidents are
+  >   still shown and counted as overdue.
+  > - An incident found already past its deadline gets `overdue` only;
+  >   `due_soon` is not sent after it.
+  > - A suspended hospital is skipped; its deadlines are announced, once,
+  >   when it is active again.
 - `GET /notifications?unread=&page=&pageSize=` → the caller's own, newest
   first, each with the incident's reference and whether the caller can still
   open it. `GET /notifications/count` → `{ unread }`.

@@ -125,40 +125,97 @@ factor, and self-service "forgot password" by email.
   report was named or anonymous.
 - **Reporting without sign-in:** off for every hospital until someone holding
   `settings.manage` for the whole organization switches it on. While it is
-  on, anyone with the hospital's link can report, always anonymously. The
-  routes are under `/api/v1/public` and answer 404 for a hospital that does
-  not exist, is suspended, or has it off.
+  on, anyone with the hospital's link can report, always anonymously. The two
+  report routes are under `/api/v1/public` and answer 404 for a hospital that
+  does not exist, is suspended, or has it off. A public report is answered
+  with a follow-up code and nothing else: not the incident's number, which
+  would tell the sender how many incidents the hospital has had.
 - **Follow-up code:** every anonymous report, made signed in or not, is
-  answered once with a code such as `K7QM-2RXD-9FHT-WB3N`. With the reference
-  it opens the reporter's view of the report and lets them add a comment.
-  Only its hash is stored; it cannot be shown again or reissued. It works
-  through the public routes, so only while the hospital has reporting without
-  sign-in switched on.
+  answered once with a code such as `K7QM-2RXD-9FHT-WB3N`. The code alone
+  opens the reporter's view of the report and lets them add a comment. Only
+  its hash is stored; it cannot be shown again or reissued. It works for
+  every active hospital, whether or not that hospital takes reports without
+  sign-in. Whoever reads with a code is given no name or id of anyone working
+  at the hospital, and neither the incident's id nor its number.
 - **Limits on the public routes:** one address may send 10 reports and make
   30 follow-up attempts an hour; more are answered 429. The count is kept in
   the memory of each API process: with several processes the real limit is
-  that many times higher, and a restart clears it. It reads the caller's
-  address from the proxy setting (`TRUST_PROXY_HOPS`), so that must match how
-  the API is deployed. A shared store is needed before this is a precise
-  quota.
+  that many times higher, and a restart clears it. Besides that, each
+  hospital takes at most 60 public reports an hour whatever addresses they
+  come from; this is counted in the database, so it is the same for every
+  process. **The limit per address is only as good as the address**: see
+  "In front of the web app" below.
 - **Second sign-off:** a sentinel event, or an incident with harm level
   death, is not closed by one person. Whoever handles it asks for closure
   with the summary they propose; someone else holding `incidents.sign_off`
-  signs it off or sends it back.
+  signs it off, saying which revision they read, or sends it back. An
+  incident that has once needed this keeps needing it, whatever its harm
+  level is changed to afterwards.
+- **Deadlines:** each hospital sets, per harm level, how many hours it allows
+  itself to triage an incident and how many days to close it (Settings; the
+  starting values are 72 hours and 30 days, 24 hours and 45 days for severe
+  harm and death). Every incident gets both deadlines when it is reported.
+  Whether it is overdue is worked out when it is read; lists can be filtered
+  to what is overdue and ordered by deadline, and the dashboard counts it.
+  Someone who sees an incident only as its reporter is not shown deadlines.
+- **The hospital's own day:** each client has a time zone (an IANA name such
+  as `Asia/Riyadh`, UTC unless set), set by Trustline staff in the admin
+  portal. Every day the API works out is a day there: the day a report was
+  made, "the last 30 days", a deadline counted in days. The session tells the
+  screens which time zone it is.
+- **Notifications:** stored for each person who should know (a new report for
+  those who may triage it, an assignment, a handover, a comment, a closure, a
+  request for sign-off and its outcome, a deadline coming up or missed), and
+  only ever for someone who can open the incident. A notification carries the
+  incident's reference and no name or text. Nothing is sent by email yet.
+- **The deadline check:** every API process looks every five minutes for
+  deadlines that have entered their last quarter or have passed, and writes
+  those notifications, each once. It needs no configuration: any number of
+  processes may run it at once, and it stops with the process. Deadlines that
+  were already past when this release was installed are shown as overdue but
+  not announced.
 
 The rules are in `docs/specs/incident-reporting.md` and
 `docs/specs/incident-safeguards-and-deadlines.md`.
 
-Not built yet: deadlines, reminders and escalation; notifications;
-attachments; investigations and actions. The three safeguards above are in
-the API; their screens (the public report and follow-up pages, the QR code,
-the settings switch, the sign-off actions) are not built yet.
+Not built yet: sending notifications by email, working-hours calendars for
+deadlines, attachments, investigations and actions.
 
 ## API
 
 The API is served under `/api/v1`. The web app forwards `/api/*` to it, so the
 browser only ever talks to one origin. The version in the path is there so
 that a future mobile app on an older release keeps working.
+
+### In front of the web app
+
+The API learns a caller's address from the `X-Forwarded-For` header. The web
+app passes that header on as it received it: it does not replace it and, as
+far as its code shows (this was read, not measured), does not add one. So in
+production **a reverse proxy must sit in front of the web app and set
+`X-Forwarded-For` itself to the address of whoever connected to it**,
+replacing anything the sender wrote there (nginx:
+`proxy_set_header X-Forwarded-For $remote_addr;`). A proxy that adds the
+real address after the sender's entries works too.
+
+`TRUST_PROXY_HOPS` tells the API how many proxies in front of the web app
+write the header:
+
+| Deployment | `TRUST_PROXY_HOPS` |
+|---|---|
+| one proxy, web app, API | `1` (the default) |
+| CDN, load balancer, web app, API (each adds its entry) | `2` |
+| the API reached directly, with no web app or proxy | `0` |
+
+Without such a proxy no setting is right. Left at 1, anyone can send their
+own `X-Forwarded-For` with each request and get a fresh allowance every time,
+so the limit per address on the public routes is bypassed. With no header at
+all, or at 0, every caller is counted as the web app and shares one
+allowance, so one person can use it up for everybody. Anything in the header
+that is not an IP address is counted as one caller, and the ceiling of 60
+public reports an hour per hospital holds whatever the header says. The
+address stored with each sign-in in the audit log comes from the same
+header, and is only as true.
 
 ## Run it locally
 
