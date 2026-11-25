@@ -106,7 +106,9 @@ describe('text a client writes', () => {
       expect(accepts(line(1, 5), '   ')).toBe(false);
       expect(optionalLine(100).parse(null)).toBeNull();
       expect(optionalLine(100).parse('  ')).toBeNull();
-      expect(optionalLine(100).parse(' +961\u00a01\u00a0234 ')).toBe('+961\u00a01\u00a0234');
+      expect(optionalLine(100).parse(' +961\u00a01\u00a0234 ')).toBe(
+        '+961\u00a01\u00a0234',
+      );
     });
   });
 
