@@ -417,42 +417,118 @@ describe('notifications', () => {
   });
 
   describe('triage', () => {
-    it('tells the person it is assigned to, and those who may triage the department it goes to', async () => {
+    it('tells the person it is assigned to, and only those a handover brings to the incident', async () => {
       const { id, reference } = await report(reporter);
       await clear(id);
-      // From nobody's to the ward's, and to the nurse.
+      // From nobody's to the ward's, and to the nurse. Everyone who may
+      // triage the ward could already triage the unit of it where this
+      // happened, and was told of the report: the handover is news to none.
       await triage(quality, id, { assignedTo: nurse.id }).expect(200);
-      expect(await told(id)).toEqual({
-        incident_assigned: sorted(nurse),
-        // The ward, not the unit under it; and not the one who did it.
-        incident_handed_over: sorted(admin, quality2, wardQuality),
-      });
+      expect(await told(id)).toEqual({ incident_assigned: sorted(nurse) });
       for (const row of await rowsFor(id)) {
         expect(row.data).toEqual({ reference });
       }
       await expectAllCouldOpen(id);
 
-      // On to the laboratory, the nurse staying on it: only the handover.
+      // On to the laboratory, the nurse staying on it: only the handover,
+      // and only to the one it brings in. Not to those who may triage for
+      // the whole organization, who have had it before them since the
+      // report.
       await clear(id);
       await triage(quality2, id, {
         ownerUnitId: lab,
         assignedTo: nurse.id,
       }).expect(200);
       expect(await told(id)).toEqual({
-        incident_handed_over: sorted(admin, quality, labQuality),
+        incident_handed_over: sorted(labQuality),
       });
+      expect((await rowsFor(id))[0].data).toEqual({ reference });
       await expectAllCouldOpen(id);
+
+      // And back to the ward: its quality officer never lost it, since it
+      // happened in a unit of theirs.
+      await clear(id);
+      await triage(quality, id, { assignedTo: nurse.id }).expect(200);
+      expect(await told(id)).toEqual({});
+    });
+
+    it('tells of a first triage only those who could not triage the unit where it happened', async () => {
+      // Reported in the ward's unit, sent straight to the laboratory.
+      const first = await report(reporter);
+      expect((await told(first.id)).incident_reported).toEqual(
+        sorted(admin, quality, quality2, wardQuality, unitTriage),
+      );
+      await triage(quality, first.id, { ownerUnitId: lab }).expect(200);
+      expect((await told(first.id)).incident_handed_over).toEqual(
+        sorted(labQuality),
+      );
+      // Reported in the laboratory, given to the ward: the ward's officer,
+      // not the one who triages a single unit under it.
+      const second = await report(reporter, { orgUnitId: lab });
+      await triage(quality2, second.id).expect(200);
+      expect((await told(second.id)).incident_handed_over).toEqual(
+        sorted(wardQuality),
+      );
+      // Kept where it happened: nobody new.
+      const third = await report(reporter, { orgUnitId: lab });
+      await triage(quality2, third.id, { ownerUnitId: lab }).expect(200);
+      expect((await told(third.id)).incident_handed_over).toBeUndefined();
+      // Taken all together, nobody was told of one incident both that it
+      // was reported and that it was handed over.
+      for (const { id } of [first, second, third]) {
+        const rows = await rowsFor(id);
+        expect(new Set(rows.map((r) => r.user_id)).size).toBe(rows.length);
+        await expectAllCouldOpen(id);
+      }
+    });
+
+    it('counts the department that handled it until then, not only where it happened', async () => {
+      // Happened at the level of the facility: only those who may triage
+      // everywhere are told of the report.
+      const { id } = await report(reporter, { orgUnitId: facility });
+      expect(await told(id)).toEqual({
+        incident_reported: sorted(admin, quality, quality2),
+      });
+      const handOver = async (who: Staff, ownerUnitId: string) => {
+        await clear(id);
+        await triage(who, id, { ownerUnitId }).expect(200);
+        const sent = await told(id);
+        await expectAllCouldOpen(id);
+        return sent;
+      };
+      expect(await handOver(quality, ward)).toEqual({
+        incident_handed_over: sorted(wardQuality),
+      });
+      // Down to a unit of the ward: the ward's officer had it already, the
+      // unit's own triager is new to it.
+      expect(await handOver(wardQuality, ward3)).toEqual({
+        incident_handed_over: sorted(unitTriage),
+      });
+      // Back up to the ward: nobody gains it.
+      expect(await handOver(unitTriage, ward)).toEqual({});
+      // To the laboratory, by the ward's officer, who loses it.
+      expect(await handOver(wardQuality, lab)).toEqual({
+        incident_handed_over: sorted(labQuality),
+      });
+      await http()
+        .get(`/incidents/${id}`)
+        .set('Cookie', wardQuality.cookie)
+        .expect(404);
+      // And to the ward once more: news again to the one who had lost it.
+      expect(await handOver(labQuality, ward)).toEqual({
+        incident_handed_over: sorted(wardQuality),
+      });
     });
 
     it('tells nobody twice, and nobody of their own doing', async () => {
-      const { id } = await report(reporter);
+      // Happened in the laboratory, given to the ward and to the ward's own
+      // quality officer, whom the handover also brings to it: one
+      // notification, the one that says it is theirs.
+      const { id } = await report(reporter, { orgUnitId: lab });
       await clear(id);
-      // Assigned to someone who may also triage the department it goes to:
-      // one notification, the one that says it is theirs.
       await triage(quality, id, { assignedTo: wardQuality.id }).expect(200);
       expect(await told(id)).toEqual({
         incident_assigned: sorted(wardQuality),
-        incident_handed_over: sorted(admin, quality2),
       });
       // Taking it oneself tells nobody.
       await clear(id);
@@ -464,6 +540,10 @@ describe('notifications', () => {
       // Nor does a triage that changes only the harm level, or nothing.
       await triage(quality, id, { harmLevel: 'mild' }).expect(200);
       await triage(quality, id, { harmLevel: 'mild' }).expect(200);
+      expect(await told(id)).toEqual({});
+      // Whoever hands it over could triage it before, or could not have:
+      // they are never among those it is news to.
+      await triage(labQuality, id, { ownerUnitId: lab }).expect(200);
       expect(await told(id)).toEqual({});
     });
 
@@ -483,10 +563,9 @@ describe('notifications', () => {
         assignedTo: nurse.id,
       }).expect(200);
       expect(handed.body).toMatchObject({ handedOff: true });
-      expect(await told(id)).toEqual({
-        incident_assigned: sorted(nurse),
-        incident_handed_over: sorted(admin, quality, quality2, labQuality),
-      });
+      // The laboratory's own officer could triage it all along, since it
+      // happened there: the handover brings nobody new.
+      expect(await told(id)).toEqual({ incident_assigned: sorted(nurse) });
       // A comment now reaches the nurse; the one who triaged it last can no
       // longer open it, and is told nothing.
       await clear(id);
@@ -602,7 +681,7 @@ describe('notifications', () => {
               and exists (
                 select from jsonb_each_text(n.data) d
                 where d.key not in ('reference', 'deadline', 'decision', 'change')
-                   or (d.key <> 'reference' and d.value not in ('triage', 'closure', 'signed_off', 'sent_back', 'closed', 'rejected', 'reopened')))`,
+                   or (d.key <> 'reference' and d.value not in ('triage', 'closure', 'signed_off', 'sent_back', 'withdrawn', 'closed', 'rejected', 'reopened')))`,
       );
       expect(odd.rows).toEqual([]);
     });
@@ -634,15 +713,125 @@ describe('notifications', () => {
       expect(ever.rows).toEqual([]);
     });
 
-    it('on a report nobody has triaged yet has nobody to tell but its named reporter', async () => {
+    it('on a report nobody has triaged yet is told to everyone who may triage it', async () => {
       const fresh = await report(reporter);
       await clear(fresh.id);
+      const triagers = [admin, quality, quality2, wardQuality, unitTriage];
+      // The reporter's question: nobody is assigned and nobody has triaged
+      // it, so it goes to all who could. Not to someone who sees every
+      // incident and triages none, nor to the laboratory's officer.
       await comment(reporter, fresh.id, 'One more thing.', 'everyone').expect(
         201,
       );
-      expect(await told(fresh.id)).toEqual({});
+      expect(await told(fresh.id)).toEqual({
+        comment_added: sorted(...triagers),
+      });
+      // Each of them once, with the reference and nothing else: not whose
+      // comment it is.
+      const rows = await rowsFor(fresh.id);
+      expect(rows).toHaveLength(5);
+      for (const row of rows) {
+        expect(row.data).toEqual({ reference: fresh.reference });
+      }
+      expect(JSON.stringify(rows)).not.toContain(reporter.id);
+      expect(JSON.stringify(rows)).not.toContain('One more thing');
+      expect(await expectAllCouldOpen(fresh.id)).toBe(5);
+
+      // One of them answers: the others and the reporter, not the author.
+      await clear(fresh.id);
       await comment(quality, fresh.id, 'Noted.', 'everyone').expect(201);
-      expect(await told(fresh.id)).toEqual({ comment_added: sorted(reporter) });
+      expect(await told(fresh.id)).toEqual({
+        comment_added: sorted(
+          reporter,
+          admin,
+          quality2,
+          wardQuality,
+          unitTriage,
+        ),
+      });
+      await expectAllCouldOpen(fresh.id);
+      // Between handlers: the others, and never the reporter.
+      await clear(fresh.id);
+      await comment(wardQuality, fresh.id, 'Who takes it?', 'internal').expect(
+        201,
+      );
+      expect(await told(fresh.id)).toEqual({
+        comment_added: sorted(admin, quality, quality2, unitTriage),
+      });
+      // By someone who sees it and may not triage it: all five.
+      await clear(fresh.id);
+      await comment(manager, fresh.id, 'Seen on my round.', 'internal').expect(
+        201,
+      );
+      expect(await told(fresh.id)).toEqual({
+        comment_added: sorted(...triagers),
+      });
+
+      // Once someone has triaged it, a comment is for them again.
+      await triage(quality2, fresh.id).expect(200);
+      await clear(fresh.id);
+      await comment(reporter, fresh.id, 'Any news?', 'everyone').expect(201);
+      expect(await told(fresh.id)).toEqual({ comment_added: sorted(quality2) });
+    });
+
+    it('on a report nobody has triaged yet says nothing of who reported it, by who is told', async () => {
+      const triagers = [admin, quality, quality2, wardQuality, unitTriage];
+      // Reported by name by someone who may triage it themselves: told of a
+      // colleague's comment once, not once as a triager and once as its
+      // reporter, and of an internal one like any other triager.
+      const own = await report(quality);
+      await clear(own.id);
+      await comment(quality2, own.id, 'Thanks.', 'everyone').expect(201);
+      expect(await told(own.id)).toEqual({
+        comment_added: sorted(admin, quality, wardQuality, unitTriage),
+      });
+      await clear(own.id);
+      await comment(quality2, own.id, 'Ours to take?', 'internal').expect(201);
+      expect(await told(own.id)).toEqual({
+        comment_added: sorted(admin, quality, wardQuality, unitTriage),
+      });
+
+      // Reported anonymously by that same person, who then writes with the
+      // follow-up code while signed in. Every triager is told, the one who
+      // wrote it too: one left out would be the one who reported.
+      const hidden = await report(quality, { anonymous: true });
+      await clear(hidden.id);
+      await http()
+        .post(`/public/follow-up/${a.slug}/comments`)
+        .set('Cookie', quality.cookie)
+        .send({ code: hidden.followUpCode, body: 'Is anyone on this?' })
+        .expect(201);
+      expect(await told(hidden.id)).toEqual({
+        comment_added: sorted(...triagers),
+      });
+      for (const row of await rowsFor(hidden.id)) {
+        expect(row.data).toEqual({ reference: hidden.reference });
+      }
+      // When they comment under their own name, as a handler, they are its
+      // author like any other and the rest are told.
+      await clear(hidden.id);
+      await comment(quality, hidden.id, 'Looking into it.', 'everyone').expect(
+        201,
+      );
+      expect(await told(hidden.id)).toEqual({
+        comment_added: sorted(admin, quality2, wardQuality, unitTriage),
+      });
+
+      // Reported anonymously by someone with no rights: the same five for
+      // their comment, and they are never told of anything on it.
+      const other = await report(reporter, { anonymous: true });
+      await clear(other.id);
+      await http()
+        .post(`/public/follow-up/${a.slug}/comments`)
+        .set('Cookie', reporter.cookie)
+        .send({ code: other.followUpCode, body: 'Any news?' })
+        .expect(201);
+      await comment(quality, other.id, 'Soon.', 'everyone').expect(201);
+      const rows = await rowsFor(other.id);
+      expect(rows.map((r) => r.user_id)).not.toContain(reporter.id);
+      // Five for the reporter's comment, four for the officer's own.
+      expect(rows).toHaveLength(9);
+      await expectAllCouldOpen(other.id);
     });
 
     it('is not told to whoever triaged it once they can no longer see it', async () => {
@@ -858,7 +1047,7 @@ describe('notifications', () => {
       });
     });
 
-    it('tells someone who both asked and is assigned once, and nobody when a request is withdrawn', async () => {
+    it('tells someone who both asked and is assigned once, and nobody when they withdraw their own request', async () => {
       const { id } = await sentinel({ assignedTo: quality.id });
       await move(quality, id, 'awaiting_sign_off', 'Root cause found.').expect(
         200,
@@ -879,6 +1068,114 @@ describe('notifications', () => {
         sign_off_decided: sorted(quality),
         status_changed: sorted(reporter),
       });
+    });
+
+    it('tells the one who asked when someone else withdraws the request', async () => {
+      const { id, reference } = await sentinel({ assignedTo: nurse.id });
+      await move(quality, id, 'awaiting_sign_off', 'Root cause found.').expect(
+        200,
+      );
+      await clear(id);
+      // By a colleague who may triage it.
+      await move(quality2, id, 'in_progress', 'The family has more to say.', {
+        kind: 'withdraw',
+      }).expect(200);
+      // Between the two of them: it is not closed, so there is nothing for
+      // its reporter or the person it is assigned to.
+      expect(await told(id)).toEqual({ sign_off_decided: sorted(quality) });
+      const rows = await rowsFor(id);
+      expect(rows).toHaveLength(1);
+      expect(rows[0].data).toEqual({ reference, decision: 'withdrawn' });
+      expect(JSON.stringify(rows)).not.toContain('family');
+      expect(JSON.stringify(rows)).not.toContain(quality2.id);
+      await expectAllCouldOpen(id);
+      // And it reads so in their own list.
+      const theirs = (await inbox(quality)).items.find(
+        (n) => n.incident.id === id,
+      );
+      expect(theirs).toMatchObject({
+        kind: 'sign_off_decided',
+        readAt: null,
+        incident: { id, reference, canOpen: true },
+        data: { reference, decision: 'withdrawn' },
+      });
+
+      // By someone who may triage it and not sign it off: the same.
+      await move(quality, id, 'awaiting_sign_off', 'Root cause found.').expect(
+        200,
+      );
+      await clear(id);
+      await move(unitTriage, id, 'in_progress', 'One more check.', {
+        kind: 'withdraw',
+      }).expect(200);
+      expect(await told(id)).toEqual({ sign_off_decided: sorted(quality) });
+
+      // Asked by the person it is assigned to, withdrawn by another: once.
+      const own = await sentinel({ assignedTo: quality.id });
+      await move(
+        quality,
+        own.id,
+        'awaiting_sign_off',
+        'Root cause found.',
+      ).expect(200);
+      await clear(own.id);
+      await move(quality2, own.id, 'in_progress', 'One more check.', {
+        kind: 'withdraw',
+      }).expect(200);
+      expect(await told(own.id)).toEqual({ sign_off_decided: sorted(quality) });
+      expect(await rowsFor(own.id)).toHaveLength(1);
+    });
+
+    it('does not tell of a withdrawal someone who asked and can no longer open the incident', async () => {
+      const asker = await bench.createStaff(a, 'asker', {
+        role: 'quality_officer',
+        orgUnitId: null,
+      });
+      names.set(asker.id, asker.name);
+      const { id } = await sentinel();
+      await move(asker, id, 'awaiting_sign_off', 'Root cause found.').expect(
+        200,
+      );
+      // They become an ordinary reporter: the incident is no longer theirs
+      // to see.
+      await http()
+        .put(`/users/${asker.id}/roles`)
+        .set('Cookie', a.cookie)
+        .send({ roles: [{ roleId: a.roles.reporter, orgUnitId: null }] })
+        .expect(200);
+      await http()
+        .get(`/incidents/${id}`)
+        .set('Cookie', asker.cookie)
+        .expect(404);
+      await clear(id);
+      await move(quality2, id, 'in_progress', 'They have moved on.', {
+        kind: 'withdraw',
+      }).expect(200);
+      expect(await told(id)).toEqual({});
+
+      // Nor someone whose account has been switched off since they asked.
+      const off = await bench.createStaff(a, 'asker-off', {
+        role: 'quality_officer',
+        orgUnitId: null,
+      });
+      names.set(off.id, off.name);
+      const second = await sentinel();
+      await move(
+        off,
+        second.id,
+        'awaiting_sign_off',
+        'Root cause found.',
+      ).expect(200);
+      await http()
+        .patch(`/users/${off.id}`)
+        .set('Cookie', a.cookie)
+        .send({ status: 'disabled' })
+        .expect(200);
+      await clear(second.id);
+      await move(quality2, second.id, 'in_progress', 'They have left.', {
+        kind: 'withdraw',
+      }).expect(200);
+      expect(await told(second.id)).toEqual({});
     });
   });
 

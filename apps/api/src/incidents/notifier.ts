@@ -48,12 +48,26 @@ export type Who = {
   mayTriage(unitIds: (string | null)[]): Set<string>;
   /** Everyone who may triage for the whole organization. */
   mayTriageEverywhere(): Set<string>;
+  /**
+   * Everyone a handover brings to the incident: whose right to triage covers
+   * it now, through the department it has been handed to, and did not cover
+   * it before, through the unit where it happened or the department that
+   * handled it until then. Those it covered before were told of the incident
+   * when it was reported or handed to them. Nobody, when the change being
+   * announced is not a handover.
+   */
+  mayTriageSinceHandover(): Set<string>;
   /** Everyone who may sign off the closure of this incident. */
   maySignOff(): Set<string>;
 };
 
 export type Announcement = {
   incident: Subject;
+  /**
+   * For a handover only: the department that handled the incident until this
+   * change, null when none did yet. Left out for any other change.
+   */
+  handedOverFrom?: string | null;
   /** The person whose action this is, who is not told of it. */
   actorId: string | null;
   /**
@@ -98,7 +112,11 @@ export class Notifier {
     const holders = await this.access.holders(
       tx,
       ['incidents.view', 'incidents.triage', 'incidents.sign_off'],
-      events.flatMap((e) => [e.incident.orgUnitId, e.incident.ownerUnitId]),
+      events.flatMap((e) => [
+        e.incident.orgUnitId,
+        e.incident.ownerUnitId,
+        e.handedOverFrom ?? null,
+      ]),
     );
     const planned = events.map((event) => {
       const { incident } = event;
@@ -113,6 +131,18 @@ export class Notifier {
         // of them is covered from the whole organization alone.
         mayTriage: (ids) => holders.of('incidents.triage', ids),
         mayTriageEverywhere: () => holders.everywhere('incidents.triage'),
+        mayTriageSinceHandover: () => {
+          if (event.handedOverFrom === undefined) return new Set();
+          const before = holders.of('incidents.triage', [
+            incident.orgUnitId,
+            event.handedOverFrom,
+          ]);
+          return new Set(
+            [...holders.of('incidents.triage', units)].filter(
+              (id) => !before.has(id),
+            ),
+          );
+        },
         // The right to sign off does not by itself let anyone see the
         // incident; the check below drops those who cannot.
         maySignOff: () => holders.of('incidents.sign_off', units),

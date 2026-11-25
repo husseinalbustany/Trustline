@@ -1298,9 +1298,13 @@ export class IncidentsService {
         },
       );
 
-      // The person it is now assigned to, and everyone who may triage the
-      // department it has been handed to. Someone who is both is told once,
-      // of the assignment.
+      // The person it is now assigned to, and everyone the handover brings
+      // to it: who may triage it now that this department handles it, and
+      // could not before. Whoever could already, through the unit where it
+      // happened, the department that handled it until now or the whole
+      // organization, was told of it when it was reported or handed to
+      // them, and is not told again. Someone who is both assigned and
+      // brought to it is told once, of the assignment.
       const handedOver = 'ownerUnitId' in changes;
       if ((personChanged && input.assignedTo) || handedOver) {
         await this.notifier.send(tx, tenant.id, {
@@ -1309,6 +1313,7 @@ export class IncidentsService {
             ownerUnitId: input.ownerUnitId,
             assignedTo: input.assignedTo,
           },
+          ...(handedOver && { handedOverFrom: incident.ownerUnitId }),
           actorId: user.id,
           drafts: (who) => [
             ...(personChanged
@@ -1324,7 +1329,7 @@ export class IncidentsService {
               ? [
                   {
                     kind: 'incident_handed_over',
-                    to: who.mayTriage([input.ownerUnitId]),
+                    to: who.mayTriageSinceHandover(),
                     internal: true,
                   } satisfies Draft,
                 ]
@@ -1483,9 +1488,12 @@ export class IncidentsService {
       const decision: Partial<Record<MoveKind, string>> = {
         sign_off: 'signed_off',
         send_back: 'sent_back',
+        withdraw: 'withdrawn',
       };
       const drafts = (who: Who): Draft[] => [
-        // Whoever asked for the closure learns what became of the request.
+        // Whoever asked for the closure learns what became of the request:
+        // signed off, sent back, or withdrawn by someone else who may triage
+        // the incident. Withdrawing it oneself is one's own action.
         ...(decision[move.kind]
           ? [
               {
@@ -1637,15 +1645,26 @@ export class IncidentsService {
     // if named, when the comment is one they may read. Not the writer. The
     // notification says that there is a comment, never whose: "the reporter
     // commented" would be as good as a name to whoever knows the rest.
+    //
+    // While it is assigned to nobody and nobody has triaged it, there is no
+    // handler to tell, and a reporter's question on a new report would go
+    // unseen: then everyone who may triage it is told. All of them, whoever
+    // reported it: an anonymous reporter who writes with their code is told
+    // of it with the rest if they are one of them, since leaving one out
+    // would record who that was.
+    const unattended = !incident.assignedTo && !incident.triagedBy;
     await this.notifier.send(tx, tenantId, {
       incident,
       actorId: authorId,
-      drafts: () => [
+      drafts: (who) => [
         {
           kind: 'comment_added',
           to: [
             incident.assignedTo,
             incident.triagedBy,
+            ...(unattended
+              ? who.mayTriage([incident.orgUnitId, incident.ownerUnitId])
+              : []),
             input.visibility === 'everyone' ? incident.reportedBy : null,
           ],
           internal: input.visibility === 'internal',

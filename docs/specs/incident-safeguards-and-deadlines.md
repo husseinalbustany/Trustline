@@ -55,7 +55,12 @@ by `ensureSystemRoles`, whichever the code already uses for built-in roles.
 `tenants.public_reporting` boolean, default false. A hospital user holding
 `settings.manage` for the whole organization turns it on or off
 (`GET /settings/reporting`, `PUT /settings/reporting`), audited. While it is
-off, every public route below answers 404 for that hospital.
+off, the two `/public/reporting` routes below answer 404 for that hospital.
+
+The two follow-up routes do not depend on the switch (decided after the
+first build): they answer for every active hospital. A code given to a
+signed-in member of staff who reported anonymously must work in a hospital
+that never opens the public form.
 
 ### Public routes (no session; under `/api/v1/public`)
 
@@ -65,12 +70,30 @@ off, every public route below answers 404 for that hospital.
   reporting off: the three cases must look the same.
 - `POST /public/reporting/:slug` → the same body as `POST /incidents` without
   `anonymous` (a public report is always anonymous). Stored with
-  `reported_by` NULL and `channel = 'public'`. Answers 201
-  `{ reference, followUpCode }`.
-- `POST /public/follow-up/:slug` body `{ reference, code }` → the reporter's
-  view of the incident (what `access: "reporter"` gives today).
-- `POST /public/follow-up/:slug/comments` body `{ reference, code, body }` →
-  adds an `everyone` comment written by the reporter.
+  `reported_by` NULL and `channel = 'public'`. Answers 201 `{ followUpCode }`
+  and nothing else. A public report gives no incident number (decided after
+  the security review): the numbers run in one series, so handing one to
+  anyone who files a public report would tell them how many incidents the
+  hospital has had. The same 404 as the route above.
+- `POST /public/follow-up/:slug` body `{ code }` → 200 with the reporter's
+  view of the incident (what `access: "reporter"` gives a signed-in
+  reporter), read with the code alone: no reference is asked for, and one
+  sent is refused like any other unknown field. A wrong code, an unknown
+  hospital and a suspended one answer the same 404. The view read with a code
+  differs from a signed-in reporter's in three ways:
+  - It carries no `reference` and no internal `id`, for the reason a public
+    report is given no number.
+  - It names no member of staff (decided after the first build). The actor
+    of an event and the author of a comment written by staff come back with
+    no person and `byStaff: true`, and the `people` map is empty. A named
+    reporter who is signed in sees names as before.
+  - It carries `hospital: { name, locales, defaultLocale }`, for the page to
+    show whose report this is and in which languages. Only a view carries
+    it: a refusal says nothing of the hospital.
+- `POST /public/follow-up/:slug/comments` body `{ code, body }` → adds an
+  `everyone` comment written by the reporter, and answers 201 with that same
+  view as it now reads, the comment included. So writing a comment costs one
+  attempt at the code, not two.
 
 `incidents.channel`: `app` (default, signed in) | `public`.
 
@@ -78,8 +101,9 @@ Protection, since these routes are open to the internet:
 - A limit per IP address: 10 reports an hour and 30 follow-up attempts an
   hour, answered with 429 `too_many_requests`. An in-memory limiter is
   acceptable for now; say so in the README (it is per server process).
-- A wrong reference and a wrong code answer the same 404, in the same time
-  (compare hashes in constant time; do the same work on both paths).
+- A wrong code answers the same 404, in the same time, whether the hospital
+  is active, is suspended or does not exist (compare hashes in constant
+  time; do the same work on every path).
 - The body limits of `POST /incidents` apply. No free text reaches a log.
 - Nothing about the sender (IP address, user agent) is stored with the
   incident, its events or the audit log. The audit row says a public report
@@ -89,7 +113,10 @@ Protection, since these routes are open to the internet:
 
 - Every anonymous report gets one, whether it was made signed in with
   "report anonymously" or through the public route. So `POST /incidents`
-  answers `{ id, reference, followUpCode }` when `anonymous` is true.
+  answers `{ id, reference, followUpCode }` when `anonymous` is true: a
+  signed-in member of staff who reports anonymously still gets their
+  reference with the code, and follows up with the code alone like everyone
+  else.
 - 16 characters from an alphabet without look-alikes (no 0/O, 1/I/L), shown in
   groups of four (`K7QM-2RXD-9FHT-WB3N`), generated with the system's secure
   random source. Only a hash is stored (`incidents.follow_up_code_hash`).
@@ -98,30 +125,11 @@ Protection, since these routes are open to the internet:
 - A signed-in user can also use it: the follow-up page works with or without
   a session, and never links the code to the session.
 
-### Decided after the first build
-
-- **Follow-up works whether or not public reporting is on.** A code given to
-  a signed-in member of staff who reported anonymously must work in a
-  hospital that never opens the public form. So the two follow-up routes
-  answer for every active hospital; only the two `/public/reporting` routes
-  depend on the switch. A wrong pair, an unknown hospital and a suspended one
-  still look the same.
-- **Someone reading with a follow-up code does not see staff names.** In that
-  view the actor of an event and the author of a comment written by staff
-  come back with no person and `byStaff: true`, and the `people` map is
-  empty. A named reporter who is signed in sees names as before.
-
 ### Decided after the security review
 
-- **A public report gives no incident number.** The numbers run in one
-  series, so handing one to anyone who files a public report would tell them
-  how many incidents the hospital has had. `POST /public/reporting/:slug`
-  answers `{ followUpCode }` only. Follow-up takes the code alone:
-  `POST /public/follow-up/:slug` body `{ code }`, and the comments route
-  `{ code, body }`. The view read with a code carries no `reference` and no
-  internal `id`. A signed-in member of staff who reports anonymously still
-  gets their reference with the code, and follows up with the code alone like
-  everyone else.
+That a public report gives no incident number, and that follow-up takes the
+code alone, are written into the sections above. The rest:
+
 - **Once an incident has needed sign-off, it needs it to close.** Lowering
   the harm level or clearing the sentinel flag afterwards does not remove the
   second signature (`incidents.sign_off_needed`, set when the incident is
@@ -287,11 +295,11 @@ description, no comment text, no names of people).
 |---|---|---|
 | `incident_reported` | a report is made | everyone who may triage the unit where it happened |
 | `incident_assigned` | a person is assigned | that person |
-| `incident_handed_over` | the handling department changes | everyone who may triage the new department |
-| `comment_added` | a comment is written | the reporter (for `everyone` comments, if named), the assignee, and whoever triaged it; never the author |
+| `incident_handed_over` | the handling department changes, the first time it is set included | those whose right to triage covers the incident through the new department and did not cover it before, through the unit where it happened or the department that handled it until then |
+| `comment_added` | a comment is written | the reporter (for `everyone` comments, if named), the assignee, and whoever triaged it; while nobody is assigned and nobody has triaged it, everyone who may triage it (its unit or its handling department); never the author |
 | `status_changed` | closed, not taken forward, reopened | the reporter (if named) and the assignee |
 | `sign_off_requested` | closure of a sentinel event is requested | everyone who may sign it off, except the requester |
-| `sign_off_decided` | signed off or sent back | the requester |
+| `sign_off_decided` | signed off, sent back, or the request withdrawn by someone other than the requester | the requester |
 | `due_soon` | a quarter of the allowed time is left | for triage: those who may triage it; for closure: the assignee, or those who may triage it if nobody is assigned |
 | `overdue` | the deadline passes | the same people, plus everyone who may triage for the whole organization |
 
@@ -300,7 +308,9 @@ description, no comment text, no names of people).
   > **Changed while building (API engineer, section 5).**
   > - **An anonymous report is told to everyone who may triage the unit, the
   >   reporter included if they are one of them.** Leaving them out would
-  >   store, in who was not notified, exactly who made the report.
+  >   store, in who was not notified, exactly who made the report. For the
+  >   same reason a comment written with a follow-up code on a report nobody
+  >   has triaged yet is told to every one of them, whoever wrote it.
   > - **Nobody is notified who cannot open the incident**, whatever the table
   >   above says: only active users, and for `sign_off_requested` only those
   >   holders of `incidents.sign_off` who can also see the incident (the
@@ -312,7 +322,8 @@ description, no comment text, no names of people).
   >   assigned.
   > - **A notification names nobody.** `data` is the reference plus, by kind,
   >   `deadline` (`triage` | `closure`), `decision` (`signed_off` |
-  >   `sent_back`) or `change` (`closed` | `rejected` | `reopened`).
+  >   `sent_back` | `withdrawn`) or `change` (`closed` | `rejected` |
+  >   `reopened`).
 - A notification is written in the same transaction as the change it
   announces.
 - `due_soon` and `overdue` come from a background check that runs every five
