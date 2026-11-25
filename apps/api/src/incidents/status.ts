@@ -20,6 +20,16 @@ export const OPEN_STATUSES: IncidentStatus[] = [
 ];
 
 /**
+ * Whether an anonymous reporter may still write to an incident with their
+ * follow-up code: until it has ended, closed or not taken forward. After
+ * that the code still reads it, and a reopened incident takes their comments
+ * again. (Staff who are signed in may comment on an ended incident as
+ * before: they can be held to what they write there.)
+ */
+export const takesCommentsByCode = (status: IncidentStatus) =>
+  OPEN_STATUSES.includes(status);
+
+/**
  * An incident can be triaged, and triaged again, until it has ended. Not
  * while it awaits sign-off: what the second person signs must not change
  * under them.

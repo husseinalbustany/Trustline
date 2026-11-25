@@ -27,11 +27,25 @@ export function newFollowUpCode(): string {
   return code.match(/.{4}/g)!.join('-');
 }
 
-/** A code as typed back: letter case, hyphens and spaces do not matter. */
-const normalize = (code: string) => code.replace(/[\s-]/g, '').toUpperCase();
+const NOT_IN_ALPHABET = new RegExp(`[^${FOLLOW_UP_ALPHABET}]`, 'g');
+
+/**
+ * A code as typed or pasted back, reduced to the characters a code is made
+ * of. Letter case does not matter, and whatever is not in the alphabet is
+ * left out: the hyphens it was shown with, spaces, punctuation, and what
+ * cannot be seen at all, such as the direction marks a phone puts around
+ * pasted text in a right-to-left field. None of that can be part of a code,
+ * so none of it should cost the reporter an attempt.
+ *
+ * Nothing is made easier to guess by this: every one of the code's own
+ * characters still has to be there, in order, and nothing else from the
+ * alphabet.
+ */
+export const normalizeFollowUpCode = (code: string) =>
+  code.toUpperCase().replace(NOT_IN_ALPHABET, '');
 
 const digest = (code: string) =>
-  createHash('sha256').update(normalize(code)).digest();
+  createHash('sha256').update(normalizeFollowUpCode(code)).digest();
 
 /** What is stored for a code. */
 export const hashFollowUpCode = (code: string) => digest(code).toString('hex');

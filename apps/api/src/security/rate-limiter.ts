@@ -5,9 +5,13 @@ export const UNKNOWN_CLIENT = 'unknown';
 
 /**
  * Who a request counts against. An IPv4 address counts as itself. An IPv6
- * address counts as its /64 network, because one subscriber is handed a whole
- * /64 and could otherwise come from a new address for every request. An IPv4
- * address written the IPv6 way (`::ffff:203.0.113.9`) is that IPv4 address.
+ * address counts as its /56 network: a provider hands one subscriber at
+ * least a /64 and commonly a /56, so counting by single address would give
+ * them a fresh allowance for every request, and counting by /64 would still
+ * give a home connection 256 of them. (Some hand out a /48: such a
+ * subscriber has 256 allowances here. The ceiling per hospital, which rests
+ * on no address, is what holds then.) An IPv4 address written the IPv6 way
+ * (`::ffff:203.0.113.9`) is that IPv4 address.
  *
  * Anything that is not an IP address counts as one and the same client,
  * `unknown`. What Express hands over can be text a sender chose (see
@@ -38,11 +42,12 @@ export function clientKey(ip: string | undefined): string {
           ),
           ...after,
         ];
-  const network = groups
-    .slice(0, 4)
-    .map((group) => group.replace(/^0+(?=.)/, ''))
+  // The first 56 bits: three groups and the upper half of the fourth.
+  const [a, b, c, d] = groups.map((group) => parseInt(group, 16));
+  const network = [a, b, c, d & 0xff00]
+    .map((group) => group.toString(16))
     .join(':');
-  return `${network}::/64`;
+  return `${network}::/56`;
 }
 
 /**

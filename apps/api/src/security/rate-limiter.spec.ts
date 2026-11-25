@@ -7,20 +7,30 @@ describe('clientKey', () => {
     expect(clientKey('::FFFF:203.0.113.9')).toBe('203.0.113.9');
   });
 
-  it('counts every address of one IPv6 /64 as the same client', () => {
+  it('counts every address of one IPv6 /56 as the same client', () => {
     const key = clientKey('2001:db8:12:3400::1');
-    expect(key).toBe('2001:db8:12:3400::/64');
+    expect(key).toBe('2001:db8:12:3400::/56');
     for (const same of [
       '2001:db8:12:3400:ffff:ffff:ffff:ffff',
       '2001:0db8:0012:3400:0000:0000:0000:0002',
       '2001:DB8:12:3400::abcd',
       '2001:db8:12:3400::1%eth0',
+      // The other 255 networks of 64 bits a home connection is handed with
+      // its /56: none of them is a caller of its own.
+      '2001:db8:12:3401::1',
+      '2001:db8:12:347f:1:2:3:4',
+      '2001:db8:12:34ff:ffff:ffff:ffff:ffff',
     ]) {
-      expect(clientKey(same)).toBe(key);
+      expect([same, clientKey(same)]).toEqual([same, key]);
     }
-    expect(clientKey('2001:db8:12:3401::1')).not.toBe(key);
-    expect(clientKey('::1')).toBe('0:0:0:0::/64');
-    expect(clientKey('2001:db8::')).toBe('2001:db8:0:0::/64');
+    // The next /56, and the one before.
+    expect(clientKey('2001:db8:12:3500::1')).toBe('2001:db8:12:3500::/56');
+    expect(clientKey('2001:db8:12:33ff::1')).toBe('2001:db8:12:3300::/56');
+    expect(clientKey('2001:db8:13:3400::1')).not.toBe(key);
+    expect(clientKey('::1')).toBe('0:0:0:0::/56');
+    expect(clientKey('2001:db8::')).toBe('2001:db8:0:0::/56');
+    expect(clientKey('2001:db8:0:ff::1')).toBe('2001:db8:0:0::/56');
+    expect(clientKey('64:ff9b::203.0.113.9')).toBe('64:ff9b:0:0::/56');
   });
 
   it('puts requests with no address in one bucket rather than letting them through', () => {

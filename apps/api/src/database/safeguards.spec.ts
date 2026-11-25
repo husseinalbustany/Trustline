@@ -3,7 +3,11 @@ import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { eq, inArray, like, sql } from 'drizzle-orm';
 import { requireEnv } from '../env.js';
-import { createDatabase, type Transaction } from './client.js';
+import {
+  CONNECTION_TIMEOUT_MS,
+  createDatabase,
+  type Transaction,
+} from './client.js';
 import {
   incidentCategories,
   incidentComments,
@@ -23,6 +27,8 @@ const TEST_REFERENCE = 'ZZSAFE-';
 const PERMISSION_DENIED = { cause: { code: '42501' } };
 /** Postgres "check_violation". */
 const CHECK_VIOLATION = { cause: { code: '23514' } };
+/** Postgres "lock_not_available": the wait for a lock ran out. */
+const LOCK_TIMEOUT = { cause: { code: '55P03' } };
 
 describe('what the database itself enforces for the incident safeguards', () => {
   // Connects as the application role, exactly as the running API does.
@@ -257,6 +263,219 @@ describe('what the database itself enforces for the incident safeguards', () => 
             .where(eq(incidentComments.id, comment.id)),
         ),
       ).rejects.toMatchObject(PERMISSION_DENIED);
+    });
+  });
+
+  describe('the second signature', () => {
+    // What a sentinel event or a death is stored with: an incident proper.
+    const grave = async (tx: Transaction, name: string) => ({
+      ...(await reportValues(tx, jci, `sign-${name}`)),
+      type: 'incident' as const,
+    });
+    const flagOf = async (id: string) =>
+      (
+        await owner.db
+          .select({ needed: incidents.signOffNeeded })
+          .from(incidents)
+          .where(eq(incidents.id, id))
+      )[0].needed;
+    /** Stored through the application role, as the API stores it. */
+    const store = async (
+      name: string,
+      values: Partial<typeof incidents.$inferInsert> = {},
+    ) => {
+      const [incident] = await tenantDb.withTenant(jci, async (tx) =>
+        tx
+          .insert(incidents)
+          .values({ ...(await grave(tx, name)), ...values })
+          .returning({ id: incidents.id, needed: incidents.signOffNeeded }),
+      );
+      return incident;
+    };
+    const change = (
+      id: string,
+      values: Partial<typeof incidents.$inferInsert>,
+    ) =>
+      tenantDb.withTenant(jci, (tx) =>
+        tx.update(incidents).set(values).where(eq(incidents.id, id)),
+      );
+
+    it('is needed from the moment a sentinel event or a death is stored, whoever stores it', async () => {
+      // Nothing said about the flag, as a release that does not know of it.
+      expect((await store('sentinel', { isSentinel: true })).needed).toBe(true);
+      expect((await store('death', { harmLevel: 'death' })).needed).toBe(true);
+      // Said to be false, by mistake: it is not.
+      expect(
+        (
+          await store('wrong', {
+            harmLevel: 'death',
+            isSentinel: true,
+            signOffNeeded: false,
+          })
+        ).needed,
+      ).toBe(true);
+      // Anything less is stored as it is said to be.
+      expect((await store('severe', { harmLevel: 'severe' })).needed).toBe(
+        false,
+      );
+      expect((await store('plain')).needed).toBe(false);
+      expect((await store('said', { signOffNeeded: true })).needed).toBe(true);
+    });
+
+    it('is needed once triage makes it a sentinel event or a death, with nothing said about it', async () => {
+      const made = await store('raised', { harmLevel: 'mild' });
+      expect(made.needed).toBe(false);
+      // An update that touches something else leaves it alone.
+      await change(made.id, { status: 'triaged' });
+      expect(await flagOf(made.id)).toBe(false);
+      await change(made.id, { isSentinel: true });
+      expect(await flagOf(made.id)).toBe(true);
+      const fatal = await store('fatal', { harmLevel: 'severe' });
+      await change(fatal.id, { harmLevel: 'death' });
+      expect(await flagOf(fatal.id)).toBe(true);
+    });
+
+    it('never falls again, whatever is written, and by whomever', async () => {
+      const { id } = await store('kept', { isSentinel: true });
+      // Called something else, and the flag cleared in the same breath.
+      await change(id, {
+        isSentinel: false,
+        harmLevel: 'none',
+        signOffNeeded: false,
+      });
+      expect(await flagOf(id)).toBe(true);
+      // Cleared on its own, when nothing else says it was ever needed.
+      await change(id, { signOffNeeded: false });
+      expect(await flagOf(id)).toBe(true);
+      // By a statement written by hand, and for every row at once.
+      await tenantDb.withTenant(jci, (tx) =>
+        tx.execute(
+          sql`update incidents set sign_off_needed = false where reference like ${`${TEST_REFERENCE}sign-%`}`,
+        ),
+      );
+      expect(await flagOf(id)).toBe(true);
+      // Not even by the role that owns the table.
+      await owner.db
+        .update(incidents)
+        .set({ signOffNeeded: false })
+        .where(eq(incidents.id, id));
+      expect(await flagOf(id)).toBe(true);
+      // The change is not refused: whatever else it carries is stored.
+      await change(id, { signOffNeeded: false, status: 'in_progress' });
+      const [row] = await owner.db
+        .select({ status: incidents.status, needed: incidents.signOffNeeded })
+        .from(incidents)
+        .where(eq(incidents.id, id));
+      expect(row).toEqual({ status: 'in_progress', needed: true });
+    });
+
+    it('is kept by a release that knows nothing of it, through a whole life of an incident', async () => {
+      // Every statement here leaves the column out, as the release before
+      // it existed would.
+      const values = await tenantDb.withTenant(jci, (tx) => grave(tx, 'old'));
+      const made = await tenantDb.withTenant(jci, (tx) =>
+        tx.execute<{ id: string }>(
+          sql`insert into incidents (tenant_id, reference, type, category_id, org_unit_id, occurred_at, description, harm_level)
+              values (${jci}, ${values.reference}, 'incident', ${values.categoryId}, ${values.orgUnitId}, now(), 'Created by safeguards.spec.ts', 'severe')
+              returning id`,
+        ),
+      );
+      const { id } = made.rows[0];
+      expect(await flagOf(id)).toBe(false);
+      const triage = (assignments: ReturnType<typeof sql>) =>
+        tenantDb.withTenant(jci, (tx) =>
+          tx.execute(
+            sql`update incidents set ${assignments}, revision = revision + 1 where id = ${id}`,
+          ),
+        );
+      await triage(sql`is_sentinel = true, status = 'triaged'`);
+      expect(await flagOf(id)).toBe(true);
+      // Lowered again by that same release: what it was until then counts.
+      await triage(sql`is_sentinel = false, harm_level = 'mild'`);
+      expect(await flagOf(id)).toBe(true);
+      await triage(sql`harm_level = 'none'`);
+      expect(await flagOf(id)).toBe(true);
+    });
+  });
+
+  describe("the application role's sessions", () => {
+    const setting = async (
+      database: ReturnType<typeof createDatabase>['db'],
+      name: string,
+    ) =>
+      (
+        await database.execute<{ value: string }>(
+          sql`select current_setting(${name}) as value`,
+        )
+      ).rows[0].value;
+
+    it('give up a statement, a wait for a lock and an idle transaction after a while', async () => {
+      expect(await setting(db, 'statement_timeout')).toBe('15s');
+      expect(await setting(db, 'lock_timeout')).toBe('5s');
+      expect(await setting(db, 'idle_in_transaction_session_timeout')).toBe(
+        '1min',
+      );
+      // Inside a hospital's transaction too: that is where the API works.
+      expect(
+        await tenantDb.withTenant(
+          jci,
+          async (tx) =>
+            (
+              await tx.execute<{ value: string }>(
+                sql`select current_setting('statement_timeout') as value`,
+              )
+            ).rows[0].value,
+        ),
+      ).toBe('15s');
+    });
+
+    it('leave migrations, the seed and the admin portal as they were', async () => {
+      for (const database of [owner.db, platform.db]) {
+        expect(await setting(database, 'statement_timeout')).toBe('0');
+        expect(await setting(database, 'lock_timeout')).toBe('0');
+        expect(
+          await setting(database, 'idle_in_transaction_session_timeout'),
+        ).toBe('0');
+      }
+    });
+
+    it('do not wait for ever for a row somebody else holds', async () => {
+      const [incident] = await tenantDb.withTenant(jci, async (tx) =>
+        tx
+          .insert(incidents)
+          .values(await reportValues(tx, jci, 'held'))
+          .returning({ id: incidents.id }),
+      );
+      const holder = await owner.pool.connect();
+      try {
+        await holder.query('begin');
+        await holder.query('select 1 from incidents where id = $1 for update', [
+          incident.id,
+        ]);
+        const began = Date.now();
+        await expect(
+          tenantDb.withTenant(jci, (tx) =>
+            tx
+              .update(incidents)
+              .set({ description: 'Changed by safeguards.spec.ts' })
+              .where(eq(incidents.id, incident.id)),
+          ),
+        ).rejects.toMatchObject(LOCK_TIMEOUT);
+        const waited = Date.now() - began;
+        expect(waited).toBeGreaterThanOrEqual(4_500);
+        expect(waited).toBeLessThan(12_000);
+      } finally {
+        await holder.query('rollback');
+        holder.release();
+      }
+    }, 30_000);
+
+    it('wait only so long for a connection when all are in use', () => {
+      for (const { options } of [pool, owner.pool, platform.pool]) {
+        expect(options.connectionTimeoutMillis).toBe(CONNECTION_TIMEOUT_MS);
+      }
+      expect(CONNECTION_TIMEOUT_MS).toBeGreaterThan(0);
+      expect(CONNECTION_TIMEOUT_MS).toBeLessThanOrEqual(30_000);
     });
   });
 

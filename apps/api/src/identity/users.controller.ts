@@ -27,6 +27,7 @@ import {
 import { TenantDb } from '../database/tenant-db.service.js';
 import { pgErrorCode } from '../database/errors.js';
 import { fitsLanguages, localizedText, sameText } from '../i18n/locales.js';
+import { optionalLine } from '../i18n/text.js';
 import { OrgUnitsService } from '../organization/org-units.service.js';
 import type { Permission } from './permissions.js';
 import { ProvisioningService, type RoleGrant } from './provisioning.service.js';
@@ -37,23 +38,16 @@ import {
   type AuthedRequest,
 } from './session.guard.js';
 
-const optionalText = (max: number) =>
-  z
-    .string()
-    .trim()
-    .max(max)
-    .nullish()
-    .transform((v) => v || null);
-
 const profile = {
   name: localizedText(200),
   orgUnitId: z
     .uuid()
     .nullish()
     .transform((v) => v ?? null),
-  employeeNumber: optionalText(50),
-  jobTitle: optionalText(200),
-  phone: optionalText(50),
+  // One line each, and no control characters: see text.ts.
+  employeeNumber: optionalLine(50),
+  jobTitle: optionalLine(200),
+  phone: optionalLine(50),
 };
 
 const grantsSchema = z

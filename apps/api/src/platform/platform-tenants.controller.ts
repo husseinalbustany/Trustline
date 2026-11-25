@@ -27,7 +27,8 @@ import {
 } from './platform-auth.guard.js';
 import { PlatformAuthService } from './platform-auth.service.js';
 import { fitsLanguages, localeSchema, localizedText } from '../i18n/locales.js';
-import { isTimeZone } from '../i18n/time-zones.js';
+import { line } from '../i18n/text.js';
+import { canonicalTimeZone } from '../i18n/time-zones.js';
 import { pgErrorCode } from '../database/errors.js';
 import { roleAssignments, roles, sessions, users } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
@@ -44,10 +45,8 @@ const settings = {
   defaultLocale: localeSchema,
   plan: z.enum(['starter', 'professional', 'enterprise']),
   signInMethod: z.enum(['password', 'sso', 'both']),
-  dataRegion: z
-    .string()
-    .trim()
-    .max(100)
+  // One line, free of control characters, or nothing.
+  dataRegion: line(0, 100)
     .nullable()
     .transform((v) => v || null),
 };
@@ -102,14 +101,11 @@ export class PlatformTenantsController {
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException();
     this.assertLanguages(parsed.data);
-    this.assertTimeZone(parsed.data.timeZone);
+    const values = this.withTimeZone(parsed.data);
     try {
       // The client and its audit entry are saved together or not at all.
       const tenant = await this.db.transaction(async (tx) => {
-        const [created] = await tx
-          .insert(tenants)
-          .values(parsed.data)
-          .returning();
+        const [created] = await tx.insert(tenants).values(values).returning();
         await this.auth.audit(
           req.platformAdmin.id,
           'client_created',
@@ -169,7 +165,7 @@ export class PlatformTenantsController {
     if (!parsed.success || Object.keys(parsed.data).length === 0) {
       throw new BadRequestException();
     }
-    this.assertTimeZone(parsed.data.timeZone);
+    const values = this.withTimeZone(parsed.data);
     const tenantId = this.parseId(id);
     const tenant = await this.db.transaction(async (tx) => {
       const [before] = await tx
@@ -178,15 +174,15 @@ export class PlatformTenantsController {
         .where(eq(tenants.id, tenantId))
         .for('update');
       if (!before) throw new NotFoundException();
-      this.assertLanguages({ ...before, ...parsed.data });
+      this.assertLanguages({ ...before, ...values });
       const [after] = await tx
         .update(tenants)
-        .set(parsed.data)
+        .set(values)
         .where(eq(tenants.id, tenantId))
         .returning();
       // What changed, with the old and new value of each field.
       const changes = Object.fromEntries(
-        (Object.keys(parsed.data) as (keyof typeof parsed.data)[])
+        (Object.keys(values) as (keyof typeof values)[])
           .filter(
             (key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]),
           )
@@ -337,10 +333,16 @@ export class PlatformTenantsController {
    * the API works out for the client is counted on that clock, so a name it
    * could not count with must never be stored.
    */
-  private assertTimeZone(timeZone: string | undefined) {
-    if (timeZone !== undefined && !isTimeZone(timeZone)) {
-      throw new BadRequestException({ code: 'unknown_time_zone' });
-    }
+  /**
+   * The same values with the time zone, if one was sent, under the name it
+   * is stored by: in the letter case IANA writes it, whatever was typed.
+   * 400 `unknown_time_zone` if it is not a zone a hospital can have.
+   */
+  private withTimeZone<T extends { timeZone?: string }>(values: T): T {
+    if (values.timeZone === undefined) return values;
+    const timeZone = canonicalTimeZone(values.timeZone);
+    if (!timeZone) throw new BadRequestException({ code: 'unknown_time_zone' });
+    return { ...values, timeZone };
   }
 
   private parseId(id: string) {

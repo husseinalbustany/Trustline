@@ -7,6 +7,12 @@ const HOUR = 3_600_000;
 export const PUBLIC_REPORTS_PER_HOUR = 10;
 export const FOLLOW_UP_ATTEMPTS_PER_HOUR = 30;
 /**
+ * How often one address may open a hospital's public report form. Far more
+ * than anyone filling it in needs, and too few to go through a list of
+ * identifiers looking for hospitals that take reports.
+ */
+export const PUBLIC_FORM_READS_PER_HOUR = 60;
+/**
  * Reports through the public link that one hospital takes in an hour,
  * whatever addresses they come from. The limit per address rests on the
  * address being true, which the API cannot check for itself; this one rests
@@ -14,6 +20,20 @@ export const FOLLOW_UP_ATTEMPTS_PER_HOUR = 30;
  * so it is the same for every API process and survives a restart.
  */
 export const PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR = 60;
+/**
+ * Comments one incident takes in 24 hours from whoever holds its follow-up
+ * code. The code cannot be taken back and a comment cannot be removed, each
+ * one is stored for good and tells the people handling the incident: so
+ * what a code can write is bounded per incident, whatever addresses it is
+ * used from. Counted in the database by IncidentsService, like the ceiling
+ * above.
+ */
+export const FOLLOW_UP_COMMENTS_PER_INCIDENT_PER_DAY = 10;
+/**
+ * What a public report is told to wait, in seconds, when another report to
+ * the same hospital was being stored at that very moment.
+ */
+export const BUSY_RETRY_SECONDS = 1;
 
 /** What every limit on the public routes answers when it is reached. */
 export function tooManyRequests(res: Response, retryAfterSeconds: number) {
@@ -46,6 +66,7 @@ export function tooManyRequests(res: Response, retryAfterSeconds: number) {
 @Injectable()
 export class PublicLimits {
   private readonly limiters = {
+    form: new RateLimiter(PUBLIC_FORM_READS_PER_HOUR, HOUR),
     report: new RateLimiter(PUBLIC_REPORTS_PER_HOUR, HOUR),
     // Opening a report with a code and commenting with one share a count:
     // both are attempts at a code.

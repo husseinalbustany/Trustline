@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import {
@@ -14,6 +15,7 @@ import {
   gt,
   gte,
   inArray,
+  isNull,
   lt,
   or,
   sql,
@@ -22,6 +24,7 @@ import {
 import { alias } from 'drizzle-orm/pg-core';
 import type { Transaction } from '../database/client.js';
 import {
+  auditLog,
   incidentCategories,
   incidentComments,
   incidentEvents,
@@ -42,7 +45,11 @@ import {
   newFollowUpCode,
 } from './follow-up-code.js';
 import { Notifier, type Draft, type Subject, type Who } from './notifier.js';
-import { PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR } from './public-limits.js';
+import {
+  BUSY_RETRY_SECONDS,
+  FOLLOW_UP_COMMENTS_PER_INCIDENT_PER_DAY,
+  PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR,
+} from './public-limits.js';
 import { nextReference } from './reference.js';
 import { closeDueAt, triageDueAt } from './response-rules.js';
 import { ResponseRulesService } from './response-rules.service.js';
@@ -56,6 +63,7 @@ import {
   OPEN_STATUSES,
   overdueOf,
   SERIOUS_HARM,
+  takesCommentsByCode,
   TRIAGE_FROM,
   type Caller,
   type EventKind,
@@ -130,6 +138,13 @@ const ANONYMOUS_REPORTER: Reader = {
 export type Hospital = { id: string; timeZone: string };
 
 const HOUR_MS = 3_600_000;
+const DAY_MS = 24 * HOUR_MS;
+
+/**
+ * What the audit log calls the moment a hospital's public form stopped
+ * taking reports because it had had its hour's worth.
+ */
+export const PUBLIC_LIMIT_REACHED = 'public_reporting_limit_reached';
 
 /**
  * Stands in for the hospital when there is none to act for. A transaction
@@ -228,6 +243,8 @@ const requester = alias(users, 'requester');
 /** The rules of incident reporting: who sees what, and what may change. */
 @Injectable()
 export class IncidentsService {
+  private readonly logger = new Logger(IncidentsService.name);
+
   constructor(
     private readonly tenantDb: TenantDb,
     private readonly provisioning: ProvisioningService,
@@ -430,6 +447,7 @@ export class IncidentsService {
     const { tenant, user } = auth;
     const { anonymous, ...report } = input;
     return this.tenantDb.withTenant(tenant.id, async (tx) => {
+      await this.assertReportable(tx, report);
       const { id, reference, followUpCode } = await this.store(
         tx,
         tenant,
@@ -439,6 +457,18 @@ export class IncidentsService {
       );
       return followUpCode ? { id, reference, followUpCode } : { id, reference };
     });
+  }
+
+  /**
+   * Refuses a report for what it says: harm that does not fit its type, a
+   * category or a unit that is not one of this hospital's in use. 400 with a
+   * `code`. Reads only; nothing is locked or stored.
+   */
+  private async assertReportable(tx: Transaction, input: PublicReportInput) {
+    this.assertHarmFits(input.type, input.harmLevel, false);
+    await this.assertCategory(tx, input.categoryId);
+    // Where it happened: a unit of this hospital that is still in use.
+    await this.orgUnits.assertActive(tx, [input.orgUnitId]);
   }
 
   /**
@@ -453,52 +483,114 @@ export class IncidentsService {
    *
    * A hospital takes only so many of these an hour, whoever sends them and
    * from wherever. Past that the answer is `retryAfter`, in seconds, and
-   * nothing is stored. Counted here, in the database, under a lock that
-   * makes reports to one hospital take their turn, so the ceiling is the
-   * same for every API process and cannot be overrun by sending at once.
+   * nothing is stored. Counted here, in the database, by whoever holds the
+   * hospital's lock, so the ceiling is the same for every API process and
+   * cannot be overrun by sending at once.
+   *
+   * Nobody waits for that lock. A report that arrives while another to the
+   * same hospital is being stored is told to try again in a moment
+   * (`retryAfter`, the same answer as the ceiling's): waiting would hold a
+   * database connection for as long as the queue is, and a flood on one
+   * hospital's form would then use up the connections every hospital
+   * shares. For the same reason a report that will be refused for what it
+   * says is refused before the lock is asked for, so sending such reports
+   * keeps nobody out.
+   *
+   * The first refusal of an hour is written to the hospital's audit log, and
+   * to the server's log with the hospital's id, so that its quality office
+   * and whoever runs the server can see the form is being held shut. Once an
+   * hour, however many are refused. Nothing about any sender is in either.
    */
-  reportPublicly(
+  async reportPublicly(
     tenant: Hospital,
     input: PublicReportInput,
   ): Promise<{ followUpCode: string } | { retryAfter: number }> {
-    return this.tenantDb.withTenant(tenant.id, async (tx) => {
-      await tx.execute(
-        sql`select pg_advisory_xact_lock(hashtext('trustline.public_reports'), hashtext(${tenant.id}))`,
+    type Outcome =
+      | { followUpCode: string }
+      | { retryAfter: number; firstThisHour?: boolean };
+    const result = await this.tenantDb.withTenant<Outcome>(
+      tenant.id,
+      async (tx) => {
+        await this.assertReportable(tx, input);
+        const turn = await tx.execute<{ mine: boolean }>(
+          sql`select pg_try_advisory_xact_lock(hashtext('trustline.public_reports'), hashtext(${tenant.id})) as mine`,
+        );
+        if (!turn.rows[0].mine) return { retryAfter: BUSY_RETRY_SECONDS };
+        const now = Date.now();
+        const anHourAgo = new Date(now - HOUR_MS);
+        // The report that fills the hour, if the hour is full: the newest but
+        // fifty-nine. When it is an hour old there is room again.
+        const [filling] = await tx
+          .select({ at: incidents.reportedAt })
+          .from(incidents)
+          .where(
+            and(
+              eq(incidents.channel, 'public'),
+              gt(incidents.reportedAt, anHourAgo),
+            ),
+          )
+          .orderBy(desc(incidents.reportedAt))
+          .offset(PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR - 1)
+          .limit(1);
+        if (filling) {
+          // Said once an hour. Under the lock, so two refusals at the same
+          // moment do not both say it.
+          const [said] = await tx
+            .select({ id: auditLog.id })
+            .from(auditLog)
+            .where(
+              and(
+                eq(auditLog.entityType, 'tenant'),
+                eq(auditLog.entityId, tenant.id),
+                eq(auditLog.action, PUBLIC_LIMIT_REACHED),
+                gt(auditLog.occurredAt, anHourAgo),
+              ),
+            )
+            .limit(1);
+          if (!said) {
+            // No actor: nobody is signed in. And nothing of the sender: not
+            // their address, not what they wrote.
+            await this.provisioning.audit(
+              tx,
+              tenant.id,
+              null,
+              PUBLIC_LIMIT_REACHED,
+              'tenant',
+              tenant.id,
+              { limit: PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR, perMinutes: 60 },
+            );
+          }
+          return {
+            retryAfter: (filling.at.getTime() + HOUR_MS - now) / 1000,
+            firstThisHour: !said,
+          };
+        }
+        const { followUpCode } = await this.store(
+          tx,
+          tenant,
+          input,
+          null,
+          'public',
+        );
+        return { followUpCode: followUpCode! };
+      },
+    );
+    // After the transaction, so the line is written only if the audit entry
+    // was. The hospital's id and the limit; never a word of the report.
+    if ('firstThisHour' in result && result.firstThisHour) {
+      this.logger.warn(
+        `Public reporting limit reached for hospital ${tenant.id}: ${PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR} reports in the last hour, further ones are answered 429 until the hour moves on`,
       );
-      const now = Date.now();
-      // The report that fills the hour, if the hour is full: the newest but
-      // fifty-nine. When it is an hour old there is room again.
-      const [filling] = await tx
-        .select({ at: incidents.reportedAt })
-        .from(incidents)
-        .where(
-          and(
-            eq(incidents.channel, 'public'),
-            gt(incidents.reportedAt, new Date(now - HOUR_MS)),
-          ),
-        )
-        .orderBy(desc(incidents.reportedAt))
-        .offset(PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR - 1)
-        .limit(1);
-      if (filling) {
-        return { retryAfter: (filling.at.getTime() + HOUR_MS - now) / 1000 };
-      }
-      const { followUpCode } = await this.store(
-        tx,
-        tenant,
-        input,
-        null,
-        'public',
-      );
-      return { followUpCode: followUpCode! };
-    });
+    }
+    return 'retryAfter' in result ? { retryAfter: result.retryAfter } : result;
   }
 
   /**
    * Stores a report, its first timeline entry and its audit entry, and tells
    * those who may triage it. With no reporter it is anonymous: nothing
    * records who made it, and it gets a follow-up code, of which only the
-   * hash is kept.
+   * hash is kept. What the report says has been checked by the caller, with
+   * `assertReportable()`.
    */
   private async store(
     tx: Transaction,
@@ -509,11 +601,6 @@ export class IncidentsService {
   ) {
     const tenantId = tenant.id;
     const { startedAt, ...fields } = input;
-    this.assertHarmFits(input.type, input.harmLevel, false);
-    await this.assertCategory(tx, input.categoryId);
-    // Where it happened: a unit of this hospital that is still in use.
-    await this.orgUnits.assertActive(tx, [input.orgUnitId]);
-
     const now = new Date();
     // Kept only when believable. A device with a wrong clock sends a time
     // that is not; the report is taken all the same, without the measure.
@@ -915,6 +1002,7 @@ export class IncidentsService {
             authorId: incidentComments.authorId,
             byReporter: incidentComments.byReporter,
             asHandler: incidentComments.asHandler,
+            visibility: incidentComments.visibility,
           })
           .from(incidentComments)
           .where(eq(incidentComments.incidentId, row.id))
@@ -1046,15 +1134,23 @@ export class IncidentsService {
    * recorded, or by a release that does not record it; it is then read the
    * way all comments were before: the reporter's if its author reported the
    * incident. That errs towards hiding a name, never towards showing one.
+   *
+   * Except for an internal comment, which is never the reporter's whatever
+   * is stored with it: only someone who saw all of the incident could write
+   * one, so it was written as a handler. Read as "by the reporter", it
+   * would tell a handler that the report was a named one, made by somebody
+   * with full access to it.
    */
   private writtenAsReporter(
     comment: {
       authorId: string | null;
       byReporter: boolean;
       asHandler: boolean;
+      visibility: CommentVisibility;
     },
     reportedBy: string | null,
   ) {
+    if (comment.visibility === 'internal') return false;
     return (
       comment.byReporter ||
       (!comment.asHandler &&
@@ -1230,6 +1326,8 @@ export class IncidentsService {
           )
         : incident.closeDueAt;
       const moved = closeDue?.getTime() !== incident.closeDueAt?.getTime();
+      // Whether the deadline, where it now falls, is still to come.
+      const ahead = closeDue !== null && closeDue.getTime() > now.getTime();
       await tx
         .update(incidents)
         .set({
@@ -1246,12 +1344,16 @@ export class IncidentsService {
             callsForSignOff(next),
           ...(decided && { triagedBy: user.id, triagedAt: now }),
           ...(incident.status === 'new' && { firstTriagedAt: now }),
-          // A deadline that moved is another deadline: what was announced
-          // about the old one says nothing about this one.
+          // A deadline that moved to a moment still to come is another
+          // deadline: what was announced about the old one says nothing
+          // about it, and it is announced in its turn. One that moved and is
+          // already past is not: what was announced stands, so whoever was
+          // told the incident is overdue is not told again each time its
+          // harm level is changed. (If nobody was told yet, there is
+          // nothing recorded, and the next check says it once.)
           ...(moved && {
             closeDueAt: closeDue,
-            closeDueSoonAt: null,
-            closeOverdueAt: null,
+            ...(ahead && { closeDueSoonAt: null, closeOverdueAt: null }),
           }),
           revision: incident.revision + 1,
           updatedAt: now,
@@ -1732,12 +1834,56 @@ export class IncidentsService {
    * A comment by the anonymous reporter, for everyone on the incident.
    * Answered with the report as it now reads, their comment included, so
    * that writing one costs one attempt at the code and not two.
+   *
+   * A wrong code is refused exactly as when reading (404). Two more things
+   * are refused, and only once the code has proved right, so they tell
+   * nothing to anyone who does not hold it:
+   *
+   * - 409 `incident_ended` when the incident is closed or was not taken
+   *   forward. Nobody is working on it any more, and a code cannot be taken
+   *   back. Reading with the code still works, and if the incident is
+   *   reopened it takes comments again.
+   * - `retryAfter`, in seconds, when the incident has had as many comments
+   *   by code in the last 24 hours as it takes. Counted in the database with
+   *   the incident's row held, so it is the same for every API process and
+   *   from every address, and cannot be overrun by sending at once.
    */
   followUpComment(tenantId: string | null, code: string, body: string) {
     const scope = tenantId ?? NO_TENANT;
     return this.tenantDb.withTenant(scope, async (tx) => {
       const found = await this.byFollowUpCode(tx, code);
       if (!found) throw new NotFoundException();
+      // Held from here to the end: comments written with this code take
+      // their turn, and the status read is the status the comment is
+      // stored under.
+      const [{ status }] = await tx
+        .select({ status: incidents.status })
+        .from(incidents)
+        .where(eq(incidents.id, found.id))
+        .for('update');
+      if (!takesCommentsByCode(status)) {
+        throw new ConflictException({ code: 'incident_ended' });
+      }
+      const now = Date.now();
+      // The comment that fills the day, if the day is full: the newest but
+      // nine of those written with the code. When it is a day old there is
+      // room again.
+      const [filling] = await tx
+        .select({ at: incidentComments.createdAt })
+        .from(incidentComments)
+        .where(
+          and(
+            eq(incidentComments.incidentId, found.id),
+            isNull(incidentComments.authorId),
+            gt(incidentComments.createdAt, new Date(now - DAY_MS)),
+          ),
+        )
+        .orderBy(desc(incidentComments.createdAt))
+        .offset(FOLLOW_UP_COMMENTS_PER_INCIDENT_PER_DAY - 1)
+        .limit(1);
+      if (filling) {
+        return { retryAfter: (filling.at.getTime() + DAY_MS - now) / 1000 };
+      }
       await this.addComment(
         tx,
         scope,

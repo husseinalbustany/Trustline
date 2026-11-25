@@ -1,5 +1,6 @@
 import {
   addDays,
+  canonicalTimeZone,
   dayOf,
   isTimeZone,
   lastDays,
@@ -42,6 +43,97 @@ describe("a hospital's own calendar", () => {
         ['Asia/Beirut'],
       ]) {
         expect([name, isTimeZone(name)]).toEqual([name, false]);
+      }
+    });
+
+    it('is not an offset under the spelling the Etc area gives it, nor anything else there', () => {
+      // The runtime knows every one of these. None says where a hospital
+      // is, so none can follow its summer time; UTC is written `UTC`.
+      for (const name of [
+        'Etc/GMT+3',
+        'Etc/GMT-3',
+        'Etc/GMT-14',
+        'Etc/GMT+12',
+        'Etc/GMT0',
+        'Etc/GMT',
+        'Etc/UTC',
+        'Etc/UCT',
+        'Etc/Zulu',
+        'Etc/Greenwich',
+        'etc/gmt+3',
+        'ETC/GMT-3',
+        'Etc/utc',
+      ]) {
+        expect(
+          () => new Intl.DateTimeFormat('en', { timeZone: name }),
+        ).not.toThrow();
+        expect([name, isTimeZone(name)]).toEqual([name, false]);
+        expect([name, canonicalTimeZone(name)]).toEqual([name, null]);
+      }
+    });
+
+    it('is stored in the letter case IANA writes it, whatever was typed', () => {
+      for (const [typed, stored] of [
+        ['asia/riyadh', 'Asia/Riyadh'],
+        ['ASIA/BEIRUT', 'Asia/Beirut'],
+        ['aSiA/dUbAi', 'Asia/Dubai'],
+        ['africa/casablanca', 'Africa/Casablanca'],
+        ['america/new_york', 'America/New_York'],
+        ['AMERICA/PORT-AU-PRINCE', 'America/Port-au-Prince'],
+        ['africa/dar_es_salaam', 'Africa/Dar_es_Salaam'],
+        ['Europe/Paris', 'Europe/Paris'],
+        ['UTC', 'UTC'],
+      ]) {
+        expect([typed, canonicalTimeZone(typed)]).toEqual([typed, stored]);
+        // Only the name as it is stored is a time zone letter for letter.
+        expect([typed, isTimeZone(typed)]).toEqual([typed, typed === stored]);
+      }
+    });
+
+    it('keeps a second spelling of a zone as it was chosen, and takes it in no other letter case', () => {
+      // Names one browser lists where another, and this runtime, list the
+      // older spelling. Both are IANA names for the same clock; the one
+      // chosen is the one kept.
+      for (const name of [
+        'Asia/Kolkata',
+        'Asia/Calcutta',
+        'Europe/Kyiv',
+        'Asia/Ho_Chi_Minh',
+        'America/Argentina/Buenos_Aires',
+        'America/Indiana/Indianapolis',
+        'US/Eastern',
+      ]) {
+        expect([name, canonicalTimeZone(name)]).toEqual([name, name]);
+        // Whichever way this runtime knows the name, a spelling of it in
+        // small letters is never stored as typed.
+        const lower = canonicalTimeZone(name.toLowerCase());
+        expect([name, lower === null || lower === name]).toEqual([name, true]);
+        expect(canonicalTimeZone(name.toLowerCase())).not.toBe(
+          name.toLowerCase(),
+        );
+      }
+    });
+
+    it('is nothing the runtime does not know, and nothing that is not text', () => {
+      for (const name of [
+        '',
+        'utc',
+        'Utc',
+        '+03:00',
+        'GMT+3',
+        'EST',
+        'Mars/Olympus',
+        'mars/olympus',
+        'Asia/Beirut ',
+        'Asia/Beirut\u0000',
+        'Asia/Bei\u200frut',
+        'posix/Asia/Beirut',
+        null,
+        undefined,
+        3,
+        {},
+      ]) {
+        expect([name, canonicalTimeZone(name)]).toEqual([name, null]);
       }
     });
   });

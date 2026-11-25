@@ -12,15 +12,11 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
+import { hasControlCharacter, text } from '../i18n/text.js';
 import { AuthService } from '../identity/auth.service.js';
 import { IncidentsService } from './incidents.service.js';
 import { PublicLimits, tooManyRequests } from './public-limits.js';
-import {
-  hasControlCharacter,
-  parseReport,
-  publicReportSchema,
-  text,
-} from './report-input.js';
+import { parseReport, publicReportSchema } from './report-input.js';
 
 // Loose on purpose. A code that could never be right is not refused as
 // invalid: it gets the same 404 as any other wrong one. Only what is not
@@ -47,15 +43,26 @@ const SLUG = /^[a-z0-9-]{1,40}$/i;
 const NO_SLUG = '-';
 
 /**
- * How long a refused follow-up takes, at the least, in milliseconds. Every
- * refusal takes the same steps whether the hospital exists, is suspended, or
- * the code is simply wrong; but the same steps are not the same time to the
- * last tenth of a millisecond (a hospital that is found is read, one that
- * has reports has an index to walk). So no refusal is answered before this
- * much time has passed since the request was taken up, which is well beyond
- * what any of them needs: how long the work took no longer shows.
+ * The step, in milliseconds, in which a "not found" on these routes is
+ * answered. Every such refusal takes the same steps whether the hospital
+ * exists, is suspended, has its public form off, or the code is simply
+ * wrong; but the same steps are not the same time to the last tenth of a
+ * millisecond (a hospital that is found is read, one that has reports has an
+ * index to walk). So a refusal is held until the next multiple of this step
+ * since the request was taken up. The step is well beyond what the work
+ * needs, so normally every refusal takes exactly one; and when the server is
+ * so busy that the work takes longer, the answer still comes on a step, not
+ * at the moment the work happened to end. How long the work took shows only
+ * as a whole number of steps.
  */
-export const FOLLOW_UP_REFUSAL_MS = 50;
+export const REFUSAL_STEP_MS = 50;
+
+/**
+ * How much longer to hold a refusal that has taken `elapsedMs` so far: up to
+ * the next multiple of the step, and one whole step at the least.
+ */
+export const heldFor = (elapsedMs: number, stepMs = REFUSAL_STEP_MS) =>
+  Math.max(Math.ceil(elapsedMs / stepMs), 1) * stepMs - elapsedMs;
 
 /**
  * Reporting an incident, and coming back to an anonymous report, without
@@ -65,6 +72,10 @@ export const FOLLOW_UP_REFUSAL_MS = 50;
  *
  * Nothing about the sender is passed to the service. Their address is used
  * once, in memory, to count their attempts.
+ *
+ * Whoever is refused because there is nothing to show them (no such
+ * hospital, a suspended one, a form that is off, a wrong code) gets the same
+ * 404 on the same step of time: see `refusedAlike()`.
  */
 @Controller('public')
 export class PublicReportingController {
@@ -95,17 +106,30 @@ export class PublicReportingController {
     return tenant?.publicReporting ? tenant : null;
   }
 
-  /** What the report form needs to show. */
+  /**
+   * What the report form needs to show. Counted per address like the other
+   * public routes, and refused on the same step of time whether the
+   * hospital does not exist, is suspended or has the form off: otherwise
+   * this route would say, to anyone going through a list of names, which of
+   * them are hospitals here.
+   */
   @Get('reporting/:slug')
-  async form(@Param('slug') slug: string) {
-    const tenant = await this.takingReports(slug);
-    if (!tenant) throw new NotFoundException();
-    return {
-      name: tenant.name,
-      locales: tenant.locales,
-      defaultLocale: tenant.defaultLocale,
-      ...(await this.incidents.publicForm(tenant.id)),
-    };
+  form(
+    @Param('slug') slug: string,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    this.limits.count('form', req, res);
+    return this.refusedAlike(async () => {
+      const tenant = await this.takingReports(slug);
+      if (!tenant) throw new NotFoundException();
+      return {
+        name: tenant.name,
+        locales: tenant.locales,
+        defaultLocale: tenant.defaultLocale,
+        ...(await this.incidents.publicForm(tenant.id)),
+      };
+    });
   }
 
   /**
@@ -120,14 +144,18 @@ export class PublicReportingController {
     @Res({ passthrough: true }) res: Response,
   ) {
     this.limits.count('report', req, res);
-    const tenant = await this.takingReports(slug);
-    if (!tenant) throw new NotFoundException();
+    const tenant = await this.refusedAlike(async () => {
+      const found = await this.takingReports(slug);
+      if (!found) throw new NotFoundException();
+      return found;
+    });
     const result = await this.incidents.reportPublicly(
       tenant,
       parseReport(publicReportSchema, body),
     );
     // The hospital has had as many public reports this hour as it takes,
-    // wherever they came from.
+    // wherever they came from; or another one was being stored at that very
+    // moment, and this one is to be sent again.
     if ('retryAfter' in result) throw tooManyRequests(res, result.retryAfter);
     return result;
   }
@@ -152,10 +180,14 @@ export class PublicReportingController {
   }
 
   /**
-   * Runs a follow-up, and if it ends in "not found", holds that answer until
-   * FOLLOW_UP_REFUSAL_MS have passed since it began. Only that answer: one
-   * that succeeds, or is refused for its form before anything was looked up,
-   * says nothing by how long it took.
+   * Runs a lookup, and if it ends in "not found", holds that answer until
+   * the next step of REFUSAL_STEP_MS since it began. Only that answer: one
+   * that succeeds, or is refused for its form before anything was looked
+   * up, says nothing by how long it took. Nor is anything held that is
+   * refused after a follow-up code has proved right: by then there is
+   * nothing left to hide from the caller.
+   *
+   * No database connection is held while waiting.
    */
   private async refusedAlike<T>(work: () => Promise<T>): Promise<T> {
     const began = performance.now();
@@ -163,8 +195,8 @@ export class PublicReportingController {
       return await work();
     } catch (error) {
       if (error instanceof NotFoundException) {
-        const left = FOLLOW_UP_REFUSAL_MS - (performance.now() - began);
-        if (left > 0) await new Promise((done) => setTimeout(done, left));
+        const wait = heldFor(performance.now() - began);
+        await new Promise((done) => setTimeout(done, wait));
       }
       throw error;
     }
@@ -198,6 +230,12 @@ export class PublicReportingController {
   /**
    * Adds the reporter's comment and answers with the report as it now
    * reads: the same as the route above, in one call.
+   *
+   * Besides the refusals of the route above, two that come only with a
+   * right code, and so are answered at once and plainly: 409
+   * `incident_ended` once the incident is closed or was not taken forward,
+   * and 429 `too_many_requests` when it has had its comments by code for
+   * 24 hours.
    */
   @Post('follow-up/:slug/comments')
   async comment(
@@ -211,12 +249,13 @@ export class PublicReportingController {
     if (!parsed.success) throw new BadRequestException();
     return this.refusedAlike(async () => {
       const tenant = await this.active(slug);
-      const view = await this.incidents.followUpComment(
+      const result = await this.incidents.followUpComment(
         tenant?.id ?? null,
         parsed.data.code,
         parsed.data.body,
       );
-      return { ...view, ...this.named(tenant!) };
+      if ('retryAfter' in result) throw tooManyRequests(res, result.retryAfter);
+      return { ...result, ...this.named(tenant!) };
     });
   }
 }

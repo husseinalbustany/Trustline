@@ -12,22 +12,53 @@ export type Day = string;
 
 const DAY_MS = 86_400_000;
 
+/** What the name of a time zone looks like: Area/Location, or one more part. */
+const ZONE_NAME = /^[A-Za-z_]+(\/[A-Za-z0-9_+-]+){1,2}$/;
+/** Each part as IANA writes it: starting with a capital letter or a digit. */
+const CAPITALISED = /^[A-Z][^/]*(\/[A-Z0-9][^/]*)+$/;
+
 /**
- * Whether the runtime knows this as the IANA name of a time zone. `UTC`, or
- * a name of the form Area/Location. Offsets (`+03:00`) and abbreviations
- * (`EST`) are refused although the runtime would take them: they do not say
- * where the hospital is, so they cannot follow its summer time.
+ * The name a hospital's time zone is stored under, or null if `name` is not
+ * one a hospital can have. `UTC`, or an IANA name of the form Area/Location
+ * that the runtime knows.
+ *
+ * Refused although the runtime would take them, because they do not say
+ * where the hospital is and so cannot follow its summer time: offsets
+ * (`+03:00`), abbreviations (`EST`), and the whole `Etc/` area, whose names
+ * are offsets under another spelling (`Etc/GMT+3`) or UTC, which is written
+ * `UTC`.
+ *
+ * The runtime reads names in any letter case; what is stored is the name as
+ * IANA writes it. Where the runtime says how (`asia/riyadh` is
+ * `Asia/Riyadh`), that is what comes back. For a name it knows only as
+ * another spelling of a zone (`Asia/Kolkata`, where it lists
+ * `Asia/Calcutta`), it cannot say: such a name is kept exactly as written,
+ * and taken only if each of its parts starts with a capital letter, as
+ * every IANA name does.
+ */
+export function canonicalTimeZone(name: unknown): string | null {
+  if (typeof name !== 'string') return null;
+  if (name === 'UTC') return name;
+  if (!ZONE_NAME.test(name) || /^etc\//i.test(name)) return null;
+  let resolved: string;
+  try {
+    resolved = new Intl.DateTimeFormat('en', {
+      timeZone: name,
+    }).resolvedOptions().timeZone;
+  } catch {
+    return null;
+  }
+  // The same name back, in the runtime's own letter case.
+  if (resolved.toLowerCase() === name.toLowerCase()) return resolved;
+  return CAPITALISED.test(name) ? name : null;
+}
+
+/**
+ * Whether this is, letter for letter, a name a hospital's time zone can be
+ * stored under: see `canonicalTimeZone`.
  */
 export function isTimeZone(name: unknown): name is string {
-  if (typeof name !== 'string') return false;
-  if (name === 'UTC') return true;
-  if (!/^[A-Za-z_]+(\/[A-Za-z0-9_+-]+){1,2}$/.test(name)) return false;
-  try {
-    new Intl.DateTimeFormat('en', { timeZone: name });
-    return true;
-  } catch {
-    return false;
-  }
+  return typeof name === 'string' && canonicalTimeZone(name) === name;
 }
 
 const formatters = new Map<string, Intl.DateTimeFormat>();

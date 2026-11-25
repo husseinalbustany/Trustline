@@ -183,6 +183,27 @@
       "when": 1795593385055,
       "tag": "0025_security_review_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1795598137360,
+      "tag": "0026_sign_off_never_falls",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1795598168678,
+      "tag": "0027_internal_comments_were_written_as_handlers",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1795598169285,
+      "tag": "0028_application_role_timeouts",
+      "breakpoints": true
     }
   ]
 }

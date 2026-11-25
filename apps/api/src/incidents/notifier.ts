@@ -7,6 +7,24 @@ import { AccessService } from '../identity/access.service.js';
 export type NotificationKind = (typeof notifications.kind.enumValues)[number];
 
 /**
+ * How many values one statement is sent with at most. The driver numbers a
+ * statement's parameters with 16 bits, so one carrying more than 65,535 of
+ * them cannot be sent at all; a notification takes five. A batch of the
+ * deadline check can name far more people than that, so what is written or
+ * asked about a list of people goes in pieces of this size.
+ */
+export const ROWS_PER_STATEMENT = 1000;
+
+/** A list cut into pieces of at most `size`, in order. */
+export function inChunks<T>(list: T[], size = ROWS_PER_STATEMENT): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < list.length; i += size) {
+    chunks.push(list.slice(i, i + size));
+  }
+  return chunks;
+}
+
+/**
  * What the notifier needs to know of an incident, as it stands once the
  * change being announced has been made.
  */
@@ -159,14 +177,14 @@ export class Notifier {
       }
     }
     if (named.size === 0) return 0;
-    const active = new Set(
-      (
-        await tx
-          .select({ id: users.id })
-          .from(users)
-          .where(and(inArray(users.id, [...named]), eq(users.status, 'active')))
-      ).map((u) => u.id),
-    );
+    const active = new Set<string>();
+    for (const ids of inChunks([...named])) {
+      const found = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(and(inArray(users.id, ids), eq(users.status, 'active')));
+      for (const user of found) active.add(user.id);
+    }
 
     const rows: (typeof notifications.$inferInsert)[] = [];
     for (const { incident, actorId, fullAccess, drafts } of planned) {
@@ -198,7 +216,11 @@ export class Notifier {
         }
       }
     }
-    if (rows.length > 0) await tx.insert(notifications).values(rows);
+    // In the caller's transaction all the same: every piece is written or
+    // none is.
+    for (const chunk of inChunks(rows)) {
+      await tx.insert(notifications).values(chunk);
+    }
     return rows.length;
   }
 }

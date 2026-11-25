@@ -10,7 +10,8 @@ import {
   sql,
   type SQL,
 } from 'drizzle-orm';
-import type { Database } from '../database/client.js';
+import type { Database, Transaction } from '../database/client.js';
+import { databaseFailure } from '../database/database-error.filter.js';
 import { DATABASE } from '../database/database.constants.js';
 import { incidents, tenants } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
@@ -22,6 +23,46 @@ import { DEADLINE_LIVE_IN, DUE_SOON_SHARE, type Deadline } from './status.js';
 export const CHECK_EVERY_MS = 5 * 60_000;
 /** Incidents announced in one transaction. */
 const BATCH = 100;
+/**
+ * How long any one statement of the check may take, waiting for a lock
+ * included, before the database gives it up. The next run starts only when
+ * this one has ended, so without a limit one statement that never returns
+ * would end the check for every hospital, silently.
+ */
+export const CHECK_STATEMENT_TIMEOUT_MS = 30_000;
+
+// An error class of the database (57014) or of the system (ECONNREFUSED).
+const ERROR_CODE = /^(?:[0-9A-Z]{5}|E[A-Z_]{2,30})$/;
+
+/**
+ * What may be logged of a failure: the kind of error and, where it has one,
+ * its error class: the database's for a query it refused (57014 is a
+ * statement that ran out of time), the system's for a connection that could
+ * not be had. Never the error's message, which can hold a statement's values.
+ */
+const kindOf = (error: unknown) => {
+  if (!(error instanceof Error)) return 'unknown error';
+  const name = error.name === 'Error' ? error.constructor.name : error.name;
+  const own = (error as { code?: unknown }).code;
+  const code =
+    databaseFailure(error)?.code ??
+    (typeof own === 'string' && ERROR_CODE.test(own) ? own : null);
+  return code ? `${name} (${code})` : name;
+};
+
+/** What one run of the check did. */
+export type CheckResult = {
+  /** Whether the list of hospitals could be read at all. */
+  listed: boolean;
+  /** Active hospitals found. */
+  hospitals: number;
+  /** Hospitals whose check failed; the next run tries them again. */
+  failed: number;
+  /** Notifications written. */
+  notified: number;
+  /** Incidents given the deadlines an older release stored them without. */
+  filled: number;
+};
 
 type Stage = {
   deadline: Deadline;
@@ -92,6 +133,8 @@ export class DeadlineCheck implements OnModuleDestroy {
   private timer?: NodeJS.Timeout;
   private current?: Promise<unknown>;
   private stopped = true;
+  /** See CHECK_STATEMENT_TIMEOUT_MS. A field so that a test can shorten it. */
+  statementTimeoutMs = CHECK_STATEMENT_TIMEOUT_MS;
 
   constructor(
     @Inject(DATABASE) private readonly db: Database,
@@ -110,8 +153,11 @@ export class DeadlineCheck implements OnModuleDestroy {
     const next = (delay: number) => {
       this.timer = setTimeout(() => {
         this.current = this.run()
-          // run() does not throw; this is for the unforeseen.
-          .catch(() => undefined)
+          // run() does not throw; this is for the unforeseen, which is
+          // said too: a check that fails must not fail in silence.
+          .catch((error: unknown) => {
+            this.logger.error(`Deadline check failed: ${kindOf(error)}`);
+          })
           .finally(() => {
             this.current = undefined;
             if (!this.stopped) next(everyMs);
@@ -148,34 +194,59 @@ export class DeadlineCheck implements OnModuleDestroy {
    * alone: nobody there can sign in to read a notification. Its deadlines
    * are announced, once, when it is active again.
    *
-   * One hospital failing does not stop the others. What is logged is the
-   * hospital's id and the kind of failure, never anything from a record.
+   * One hospital failing does not stop the others, and no failure passes
+   * unsaid. What is logged is the hospital's id and the kind of failure,
+   * never anything from a record. A run that did something says so in one
+   * line; one that found nothing to do says nothing.
    */
-  async run(now = new Date()) {
-    // The list of clients is not hospital data: the application role reads
-    // it outside any hospital, as sign-in does.
-    const hospitals = await this.db
-      .select({ id: tenants.id, timeZone: tenants.timeZone })
-      .from(tenants)
-      .where(eq(tenants.status, 'active'))
-      .orderBy(asc(tenants.id));
-    let notified = 0;
-    let failed = 0;
+  async run(now = new Date()): Promise<CheckResult> {
+    const result: CheckResult = {
+      listed: false,
+      hospitals: 0,
+      failed: 0,
+      notified: 0,
+      filled: 0,
+    };
+    let hospitals: { id: string; timeZone: string }[];
+    try {
+      // The list of clients is not hospital data: the application role reads
+      // it outside any hospital, as sign-in does.
+      hospitals = await this.db.transaction(async (tx) => {
+        await this.limitStatements(tx);
+        return tx
+          .select({ id: tenants.id, timeZone: tenants.timeZone })
+          .from(tenants)
+          .where(eq(tenants.status, 'active'))
+          .orderBy(asc(tenants.id));
+      });
+    } catch (error) {
+      this.logger.error(
+        `Deadline check failed before any hospital was checked: ${kindOf(error)}`,
+      );
+      return result;
+    }
+    result.listed = true;
+    result.hospitals = hospitals.length;
     for (const hospital of hospitals) {
       if (this.stopping) break;
       try {
-        notified += await this.checkHospital(hospital, now);
+        const done = await this.check(hospital, now);
+        result.notified += done.notified;
+        result.filled += done.filled;
       } catch (error) {
-        failed += 1;
+        result.failed += 1;
         if (this.stopping) break;
         this.logger.error(
-          `Deadline check failed for hospital ${hospital.id}: ${
-            error instanceof Error ? error.name : 'unknown error'
-          }`,
+          `Deadline check failed for hospital ${hospital.id}: ${kindOf(error)}`,
         );
       }
     }
-    return { hospitals: hospitals.length, failed, notified };
+    if (result.notified > 0 || result.filled > 0 || result.failed > 0) {
+      const summary = `Deadline check: ${result.notified} notifications written, ${result.filled} incidents given their deadlines, ${result.failed} of ${result.hospitals} hospitals failed`;
+      if (result.failed > 0) this.logger.warn(summary);
+      else this.logger.log(summary);
+    }
+    return result;
   }
 
   /** Asked to stop while a run is in progress. */
@@ -184,22 +255,44 @@ export class DeadlineCheck implements OnModuleDestroy {
   }
 
   /**
+   * A transaction for one hospital in which no statement may take longer
+   * than the check allows.
+   */
+  private inHospital<T>(tenantId: string, fn: (tx: Transaction) => Promise<T>) {
+    return this.tenantDb.withTenant(tenantId, async (tx) => {
+      await this.limitStatements(tx);
+      return fn(tx);
+    });
+  }
+
+  /** For the rest of this transaction only. */
+  private async limitStatements(tx: Transaction) {
+    await tx.execute(
+      sql`select set_config('statement_timeout', ${String(this.statementTimeoutMs)}, true)`,
+    );
+  }
+
+  /**
    * Announces what is due in one hospital as of `now`, and returns how many
    * notifications that made. Several short transactions, never one long one.
    */
   async checkHospital(hospital: { id: string; timeZone: string }, now: Date) {
-    await this.fillMissingDeadlines(hospital);
+    return (await this.check(hospital, now)).notified;
+  }
+
+  private async check(hospital: { id: string; timeZone: string }, now: Date) {
+    const filled = await this.fillMissingDeadlines(hospital);
     let notified = 0;
     for (const stage of STAGES) {
       // Until a batch comes back short: nothing more is due at this stage.
       for (let claimed = BATCH; claimed === BATCH;) {
-        if (this.stopping) return notified;
+        if (this.stopping) return { notified, filled };
         const done = await this.announce(hospital.id, stage, now);
         claimed = done.claimed;
         notified += done.notified;
       }
     }
-    return notified;
+    return { notified, filled };
   }
 
   /**
@@ -223,7 +316,7 @@ export class DeadlineCheck implements OnModuleDestroy {
       isNull(announced),
       lte(moment, now),
     );
-    return this.tenantDb.withTenant(tenantId, async (tx) => {
+    return this.inHospital(tenantId, async (tx) => {
       // The claim. Rows another process holds are passed over, not waited
       // for; a row it released a moment ago is read again as it now is, and
       // no longer matches. Whoever holds the row is the one to announce it.
@@ -312,12 +405,13 @@ export class DeadlineCheck implements OnModuleDestroy {
    * gets them when it is made; this is for one stored by a release that did
    * not know of deadlines yet, still running while a new one is deployed.
    * Counted from when it was reported, under the rules as they are now.
+   * Returns how many it filled in.
    */
   private async fillMissingDeadlines(hospital: {
     id: string;
     timeZone: string;
   }) {
-    await this.tenantDb.withTenant(hospital.id, async (tx) => {
+    return this.inHospital(hospital.id, async (tx) => {
       const missing = await tx
         .select({
           id: incidents.id,
@@ -331,7 +425,7 @@ export class DeadlineCheck implements OnModuleDestroy {
         .where(or(isNull(incidents.triageDueAt), isNull(incidents.closeDueAt)))
         .limit(BATCH)
         .for('update', { skipLocked: true });
-      if (missing.length === 0) return;
+      if (missing.length === 0) return 0;
       const rules = await this.rules.inForce(tx);
       for (const incident of missing) {
         await tx
@@ -351,6 +445,7 @@ export class DeadlineCheck implements OnModuleDestroy {
           })
           .where(eq(incidents.id, incident.id));
       }
+      return missing.length;
     });
   }
 }

@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { z } from 'zod';
+import { identifier } from '../i18n/text.js';
 import { sessionCookieOptions } from '../security/cookies.js';
 import {
   AuthService,
@@ -25,11 +26,17 @@ import {
   type AuthedRequest,
 } from './session.guard.js';
 
-const org = z.string().min(1).max(100);
+// Who is asking, before anyone is signed in. A value with a control
+// character in it is refused as malformed here, before any lookup: sent to
+// the database it would be answered with an error, and for the email only
+// when the organization exists, which would tell a stranger that it does.
+// The password and the token are never looked up as written (one is checked
+// against a hash, the other hashed first), so they may hold anything.
+const org = identifier(100);
 
 const loginSchema = z.object({
   org,
-  email: z.string().min(1).max(320),
+  email: identifier(320),
   password: z.string().min(1).max(1024),
   client: z.enum(['web', 'mobile']).default('web'),
 });

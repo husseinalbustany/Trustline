@@ -23,15 +23,11 @@ import {
   SessionGuard,
   type AuthedRequest,
 } from '../identity/session.guard.js';
+import { optionalText, text } from '../i18n/text.js';
 import { shiftDay, startOfDay } from '../i18n/time-zones.js';
 import { IncidentsService } from './incidents.service.js';
 import { MOVE_KINDS } from './status.js';
-import {
-  optionalText,
-  parseReport,
-  reportSchema,
-  text,
-} from './report-input.js';
+import { parseReport, reportSchema } from './report-input.js';
 
 const flag = z.enum(['true', 'false']).transform((v) => v === 'true');
 

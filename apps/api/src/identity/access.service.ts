@@ -26,7 +26,7 @@ export type Holders = {
  * number of users. `covers()` reads a scope built from "the granted unit and
  * everything beneath it"; this walks the other way, from each unit asked
  * about up to the top, and keeps the grants made anywhere on that path. The
- * two agree, and identity.e2e-spec.ts holds them to it.
+ * two agree, and notifications.e2e-spec.ts holds them to it.
  */
 @Injectable()
 export class AccessService {

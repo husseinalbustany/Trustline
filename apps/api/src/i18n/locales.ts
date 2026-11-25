@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { hasControlCharacter, hasControlOrLineBreak } from './text.js';
 
 /**
  * The languages the product can be used in. Adding one means adding it here
@@ -16,10 +17,21 @@ export const localeSchema = z.enum(SUPPORTED_LOCALES);
  */
 export type Localized = Partial<Record<Locale, string>>;
 
-/** Validates localized text: known languages only, blanks dropped, not empty. */
+/**
+ * Validates a localized name: known languages only, blanks dropped, not
+ * empty. A name is one line in each language, free of control characters
+ * (see text.ts); joiners, direction marks and non-breaking spaces pass.
+ */
 export const localizedText = (max: number) =>
   z
-    .partialRecord(localeSchema, z.string().trim().max(max))
+    .partialRecord(
+      localeSchema,
+      z
+        .string()
+        .trim()
+        .max(max)
+        .refine((v) => !hasControlOrLineBreak(v)),
+    )
     .transform((text) => {
       const kept: Localized = {};
       for (const locale of SUPPORTED_LOCALES) {
@@ -29,10 +41,21 @@ export const localizedText = (max: number) =>
     })
     .refine((text) => Object.keys(text).length > 0);
 
-/** The same, but the whole value may be left out or empty. */
+/**
+ * A localized description: the whole value may be left out or empty, and it
+ * may run over several lines. Free of control characters other than the tab
+ * and line breaks.
+ */
 export const optionalLocalizedText = (max: number) =>
   z
-    .partialRecord(localeSchema, z.string().trim().max(max))
+    .partialRecord(
+      localeSchema,
+      z
+        .string()
+        .trim()
+        .max(max)
+        .refine((v) => !hasControlCharacter(v)),
+    )
     .nullish()
     .transform((text) => {
       const kept: Localized = {};

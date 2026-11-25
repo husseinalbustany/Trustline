@@ -773,4 +773,151 @@ describe('what the database itself enforces for deadlines and notifications', ()
       );
     });
   });
+  describe('the migration that puts a name back on internal comments of a reporter who handled the incident', () => {
+    const statements = migration(
+      '0027_internal_comments_were_written_as_handlers',
+    );
+
+    it("marks an internal comment by the incident's reporter as written by a handler, and leaves every other comment alone", async () => {
+      let comments: Record<
+        string,
+        { byReporter: boolean; asHandler: boolean }
+      > = {};
+      await expect(
+        owner.db.transaction(async (tx) => {
+          const stored = async (tenantId: string, name: string) => {
+            const [row] = await tx
+              .insert(incidents)
+              .values({
+                ...(await reportValues(tx, tenantId, '')),
+                reference: `${TEST_REFERENCE}h-${name}`,
+                reportedBy: made[tenantId].userId,
+              })
+              .returning({ id: incidents.id });
+            return row.id;
+          };
+          const named = await stored(jci, 'named');
+          const elsewhere = await stored(cbahi, 'elsewhere');
+          // Reported anonymously: nobody is its reporter.
+          const [anonymous] = await tx
+            .insert(incidents)
+            .values({
+              ...(await reportValues(tx, jci, '')),
+              reference: `${TEST_REFERENCE}h-anonymous`,
+            })
+            .returning({ id: incidents.id });
+          const [other] = await tx
+            .insert(users)
+            .values({
+              tenantId: jci,
+              name: { en: 'Another' },
+              email: `${TEST_EMAIL}other-h@test.invalid`,
+            })
+            .returning({ id: users.id });
+          const reporter = made[jci].userId;
+          const comment = (
+            body: string,
+            visibility: 'internal' | 'everyone',
+            values: Partial<typeof incidentComments.$inferInsert> = {},
+          ) => ({
+            tenantId: jci,
+            incidentId: named,
+            authorId: reporter,
+            body,
+            visibility,
+            ...values,
+          });
+          await tx.insert(incidentComments).values([
+            // As migration 0025 left it: the reporter's, whatever it is.
+            comment('internal, marked by 0025', 'internal', {
+              byReporter: true,
+            }),
+            // As a release that records nothing stored it since.
+            comment('internal, unmarked', 'internal'),
+            comment('internal, already a handler', 'internal', {
+              asHandler: true,
+            }),
+            comment('internal, by someone else', 'internal', {
+              authorId: other.id,
+            }),
+            comment('everyone, marked by 0025', 'everyone', {
+              byReporter: true,
+            }),
+            comment('everyone, unmarked', 'everyone'),
+            comment('everyone, as a handler', 'everyone', { asHandler: true }),
+            comment('everyone, with the code', 'everyone', {
+              authorId: null,
+              byReporter: true,
+            }),
+            comment('internal, on an anonymous report', 'internal', {
+              incidentId: anonymous.id,
+            }),
+            // Another hospital's, to its own reporter: the same there.
+            comment('internal, in another hospital', 'internal', {
+              tenantId: cbahi,
+              incidentId: elsewhere,
+              authorId: made[cbahi].userId,
+              byReporter: true,
+            }),
+          ]);
+
+          // Applied twice: the second time must change nothing.
+          for (const statement of [...statements, ...statements]) {
+            await tx.execute(sql.raw(statement));
+          }
+
+          comments = Object.fromEntries(
+            (
+              await tx
+                .select({
+                  body: incidentComments.body,
+                  byReporter: incidentComments.byReporter,
+                  asHandler: incidentComments.asHandler,
+                })
+                .from(incidentComments)
+                .where(
+                  inArray(incidentComments.incidentId, [
+                    named,
+                    elsewhere,
+                    anonymous.id,
+                  ]),
+                )
+            ).map(({ body, ...capacity }) => [body, capacity]),
+          );
+          throw rollback;
+        }),
+      ).rejects.toBe(rollback);
+
+      const handler = { byReporter: false, asHandler: true };
+      const reporters = { byReporter: true, asHandler: false };
+      const unmarked = { byReporter: false, asHandler: false };
+      expect(comments).toEqual({
+        // Only someone who saw all of the incident could write these.
+        'internal, marked by 0025': handler,
+        'internal, unmarked': handler,
+        'internal, in another hospital': handler,
+        'internal, already a handler': handler,
+        // Not the reporter's to begin with.
+        'internal, by someone else': unmarked,
+        'internal, on an anonymous report': unmarked,
+        // For these, what the writer could see cannot be known: as they were.
+        'everyone, marked by 0025': reporters,
+        'everyone, unmarked': unmarked,
+        'everyone, as a handler': handler,
+        'everyone, with the code': reporters,
+      });
+    });
+
+    it("has left no internal comment of the demo hospitals marked as its reporter's", async () => {
+      const { rows } = await owner.db.execute<{ n: number }>(
+        sql`select count(*)::int as n from incident_comments c
+            join incidents i on i.tenant_id = c.tenant_id and i.id = c.incident_id
+            join tenants t on t.id = c.tenant_id
+            where t.slug like 'demo-%' and c.visibility = 'internal'
+              and (c.by_reporter or (c.author_id = i.reported_by and not c.as_handler))
+              and i.reference not like 'ZZ%'`,
+      );
+      expect(rows[0].n).toBe(0);
+    });
+  });
 });

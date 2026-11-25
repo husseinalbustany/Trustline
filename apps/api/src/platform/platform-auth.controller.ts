@@ -13,6 +13,7 @@ import {
 import type { Response } from 'express';
 import { sessionCookieOptions } from '../security/cookies.js';
 import { z } from 'zod';
+import { identifier } from '../i18n/text.js';
 import {
   PlatformAuthGuard,
   SESSION_COOKIE,
@@ -21,7 +22,9 @@ import {
 import { PlatformAuthService, SESSION_HOURS } from './platform-auth.service.js';
 
 const loginSchema = z.object({
-  email: z.string().min(1).max(320),
+  // Refused as malformed when it carries a control character, before it is
+  // looked up: the database would answer such a value with an error.
+  email: identifier(320),
   password: z.string().min(1).max(1024),
 });
 
