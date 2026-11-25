@@ -169,6 +169,20 @@
       "when": 1795592991008,
       "tag": "0023_deadlines_for_existing_hospitals",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1795593384441,
+      "tag": "0024_sticky_sign_off_and_follow_up_by_code",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1795593385055,
+      "tag": "0025_security_review_backfill",
+      "breakpoints": true
     }
   ]
 }

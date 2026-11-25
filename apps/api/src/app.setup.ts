@@ -8,9 +8,23 @@ import { DatabaseErrorFilter } from './database/database-error.filter.js';
  * served and when it is tested.
  */
 export function setupApp(app: INestApplication) {
-  // The API sits behind the web app, which forwards the caller's address.
-  // Trust exactly that many proxies, so the address cannot be forged from
-  // further out. Set TRUST_PROXY_HOPS=0 if the API is reached directly.
+  // Where a caller's address comes from. The API sits behind the web app,
+  // which passes on the X-Forwarded-For header it was given: it neither
+  // replaces it nor adds to it. So the address is true only if a proxy in
+  // front of the web app writes that header itself, replacing whatever the
+  // sender put there (or adding the real address after it).
+  //
+  // TRUST_PROXY_HOPS is the number of proxies in front of the web app that
+  // do so: 1 for "proxy, web app, API" (the default), 2 for "CDN, load
+  // balancer, web app, API" where each adds an entry. Express then reads the
+  // entry that many places from the end, which is the one the outermost
+  // trusted proxy wrote. Set it to 0 only where the API is reached directly,
+  // with no web app and no proxy: the address is then the connection's own.
+  //
+  // With no such proxy there is no right value: at 1 a sender chooses their
+  // own address by sending the header, and with no header, or at 0, every
+  // caller counts as the web app. The README spells this out. The limits on
+  // the public routes and the address in the sign-in audit depend on it.
   const hops = Number(process.env.TRUST_PROXY_HOPS ?? 1);
   (
     app.getHttpAdapter().getInstance() as {

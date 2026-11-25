@@ -63,4 +63,5 @@ export const closeDueAt = (
   incident: Gravity,
   rules: ResponseRules,
   timeZone: string,
-) => addDays(reportedAt, rules[ruleLevelOf(incident)].closeWithinDays, timeZone);
+) =>
+  addDays(reportedAt, rules[ruleLevelOf(incident)].closeWithinDays, timeZone);

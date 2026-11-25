@@ -12,7 +12,9 @@ import { orgUnits } from '../src/database/schema.js';
 import { requireEnv } from '../src/env.js';
 import {
   FOLLOW_UP_ATTEMPTS_PER_HOUR,
+  PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR,
   PUBLIC_REPORTS_PER_HOUR,
+  PublicLimits,
 } from '../src/incidents/public-limits.js';
 import { createPlatformAdmin } from '../src/platform/create-admin.js';
 import { removeTestData } from './cleanup.js';
@@ -63,12 +65,19 @@ describe('incident safeguards', () => {
     body: string;
     visibility: string;
   };
-  type Move = { to: string; noteRequired: boolean; kind: string };
+  type Move = {
+    to: string;
+    noteRequired: boolean;
+    revisionRequired: boolean;
+    kind: string;
+  };
 
   let a: Hospital; // takes public reports
   let b: Hospital; // takes them too: another hospital entirely
   let off: Hospital; // has never switched public reporting on
   let suspended: Hospital; // switched it on, then was suspended
+  let lim: Hospital; // takes public reports: for the limits per address
+  let cap: Hospital; // and for the ceiling per hospital
 
   let facility: string;
   let ward: string;
@@ -76,6 +85,11 @@ describe('incident safeguards', () => {
   let wardUnit: string;
   let closedUnit: string; // switched off
   let bUnit: string;
+  let offUnit: string;
+  let limUnit: string;
+  let capUnit: string;
+  /** The code of a report the suspended hospital took before it was. */
+  let goneCode: string;
 
   let reporter: Staff; // may report, and nothing else
   let assignee: Staff; // the same, and has incidents assigned
@@ -274,16 +288,16 @@ describe('incident safeguards', () => {
       .send({ body, visibility });
 
   // The limits on the public routes are counted per address, and every test
-  // here runs against one API process. So each request that is not about the
-  // limits comes from an address of its own.
-  let addresses = 0;
-  const freshAddress = () => {
-    addresses += 1;
-    return `198.51.${Math.floor(addresses / 250)}.${(addresses % 250) + 1}`;
+  // here calls from the same one. So each test starts with the counts
+  // cleared (see `beforeEach`), as after a restart of the API. No request
+  // claims an address of its own unless the address is what the test is
+  // about: then `address` is what the proxy in front of the web app would
+  // have written in the forwarding header.
+  const publicPost = (path: string, body: object, address?: string) => {
+    const req = http().post(path);
+    if (address !== undefined) void req.set('X-Forwarded-For', address);
+    return req.send(body);
   };
-  /** A request from the internet: no session, and the address the proxy saw. */
-  const publicPost = (path: string, body: object, address = freshAddress()) =>
-    http().post(path).set('X-Forwarded-For', address).send(body);
 
   const reportPublicly = (
     slug: string,
@@ -291,25 +305,16 @@ describe('incident safeguards', () => {
     address?: string,
   ) => publicPost(`/public/reporting/${slug}`, reportBody(overrides), address);
 
-  const followUp = (
-    slug: string,
-    reference: string,
-    code: string,
-    address?: string,
-  ) => publicPost(`/public/follow-up/${slug}`, { reference, code }, address);
+  const followUp = (slug: string, code: string, address?: string) =>
+    publicPost(`/public/follow-up/${slug}`, { code }, address);
 
   const followUpComment = (
     slug: string,
-    reference: string,
     code: string,
     body: string,
     address?: string,
   ) =>
-    publicPost(
-      `/public/follow-up/${slug}/comments`,
-      { reference, code, body },
-      address,
-    );
+    publicPost(`/public/follow-up/${slug}/comments`, { code, body }, address);
 
   const setPublicReporting = (cookie: string, publicReporting: boolean) =>
     http()
@@ -358,12 +363,40 @@ describe('incident safeguards', () => {
       )
     ).rows[0];
 
-  const idOf = async (tenantId: string, reference: string) =>
+  /** What is stored for a follow-up code. */
+  const hashOf = (code: string) =>
+    createHash('sha256').update(code.replaceAll('-', '')).digest('hex');
+
+  /**
+   * The incident a public report became. Its sender is told neither its id
+   * nor its number, so the test looks it up as the owner, by the code.
+   */
+  const byCode = async (tenantId: string, code: string) =>
     (
-      await owner.db.execute<{ id: string }>(
-        sql`select id from incidents where tenant_id = ${tenantId} and reference = ${reference}`,
+      await owner.db.execute<{ id: string; reference: string }>(
+        sql`select id, reference from incidents where tenant_id = ${tenantId} and follow_up_code_hash = ${hashOf(code)}`,
       )
-    ).rows[0].id;
+    ).rows[0];
+
+  /**
+   * Signs off a closure that is waiting, as someone who read the incident
+   * first: a signature says which revision it is on. Expects `status`.
+   */
+  const signOff = async (
+    status: number,
+    cookie: string,
+    id: string,
+    note?: string,
+    extra: Record<string, unknown> = {},
+  ) => {
+    const read = await owner.db.execute<{ revision: number }>(
+      sql`select revision from incidents where id = ${id}`,
+    );
+    return move(cookie, id, 'closed', note, {
+      revision: read.rows[0].revision,
+      ...extra,
+    }).expect(status);
+  };
 
   beforeAll(async () => {
     await createPlatformAdmin({
@@ -387,6 +420,8 @@ describe('incident safeguards', () => {
     b = await createHospital('b');
     off = await createHospital('off');
     suspended = await createHospital('gone');
+    lim = await createHospital('lim');
+    cap = await createHospital('cap');
 
     facility = await createUnit(a.id, 'facility', 'MAIN', null);
     ward = await createUnit(a.id, 'department', 'WARD', facility);
@@ -394,8 +429,10 @@ describe('incident safeguards', () => {
     wardUnit = await createUnit(a.id, 'unit', 'WARD-3', ward);
     closedUnit = await createUnit(a.id, 'department', 'OLD', facility, false);
     bUnit = await createUnit(b.id, 'facility', 'MAIN', null);
-    await createUnit(off.id, 'facility', 'MAIN', null);
-    await createUnit(suspended.id, 'facility', 'MAIN', null);
+    offUnit = await createUnit(off.id, 'facility', 'MAIN', null);
+    const goneUnit = await createUnit(suspended.id, 'facility', 'MAIN', null);
+    limUnit = await createUnit(lim.id, 'facility', 'MAIN', null);
+    capUnit = await createUnit(cap.id, 'facility', 'MAIN', null);
 
     await createRole('triage_only', ['incidents.view', 'incidents.triage']);
     await createRole('sign_only', ['incidents.view', 'incidents.sign_off']);
@@ -420,12 +457,23 @@ describe('incident safeguards', () => {
     await setPublicReporting(a.cookie, true).expect(200);
     await setPublicReporting(b.cookie, true).expect(200);
     await setPublicReporting(suspended.cookie, true).expect(200);
+    await setPublicReporting(lim.cookie, true).expect(200);
+    await setPublicReporting(cap.cookie, true).expect(200);
+    goneCode = (
+      await reportPublicly(suspended.slug, {
+        categoryId: suspended.categories.equipment,
+        orgUnitId: goneUnit,
+      }).expect(201)
+    ).body.followUpCode;
     await http()
       .patch(`/platform/tenants/${suspended.id}`)
       .set('Cookie', platform)
       .send({ status: 'suspended' })
       .expect(200);
   }, 180_000);
+
+  // Every test starts with nothing counted against its address.
+  beforeEach(() => app.get(PublicLimits, { strict: false }).forget());
 
   afterAll(async () => {
     await removeTestData(prefix, staffEmail);
@@ -527,7 +575,6 @@ describe('incident safeguards', () => {
       ).expect(201);
       await followUpComment(
         a.slug,
-        anonymous.reference,
         anonymous.followUpCode!,
         'One more detail.',
       ).expect(201);
@@ -610,6 +657,7 @@ describe('incident safeguards', () => {
         occurredAt: expect.any(String),
         actor: null,
         byReporter: true,
+        byStaff: false,
         fromStatus: null,
         toStatus: 'new',
         details: null,
@@ -619,6 +667,7 @@ describe('incident safeguards', () => {
         id: expect.any(String),
         author: null,
         byReporter: true,
+        byStaff: false,
         body: 'One more detail.',
         visibility: 'everyone',
         createdAt: expect.any(String),
@@ -653,7 +702,7 @@ describe('incident safeguards', () => {
 
     it('does not tell them that a report came through the public link', async () => {
       const sent = await reportPublicly(a.slug).expect(201);
-      const id = await idOf(a.id, sent.body.reference);
+      const { id } = await byCode(a.id, sent.body.followUpCode);
       const hidden = await open(manager.cookie, id).expect(200);
       expect(hidden.body).toMatchObject({
         reporter: null,
@@ -740,32 +789,233 @@ describe('incident safeguards', () => {
       });
     });
 
-    it('hides the reporter as reporter even when they also handle the incident', async () => {
-      // A quality officer reports, then triages and comments on their own
-      // report. What they did as a handler is under their name; that the
-      // report and the comments are theirs is not said.
-      const { id } = await report(quality2);
-      await triage(quality2.cookie, id).expect(200);
-      await comment(quality2.cookie, id, 'Seen it myself.', 'internal').expect(
-        201,
-      );
-      const res = await open(manager.cookie, id).expect(200);
-      expect(res.body).toMatchObject({ reporter: null, reporterShown: false });
-      expect(
-        (res.body.events as Event[]).map((e) => [
+    describe('a reporter who also handles the incident', () => {
+      // What a reader who is not told the reporter can compare: who is
+      // named where, and what is marked as the reporter's.
+      const told = (body: { events: Event[]; comments: Comment[] }) => ({
+        events: body.events.map((e) => [
           e.kind,
-          e.actor?.id,
+          e.actor?.id ?? null,
           e.byReporter,
         ]),
-      ).toEqual([
-        ['reported', undefined, true],
-        ['triaged', quality2.id, false],
-        ['assigned', quality2.id, false],
-        ['commented', undefined, true],
-      ]);
-      expect((res.body.comments as Comment[])[0]).toMatchObject({
-        author: null,
-        byReporter: true,
+        comments: body.comments.map((c) => [
+          c.body,
+          c.visibility,
+          c.author?.id ?? null,
+          c.byReporter,
+        ]),
+      });
+      const capacityOf = async (id: string) =>
+        (
+          await owner.db.execute<{
+            body: string;
+            author_id: string | null;
+            by_reporter: boolean;
+            as_handler: boolean;
+          }>(
+            sql`select body, author_id, by_reporter, as_handler from incident_comments where incident_id = ${id} order by created_at`,
+          )
+        ).rows;
+
+      it('comments under their own name, so their report looks like an anonymous one', async () => {
+        // The same life twice: a quality officer triages and comments on a
+        // report in the ward. Once the report is their own, by name; once it
+        // was made anonymously.
+        const live = async (anonymous: boolean) => {
+          const { id } = await report(quality2, { anonymous });
+          await triage(quality2.cookie, id).expect(200);
+          await comment(quality2.cookie, id, 'Seen it.', 'internal').expect(
+            201,
+          );
+          await comment(quality2.cookie, id, 'Thank you.', 'everyone').expect(
+            201,
+          );
+          return id;
+        };
+        const own = await live(false);
+        const nobodys = await live(true);
+
+        const one = await open(manager.cookie, own).expect(200);
+        const other = await open(manager.cookie, nobodys).expect(200);
+        expect(one.body).toMatchObject({
+          reporter: null,
+          reporterShown: false,
+        });
+        // Nothing tells the two apart: not who is named, not what is marked.
+        expect(told(one.body)).toEqual(told(other.body));
+        expect(outline(one.body)).toEqual(outline(other.body));
+        expect(told(one.body)).toEqual({
+          events: [
+            ['reported', null, true],
+            ['triaged', quality2.id, false],
+            ['assigned', quality2.id, false],
+            ['commented', quality2.id, false],
+            ['commented', quality2.id, false],
+          ],
+          comments: [
+            ['Seen it.', 'internal', quality2.id, false],
+            ['Thank you.', 'everyone', quality2.id, false],
+          ],
+        });
+        // Decided when written, and stored: as a handler, under their name.
+        expect(await capacityOf(own)).toEqual([
+          {
+            body: 'Seen it.',
+            author_id: quality2.id,
+            by_reporter: false,
+            as_handler: true,
+          },
+          {
+            body: 'Thank you.',
+            author_id: quality2.id,
+            by_reporter: false,
+            as_handler: true,
+          },
+        ]);
+        // The quality office is told who reported, as ever, on the report.
+        const seen = await open(quality.cookie, own).expect(200);
+        expect(seen.body).toMatchObject({
+          reporter: { id: quality2.id },
+          reporterShown: true,
+        });
+      });
+
+      it('cannot be found by ruling out the handlers whose comments carry a name', async () => {
+        // A small ward: three people handle its incidents. One of them
+        // reported this one. Before, their comments were marked "the
+        // reporter" and everyone else's carried a name: whoever was never
+        // named was the reporter.
+        const handlers = [wardQuality, quality, quality2];
+        const live = async (by: Staff) => {
+          const { id } = await report(by);
+          await triage(quality.cookie, id).expect(200);
+          for (const who of handlers) {
+            await comment(
+              who.cookie,
+              id,
+              `From ${who.name}.`,
+              'internal',
+            ).expect(201);
+            await comment(who.cookie, id, 'Noted.', 'everyone').expect(201);
+          }
+          return id;
+        };
+        // Reported by one of the three; and by someone who is none of them
+        // and never says a word.
+        const byHandler = await live(wardQuality);
+        const byOutsider = await live(reporter);
+
+        const one = await open(manager.cookie, byHandler).expect(200);
+        const other = await open(manager.cookie, byOutsider).expect(200);
+        // Every handler is named on every comment of theirs, the one who
+        // reported included: nobody is left over.
+        const authors = (one.body.comments as Comment[]).map(
+          (c) => c.author?.id,
+        );
+        expect(authors).toEqual(handlers.flatMap((h) => [h.id, h.id]));
+        expect((one.body.comments as Comment[]).some((c) => c.byReporter)).toBe(
+          false,
+        );
+        // And the answer is the same as when none of them reported.
+        expect(told(one.body)).toEqual(told(other.body));
+        expect(outline(one.body)).toEqual(outline(other.body));
+        // Nothing else in it says so either.
+        expect(one.body).toMatchObject({
+          reporter: null,
+          reporterShown: false,
+          channel: null,
+        });
+        expect(Object.keys(one.body).sort()).toEqual(
+          Object.keys(other.body).sort(),
+        );
+      });
+
+      it('is marked as the reporter only for what they wrote as nothing more', async () => {
+        // Reports, sees only their own report, and comments on it.
+        const { id } = await report(assignee);
+        await comment(
+          assignee.cookie,
+          id,
+          'I forgot to say.',
+          'everyone',
+        ).expect(201);
+        // Then is given the incident to handle, and comments again.
+        await triage(quality.cookie, id, { assignedTo: assignee.id }).expect(
+          200,
+        );
+        await comment(assignee.cookie, id, 'On it.', 'everyone').expect(201);
+        await comment(assignee.cookie, id, 'Parts ordered.', 'internal').expect(
+          201,
+        );
+        expect(await capacityOf(id)).toEqual([
+          {
+            body: 'I forgot to say.',
+            author_id: assignee.id,
+            by_reporter: true,
+            as_handler: false,
+          },
+          {
+            body: 'On it.',
+            author_id: assignee.id,
+            by_reporter: false,
+            as_handler: true,
+          },
+          {
+            body: 'Parts ordered.',
+            author_id: assignee.id,
+            by_reporter: false,
+            as_handler: true,
+          },
+        ]);
+        const res = await open(manager.cookie, id).expect(200);
+        expect(told(res.body).comments).toEqual([
+          ['I forgot to say.', 'everyone', null, true],
+          ['On it.', 'everyone', assignee.id, false],
+          ['Parts ordered.', 'internal', assignee.id, false],
+        ]);
+        expect(
+          (res.body.events as Event[])
+            .filter((e) => e.kind === 'commented')
+            .map((e) => [e.actor?.id ?? null, e.byReporter]),
+        ).toEqual([
+          [null, true],
+          [assignee.id, false],
+          [assignee.id, false],
+        ]);
+        // The quality office sees the name on all three.
+        const seen = await open(quality.cookie, id).expect(200);
+        expect(told(seen.body).comments.map((c) => c[2])).toEqual([
+          assignee.id,
+          assignee.id,
+          assignee.id,
+        ]);
+      });
+
+      it('keeps a comment stored before this was recorded as it was read then', async () => {
+        // As an earlier release stored it: by the reporter's account, with
+        // nothing said about the capacity it was written in.
+        const { id } = await report(quality2);
+        await triage(quality.cookie, id).expect(200);
+        const old = await owner.db.execute<{ id: string }>(
+          sql`insert into incident_comments (tenant_id, incident_id, author_id, body, visibility)
+              values (${a.id}, ${id}, ${quality2.id}, 'From before.', 'internal')
+              returning id`,
+        );
+        await owner.db.execute(
+          sql`insert into incident_events (tenant_id, incident_id, kind, actor_id, details)
+              values (${a.id}, ${id}, 'commented', ${quality2.id}, ${JSON.stringify({ commentId: old.rows[0].id, visibility: 'internal' })}::jsonb)`,
+        );
+        const res = await open(manager.cookie, id).expect(200);
+        // No name appears where none did before.
+        expect(told(res.body).comments).toEqual([
+          ['From before.', 'internal', null, true],
+        ]);
+        expect((res.body.events as Event[]).at(-1)).toMatchObject({
+          kind: 'commented',
+          actor: null,
+          byReporter: true,
+        });
+        expect(JSON.stringify(res.body.comments)).not.toContain(quality2.id);
       });
     });
 
@@ -810,16 +1060,19 @@ describe('incident safeguards', () => {
         expect(Object.keys(item).sort()).toEqual([
           'assignedToMe',
           'category',
+          'closeDueAt',
           'descriptionExcerpt',
           'harmLevel',
           'id',
           'isSentinel',
           'occurredAt',
           'orgUnit',
+          'overdue',
           'ownerUnit',
           'reference',
           'reportedAt',
           'status',
+          'triageDueAt',
           'type',
         ]);
       }
@@ -832,9 +1085,12 @@ describe('incident safeguards', () => {
         'assignedToMe',
         'awaitingTriage',
         'closedLast30Days',
+        'last30Days',
         'medianSecondsToReport',
         'open',
+        'overdue',
         'serious',
+        'triagedOnTime',
       ]);
       // Everyone active is listed for assigning, with nothing about reports.
       const people = await http()
@@ -968,7 +1224,9 @@ describe('incident safeguards', () => {
       expect(flags.rows).toEqual([
         { slug: a.slug, on: true },
         { slug: b.slug, on: true },
+        { slug: cap.slug, on: true },
         { slug: suspended.slug, on: true },
+        { slug: lim.slug, on: true },
         { slug: off.slug, on: false },
       ]);
     });
@@ -1031,25 +1289,42 @@ describe('incident safeguards', () => {
       expect(turnedOff.headers['content-length']).toBe(
         unknown.headers['content-length'],
       );
+      const before = await owner.db.execute(
+        sql`select 1 from incidents where tenant_id in (${off.id}, ${suspended.id})`,
+      );
       for (const slug of [`${prefix}-nowhere`, off.slug, suspended.slug]) {
         const posted = await reportPublicly(slug).expect(404);
         expect(posted.body).toEqual(unknown.body);
-        const opened = await followUp(slug, `INC-${year}-00001`, 'x').expect(
-          404,
-        );
-        expect(opened.body).toEqual(unknown.body);
-        const said = await followUpComment(
-          slug,
-          `INC-${year}-00001`,
-          'x',
-          'Hello',
-        ).expect(404);
-        expect(said.body).toEqual(unknown.body);
       }
-      const none = await owner.db.execute(
+      const after = await owner.db.execute(
         sql`select 1 from incidents where tenant_id in (${off.id}, ${suspended.id})`,
       );
-      expect(none.rows).toHaveLength(0);
+      expect(after.rows).toHaveLength(before.rows.length);
+    });
+
+    it('takes text that could not be an identifier for no hospital, not for an error', async () => {
+      const unknown = await form(`${prefix}-nowhere`).expect(404);
+      for (const slug of [
+        '%00',
+        `${a.slug}%00`,
+        `%00${a.slug}`,
+        `${a.slug}%0A`,
+        `${a.slug}%20or%201=1`,
+        `${a.slug}'--`,
+        'x'.repeat(200),
+        '%F0%9F%8F%A5',
+      ]) {
+        const res = await form(slug);
+        expect([slug, res.status]).toEqual([slug, 404]);
+        expect(res.body).toEqual(unknown.body);
+        const posted = await reportPublicly(slug);
+        expect([slug, posted.status]).toEqual([slug, 404]);
+        const opened = await followUp(slug, 'x');
+        expect([slug, opened.status]).toEqual([slug, 404]);
+        expect(opened.body).toEqual(unknown.body);
+        const said = await followUpComment(slug, 'x', 'Hello');
+        expect([slug, said.status]).toEqual([slug, 404]);
+      }
     });
   });
 
@@ -1057,21 +1332,25 @@ describe('incident safeguards', () => {
     const SENDER = '203.0.113.77';
     const DEVICE = `Device-${run}`;
 
-    it('is taken, numbered, and answered with a reference and a follow-up code only', async () => {
+    it('is taken and numbered, and answered with a follow-up code and nothing else', async () => {
       const res = await reportPublicly(a.slug, {
         description: '  A wet floor had no sign.  ',
         orgUnitId: wardUnit,
       }).expect(201);
-      expect(Object.keys(res.body).sort()).toEqual([
-        'followUpCode',
-        'reference',
-      ]);
-      expect(res.body.reference).toMatch(new RegExp(`^INC-${year}-\\d{5}$`));
+      // No incident number: the numbers run in one series, and one of them
+      // would tell the sender how many incidents the hospital has had.
+      expect(Object.keys(res.body)).toEqual(['followUpCode']);
       expect(res.body.followUpCode).toMatch(CODE);
+      expect(JSON.stringify(res.body)).not.toContain('INC-');
+      expect(JSON.stringify(res.headers)).not.toContain('INC-');
 
-      const id = await idOf(a.id, res.body.reference);
+      // It has its number all the same, for the people handling it.
+      const { id, reference } = await byCode(a.id, res.body.followUpCode);
+      expect(reference).toMatch(new RegExp(`^INC-${year}-\\d{5}$`));
       const seen = await open(quality.cookie, id).expect(200);
       expect(seen.body).toMatchObject({
+        id,
+        reference,
         status: 'new',
         description: 'A wet floor had no sign.',
         orgUnit: { id: wardUnit },
@@ -1079,6 +1358,28 @@ describe('incident safeguards', () => {
         reporter: null,
         reporterShown: true,
       });
+    });
+
+    it('tells the sender nothing that counts the reports before theirs', async () => {
+      const first = await reportPublicly(a.slug).expect(201);
+      await report(reporter);
+      await report(reporter);
+      const second = await reportPublicly(a.slug).expect(201);
+      const numbers = [
+        (await byCode(a.id, first.body.followUpCode)).reference,
+        (await byCode(a.id, second.body.followUpCode)).reference,
+      ].map((r) => Number(r.slice(-5)));
+      // Three apart in the hospital's series: nothing either sender was
+      // given says so, in what they got back or in what they can open.
+      expect(numbers[1] - numbers[0]).toBe(3);
+      for (const sent of [first, second]) {
+        const view = await followUp(a.slug, sent.body.followUpCode).expect(200);
+        const everything = JSON.stringify([sent.body, view.body]);
+        expect(everything).not.toContain('INC-');
+        for (const number of numbers) {
+          expect(everything).not.toContain(String(number).padStart(5, '0'));
+        }
+      }
     });
 
     it('stores the code as a hash, and nothing about who sent it', async () => {
@@ -1090,13 +1391,11 @@ describe('incident safeguards', () => {
         .set('Cookie', reporter.cookie)
         .send(reportBody())
         .expect(201);
-      const id = await idOf(a.id, res.body.reference);
+      const code = res.body.followUpCode as string;
+      const { id, reference } = await byCode(a.id, code);
       const row = await stored(id);
       expect(row).toMatchObject({ reported_by: null, channel: 'public' });
-      const code = res.body.followUpCode as string;
-      expect(row.follow_up_code_hash).toBe(
-        createHash('sha256').update(code.replaceAll('-', '')).digest('hex'),
-      );
+      expect(row.follow_up_code_hash).toBe(hashOf(code));
 
       const events = await owner.db.execute(
         sql`select kind, actor_id, details from incident_events where incident_id = ${id}`,
@@ -1114,7 +1413,7 @@ describe('incident safeguards', () => {
           actor_id: null,
           ip_address: null,
           changes: {
-            reference: res.body.reference,
+            reference,
             type: 'incident',
             anonymous: true,
             channel: 'public',
@@ -1123,15 +1422,17 @@ describe('incident safeguards', () => {
       ]);
 
       // Not the address, the device, the account or the code, in any column
-      // of anything stored about this report.
+      // of anything stored about this report, its notifications included.
       const kept = await owner.db.execute<{ row: string }>(
         sql`select to_jsonb(t)::text as row from incidents t where t.id = ${id}
             union all
             select to_jsonb(t)::text from incident_events t where t.incident_id = ${id}
             union all
-            select to_jsonb(t)::text from audit_log t where t.entity_id = ${id}`,
+            select to_jsonb(t)::text from audit_log t where t.entity_id = ${id}
+            union all
+            select to_jsonb(t)::text from notifications t where t.incident_id = ${id}`,
       );
-      expect(kept.rows).toHaveLength(3);
+      expect(kept.rows.length).toBeGreaterThan(3);
       const everything = kept.rows.map((r) => r.row).join('\n');
       for (const trace of [
         SENDER,
@@ -1154,19 +1455,22 @@ describe('incident safeguards', () => {
     it('cannot be opened through the signed-in app by whoever sent it', async () => {
       const res = await http()
         .post(`/public/reporting/${a.slug}`)
-        .set('X-Forwarded-For', freshAddress())
         .set('Cookie', reporter.cookie)
         .send(reportBody())
         .expect(201);
-      const id = await idOf(a.id, res.body.reference);
+      const { id } = await byCode(a.id, res.body.followUpCode);
       await open(reporter.cookie, id).expect(404);
     });
 
     it('applies the rules and the limits of a signed-in report', async () => {
+      const limits = app.get(PublicLimits, { strict: false });
       const refused = async (
         overrides: Record<string, unknown>,
         code?: string,
       ) => {
+        // Every attempt counts against the address; this test is not about
+        // that.
+        limits.forget();
         const res = await reportPublicly(a.slug, overrides).expect(400);
         expect(res.body.code).toBe(code);
       };
@@ -1196,72 +1500,134 @@ describe('incident safeguards', () => {
         { occurredAt: '1899-12-31T23:59:59Z' },
         'occurred_too_long_ago',
       );
+      limits.forget();
       await reportPublicly(a.slug, { description: 'x'.repeat(5000) }).expect(
         201,
       );
       // A form, not JSON: refused before it is read.
       await http()
         .post(`/public/reporting/${a.slug}`)
-        .set('X-Forwarded-For', freshAddress())
         .type('form')
         .send('description=hello')
         .expect(415);
     });
 
-    it('takes at most ten an hour from one address, whatever they contain', async () => {
-      const address = freshAddress();
+    it('refuses control characters in what is written, and keeps line breaks', async () => {
+      const limits = app.get(PublicLimits, { strict: false });
+      for (const character of [
+        '\u0000',
+        '\u0001',
+        '\u0008',
+        '\u001b',
+        '\u007f',
+      ]) {
+        for (const field of ['description', 'immediateAction']) {
+          limits.forget();
+          const res = await reportPublicly(a.slug, {
+            [field]: `before${character}after`,
+          });
+          expect([field, character.charCodeAt(0), res.status]).toEqual([
+            field,
+            character.charCodeAt(0),
+            400,
+          ]);
+        }
+      }
+      limits.forget();
+      const WORDS = 'First line.\nSecond line.\r\n\tIndented.';
+      const kept = await reportPublicly(a.slug, { description: WORDS }).expect(
+        201,
+      );
+      const view = await followUp(a.slug, kept.body.followUpCode).expect(200);
+      expect(view.body.description).toBe(WORDS);
+      // The same for a member of staff signed in.
+      await http()
+        .post('/incidents')
+        .set('Cookie', reporter.cookie)
+        .send(reportBody({ anonymous: false, description: 'a\u0000b' }))
+        .expect(400);
+    });
+  });
+
+  describe('the limits on the public routes', () => {
+    // In every test here the header is what a proxy in front of the web app
+    // would have written, unless the test says the sender wrote it.
+    const countOf = async (tenantId: string) =>
+      (
+        await owner.db.execute<{ n: number }>(
+          sql`select count(*)::int as n from incidents where tenant_id = ${tenantId}`,
+        )
+      ).rows[0].n;
+    // These tests are about the limit per address, and between them send
+    // the hospital more than its ceiling for an hour. So each starts as if
+    // the hour had moved on: what the hospital took before is two hours old.
+    beforeEach(async () => {
+      await owner.db.execute(
+        sql`update incidents set reported_at = reported_at - interval '2 hours' where tenant_id = ${lim.id} and channel = 'public'`,
+      );
+    });
+
+    const toLim = (overrides: Record<string, unknown>, address?: string) =>
+      reportPublicly(
+        lim.slug,
+        {
+          categoryId: lim.categories.equipment,
+          orgUnitId: limUnit,
+          ...overrides,
+        },
+        address,
+      );
+
+    it('takes at most ten reports an hour from one address, whatever they contain', async () => {
+      const address = '203.0.113.10';
       for (let i = 0; i < PUBLIC_REPORTS_PER_HOUR; i++) {
         // Refused ones count too: the limit is on attempts.
-        const res = await reportPublicly(
-          a.slug,
-          i % 2 ? {} : { description: '' },
-          address,
-        );
+        const res = await toLim(i % 2 ? {} : { description: '' }, address);
         expect(res.status).toBe(i % 2 ? 201 : 400);
       }
-      const before = await owner.db.execute<{ n: number }>(
-        sql`select count(*)::int as n from incidents where tenant_id = ${a.id}`,
-      );
-      const res = await reportPublicly(a.slug, {}, address).expect(429);
+      const before = await countOf(lim.id);
+      const res = await toLim({}, address).expect(429);
       expect(res.body).toEqual({ statusCode: 429, code: 'too_many_requests' });
       expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
       expect(Number(res.headers['retry-after'])).toBeLessThanOrEqual(3600);
       // Not by going to another hospital, real or not.
       await reportPublicly(b.slug, { orgUnitId: bUnit }, address).expect(429);
       await reportPublicly(`${prefix}-nowhere`, {}, address).expect(429);
-      const after = await owner.db.execute<{ n: number }>(
-        sql`select count(*)::int as n from incidents where tenant_id = ${a.id}`,
-      );
-      expect(after.rows[0].n).toBe(before.rows[0].n);
+      expect(await countOf(lim.id)).toBe(before);
       // Someone else is not held up, and following up is counted apart.
-      await reportPublicly(a.slug).expect(201);
-      await followUp(a.slug, `INC-${year}-00001`, 'x', address).expect(404);
+      await toLim({}, '203.0.113.11').expect(201);
+      await followUp(lim.slug, 'x', address).expect(404);
     });
 
     it('cannot be got around by writing the address of the route another way', async () => {
-      const address = freshAddress();
+      const address = '203.0.113.20';
       for (let i = 0; i < PUBLIC_REPORTS_PER_HOUR; i++) {
-        await reportPublicly(a.slug, {}, address).expect(201);
+        await toLim({}, address).expect(201);
       }
+      const body = reportBody({
+        categoryId: lim.categories.equipment,
+        orgUnitId: limUnit,
+      });
       const routed: string[] = [];
-      for (const path of [
-        `/PUBLIC/REPORTING/${a.slug}`,
-        `/Public/Reporting/${a.slug}`,
-        `/public/reporting/${a.slug}/`,
-        `/public/reporting/${a.slug.toUpperCase()}`,
-        `/public/reporting/${a.slug}?x=1`,
-        `/public/reporting/${a.slug}/?x=1`,
-        `//public/reporting/${a.slug}`,
-        `/public//reporting/${a.slug}`,
-        `/public/reporting//${a.slug}`,
-        `/public/./reporting/${a.slug}`,
-        `/%70ublic/reporting/${a.slug}`,
-        `/public/reporting/${a.slug}%2F`,
-      ]) {
+      const paths = [
+        `/PUBLIC/REPORTING/${lim.slug}`,
+        `/Public/Reporting/${lim.slug}`,
+        `/public/reporting/${lim.slug}/`,
+        `/public/reporting/${lim.slug.toUpperCase()}`,
+        `/public/reporting/${lim.slug}?x=1`,
+        `/public/reporting/${lim.slug}/?x=1`,
+        `//public/reporting/${lim.slug}`,
+        `/public//reporting/${lim.slug}`,
+        `/public/reporting//${lim.slug}`,
+        `/public/./reporting/${lim.slug}`,
+        `/%70ublic/reporting/${lim.slug}`,
+        `/public/reporting/${lim.slug}%2F`,
+      ];
+      for (const [i, path] of paths.entries()) {
         // From an address with nothing against it, to learn whether this
         // spelling reaches the route at all.
-        const reached = await publicPost(path, reportBody());
-        const limited = await publicPost(path, reportBody(), address);
+        const reached = await publicPost(path, body, `203.0.113.${100 + i}`);
+        const limited = await publicPost(path, body, address);
         if (reached.status === 201) {
           routed.push(path);
           expect([path, limited.status]).toEqual([path, 429]);
@@ -1274,21 +1640,253 @@ describe('incident safeguards', () => {
       // The spellings that do reach it include another case and a slash.
       expect(routed).toEqual(
         expect.arrayContaining([
-          `/PUBLIC/REPORTING/${a.slug}`,
-          `/public/reporting/${a.slug}/`,
-          `/public/reporting/${a.slug.toUpperCase()}`,
+          `/PUBLIC/REPORTING/${lim.slug}`,
+          `/public/reporting/${lim.slug}/`,
+          `/public/reporting/${lim.slug.toUpperCase()}`,
         ]),
       );
     });
 
-    it('counts the address the proxy saw, not one the sender claims', async () => {
-      const real = freshAddress();
+    it('counts the address the proxy wrote last, not one the sender put in front of it', async () => {
+      // A proxy that adds the real address after whatever the sender sent.
+      const real = '203.0.113.30';
       for (let i = 0; i < PUBLIC_REPORTS_PER_HOUR; i++) {
         // A different invented address in front each time.
-        await reportPublicly(a.slug, {}, `10.9.${i}.1, ${real}`).expect(201);
+        await toLim({}, `10.9.${i}.1, ${real}`).expect(201);
       }
-      await reportPublicly(a.slug, {}, `10.9.99.1, ${real}`).expect(429);
-      await reportPublicly(a.slug, {}, real).expect(429);
+      await toLim({}, `10.9.99.1, ${real}`).expect(429);
+      await toLim({}, real).expect(429);
+      await toLim({}, `${real}, 10.9.99.1, ${real}`).expect(429);
+    });
+
+    it('counts every caller as one when no address is passed on', async () => {
+      // No header at all: the API sees only who connected to it, which
+      // behind the web app is the web app. Everyone shares one allowance.
+      for (let i = 0; i < PUBLIC_REPORTS_PER_HOUR; i++) {
+        await toLim({}).expect(201);
+      }
+      const before = await countOf(lim.id);
+      const res = await toLim({}).expect(429);
+      expect(res.body).toEqual({ statusCode: 429, code: 'too_many_requests' });
+      // Whoever comes next without one is refused with them.
+      await reportPublicly(b.slug, { orgUnitId: bUnit }).expect(429);
+      expect(await countOf(lim.id)).toBe(before);
+      // A caller whose address was passed on is counted on their own.
+      await toLim({}, '203.0.113.40').expect(201);
+    });
+
+    it('counts everything that is not an IP address as one caller', async () => {
+      // What a sender can write in the header when nothing in front of the
+      // web app replaces it: none of it becomes a caller of its own.
+      const invented = [
+        'not-an-address',
+        'localhost',
+        'example.invalid',
+        '203.0.113',
+        '999.1.1.1',
+        '203.0.113.9:8080',
+        '[2001:db8::1]',
+        "'; drop table incidents; --",
+        '<script>alert(1)</script>',
+        `caller-${run}`,
+      ];
+      expect(invented).toHaveLength(PUBLIC_REPORTS_PER_HOUR);
+      for (const value of invented) {
+        const res = await toLim({}, value);
+        expect([value, res.status]).toEqual([value, 201]);
+      }
+      // Ten different values, one allowance: the eleventh is refused, and so
+      // is any other value that is not an address.
+      await toLim({}, 'yet-another-name').expect(429);
+      await toLim({}, `fresh-${run}`).expect(429);
+      // A real address is someone else.
+      await toLim({}, '203.0.113.50').expect(201);
+    });
+
+    it('counts a very long value as that same caller, and keeps none of it', async () => {
+      const limits = app.get(PublicLimits, { strict: false }) as unknown as {
+        limiters: Record<string, { attempts: Map<string, number[]> }>;
+      };
+      const before = await countOf(lim.id);
+      for (let i = 0; i < PUBLIC_REPORTS_PER_HOUR; i++) {
+        // Eight thousand characters, different every time.
+        const res = await toLim({}, `${i}${'a'.repeat(8_000)}`);
+        expect(res.status).toBe(201);
+      }
+      await toLim({}, `x${'b'.repeat(8_000)}`).expect(429);
+      // The same when the long value is dressed up as an address.
+      await toLim({}, `${'0'.repeat(8_000)}::1`).expect(429);
+      expect(await countOf(lim.id)).toBe(before + PUBLIC_REPORTS_PER_HOUR);
+      // One key was stored for all of it, a few characters long.
+      const keys = [...limits.limiters.report.attempts.keys()];
+      expect(keys).toEqual(['unknown']);
+    });
+
+    it('ignores the header altogether when told the API is reached directly', async () => {
+      // TRUST_PROXY_HOPS=0: no proxy is trusted, so what a sender writes in
+      // the header counts for nothing and they are who connected.
+      const previous = process.env.TRUST_PROXY_HOPS;
+      process.env.TRUST_PROXY_HOPS = '0';
+      const moduleRef = await Test.createTestingModule({
+        imports: [AppModule],
+      }).compile();
+      const direct = moduleRef.createNestApplication();
+      try {
+        setupApp(direct);
+        await direct.init();
+        const post = (address: string) =>
+          request(direct.getHttpServer() as App)
+            .post(`/public/reporting/${lim.slug}`)
+            .set('X-Forwarded-For', address)
+            .send(
+              reportBody({
+                categoryId: lim.categories.equipment,
+                orgUnitId: limUnit,
+              }),
+            );
+        for (let i = 0; i < PUBLIC_REPORTS_PER_HOUR; i++) {
+          // A new address claimed every time.
+          await post(`198.51.100.${i + 1}`).expect(201);
+        }
+        await post('198.51.100.200').expect(429);
+      } finally {
+        if (previous === undefined) delete process.env.TRUST_PROXY_HOPS;
+        else process.env.TRUST_PROXY_HOPS = previous;
+        await direct.close();
+      }
+    });
+
+    it('takes at most sixty public reports an hour for one hospital, whatever addresses are claimed', async () => {
+      // The case the limit per address cannot stop: nothing in front of the
+      // web app replaces the header, so a sender claims a new address with
+      // every request and each one gets a fresh allowance.
+      const toCap = (address: string) =>
+        reportPublicly(
+          cap.slug,
+          { categoryId: cap.categories.equipment, orgUnitId: capUnit },
+          address,
+        );
+      for (let i = 0; i < PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR; i++) {
+        const res = await toCap(
+          `198.51.${Math.floor(i / 200)}.${(i % 200) + 1}`,
+        );
+        expect([i, res.status]).toEqual([i, 201]);
+      }
+      expect(await countOf(cap.id)).toBe(PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR);
+      // The hospital has had its hour's worth. Refused like any other limit,
+      // from addresses never seen before and from none at all.
+      for (const address of ['198.51.77.1', '2001:db8:7::1', undefined]) {
+        const res = await reportPublicly(
+          cap.slug,
+          { categoryId: cap.categories.equipment, orgUnitId: capUnit },
+          address,
+        ).expect(429);
+        expect(res.body).toEqual({
+          statusCode: 429,
+          code: 'too_many_requests',
+        });
+        expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
+        expect(Number(res.headers['retry-after'])).toBeLessThanOrEqual(3600);
+      }
+      // Many at once do not slip through together either.
+      const burst = await Promise.all(
+        Array.from({ length: 8 }, (_, i) => toCap(`198.51.88.${i + 1}`)),
+      );
+      expect(burst.map((r) => r.status)).toEqual(Array(8).fill(429));
+      expect(await countOf(cap.id)).toBe(PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR);
+      expect(
+        (
+          await owner.db.execute(
+            sql`select 1 from audit_log where tenant_id = ${cap.id} and action = 'incident_reported'`,
+          )
+        ).rows,
+      ).toHaveLength(PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR);
+
+      // Other hospitals take reports as before, and so does this one's
+      // staff: the ceiling is on the public form only.
+      await reportPublicly(
+        lim.slug,
+        { categoryId: lim.categories.equipment, orgUnitId: limUnit },
+        '198.51.99.1',
+      ).expect(201);
+      await http()
+        .post('/incidents')
+        .set('Cookie', cap.cookie)
+        .send(
+          reportBody({
+            anonymous: true,
+            categoryId: cap.categories.equipment,
+            orgUnitId: capUnit,
+          }),
+        )
+        .expect(201);
+      // Following up is not reporting.
+      const [any] = (
+        await owner.db.execute<{ id: string }>(
+          sql`select id from incidents where tenant_id = ${cap.id} and channel = 'public' limit 1`,
+        )
+      ).rows;
+      expect(any).toBeDefined();
+      await followUp(cap.slug, 'x', '198.51.99.2').expect(404);
+
+      // When the hour has moved on past the oldest of them, there is room
+      // for exactly as many again.
+      await owner.db.execute(
+        sql`update incidents set reported_at = reported_at - interval '61 minutes'
+            where id in (select id from incidents where tenant_id = ${cap.id} and channel = 'public' order by reported_at limit 2)`,
+      );
+      await toCap('198.51.99.3').expect(201);
+      await toCap('198.51.99.4').expect(201);
+      await toCap('198.51.99.5').expect(429);
+    }, 60_000);
+
+    it('allows thirty follow-up attempts an hour from one address, opening and commenting together', async () => {
+      const sent = await toLim({}, '203.0.113.70').expect(201);
+      const code = sent.body.followUpCode as string;
+      const { id } = await byCode(lim.id, code);
+      const address = '203.0.113.71';
+      for (let i = 0; i < FOLLOW_UP_ATTEMPTS_PER_HOUR; i++) {
+        // Wrong codes, and now and then a comment or a malformed request.
+        const res =
+          i % 10 === 9
+            ? await followUpComment(lim.slug, 'wrong', 'Hi', address)
+            : i % 10 === 8
+              ? await publicPost(`/public/follow-up/${lim.slug}`, {}, address)
+              : await followUp(lim.slug, `wrong-${i}`, address);
+        expect(res.status).toBe(i % 10 === 8 ? 400 : 404);
+      }
+      // Even the right code is now refused, on either route, however spelt.
+      const res = await followUp(lim.slug, code, address).expect(429);
+      expect(res.body).toEqual({ statusCode: 429, code: 'too_many_requests' });
+      expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
+      await followUpComment(lim.slug, code, 'Let me in', address).expect(429);
+      for (const [i, path] of [
+        `/PUBLIC/FOLLOW-UP/${lim.slug}`,
+        `/public/follow-up/${lim.slug}/`,
+        `/public/follow-up/${lim.slug.toUpperCase()}`,
+        `/public/follow-up/${b.slug}`,
+        `/Public/Follow-Up/${lim.slug}/Comments/`,
+      ].entries()) {
+        const reached = await publicPost(
+          path,
+          { code, body: 'Variant' },
+          `203.0.113.${80 + i}`,
+        );
+        expect([path, reached.status]).not.toEqual([path, 429]);
+        const limited = await publicPost(
+          path,
+          { code, body: 'Variant' },
+          address,
+        );
+        expect([path, limited.status]).toEqual([path, 429]);
+      }
+      const letIn = await owner.db.execute(
+        sql`select 1 from incident_comments where incident_id = ${id} and body = 'Let me in'`,
+      );
+      expect(letIn.rows).toHaveLength(0);
+      // Reporting is counted apart, and so is everyone else.
+      await toLim({}, address).expect(201);
+      await followUp(lim.slug, code, '203.0.113.72').expect(200);
     });
   });
 
@@ -1297,13 +1895,17 @@ describe('incident safeguards', () => {
     let mine: Reported & { followUpCode: string }; // through the public link
     let inApp: Reported & { followUpCode: string }; // signed in, anonymously
     let named: Reported;
-    let theirs: { reference: string; followUpCode: string }; // hospital B's
+    let theirs: { followUpCode: string }; // hospital B's
+    let elsewhere: Reported & { followUpCode: string }; // in the hospital that has the public form off
     // What Nest answers for a plain NotFoundException, and nothing added.
     const NOT_FOUND = { statusCode: 404, message: 'Not Found' };
 
     beforeAll(async () => {
       const sent = await reportPublicly(a.slug).expect(201);
-      mine = { ...sent.body, id: await idOf(a.id, sent.body.reference) };
+      mine = {
+        followUpCode: sent.body.followUpCode,
+        ...(await byCode(a.id, sent.body.followUpCode)),
+      };
       inApp = (await report(reporter, { anonymous: true })) as typeof inApp;
       named = await report(reporter);
       theirs = (
@@ -1311,6 +1913,21 @@ describe('incident safeguards', () => {
           categoryId: b.categories.equipment,
           orgUnitId: bUnit,
         }).expect(201)
+      ).body;
+      // A member of staff reporting anonymously where the public form was
+      // never opened.
+      elsewhere = (
+        await http()
+          .post('/incidents')
+          .set('Cookie', off.cookie)
+          .send(
+            reportBody({
+              anonymous: true,
+              categoryId: off.categories.equipment,
+              orgUnitId: offUnit,
+            }),
+          )
+          .expect(201)
       ).body;
 
       await triage(quality.cookie, mine.id, {
@@ -1326,6 +1943,7 @@ describe('incident safeguards', () => {
     });
 
     it('comes with every anonymous report, and with no named one', async () => {
+      // Staff who report anonymously keep getting the reference with it.
       expect(Object.keys(inApp).sort()).toEqual([
         'followUpCode',
         'id',
@@ -1340,15 +1958,9 @@ describe('incident safeguards', () => {
       );
     });
 
-    it('opens the report as its reporter sees it', async () => {
-      const res = await followUp(
-        a.slug,
-        mine.reference,
-        mine.followUpCode,
-      ).expect(200);
+    it('opens the report as its reporter sees it, by the code alone', async () => {
+      const res = await followUp(a.slug, mine.followUpCode).expect(200);
       expect(res.body).toMatchObject({
-        id: mine.id,
-        reference: mine.reference,
         status: 'triaged',
         access: 'reporter',
         canTriage: false,
@@ -1360,6 +1972,10 @@ describe('incident safeguards', () => {
         // The department is named, the person is not.
         ownerUnit: { id: ward },
         assignedTo: null,
+        // Deadlines are for the people handling it.
+        triageDueAt: null,
+        closeDueAt: null,
+        overdue: null,
         people: {},
       });
       expect((res.body.events as Event[]).map((e) => e.kind)).toEqual([
@@ -1377,125 +1993,307 @@ describe('incident safeguards', () => {
       expect(body).not.toContain(mine.followUpCode);
       expect(body).not.toContain('followUpCode');
 
-      // Field for field what a signed-in reporter gets for a report of theirs.
+      // What a signed-in reporter gets for a report of theirs, field for
+      // field, without the incident's id and its number.
       const own = await open(reporter.cookie, named.id).expect(200);
       expect(Object.keys(res.body).sort()).toEqual(
-        Object.keys(own.body).sort(),
+        Object.keys(own.body)
+          .filter((key) => key !== 'id' && key !== 'reference')
+          .sort(),
       );
+      expect(own.body).toMatchObject({
+        id: named.id,
+        reference: named.reference,
+      });
+      expect(res.body).not.toHaveProperty('id');
+      expect(res.body).not.toHaveProperty('reference');
+      expect(body).not.toContain(mine.id);
+      expect(body).not.toContain(mine.reference);
+      expect(body).not.toContain('INC-');
     });
 
     it('is read without regard to letter case, hyphens or spaces', async () => {
       const bare = mine.followUpCode.replaceAll('-', '');
-      for (const [reference, code] of [
-        [mine.reference, mine.followUpCode.toLowerCase()],
-        [mine.reference, bare],
-        [
-          mine.reference,
-          ` ${bare.slice(0, 8)} ${bare.slice(8).toLowerCase()} `,
-        ],
-        [mine.reference.toLowerCase(), mine.followUpCode],
-        [` ${mine.reference} `, mine.followUpCode],
+      for (const code of [
+        mine.followUpCode.toLowerCase(),
+        bare,
+        ` ${bare.slice(0, 8)} ${bare.slice(8).toLowerCase()} `,
+        `--${mine.followUpCode}--`,
       ]) {
-        await followUp(a.slug, reference, code).expect(200);
+        await followUp(a.slug, code).expect(200);
       }
     });
 
     it('works for a report made anonymously while signed in, with or without a session', async () => {
-      await followUp(a.slug, inApp.reference, inApp.followUpCode).expect(200);
+      await followUp(a.slug, inApp.followUpCode).expect(200);
       const res = await http()
         .post(`/public/follow-up/${a.slug}`)
-        .set('X-Forwarded-For', freshAddress())
         .set('Cookie', reporter.cookie)
-        .send({ reference: inApp.reference, code: inApp.followUpCode })
+        .send({ code: inApp.followUpCode })
         .expect(200);
       expect(res.body).toMatchObject({ access: 'reporter', reporter: null });
       // Through the app itself it stays out of their reach.
       await open(reporter.cookie, inApp.id).expect(404);
     });
 
-    it('answers every wrong pair with the same 404', async () => {
-      const wrongCode = 'K7QM-2RXD-9FHT-WB3N';
-      const tries: [string, string, string][] = [
-        // A report that exists, with a code that is not its own.
-        [a.slug, mine.reference, wrongCode],
-        [a.slug, mine.reference, inApp.followUpCode],
-        [a.slug, mine.reference, mine.followUpCode.slice(0, -1)],
-        [a.slug, mine.reference, `${mine.followUpCode}2`],
-        [a.slug, mine.reference, 'x'],
-        // A reference that does not exist, with a code that does.
-        [a.slug, `INC-${year}-99999`, mine.followUpCode],
-        [a.slug, 'not-a-reference', mine.followUpCode],
-        // A named report has no code at all.
-        [a.slug, named.reference, mine.followUpCode],
-        [a.slug, named.reference, ''.padEnd(16, '2')],
-        // Another hospital's report, asked for here; and ours, asked there.
-        [a.slug, theirs.reference, theirs.followUpCode],
-        [b.slug, mine.reference, mine.followUpCode],
-        // The right pair, where there is no hospital to ask.
-        [`${prefix}-nowhere`, mine.reference, mine.followUpCode],
-        [off.slug, mine.reference, mine.followUpCode],
-        [suspended.slug, mine.reference, mine.followUpCode],
-      ];
-      for (const [slug, reference, code] of tries) {
-        const res = await followUp(slug, reference, code);
-        expect([slug, reference, code, res.status]).toEqual([
-          slug,
-          reference,
-          code,
-          404,
-        ]);
-        expect(res.body).toEqual(NOT_FOUND);
-        expect(res.headers['retry-after']).toBeUndefined();
-        const said = await followUpComment(slug, reference, code, 'Hello');
-        expect(said.status).toBe(404);
-        expect(said.body).toEqual(NOT_FOUND);
-      }
-      // And none of those attempts wrote anything.
-      const comments = await owner.db.execute(
-        sql`select 1 from incident_comments where body = 'Hello' and tenant_id in (${a.id}, ${b.id})`,
-      );
-      expect(comments.rows).toHaveLength(0);
-      // The other hospital's own pair does work where it belongs.
-      await followUp(b.slug, theirs.reference, theirs.followUpCode).expect(200);
-    });
+    it('works whether or not the hospital takes reports without sign-in', async () => {
+      // Where the public form was never opened: the form is 404, the code
+      // that a member of staff was given works.
+      await http().get(`/public/reporting/${off.slug}`).expect(404);
+      const view = await followUp(off.slug, elsewhere.followUpCode).expect(200);
+      expect(view.body).toMatchObject({ access: 'reporter', status: 'new' });
+      const said = await followUpComment(
+        off.slug,
+        elsewhere.followUpCode,
+        'Is anyone looking at this?',
+      ).expect(201);
+      expect(said.body.visibility).toBe('everyone');
+      const handler = await http()
+        .get(`/incidents/${elsewhere.id}`)
+        .set('Cookie', off.cookie)
+        .expect(200);
+      expect((handler.body.comments as Comment[]).at(-1)).toMatchObject({
+        body: 'Is anyone looking at this?',
+        author: null,
+        byReporter: true,
+      });
 
-    it('refuses a request that is not a reference and a code', async () => {
-      for (const body of [
-        {},
-        { reference: mine.reference },
-        { code: mine.followUpCode },
-        { reference: mine.reference, code: 12345 },
-        { reference: ['x'], code: mine.followUpCode },
-        { reference: mine.reference, code: 'x'.repeat(81) },
-        { reference: 'x'.repeat(41), code: mine.followUpCode },
-        { reference: mine.reference, code: mine.followUpCode, id: mine.id },
-      ]) {
-        await publicPost(`/public/follow-up/${a.slug}`, body).expect(400);
-      }
-    });
-
-    it('stops working while the hospital has public reporting off, and works again after', async () => {
+      // And where it was open and is switched off again.
       await setPublicReporting(a.cookie, false).expect(200);
       try {
-        await followUp(a.slug, mine.reference, mine.followUpCode).expect(404);
-        await followUp(a.slug, inApp.reference, inApp.followUpCode).expect(404);
-        await followUpComment(
-          a.slug,
-          mine.reference,
-          mine.followUpCode,
-          'Still there?',
-        ).expect(404);
-        // A code is still issued: it is good for when the switch is on.
-        const later = await report(reporter, { anonymous: true });
-        expect(later.followUpCode).toMatch(CODE);
-        await setPublicReporting(a.cookie, true).expect(200);
-        await followUp(a.slug, later.reference, later.followUpCode!).expect(
-          200,
+        await http().get(`/public/reporting/${a.slug}`).expect(404);
+        await reportPublicly(a.slug).expect(404);
+        await followUp(a.slug, mine.followUpCode).expect(200);
+        await followUp(a.slug, inApp.followUpCode).expect(200);
+        await followUpComment(a.slug, mine.followUpCode, 'Still there?').expect(
+          201,
         );
+        const later = await report(reporter, { anonymous: true });
+        await followUp(a.slug, later.followUpCode!).expect(200);
       } finally {
         await setPublicReporting(a.cookie, true).expect(200);
       }
-      await followUp(a.slug, mine.reference, mine.followUpCode).expect(200);
+      await followUp(a.slug, mine.followUpCode).expect(200);
+    });
+
+    it('answers every wrong code with the same 404, wherever it is asked', async () => {
+      const wrongCode = 'K7QM-2RXD-9FHT-WB3N';
+      const tries: [string, string][] = [
+        // Codes that are nobody's.
+        [a.slug, wrongCode],
+        [a.slug, mine.followUpCode.slice(0, -1)],
+        [a.slug, `${mine.followUpCode}2`],
+        [a.slug, 'x'],
+        [a.slug, ''.padEnd(16, '2')],
+        // What is known of a report without being its code.
+        [a.slug, mine.reference],
+        [a.slug, named.reference],
+        [a.slug, mine.id],
+        [a.slug, hashOf(mine.followUpCode)],
+        // Another hospital's code, asked for here; and ours, asked there.
+        [a.slug, theirs.followUpCode],
+        [a.slug, elsewhere.followUpCode],
+        [b.slug, mine.followUpCode],
+        [off.slug, mine.followUpCode],
+        // The right code, where there is no hospital to ask: one that does
+        // not exist, and one that is suspended.
+        [`${prefix}-nowhere`, mine.followUpCode],
+        [suspended.slug, mine.followUpCode],
+        [suspended.slug, goneCode],
+      ];
+      const limits = app.get(PublicLimits, { strict: false });
+      for (const [slug, code] of tries) {
+        limits.forget();
+        const res = await followUp(slug, code);
+        expect([slug, code, res.status]).toEqual([slug, code, 404]);
+        expect(res.body).toEqual(NOT_FOUND);
+        expect(res.headers['retry-after']).toBeUndefined();
+        const said = await followUpComment(slug, code, 'Hello');
+        expect(said.status).toBe(404);
+        expect(said.body).toEqual(NOT_FOUND);
+        expect(said.headers['content-length']).toBe(
+          res.headers['content-length'],
+        );
+      }
+      // And none of those attempts wrote anything.
+      const comments = await owner.db.execute(
+        sql`select 1 from incident_comments where body = 'Hello' and tenant_id in (${a.id}, ${b.id}, ${off.id}, ${suspended.id})`,
+      );
+      expect(comments.rows).toHaveLength(0);
+      // The other hospital's own code does work where it belongs.
+      await followUp(b.slug, theirs.followUpCode).expect(200);
+      // The suspended hospital's code really was one.
+      expect((await byCode(suspended.id, goneCode)).id).toBeTruthy();
+    });
+
+    it('refuses a request that is not a code, before anything is looked up', async () => {
+      const limits = app.get(PublicLimits, { strict: false });
+      for (const body of [
+        {},
+        { code: '' },
+        { code: 12345 },
+        { code: ['x'] },
+        { code: null },
+        { code: 'x'.repeat(81) },
+        // The reference is no longer part of it, right or wrong.
+        { reference: mine.reference, code: mine.followUpCode },
+        { code: mine.followUpCode, id: mine.id },
+        // Control characters, in a code that would otherwise be right.
+        { code: `${mine.followUpCode}\u0000` },
+        { code: `\u0000${mine.followUpCode}` },
+        { code: mine.followUpCode.replace('-', '\u0001') },
+        { code: `${mine.followUpCode}\u001b[2J` },
+        { code: `${mine.followUpCode}\u007f` },
+      ]) {
+        limits.forget();
+        const res = await publicPost(`/public/follow-up/${a.slug}`, body);
+        expect([JSON.stringify(body), res.status]).toEqual([
+          JSON.stringify(body),
+          400,
+        ]);
+        expect(res.body).toEqual({ statusCode: 400, message: 'Bad Request' });
+        await publicPost(`/public/follow-up/${a.slug}/comments`, {
+          ...body,
+          body: 'Hello',
+        }).expect(400);
+        // The same where there is no hospital: it says nothing about one.
+        await publicPost(`/public/follow-up/${prefix}-nowhere`, body).expect(
+          400,
+        );
+      }
+    });
+
+    it('gives a reader with a code no name or id of anyone working at the hospital', async () => {
+      // A sentinel event through the public link, with as many people having
+      // acted on it as there are ways to act.
+      const sent = await reportPublicly(a.slug, {
+        harmLevel: 'severe',
+      }).expect(201);
+      const code = sent.body.followUpCode as string;
+      const { id, reference } = await byCode(a.id, code);
+      await triage(quality.cookie, id, {
+        harmLevel: 'severe',
+        isSentinel: true,
+        assignedTo: assignee.id,
+      }).expect(200);
+      await triage(wardQuality.cookie, id, {
+        harmLevel: 'severe',
+        isSentinel: true,
+        ownerUnitId: lab,
+        assignedTo: manager.id,
+      }).expect(200);
+      await move(triageOnly.cookie, id, 'in_progress').expect(200);
+      for (const who of [quality, manager, assignee, a]) {
+        await comment(who.cookie, id, 'A word to you.', 'everyone').expect(
+          who === assignee ? 404 : 201,
+        );
+      }
+      await comment(quality2.cookie, id, 'Among us.', 'internal').expect(201);
+      await followUpComment(a.slug, code, 'Thank you.').expect(201);
+      await move(quality.cookie, id, 'awaiting_sign_off', PROPOSAL).expect(200);
+      await move(quality2.cookie, id, 'in_progress', 'Not yet.', {
+        kind: 'send_back',
+      }).expect(200);
+      await move(quality2.cookie, id, 'awaiting_sign_off', PROPOSAL).expect(
+        200,
+      );
+      await move(quality.cookie, id, 'in_progress', 'One more thing.', {
+        kind: 'withdraw',
+      }).expect(200);
+      await move(labQuality.cookie, id, 'awaiting_sign_off', PROPOSAL).expect(
+        200,
+      );
+      await signOff(200, signOnly.cookie, id, 'Agreed.');
+      await move(a.cookie, id, 'in_progress', 'It happened again.').expect(200);
+
+      const res = await followUp(a.slug, code).expect(200);
+      const body = JSON.stringify(res.body);
+      // Every member of staff the hospital has, whether or not they touched
+      // this incident: no id and no name, anywhere in the answer.
+      const everyone = await owner.db.execute<{
+        id: string;
+        name: Record<string, string>;
+        email: string;
+      }>(sql`select id, name, email from users where tenant_id = ${a.id}`);
+      expect(everyone.rows.length).toBeGreaterThanOrEqual(10);
+      for (const person of everyone.rows) {
+        expect([person.email, body.includes(person.id)]).toEqual([
+          person.email,
+          false,
+        ]);
+        expect([person.email, body.includes(person.email)]).toEqual([
+          person.email,
+          false,
+        ]);
+        for (const name of Object.values(person.name)) {
+          expect([name, body.includes(name)]).toEqual([name, false]);
+        }
+      }
+      expect(body).not.toContain('Person ');
+      expect(body).not.toContain('@test.invalid');
+      // Nor the incident's own id and number.
+      expect(body).not.toContain(id);
+      expect(body).not.toContain(reference);
+      expect(res.body.people).toEqual({});
+      expect(res.body).toMatchObject({
+        assignedTo: null,
+        closureRequestedBy: null,
+        closureRequestedAt: null,
+        reporter: null,
+      });
+
+      // What staff did is there, marked as theirs and carrying nobody.
+      const events = res.body.events as (Event & { byStaff: boolean })[];
+      expect(events.map((e) => e.kind)).toEqual([
+        'reported',
+        'triaged',
+        'triaged',
+        'status_changed',
+        'commented',
+        'commented',
+        'commented',
+        'commented',
+        'sign_off_requested',
+        'sent_back',
+        'sign_off_requested',
+        'status_changed',
+        'sign_off_requested',
+        'signed_off',
+        'reopened',
+      ]);
+      for (const event of events) {
+        expect([event.kind, event.actor]).toEqual([event.kind, null]);
+        expect(event.byStaff).toBe(!event.byReporter);
+      }
+      // Theirs: the report, and the one comment written with the code.
+      expect(events.filter((e) => e.byReporter).map((e) => e.kind)).toEqual([
+        'reported',
+        'commented',
+      ]);
+      const comments = res.body.comments as (Comment & { byStaff: boolean })[];
+      expect(
+        comments.map((c) => [c.body, c.author, c.byReporter, c.byStaff]),
+      ).toEqual([
+        ['A word to you.', null, false, true],
+        ['A word to you.', null, false, true],
+        ['A word to you.', null, false, true],
+        ['Thank you.', null, true, false],
+      ]);
+
+      // Signed in, everyone is named as before, staff and reporter marked
+      // the same way.
+      const handler = await open(quality.cookie, id).expect(200);
+      const named = handler.body.events as (Event & { byStaff: boolean })[];
+      for (const event of named) {
+        expect(event.byStaff).toBe(!event.byReporter);
+        expect([event.kind, event.actor !== null]).toEqual([
+          event.kind,
+          event.byStaff,
+        ]);
+      }
+      expect(Object.keys(handler.body.people).sort()).toEqual(
+        [assignee.id, manager.id].sort(),
+      );
     });
 
     describe('a comment by the anonymous reporter', () => {
@@ -1510,7 +2308,6 @@ describe('incident safeguards', () => {
           // Signed in while commenting with the code: it must not show.
           .set('Cookie', reporter.cookie)
           .send({
-            reference: inApp.reference,
             code: inApp.followUpCode.toLowerCase(),
             body: `  ${WORDS}  `,
           })
@@ -1529,13 +2326,14 @@ describe('incident safeguards', () => {
 
       it('has no author, and nothing records who wrote it', async () => {
         const comments = await owner.db.execute(
-          sql`select id, author_id, by_reporter, body, visibility from incident_comments where incident_id = ${inApp.id}`,
+          sql`select id, author_id, by_reporter, as_handler, body, visibility from incident_comments where incident_id = ${inApp.id}`,
         );
         expect(comments.rows).toEqual([
           {
             id: written.id,
             author_id: null,
             by_reporter: true,
+            as_handler: false,
             body: WORDS,
             visibility: 'everyone',
           },
@@ -1599,6 +2397,12 @@ describe('incident safeguards', () => {
                      or changes::text like ${`%${inApp.reference}%`})`,
         );
         expect(linked.rows).toHaveLength(0);
+        // Nobody was notified of it as the reporter, and no notification
+        // about this report is addressed to the account that was signed in.
+        const told = await owner.db.execute(
+          sql`select 1 from notifications where incident_id = ${inApp.id} and user_id = ${reporter.id}`,
+        );
+        expect(told.rows).toHaveLength(0);
       });
 
       it('reaches the handlers as written by the reporter, and the reporter sees it too', async () => {
@@ -1609,6 +2413,7 @@ describe('incident safeguards', () => {
               id: written.id,
               author: null,
               byReporter: true,
+              byStaff: false,
               body: WORDS,
               visibility: 'everyone',
               createdAt: written.createdAt,
@@ -1620,27 +2425,28 @@ describe('incident safeguards', () => {
             byReporter: true,
           });
         }
-        const back = await followUp(
-          a.slug,
-          inApp.reference,
-          inApp.followUpCode,
-        ).expect(200);
+        const back = await followUp(a.slug, inApp.followUpCode).expect(200);
         expect((back.body.comments as Comment[]).map((c) => c.body)).toEqual([
           WORDS,
         ]);
       });
 
       it('refuses an invalid one, and cannot be made internal', async () => {
-        const pair = { reference: inApp.reference, code: inApp.followUpCode };
+        const limits = app.get(PublicLimits, { strict: false });
+        const given = { code: inApp.followUpCode };
         for (const body of [
-          { ...pair },
-          { ...pair, body: '' },
-          { ...pair, body: '   ' },
-          { ...pair, body: 'x'.repeat(2001) },
-          { ...pair, body: 'Hello', visibility: 'internal' },
-          { ...pair, body: 'Hello', visibility: 'everyone' },
-          { ...pair, body: 'Hello', authorId: quality.id },
+          { ...given },
+          { ...given, body: '' },
+          { ...given, body: '   ' },
+          { ...given, body: 'x'.repeat(2001) },
+          { ...given, body: 'Hel\u0000lo' },
+          { ...given, body: 'Hel\u0007lo' },
+          { ...given, body: 'Hello', visibility: 'internal' },
+          { ...given, body: 'Hello', visibility: 'everyone' },
+          { ...given, body: 'Hello', authorId: quality.id },
+          { ...given, body: 'Hello', reference: inApp.reference },
         ]) {
+          limits.forget();
           await publicPost(`/public/follow-up/${a.slug}/comments`, body).expect(
             400,
           );
@@ -1650,66 +2456,6 @@ describe('incident safeguards', () => {
         );
         expect(count.rows).toHaveLength(1);
       });
-    });
-
-    it('allows thirty attempts an hour from one address, opening and commenting together', async () => {
-      const address = freshAddress();
-      for (let i = 0; i < FOLLOW_UP_ATTEMPTS_PER_HOUR; i++) {
-        // Wrong codes, and now and then a comment or a malformed request.
-        const res =
-          i % 10 === 9
-            ? await followUpComment(
-                a.slug,
-                mine.reference,
-                'wrong',
-                'Hi',
-                address,
-              )
-            : i % 10 === 8
-              ? await publicPost(`/public/follow-up/${a.slug}`, {}, address)
-              : await followUp(a.slug, mine.reference, `wrong-${i}`, address);
-        expect(res.status).toBe(i % 10 === 8 ? 400 : 404);
-      }
-      // Even the right code is now refused, on either route, however spelt.
-      const res = await followUp(
-        a.slug,
-        mine.reference,
-        mine.followUpCode,
-        address,
-      ).expect(429);
-      expect(res.body).toEqual({ statusCode: 429, code: 'too_many_requests' });
-      expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
-      await followUpComment(
-        a.slug,
-        mine.reference,
-        mine.followUpCode,
-        'Let me in',
-        address,
-      ).expect(429);
-      const pair = { reference: mine.reference, code: mine.followUpCode };
-      for (const path of [
-        `/PUBLIC/FOLLOW-UP/${a.slug}`,
-        `/public/follow-up/${a.slug}/`,
-        `/public/follow-up/${a.slug.toUpperCase()}`,
-        `/public/follow-up/${b.slug}`,
-        `/Public/Follow-Up/${a.slug}/Comments/`,
-      ]) {
-        const reached = await publicPost(path, { ...pair, body: 'Variant' });
-        expect([path, reached.status]).not.toEqual([path, 429]);
-        const limited = await publicPost(
-          path,
-          { ...pair, body: 'Variant' },
-          address,
-        );
-        expect([path, limited.status]).toEqual([path, 429]);
-      }
-      const letIn = await owner.db.execute(
-        sql`select 1 from incident_comments where incident_id = ${mine.id} and body = 'Let me in'`,
-      );
-      expect(letIn.rows).toHaveLength(0);
-      // Reporting is counted apart, and so is everyone else.
-      await reportPublicly(a.slug, {}, address).expect(201);
-      await followUp(a.slug, mine.reference, mine.followUpCode).expect(200);
     });
   });
 
@@ -1727,10 +2473,16 @@ describe('incident safeguards', () => {
         const res = await open(quality.cookie, id).expect(200);
         expect(res.body.needsSignOff).toBe(true);
         expect(res.body.moves).toEqual([
-          { to: 'in_progress', noteRequired: false, kind: 'start' },
+          {
+            to: 'in_progress',
+            noteRequired: false,
+            revisionRequired: false,
+            kind: 'start',
+          },
           {
             to: 'awaiting_sign_off',
             noteRequired: true,
+            revisionRequired: false,
             kind: 'request_sign_off',
           },
         ]);
@@ -1746,6 +2498,7 @@ describe('incident safeguards', () => {
         {
           to: 'awaiting_sign_off',
           noteRequired: true,
+          revisionRequired: false,
           kind: 'request_sign_off',
         },
       ]);
@@ -1803,8 +2556,18 @@ describe('incident safeguards', () => {
       const res = await open(quality.cookie, id).expect(200);
       expect(res.body.needsSignOff).toBe(false);
       expect(res.body.moves).toEqual([
-        { to: 'in_progress', noteRequired: false, kind: 'start' },
-        { to: 'closed', noteRequired: true, kind: 'close' },
+        {
+          to: 'in_progress',
+          noteRequired: false,
+          revisionRequired: false,
+          kind: 'start',
+        },
+        {
+          to: 'closed',
+          noteRequired: true,
+          revisionRequired: false,
+          kind: 'close',
+        },
       ]);
       const refused = await move(
         quality.cookie,
@@ -1828,11 +2591,26 @@ describe('incident safeguards', () => {
     it('tells each person what they may do while it waits', async () => {
       const { id } = await awaitingSignOff();
       const secondPerson = [
-        { to: 'closed', noteRequired: false, kind: 'sign_off' },
-        { to: 'in_progress', noteRequired: true, kind: 'send_back' },
+        {
+          to: 'closed',
+          noteRequired: false,
+          revisionRequired: true,
+          kind: 'sign_off',
+        },
+        {
+          to: 'in_progress',
+          noteRequired: true,
+          revisionRequired: false,
+          kind: 'send_back',
+        },
       ];
       const withdraw = [
-        { to: 'in_progress', noteRequired: true, kind: 'withdraw' },
+        {
+          to: 'in_progress',
+          noteRequired: true,
+          revisionRequired: false,
+          kind: 'withdraw',
+        },
       ];
       expect(await movesOf(quality, id)).toEqual(withdraw);
       // A second person who may also triage has two ways back to "in
@@ -1903,13 +2681,20 @@ describe('incident safeguards', () => {
 
     it('is closed when a second person signs it off', async () => {
       const { id } = await awaitingSignOff();
-      const res = await move(quality2.cookie, id, 'closed').expect(200);
+      const res = await signOff(200, quality2.cookie, id);
       expect(res.body).toMatchObject({
         status: 'closed',
         // The summary that was proposed, now the one it was closed with.
         closureSummary: PROPOSAL,
         closureRequestedBy: { id: quality.id },
-        moves: [{ to: 'in_progress', noteRequired: true, kind: 'reopen' }],
+        moves: [
+          {
+            to: 'in_progress',
+            noteRequired: true,
+            revisionRequired: false,
+            kind: 'reopen',
+          },
+        ],
       });
       expect(res.body.closedAt).toBeTruthy();
       expect((res.body.events as Event[]).at(-1)).toMatchObject({
@@ -1927,12 +2712,12 @@ describe('incident safeguards', () => {
 
       // With a note, it is on the timeline.
       const other = await awaitingSignOff();
-      const noted = await move(
+      const noted = await signOff(
+        200,
         wardQuality.cookie,
         other.id,
-        'closed',
         'Reviewed with the ward.',
-      ).expect(200);
+      );
       expect((noted.body.events as Event[]).at(-1)).toMatchObject({
         kind: 'signed_off',
         actor: { id: wardQuality.id },
@@ -1955,7 +2740,7 @@ describe('incident safeguards', () => {
       });
       await triage(signOnly.cookie, id).expect(403);
       await move(quality.cookie, id, 'awaiting_sign_off', PROPOSAL).expect(200);
-      const res = await move(signOnly.cookie, id, 'closed').expect(200);
+      const res = await signOff(200, signOnly.cookie, id);
       expect(res.body).toMatchObject({
         status: 'closed',
         canTriage: false,
@@ -2042,7 +2827,7 @@ describe('incident safeguards', () => {
       expect((await stored(id)).closure_requested_by).toBe(quality2.id);
       const own = await move(quality2.cookie, id, 'closed').expect(403);
       expect(own.body.code).toBe('same_person');
-      const res = await move(quality.cookie, id, 'closed').expect(200);
+      const res = await signOff(200, quality.cookie, id);
       expect(res.body).toMatchObject({
         status: 'closed',
         closureSummary: 'Second try.',
@@ -2113,6 +2898,31 @@ describe('incident safeguards', () => {
         details: { note: 'Wrong incident.', withdrawn: true },
       });
 
+      // The reporter learns that the request was taken back, not what was
+      // said: like the reason for sending one back, that is between the
+      // people handling it. Other notes they are shown stay as they were.
+      const theirs = await open(reporter.cookie, third.id).expect(200);
+      expect(theirs.body.access).toBe('reporter');
+      expect((theirs.body.events as Event[]).at(-1)).toEqual(
+        expect.objectContaining({
+          kind: 'status_changed',
+          fromStatus: 'awaiting_sign_off',
+          toStatus: 'in_progress',
+          details: { withdrawn: true },
+        }),
+      );
+      expect(JSON.stringify(theirs.body)).not.toContain('Wrong incident.');
+      expect(
+        (theirs.body.events as Event[]).find(
+          (e) => e.kind === 'sign_off_requested',
+        ),
+      ).toMatchObject({ details: { note: PROPOSAL } });
+      // A handler without the right to triage still reads it.
+      const handler = await open(manager.cookie, third.id).expect(200);
+      expect((handler.body.events as Event[]).at(-1)).toMatchObject({
+        details: { note: 'Wrong incident.', withdrawn: true },
+      });
+
       // Not someone who may sign off but not triage, and did not ask.
       const fourth = await awaitingSignOff();
       const refused = await move(
@@ -2146,7 +2956,12 @@ describe('incident safeguards', () => {
       const seen = await open(leaver.cookie, id).expect(200);
       expect(seen.body).toMatchObject({ canTriage: false });
       expect(seen.body.moves).toEqual([
-        { to: 'in_progress', noteRequired: true, kind: 'withdraw' },
+        {
+          to: 'in_progress',
+          noteRequired: true,
+          revisionRequired: false,
+          kind: 'withdraw',
+        },
       ]);
       // Their own request, so not theirs to sign off or do anything else to.
       await move(leaver.cookie, id, 'closed').expect(403);
@@ -2201,9 +3016,9 @@ describe('incident safeguards', () => {
       expect(wrong.body.code).toBe('invalid_transition');
       expect((await stored(id)).status).toBe('awaiting_sign_off');
       // Where one move leads there, the kind may be left out or be right.
-      await move(quality2.cookie, id, 'closed', undefined, {
+      await signOff(200, quality2.cookie, id, undefined, {
         kind: 'sign_off',
-      }).expect(200);
+      });
 
       const plain = await report(reporter);
       await triage(quality.cookie, plain.id).expect(200);
@@ -2250,8 +3065,11 @@ describe('incident safeguards', () => {
         ]);
         // A kind names one move among those offered.
         expect(new Set(offered.map((m) => m.kind)).size).toBe(offered.length);
+        // Sent with the revision exactly where the offer says it is needed.
+        const read = await open(who.cookie, id).expect(200);
         const res = await move(who.cookie, id, chosen!.to, 'A reason.', {
           kind: chosen!.kind,
+          ...(chosen!.revisionRequired && { revision: read.body.revision }),
         }).expect(200);
         expect(res.body.status).toBe(chosen!.to);
         followed.add(kind);
@@ -2302,22 +3120,155 @@ describe('incident safeguards', () => {
       }
     });
 
-    it('stops needing sign-off only through triage, with its trace', async () => {
+    it('goes on needing sign-off once it has, whatever triage calls it afterwards', async () => {
+      // One person with the right to triage must not be able to close a
+      // sentinel event alone by first calling it something else.
       const { id } = await sentinel();
-      await triage(quality.cookie, id, {
+      const lowered = await triage(quality.cookie, id, {
         harmLevel: 'severe',
         isSentinel: false,
       }).expect(200);
+      // The change itself is allowed, and leaves its trace.
+      expect(lowered.body).toMatchObject({
+        harmLevel: 'severe',
+        isSentinel: false,
+        needsSignOff: true,
+      });
+      expect(
+        (lowered.body.events as Event[])
+          .filter((e) => e.kind === 'triaged')
+          .at(-1),
+      ).toMatchObject({ details: { isSentinel: { from: true, to: false } } });
+      // Closing it outright is not offered and is refused, whatever is sent.
+      expect((await movesOf(quality, id)).map((m) => m.kind)).toEqual([
+        'start',
+        'request_sign_off',
+      ]);
+      for (const extra of [{}, { kind: 'close' }]) {
+        const direct = await move(
+          quality.cookie,
+          id,
+          'closed',
+          'Not sentinel.',
+          extra,
+        ).expect(409);
+        expect(direct.body.code).toBe('sign_off_required');
+      }
+      expect((await stored(id)).status).toBe('triaged');
+      // Lowered all the way, by someone else, and after work has started:
+      // still the same.
+      await triage(quality2.cookie, id, {
+        harmLevel: 'none',
+        isSentinel: false,
+      }).expect(200);
+      await move(quality2.cookie, id, 'in_progress').expect(200);
+      await move(quality2.cookie, id, 'closed', 'Minor after all.').expect(409);
+      const kept = await owner.db.execute<{ sign_off_needed: boolean }>(
+        sql`select sign_off_needed from incidents where id = ${id}`,
+      );
+      expect(kept.rows[0].sign_off_needed).toBe(true);
+
+      // Withdrawing a request, lowering it and closing is the same path.
+      const waiting = await awaitingSignOff();
+      await move(quality.cookie, waiting.id, 'in_progress', 'Not ready', {
+        kind: 'withdraw',
+      }).expect(200);
+      await triage(quality.cookie, waiting.id, {
+        harmLevel: 'mild',
+        isSentinel: false,
+      }).expect(200);
+      const alone = await move(
+        quality.cookie,
+        waiting.id,
+        'closed',
+        'Done.',
+      ).expect(409);
+      expect(alone.body.code).toBe('sign_off_required');
+
+      // It closes the way it always had to: one asks, another signs.
+      await move(quality.cookie, id, 'awaiting_sign_off', PROPOSAL).expect(200);
+      await signOff(403, quality.cookie, id);
+      const closed = await signOff(200, quality2.cookie, id);
+      expect(closed.body.status).toBe('closed');
+    });
+
+    it('needs it from the report on when a death is reported, and after reopening', async () => {
+      const fatal = await report(reporter, { harmLevel: 'death' });
+      const stored = async () =>
+        (
+          await owner.db.execute<{ sign_off_needed: boolean }>(
+            sql`select sign_off_needed from incidents where id = ${fatal.id}`,
+          )
+        ).rows[0].sign_off_needed;
+      expect(await stored()).toBe(true);
+      // Triaged down to a milder harm level at the very first triage.
+      await triage(quality.cookie, fatal.id, { harmLevel: 'mild' }).expect(200);
+      expect(await stored()).toBe(true);
       const res = await move(
         quality.cookie,
-        id,
+        fatal.id,
         'closed',
-        'Not sentinel.',
-      ).expect(200);
-      expect(res.body.status).toBe('closed');
+        'Done.',
+      ).expect(409);
+      expect(res.body.code).toBe('sign_off_required');
+      // An ordinary report never needs it, and is not given it by a triage
+      // that leaves it ordinary.
+      const plain = await report(reporter, { harmLevel: 'severe' });
+      await triage(quality.cookie, plain.id, { harmLevel: 'severe' }).expect(
+        200,
+      );
+      const row = await owner.db.execute<{ sign_off_needed: boolean }>(
+        sql`select sign_off_needed from incidents where id = ${plain.id}`,
+      );
+      expect(row.rows[0].sign_off_needed).toBe(false);
+      await move(quality.cookie, plain.id, 'closed', 'Done.').expect(200);
+    });
+
+    it('is signed on the revision the signer read, and not without one', async () => {
+      const { id } = await awaitingSignOff();
+      const read = await open(quality2.cookie, id).expect(200);
       expect(
-        (res.body.events as Event[]).filter((e) => e.kind === 'triaged').at(-1),
-      ).toMatchObject({ details: { isSentinel: { from: true, to: false } } });
+        (read.body.moves as Move[]).find((m) => m.kind === 'sign_off'),
+      ).toMatchObject({ revisionRequired: true });
+      // Without saying what they read: refused, with or without the kind.
+      for (const extra of [{}, { kind: 'sign_off' }]) {
+        const blind = await move(
+          quality2.cookie,
+          id,
+          'closed',
+          'Fine.',
+          extra,
+        ).expect(400);
+        expect(blind.body.code).toBe('revision_required');
+      }
+      expect((await stored(id)).status).toBe('awaiting_sign_off');
+      // The summary is withdrawn and another proposed after they read it.
+      await move(quality.cookie, id, 'in_progress', 'Wrong summary', {
+        kind: 'withdraw',
+      }).expect(200);
+      await move(
+        quality.cookie,
+        id,
+        'awaiting_sign_off',
+        'Another summary altogether.',
+      ).expect(200);
+      // Their signature was on the first: it does not close the second.
+      const late = await move(quality2.cookie, id, 'closed', undefined, {
+        revision: read.body.revision,
+      }).expect(409);
+      expect(late.body.code).toBe('stale_incident');
+      expect(await stored(id)).toMatchObject({
+        status: 'awaiting_sign_off',
+        closure_summary: 'Another summary altogether.',
+        closed_by: null,
+      });
+      // Someone with no right to sign learns nothing new from leaving it out.
+      const outsider = await move(triageOnly.cookie, id, 'closed').expect(403);
+      expect(outsider.body.code).toBe('missing_permission');
+      // No other move asks for it.
+      await move(quality2.cookie, id, 'in_progress', 'Not yet.', {
+        kind: 'send_back',
+      }).expect(200);
     });
 
     it('refuses a decision made on an out-of-date screen, and one of two at once', async () => {
@@ -2373,7 +3324,7 @@ describe('incident safeguards', () => {
       expect(list.items.every((i) => i.status === 'awaiting_sign_off')).toBe(
         true,
       );
-      await move(quality2.cookie, id, 'closed').expect(200);
+      await signOff(200, quality2.cookie, id);
       expect(await summary()).toEqual({
         ...start,
         closedLast30Days: start.closedLast30Days + 1,
@@ -2383,7 +3334,7 @@ describe('incident safeguards', () => {
 
     it('starts afresh when a signed-off incident is reopened', async () => {
       const { id } = await awaitingSignOff();
-      await move(quality2.cookie, id, 'closed').expect(200);
+      await signOff(200, quality2.cookie, id);
       const res = await move(
         quality.cookie,
         id,
@@ -2408,7 +3359,7 @@ describe('incident safeguards', () => {
     it('shows the reporter each step, and records each without its words', async () => {
       const NOTE = `signing-note-${run}`;
       const { id } = await awaitingSignOff();
-      await move(quality2.cookie, id, 'closed', NOTE).expect(200);
+      await signOff(200, quality2.cookie, id, NOTE);
       const theirs = await open(reporter.cookie, id).expect(200);
       expect(theirs.body).toMatchObject({
         access: 'reporter',

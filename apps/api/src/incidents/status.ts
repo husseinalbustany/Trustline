@@ -36,10 +36,27 @@ export const isSerious = (incident: Gravity) =>
 
 /**
  * A sentinel event or a death: one person asks for it to be closed and
- * another signs that off.
+ * another signs that off. Decided from what the incident is now; see
+ * `needsSignOff` for what it has been.
  */
-export const needsSignOff = (incident: Gravity) =>
+export const callsForSignOff = (incident: Gravity) =>
   incident.isSentinel || incident.harmLevel === 'death';
+
+/** An incident with its memory of having called for sign-off. */
+export type Weighed = Gravity & {
+  /** Stored once it has been a sentinel event or a death; never cleared. */
+  signOffNeeded: boolean;
+};
+
+/**
+ * Whether closing this incident takes two people. Once it has, it always
+ * does: lowering the harm level or clearing the sentinel flag afterwards
+ * does not remove the second signature, or one person with the right to
+ * triage could close a sentinel event alone by first calling it something
+ * else.
+ */
+export const needsSignOff = (incident: Weighed) =>
+  incident.signOffNeeded || callsForSignOff(incident);
 
 /**
  * What a move is, whatever status it leads to. A screen labels its button by
@@ -77,8 +94,14 @@ export type Move = {
   event: EventKind;
   /** Whether the person must explain the change. */
   note: 'required' | 'optional';
+  /**
+   * Whether the person must say which revision of the incident they were
+   * looking at. Required where they put their name to what they read: a
+   * signature on a closure summary that was replaced meanwhile is refused.
+   */
+  revision: 'required' | 'optional';
   /** Whether this incident can take the move at all. */
-  fits: (incident: Gravity) => boolean;
+  fits: (incident: Weighed) => boolean;
   /** Whether this person may make it. */
   by: (caller: Caller) => boolean;
 };
@@ -101,6 +124,7 @@ const MOVES: Move[] = [
     to: 'in_progress',
     event: 'status_changed',
     note: 'optional',
+    revision: 'optional',
     fits: always,
     by: triager,
   },
@@ -110,6 +134,7 @@ const MOVES: Move[] = [
     to: 'closed',
     event: 'closed',
     note: 'required',
+    revision: 'optional',
     fits: (incident) => !needsSignOff(incident),
     by: triager,
   },
@@ -120,6 +145,7 @@ const MOVES: Move[] = [
     to: 'awaiting_sign_off',
     event: 'sign_off_requested',
     note: 'required',
+    revision: 'optional',
     fits: needsSignOff,
     by: triager,
   },
@@ -129,6 +155,7 @@ const MOVES: Move[] = [
     to: 'closed',
     event: 'signed_off',
     note: 'optional',
+    revision: 'required',
     fits: always,
     by: secondPerson,
   },
@@ -138,6 +165,7 @@ const MOVES: Move[] = [
     to: 'in_progress',
     event: 'sent_back',
     note: 'required',
+    revision: 'optional',
     fits: always,
     by: secondPerson,
   },
@@ -149,6 +177,7 @@ const MOVES: Move[] = [
     to: 'in_progress',
     event: 'status_changed',
     note: 'required',
+    revision: 'optional',
     fits: always,
     by: (caller) => caller.isRequester || caller.canTriage,
   },
@@ -160,6 +189,7 @@ const MOVES: Move[] = [
     to: 'rejected',
     event: 'rejected',
     note: 'required',
+    revision: 'optional',
     fits: (incident) => !isSerious(incident),
     by: triager,
   },
@@ -169,12 +199,13 @@ const MOVES: Move[] = [
     to: 'in_progress',
     event: 'reopened',
     note: 'required',
+    revision: 'optional',
     fits: always,
     by: triager,
   },
 ];
 
-type Standing = Gravity & { status: IncidentStatus };
+type Standing = Weighed & { status: IncidentStatus };
 
 /** The moves this person may make on this incident now. */
 export const movesFor = (incident: Standing, caller: Caller): Move[] =>

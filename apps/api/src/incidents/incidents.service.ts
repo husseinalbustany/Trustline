@@ -11,6 +11,7 @@ import {
   count,
   desc,
   eq,
+  gt,
   gte,
   inArray,
   lt,
@@ -31,21 +32,29 @@ import {
 import { TenantDb } from '../database/tenant-db.service.js';
 import type { AuthContext } from '../identity/auth.service.js';
 import type { Localized } from '../i18n/locales.js';
+import { lastDays } from '../i18n/time-zones.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
-import { covers, reachOf } from '../identity/scope.js';
+import { covers } from '../identity/scope.js';
 import { OrgUnitsService } from '../organization/org-units.service.js';
 import {
   hashFollowUpCode,
   matchesFollowUpCode,
   newFollowUpCode,
 } from './follow-up-code.js';
+import { Notifier, type Draft, type Subject, type Who } from './notifier.js';
+import { PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR } from './public-limits.js';
 import { nextReference } from './reference.js';
+import { closeDueAt, triageDueAt } from './response-rules.js';
+import { ResponseRulesService } from './response-rules.service.js';
 import {
+  callsForSignOff,
   chooseMove,
+  DEADLINE_LIVE_IN,
   hasSay,
   movesFor,
   needsSignOff,
   OPEN_STATUSES,
+  overdueOf,
   SERIOUS_HARM,
   TRIAGE_FROM,
   type Caller,
@@ -54,6 +63,7 @@ import {
   type IncidentStatus,
   type MoveKind,
 } from './status.js';
+import { seenInFull, visibleTo } from './visibility.js';
 
 export type { HarmLevel, IncidentStatus } from './status.js';
 export type IncidentType = (typeof incidents.type.enumValues)[number];
@@ -94,11 +104,18 @@ type Reader = Caller & {
   full: boolean;
   /** Reported it, or holds the right to see who did. */
   seesReporter: boolean;
+  /**
+   * Signed in, and so told which member of staff did what. Someone reading
+   * with a follow-up code is not: they may be anyone who was handed the
+   * code, and get no name or id of anyone working at the hospital.
+   */
+  seesStaff: boolean;
 };
 
 /**
  * Someone who proved with the follow-up code that an anonymous report is
- * theirs. They see what a reporter sees and may do nothing but comment.
+ * theirs. They see what a reporter sees, without the names of staff and
+ * without the incident's number, and may do nothing but comment.
  */
 const ANONYMOUS_REPORTER: Reader = {
   full: false,
@@ -106,7 +123,13 @@ const ANONYMOUS_REPORTER: Reader = {
   canSignOff: false,
   isRequester: false,
   seesReporter: true,
+  seesStaff: false,
 };
+
+/** The hospital a request acts for, as far as storing a report needs it. */
+export type Hospital = { id: string; timeZone: string };
+
+const HOUR_MS = 3_600_000;
 
 /**
  * Stands in for the hospital when there is none to act for. A transaction
@@ -125,7 +148,26 @@ const isSeriousOne = or(
   eq(incidents.isSentinel, true),
 )!;
 
-export type ListSort = 'newest' | 'oldest' | 'harm';
+/**
+ * The deadline an incident is working towards: to be triaged by while it is
+ * new, to be closed by while it is being handled, none once it has ended.
+ * `liveDueAt()` of status.ts, for a query.
+ */
+const liveDueAt = sql<Date | null>`case
+  when ${inArray(incidents.status, DEADLINE_LIVE_IN.triage)} then ${incidents.triageDueAt}
+  when ${inArray(incidents.status, DEADLINE_LIVE_IN.closure)} then ${incidents.closeDueAt}
+end`;
+/**
+ * Which deadline an incident has missed at this moment, `overdueOf()` of
+ * status.ts for a query. Worked out here each time; nothing stores it.
+ */
+const overdueAt = (now: Date) =>
+  sql<'triage' | 'closure' | null>`case
+    when ${inArray(incidents.status, DEADLINE_LIVE_IN.triage)} and ${lt(incidents.triageDueAt, now)} then 'triage'
+    when ${inArray(incidents.status, DEADLINE_LIVE_IN.closure)} and ${lt(incidents.closeDueAt, now)} then 'closure'
+  end`;
+
+export type ListSort = 'newest' | 'oldest' | 'harm' | 'due';
 
 export type ListInput = {
   status?: IncidentStatus;
@@ -146,6 +188,8 @@ export type ListInput = {
   open: boolean;
   /** Only severe harm, a death or a sentinel event, as the summary counts. */
   serious: boolean;
+  /** Only what has missed its deadline, as the summary counts "overdue". */
+  overdue: boolean;
   assignedToMe: boolean;
   mine: boolean;
   sort: ListSort;
@@ -188,26 +232,9 @@ export class IncidentsService {
     private readonly tenantDb: TenantDb,
     private readonly provisioning: ProvisioningService,
     private readonly orgUnits: OrgUnitsService,
+    private readonly rules: ResponseRulesService,
+    private readonly notifier: Notifier,
   ) {}
-
-  /**
-   * The incidents a user may see: the ones they reported, the ones assigned
-   * to them, and the ones that happened in, or are owned by, a unit their
-   * view or triage rights cover.
-   */
-  private visibleTo(auth: AuthContext): SQL {
-    const reach = reachOf(auth, ['incidents.view', 'incidents.triage']);
-    if (reach === 'all') return sql`true`;
-    const mine = eq(incidents.reportedBy, auth.user.id);
-    const assigned = eq(incidents.assignedTo, auth.user.id);
-    if (reach.length === 0) return or(mine, assigned)!;
-    return or(
-      mine,
-      assigned,
-      inArray(incidents.orgUnitId, reach),
-      inArray(incidents.ownerUnitId, reach),
-    )!;
-  }
 
   /**
    * Whether a user sees all of an incident, internal parts included: through
@@ -275,6 +302,7 @@ export class IncidentsService {
       seesReporter:
         incident.reportedBy === auth.user.id ||
         this.holds(auth, 'incidents.see_reporter', incident),
+      seesStaff: true,
     };
   }
 
@@ -404,7 +432,7 @@ export class IncidentsService {
     return this.tenantDb.withTenant(tenant.id, async (tx) => {
       const { id, reference, followUpCode } = await this.store(
         tx,
-        tenant.id,
+        tenant,
         report,
         anonymous ? null : user.id,
         'app',
@@ -417,32 +445,69 @@ export class IncidentsService {
    * A report through the hospital's public link. Nobody is signed in and
    * nothing about the sender is passed in here, so nothing about them can be
    * stored: not on the incident, its timeline or the audit log.
+   *
+   * Answered with the follow-up code and nothing else. The incident gets its
+   * number like any other, but the sender is not told it: the numbers run in
+   * one series, and one of them would tell anyone how many incidents the
+   * hospital has had.
+   *
+   * A hospital takes only so many of these an hour, whoever sends them and
+   * from wherever. Past that the answer is `retryAfter`, in seconds, and
+   * nothing is stored. Counted here, in the database, under a lock that
+   * makes reports to one hospital take their turn, so the ceiling is the
+   * same for every API process and cannot be overrun by sending at once.
    */
-  reportPublicly(tenantId: string, input: PublicReportInput) {
-    return this.tenantDb.withTenant(tenantId, async (tx) => {
-      const { reference, followUpCode } = await this.store(
+  reportPublicly(
+    tenant: Hospital,
+    input: PublicReportInput,
+  ): Promise<{ followUpCode: string } | { retryAfter: number }> {
+    return this.tenantDb.withTenant(tenant.id, async (tx) => {
+      await tx.execute(
+        sql`select pg_advisory_xact_lock(hashtext('trustline.public_reports'), hashtext(${tenant.id}))`,
+      );
+      const now = Date.now();
+      // The report that fills the hour, if the hour is full: the newest but
+      // fifty-nine. When it is an hour old there is room again.
+      const [filling] = await tx
+        .select({ at: incidents.reportedAt })
+        .from(incidents)
+        .where(
+          and(
+            eq(incidents.channel, 'public'),
+            gt(incidents.reportedAt, new Date(now - HOUR_MS)),
+          ),
+        )
+        .orderBy(desc(incidents.reportedAt))
+        .offset(PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR - 1)
+        .limit(1);
+      if (filling) {
+        return { retryAfter: (filling.at.getTime() + HOUR_MS - now) / 1000 };
+      }
+      const { followUpCode } = await this.store(
         tx,
-        tenantId,
+        tenant,
         input,
         null,
         'public',
       );
-      return { reference, followUpCode: followUpCode! };
+      return { followUpCode: followUpCode! };
     });
   }
 
   /**
-   * Stores a report, its first timeline entry and its audit entry. With no
-   * reporter it is anonymous: nothing records who made it, and it gets a
-   * follow-up code, of which only the hash is kept.
+   * Stores a report, its first timeline entry and its audit entry, and tells
+   * those who may triage it. With no reporter it is anonymous: nothing
+   * records who made it, and it gets a follow-up code, of which only the
+   * hash is kept.
    */
   private async store(
     tx: Transaction,
-    tenantId: string,
+    tenant: Hospital,
     input: PublicReportInput,
     reporterId: string | null,
     channel: IncidentChannel,
   ) {
+    const tenantId = tenant.id;
     const { startedAt, ...fields } = input;
     this.assertHarmFits(input.type, input.harmLevel, false);
     await this.assertCategory(tx, input.categoryId);
@@ -454,7 +519,7 @@ export class IncidentsService {
     // that is not; the report is taken all the same, without the measure.
     const believable =
       startedAt !== undefined &&
-      startedAt.getTime() >= now.getTime() - LONGEST_REPORT_HOURS * 3_600_000 &&
+      startedAt.getTime() >= now.getTime() - LONGEST_REPORT_HOURS * HOUR_MS &&
       startedAt.getTime() <= now.getTime() + CLOCK_TOLERANCE_MINUTES * 60_000;
     const reference = await nextReference(
       tx,
@@ -463,6 +528,10 @@ export class IncidentsService {
       now.getUTCFullYear(),
     );
     const followUpCode = reporterId === null ? newFollowUpCode() : null;
+    // Its two deadlines, from the harm level the reporter gave and the
+    // hospital's rules as they are now. A report is not yet sentinel.
+    const gravity = { harmLevel: input.harmLevel, isSentinel: false };
+    const rules = await this.rules.inForce(tx);
     const [incident] = await tx
       .insert(incidents)
       .values({
@@ -474,6 +543,11 @@ export class IncidentsService {
         followUpCodeHash: followUpCode && hashFollowUpCode(followUpCode),
         reportedAt: now,
         reportStartedAt: believable ? startedAt : null,
+        // A death reported needs a second person to close it from the
+        // start, whatever triage makes of it later.
+        signOffNeeded: callsForSignOff(gravity),
+        triageDueAt: triageDueAt(now, gravity, rules),
+        closeDueAt: closeDueAt(now, gravity, rules, tenant.timeZone),
       })
       .returning({ id: incidents.id, reference: incidents.reference });
     await this.addEvent(tx, tenantId, incident.id, {
@@ -498,14 +572,44 @@ export class IncidentsService {
         ...(channel === 'public' && { channel }),
       },
     );
+    // Everyone who may triage the unit where it happened. A named reporter
+    // who is one of them is not told of their own report. An anonymous one
+    // is told like the rest: leaving one triager out would record, in who
+    // was not notified, exactly who reported.
+    await this.notifier.send(tx, tenantId, {
+      incident: {
+        ...incident,
+        orgUnitId: input.orgUnitId,
+        ownerUnitId: null,
+        assignedTo: null,
+        reportedBy: reporterId,
+      },
+      actorId: reporterId,
+      drafts: (who) => [
+        {
+          kind: 'incident_reported',
+          to: who.mayTriage([input.orgUnitId]),
+          internal: true,
+        },
+      ],
+    });
     return { ...incident, followUpCode };
   }
 
   list(auth: AuthContext, input: ListInput) {
+    const now = new Date();
+    // Deadlines are for those handling an incident. Someone who sees one
+    // only because they reported it is not told them: not as fields, and
+    // not by what a filter finds or the order a sort puts it in.
+    const inFull = seenInFull(auth);
+    const overdue = sql<
+      'triage' | 'closure' | null
+    >`case when ${inFull} then ${overdueAt(now)} end`;
+    const dueAt = sql<Date | null>`case when ${inFull} then ${liveDueAt} end`;
     // Every filter narrows what the caller may see, never widens it: an org
     // unit or a reference outside their view simply matches nothing.
     const where = and(
-      this.visibleTo(auth),
+      visibleTo(auth),
       input.status && eq(incidents.status, input.status),
       input.type && eq(incidents.type, input.type),
       input.harmLevel && eq(incidents.harmLevel, input.harmLevel),
@@ -523,6 +627,7 @@ export class IncidentsService {
       this.referenceLike(input.reference),
       input.open ? isOpen : undefined,
       input.serious ? isSeriousOne : undefined,
+      input.overdue ? sql`${overdue} is not null` : undefined,
       input.assignedToMe ? eq(incidents.assignedTo, auth.user.id) : undefined,
       input.mine ? eq(incidents.reportedBy, auth.user.id) : undefined,
     );
@@ -535,6 +640,14 @@ export class IncidentsService {
         desc(incidents.harmLevel),
         asc(incidents.reportedAt),
         asc(incidents.reference),
+      ],
+      // The nearest deadline first, which puts what is overdue at the top,
+      // longest overdue first. Then what has no deadline to meet any more,
+      // or none the caller is told: newest first.
+      due: [
+        sql`${dueAt} asc nulls last`,
+        desc(incidents.reportedAt),
+        desc(incidents.reference),
       ],
     };
     return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
@@ -559,6 +672,16 @@ export class IncidentsService {
           isSentinel: incidents.isSentinel,
           status: incidents.status,
           assignedToMe: sql<boolean>`coalesce(${incidents.assignedTo} = ${auth.user.id}, false)`,
+          // Null for an incident the caller sees only as its reporter.
+          triageDueAt:
+            sql<Date | null>`case when ${inFull} then ${incidents.triageDueAt} end`.mapWith(
+              incidents.triageDueAt,
+            ),
+          closeDueAt:
+            sql<Date | null>`case when ${inFull} then ${incidents.closeDueAt} end`.mapWith(
+              incidents.closeDueAt,
+            ),
+          overdue,
           // Cut in the database, so the full text never leaves it for a list.
           descriptionExcerpt: sql<string>`case when char_length(${incidents.description}) > ${EXCERPT_LENGTH} then left(${incidents.description}, ${EXCERPT_LENGTH - 1}) || '…' else ${incidents.description} end`,
         })
@@ -594,31 +717,55 @@ export class IncidentsService {
   }
 
   summary(auth: AuthContext) {
+    const now = new Date();
     const number = (condition: SQL) =>
       sql<number>`count(*) filter (where ${condition})`.mapWith(Number);
+    // "The last 30 days" are days on the hospital's own calendar: today
+    // there and the 29 days before it.
+    const { from, to, since } = lastDays(30, auth.tenant.timeZone, now);
+    const recent = gte(incidents.reportedAt, since);
     // How long reporting took, from opening the form to sending it.
     const seconds = sql`greatest(extract(epoch from ${incidents.reportedAt} - ${incidents.reportStartedAt}), 0)`;
+    // Deadlines are counted only over what the caller sees in full, as the
+    // list shows them: someone's own reports say nothing here.
+    const inFull = seenInFull(auth);
+    // Triaged for the first time, and so measured against its deadline.
+    const triaged = and(
+      inFull,
+      recent,
+      sql`${incidents.firstTriagedAt} is not null`,
+      sql`${incidents.triageDueAt} is not null`,
+    )!;
     return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
       const [counts] = await tx
         .select({
           open: number(isOpen),
           awaitingTriage: number(sql`${incidents.status} = 'new'`),
           closedLast30Days: number(
-            sql`${incidents.status} = 'closed' and ${incidents.closedAt} >= now() - interval '30 days'`,
+            sql`${incidents.status} = 'closed' and ${gte(incidents.closedAt, since)}`,
           ),
           assignedToMe: number(
             and(isOpen, eq(incidents.assignedTo, auth.user.id))!,
           ),
           serious: number(and(isOpen, isSeriousOne)!),
+          // What the list gives for `overdue=true`.
+          overdue: number(sql`${inFull} and ${overdueAt(now)} is not null`),
+          // Of the reports of the last 30 days that have been triaged, the
+          // share whose first triage came no later than its deadline, as a
+          // whole percentage. Null when none has been triaged.
+          triagedOnTime: sql<
+            number | null
+          >`round(100.0 * count(*) filter (where ${triaged} and ${incidents.firstTriagedAt} <= ${incidents.triageDueAt}) / nullif(count(*) filter (where ${triaged}), 0))::int`,
           // The middle value, in whole seconds, over the reports of the last
           // 30 days that carry a start time. Null when there are none.
           medianSecondsToReport: sql<
             number | null
-          >`round(percentile_cont(0.5) within group (order by ${seconds}) filter (where ${incidents.reportStartedAt} is not null and ${incidents.reportedAt} >= now() - interval '30 days'))::int`,
+          >`round(percentile_cont(0.5) within group (order by ${seconds}) filter (where ${incidents.reportStartedAt} is not null and ${recent}))::int`,
         })
         .from(incidents)
-        .where(this.visibleTo(auth));
-      return counts;
+        .where(visibleTo(auth));
+      // The days those 30 are, as the list's `from` and `to` take them.
+      return { ...counts, last30Days: { from, to } };
     });
   }
 
@@ -639,7 +786,7 @@ export class IncidentsService {
   private find(tx: Transaction, auth: AuthContext, id: string) {
     return this.view(
       tx,
-      and(eq(incidents.id, id), this.visibleTo(auth))!,
+      and(eq(incidents.id, id), visibleTo(auth))!,
       (incident) => this.readerOf(auth, incident),
     );
   }
@@ -652,12 +799,23 @@ export class IncidentsService {
    * - Without full access: no internal comment, no internal timeline entry,
    *   not the person it is assigned to, not who asked for its closure, and
    *   not the note it was sent back with.
+   *   Nor its deadlines, which are for those handling it, nor the note a
+   *   closure request was withdrawn with.
    * - Without the right to see the reporter: nobody is named as reporter, as
-   *   author of a comment the reporter wrote, or as the one behind the
+   *   author of a comment written as the reporter, or as the one behind the
    *   timeline entries of the report and of those comments. They are marked
    *   `byReporter` instead. Nor is the reader told how the report arrived,
    *   because a report through the public link is always anonymous: to this
    *   reader a named report and an anonymous one look the same.
+   * - Reading with a follow-up code: no member of staff is named either.
+   *   Whatever staff did or wrote is marked `byStaff` and carries no person,
+   *   the `people` map is empty, and the incident's id and number are left
+   *   out: the code is all that reader has, and all they are given.
+   *
+   * Whether a comment was written as the reporter was decided when it was
+   * written (see `comment()`), not here from who its author is: a handler
+   * who also reported the incident comments under their own name, so a name
+   * on a comment tells nobody who did or did not report.
    *
    * The reporter's id is read only to decide this and is never returned.
    */
@@ -692,8 +850,11 @@ export class IncidentsService {
         immediateAction: incidents.immediateAction,
         harmLevel: incidents.harmLevel,
         isSentinel: incidents.isSentinel,
+        signOffNeeded: incidents.signOffNeeded,
         status: incidents.status,
         revision: incidents.revision,
+        triageDueAt: incidents.triageDueAt,
+        closeDueAt: incidents.closeDueAt,
         channel: incidents.channel,
         reportedBy: incidents.reportedBy,
         reporter: { id: reporter.id, name: reporter.name },
@@ -721,12 +882,17 @@ export class IncidentsService {
     // Taken apart here so that nothing below can pass the reporter on by
     // spreading the row.
     const {
+      id: incidentId,
+      reference,
       reportedBy,
       reporter: namedReporter,
       channel,
       assignedTo,
       closureRequestedBy,
       closureRequestedAt,
+      signOffNeeded,
+      triageDueAt: triageDue,
+      closeDueAt: closeDue,
       ...incident
     } = row;
     const reader = readerOf({
@@ -737,14 +903,31 @@ export class IncidentsService {
       status: row.status,
       closureRequestedBy: closureRequestedBy?.id ?? null,
     });
-    const { full, canTriage, seesReporter } = reader;
+    const { full, canTriage, seesReporter, seesStaff } = reader;
+
+    // Which comments were written as the reporter. Read for all of them,
+    // also those this reader is not shown, and only this much of them.
+    const asReporter = new Set(
+      (
+        await tx
+          .select({
+            id: incidentComments.id,
+            authorId: incidentComments.authorId,
+            byReporter: incidentComments.byReporter,
+            asHandler: incidentComments.asHandler,
+          })
+          .from(incidentComments)
+          .where(eq(incidentComments.incidentId, row.id))
+      )
+        .filter((c) => this.writtenAsReporter(c, reportedBy))
+        .map((c) => c.id),
+    );
 
     const eventRows = await tx
       .select({
         id: incidentEvents.id,
         kind: incidentEvents.kind,
         occurredAt: incidentEvents.occurredAt,
-        actorId: incidentEvents.actorId,
         actor: { id: actor.id, name: actor.name },
         fromStatus: incidentEvents.fromStatus,
         toStatus: incidentEvents.toStatus,
@@ -759,31 +942,34 @@ export class IncidentsService {
         ),
       )
       .orderBy(asc(incidentEvents.occurredAt), asc(incidentEvents.id));
-    const events = eventRows.map(({ actorId, actor: person, ...event }) => {
-      // The report itself, and each comment the reporter wrote: by a named
-      // reporter under their own account, or with a follow-up code, which
-      // leaves no actor at all. Whatever else the same person did on the
-      // incident (triaging it, say) they did as a handler, and it is shown
-      // under their name like anyone else's.
+    const events = eventRows.map(({ actor: person, ...event }) => {
+      // The report itself, and each comment written as the reporter.
+      // Whatever else the same person did on the incident (triaging it, say,
+      // or commenting as one of its handlers) is shown under their name like
+      // anyone else's.
+      const commentId = (event.details as { commentId?: unknown } | null)
+        ?.commentId;
       const byReporter =
         event.kind === 'reported' ||
         (event.kind === 'commented' &&
-          (actorId === null || actorId === reportedBy));
+          typeof commentId === 'string' &&
+          asReporter.has(commentId));
       return {
         ...event,
-        actor: byReporter && !seesReporter ? null : person,
+        actor: (byReporter ? seesReporter : seesStaff) ? person : null,
         byReporter,
-        // Why it was sent back is between the people handling it.
-        details: event.kind === 'sent_back' && !full ? null : event.details,
+        // Done by a member of staff as such. Always the case when it is not
+        // the reporter's doing; said outright because a reader with a
+        // follow-up code gets no person to tell it by.
+        byStaff: !byReporter,
+        details: full ? event.details : this.forReporter(event),
       };
     });
 
     const commentRows = await tx
       .select({
         id: incidentComments.id,
-        authorId: incidentComments.authorId,
         author: { id: author.id, name: author.name },
-        byReporter: incidentComments.byReporter,
         body: incidentComments.body,
         visibility: incidentComments.visibility,
         createdAt: incidentComments.createdAt,
@@ -797,22 +983,23 @@ export class IncidentsService {
         ),
       )
       .orderBy(asc(incidentComments.createdAt), asc(incidentComments.id));
-    const comments = commentRows.map(
-      ({ authorId, author: person, byReporter: withCode, ...comment }) => {
-        const byReporter =
-          withCode || (authorId !== null && authorId === reportedBy);
-        return {
-          id: comment.id,
-          author: byReporter && !seesReporter ? null : person,
-          byReporter,
-          body: comment.body,
-          visibility: comment.visibility,
-          createdAt: comment.createdAt,
-        };
-      },
-    );
+    const comments = commentRows.map(({ author: person, ...c }) => {
+      const byReporter = asReporter.has(c.id);
+      return {
+        id: c.id,
+        author: (byReporter ? seesReporter : seesStaff) ? person : null,
+        byReporter,
+        byStaff: !byReporter,
+        body: c.body,
+        visibility: c.visibility,
+        createdAt: c.createdAt,
+      };
+    });
 
+    const names = await this.namesIn(tx, events);
     return {
+      // The incident's id and number, for everyone who is signed in.
+      ...(seesStaff && { id: incidentId, reference }),
       ...incident,
       // Null to a reader who is not told who reported: knowing it came
       // through the public link would tell them it was anonymous.
@@ -823,7 +1010,12 @@ export class IncidentsService {
       reporterShown: seesReporter,
       // The reporter learns which department has it, not which person.
       assignedTo: full ? assignedTo : null,
-      needsSignOff: needsSignOff(row),
+      // Its two deadlines and which of them it has missed, for those
+      // handling it. Worked out now, from the status it is in.
+      triageDueAt: full ? triageDue : null,
+      closeDueAt: full ? closeDue : null,
+      overdue: full ? overdueOf(row, new Date()) : null,
+      needsSignOff: needsSignOff({ ...incident, signOffNeeded }),
       // While it awaits sign-off, `closureSummary` is the one proposed.
       closureRequestedBy: full ? closureRequestedBy : null,
       closureRequestedAt: full ? closureRequestedAt : null,
@@ -834,14 +1026,54 @@ export class IncidentsService {
       moves: movesFor(row, reader).map((m) => ({
         to: m.to,
         noteRequired: m.note === 'required',
+        revisionRequired: m.revision === 'required',
         kind: m.kind,
       })),
       events,
       comments,
       // People are named here only where a timeline entry points at them as
-      // the one an incident was assigned to, never as its reporter.
-      ...(await this.namesIn(tx, events)),
+      // the one an incident was assigned to, never as its reporter; and not
+      // at all to a reader with a follow-up code.
+      ...names,
+      people: seesStaff ? names.people : {},
     };
+  }
+
+  /**
+   * Whether a stored comment was written as the incident's reporter. Decided
+   * when it was written and kept in `by_reporter`. A comment that carries
+   * neither that nor `as_handler` was stored before the capacity was
+   * recorded, or by a release that does not record it; it is then read the
+   * way all comments were before: the reporter's if its author reported the
+   * incident. That errs towards hiding a name, never towards showing one.
+   */
+  private writtenAsReporter(
+    comment: {
+      authorId: string | null;
+      byReporter: boolean;
+      asHandler: boolean;
+    },
+    reportedBy: string | null,
+  ) {
+    return (
+      comment.byReporter ||
+      (!comment.asHandler &&
+        comment.authorId !== null &&
+        comment.authorId === reportedBy)
+    );
+  }
+
+  /**
+   * What a timeline entry's details hold for a reader who sees the incident
+   * only as its reporter. Why a closure request was sent back, or taken
+   * back, is between the people handling it: the reporter learns that it
+   * happened and not what was said.
+   */
+  private forReporter(event: { kind: EventKind; details: unknown }) {
+    if (event.kind === 'sent_back') return null;
+    const details = event.details as Record<string, unknown> | null;
+    if (details?.withdrawn === true) return { withdrawn: true };
+    return event.details;
   }
 
   /**
@@ -905,15 +1137,19 @@ export class IncidentsService {
         revision: incidents.revision,
         harmLevel: incidents.harmLevel,
         isSentinel: incidents.isSentinel,
+        signOffNeeded: incidents.signOffNeeded,
         categoryId: incidents.categoryId,
         orgUnitId: incidents.orgUnitId,
         ownerUnitId: incidents.ownerUnitId,
         assignedTo: incidents.assignedTo,
         reportedBy: incidents.reportedBy,
+        reportedAt: incidents.reportedAt,
+        triagedBy: incidents.triagedBy,
+        closeDueAt: incidents.closeDueAt,
         closureRequestedBy: incidents.closureRequestedBy,
       })
       .from(incidents)
-      .where(and(eq(incidents.id, id), this.visibleTo(auth)))
+      .where(and(eq(incidents.id, id), visibleTo(auth)))
       .for('update');
     if (!incident) throw new NotFoundException();
     return incident;
@@ -980,13 +1216,38 @@ export class IncidentsService {
       // Work that has started stays started.
       const to = incident.status === 'in_progress' ? 'in_progress' : 'triaged';
       const now = new Date();
+      // A new gravity brings a new deadline for closing, counted as ever
+      // from when it was reported, under the rules as they are now. The
+      // deadline for triage is not moved: this triage is the one it was set
+      // for, and moving it now would change whether it was met.
+      const regraded = 'harmLevel' in changes || 'isSentinel' in changes;
+      const closeDue = regraded
+        ? closeDueAt(
+            incident.reportedAt,
+            next,
+            await this.rules.inForce(tx),
+            tenant.timeZone,
+          )
+        : incident.closeDueAt;
+      const moved = closeDue?.getTime() !== incident.closeDueAt?.getTime();
       await tx
         .update(incidents)
         .set({
           ...next,
           assignedTo: input.assignedTo,
           status: to,
+          // Never cleared: what has once called for a second person to
+          // close it goes on needing one, whatever it is called later.
+          signOffNeeded: incident.signOffNeeded || callsForSignOff(next),
           ...(decided && { triagedBy: user.id, triagedAt: now }),
+          ...(incident.status === 'new' && { firstTriagedAt: now }),
+          // A deadline that moved is another deadline: what was announced
+          // about the old one says nothing about this one.
+          ...(moved && {
+            closeDueAt: closeDue,
+            closeDueSoonAt: null,
+            closeOverdueAt: null,
+          }),
           revision: incident.revision + 1,
           updatedAt: now,
         })
@@ -1031,6 +1292,41 @@ export class IncidentsService {
           }),
         },
       );
+
+      // The person it is now assigned to, and everyone who may triage the
+      // department it has been handed to. Someone who is both is told once,
+      // of the assignment.
+      const handedOver = 'ownerUnitId' in changes;
+      if ((personChanged && input.assignedTo) || handedOver) {
+        await this.notifier.send(tx, tenant.id, {
+          incident: {
+            ...incident,
+            ownerUnitId: input.ownerUnitId,
+            assignedTo: input.assignedTo,
+          },
+          actorId: user.id,
+          drafts: (who) => [
+            ...(personChanged
+              ? [
+                  {
+                    kind: 'incident_assigned',
+                    to: [input.assignedTo],
+                    internal: true,
+                  } satisfies Draft,
+                ]
+              : []),
+            ...(handedOver
+              ? [
+                  {
+                    kind: 'incident_handed_over',
+                    to: who.mayTriage([input.ownerUnitId]),
+                    internal: true,
+                  } satisfies Draft,
+                ]
+              : []),
+          ],
+        });
+      }
 
       // Handed to a department outside the caller's own view: the change
       // stands, and they are told so instead of being shown what they may no
@@ -1105,6 +1401,11 @@ export class IncidentsService {
       if (move.note === 'required' && !note) {
         throw new BadRequestException({ code: 'note_required' });
       }
+      // A signature is on what the signer read. Without the revision there
+      // is no telling whether that is still what is stored.
+      if (move.revision === 'required' && revision === undefined) {
+        throw new BadRequestException({ code: 'revision_required' });
+      }
 
       const now = new Date();
       const noRequest = { closureRequestedBy: null, closureRequestedAt: null };
@@ -1166,10 +1467,70 @@ export class IncidentsService {
         id,
         { from, to, kind: move.kind },
       );
+
+      const subject: Subject = incident;
+      const outcome: Partial<Record<MoveKind, string>> = {
+        close: 'closed',
+        sign_off: 'closed',
+        reject: 'rejected',
+        reopen: 'reopened',
+      };
+      const decision: Partial<Record<MoveKind, string>> = {
+        sign_off: 'signed_off',
+        send_back: 'sent_back',
+      };
+      const drafts = (who: Who): Draft[] => [
+        // Whoever asked for the closure learns what became of the request.
+        ...(decision[move.kind]
+          ? [
+              {
+                kind: 'sign_off_decided',
+                data: { decision: decision[move.kind]! },
+                to: [incident.closureRequestedBy],
+                internal: true,
+              } satisfies Draft,
+            ]
+          : []),
+        // Everyone who could give the second signature, except who asked.
+        ...(move.kind === 'request_sign_off'
+          ? [
+              {
+                kind: 'sign_off_requested',
+                to: who.maySignOff(),
+                internal: true,
+              } satisfies Draft,
+            ]
+          : []),
+        // The reporter, if named, and the person it is assigned to learn
+        // that it has ended, or is open again.
+        ...(outcome[move.kind]
+          ? [
+              {
+                kind: 'status_changed',
+                data: { change: outcome[move.kind]! },
+                to: [incident.reportedBy, incident.assignedTo],
+              } satisfies Draft,
+            ]
+          : []),
+      ];
+      await this.notifier.send(tx, tenant.id, {
+        incident: subject,
+        actorId: user.id,
+        drafts,
+      });
       return this.detail(tx, auth, id);
     });
   }
 
+  /**
+   * A comment by someone signed in. In what capacity it is written is
+   * decided here, at this moment, and stored with it: as one of the people
+   * handling the incident if the writer sees all of it, as its reporter if
+   * they see it only because they reported it. It is never worked out later
+   * from who the author is. So a handler who also reported the incident
+   * comments under their own name like any other handler, and neither a
+   * name on a comment nor "the reporter" on one tells a reader who reported.
+   */
   comment(
     auth: AuthContext,
     id: string,
@@ -1179,12 +1540,16 @@ export class IncidentsService {
     return this.tenantDb.withTenant(tenant.id, async (tx) => {
       const [incident] = await tx
         .select({
+          id: incidents.id,
+          reference: incidents.reference,
           orgUnitId: incidents.orgUnitId,
           ownerUnitId: incidents.ownerUnitId,
           assignedTo: incidents.assignedTo,
+          reportedBy: incidents.reportedBy,
+          triagedBy: incidents.triagedBy,
         })
         .from(incidents)
-        .where(and(eq(incidents.id, id), this.visibleTo(auth)))
+        .where(and(eq(incidents.id, id), visibleTo(auth)))
         // Held, so the access checked here is the access at the moment the
         // comment is stored: nobody is taken off the incident in between.
         .for('update');
@@ -1194,30 +1559,43 @@ export class IncidentsService {
       if (!full && input.visibility === 'internal') {
         throw new ForbiddenException({ code: 'internal_not_allowed' });
       }
-      return this.addComment(tx, tenant.id, id, user.id, input);
+      return this.addComment(
+        tx,
+        tenant.id,
+        incident,
+        full
+          ? { as: 'handler', authorId: user.id }
+          : { as: 'reporter', authorId: user.id },
+        input,
+      );
     });
   }
 
   /**
-   * Stores a comment with its timeline and audit entries. With no author it
-   * is the anonymous reporter's, written with their follow-up code: nothing
-   * names anyone, anywhere.
+   * Stores a comment with its timeline and audit entries, and tells the
+   * people following the incident. Written as the reporter with no author,
+   * it is the anonymous reporter's, written with their follow-up code:
+   * nothing names anyone, anywhere.
    */
   private async addComment(
     tx: Transaction,
     tenantId: string,
-    incidentId: string,
-    authorId: string | null,
+    incident: Subject & { triagedBy: string | null },
+    writer:
+      | { as: 'handler'; authorId: string }
+      | { as: 'reporter'; authorId: string | null },
     input: { body: string; visibility: CommentVisibility },
   ) {
-    const byReporter = authorId === null;
+    const { authorId } = writer;
+    const byReporter = writer.as === 'reporter';
     const [created] = await tx
       .insert(incidentComments)
       .values({
         tenantId,
-        incidentId,
+        incidentId: incident.id,
         authorId,
         byReporter,
+        asHandler: !byReporter,
         body: input.body,
         visibility: input.visibility,
         createdAt: sql`clock_timestamp()`,
@@ -1227,7 +1605,7 @@ export class IncidentsService {
         visibility: incidentComments.visibility,
         createdAt: incidentComments.createdAt,
       });
-    await this.addEvent(tx, tenantId, incidentId, {
+    await this.addEvent(tx, tenantId, incident.id, {
       kind: 'commented',
       actorId: authorId,
       details: { commentId: created.id, visibility: input.visibility },
@@ -1236,79 +1614,109 @@ export class IncidentsService {
     await tx
       .update(incidents)
       .set({ updatedAt: new Date() })
-      .where(eq(incidents.id, incidentId));
+      .where(eq(incidents.id, incident.id));
     await this.provisioning.audit(
       tx,
       tenantId,
       authorId,
       'incident_commented',
       'incident',
-      incidentId,
+      incident.id,
       {
         commentId: created.id,
         visibility: input.visibility,
         ...(byReporter && { byReporter }),
       },
     );
+    // The person it is assigned to and whoever triaged it; and the reporter,
+    // if named, when the comment is one they may read. Not the writer. The
+    // notification says that there is a comment, never whose: "the reporter
+    // commented" would be as good as a name to whoever knows the rest.
+    await this.notifier.send(tx, tenantId, {
+      incident,
+      actorId: authorId,
+      drafts: () => [
+        {
+          kind: 'comment_added',
+          to: [
+            incident.assignedTo,
+            incident.triagedBy,
+            input.visibility === 'everyone' ? incident.reportedBy : null,
+          ],
+          internal: input.visibility === 'internal',
+        },
+      ],
+    });
     return created;
   }
 
   /**
    * Finds the anonymous report a follow-up code belongs to, or null.
    *
-   * A wrong reference and a wrong code must be indistinguishable, in what is
-   * answered and in how long it takes. So both take the same steps: one
-   * lookup by reference, then one comparison of hashes in constant time,
-   * against a stand-in when there is no report or it has no code.
+   * The code is all there is to give: no reference goes with it. A wrong
+   * code must be indistinguishable from any other wrong code, in what is
+   * answered and in how long it takes, whether or not the hospital exists.
+   * So every attempt takes the same steps: hash what was typed, one lookup
+   * by that hash, then one comparison of hashes in constant time, against a
+   * stand-in when nothing was found.
    */
-  private async byFollowUpCode(
-    tx: Transaction,
-    reference: string,
-    code: string,
-  ) {
+  private async byFollowUpCode(tx: Transaction, code: string) {
     const [found] = await tx
-      .select({ id: incidents.id, hash: incidents.followUpCodeHash })
+      .select({
+        id: incidents.id,
+        hash: incidents.followUpCodeHash,
+        reference: incidents.reference,
+        orgUnitId: incidents.orgUnitId,
+        ownerUnitId: incidents.ownerUnitId,
+        assignedTo: incidents.assignedTo,
+        reportedBy: incidents.reportedBy,
+        triagedBy: incidents.triagedBy,
+      })
       .from(incidents)
-      .where(eq(incidents.reference, reference.trim().toUpperCase()));
+      .where(eq(incidents.followUpCodeHash, hashFollowUpCode(code)));
     const matches = matchesFollowUpCode(code, found?.hash ?? null);
-    return found && matches ? found.id : null;
+    return found && matches ? found : null;
   }
 
   /**
    * An anonymous report as its reporter sees it, opened with the follow-up
-   * code. `tenantId` is null when there is no hospital to ask (unknown,
-   * suspended, or not taking public reports): the same steps are taken and
-   * the same 404 answered, so the cases cannot be told apart.
+   * code. `tenantId` is null when there is no hospital to ask (unknown or
+   * suspended): the same steps are taken and the same 404 answered, so the
+   * cases cannot be told apart. Whether the hospital takes reports without
+   * sign-in does not matter here: a code given to a member of staff who
+   * reported anonymously works in a hospital that never opened that form.
    *
    * No session is involved even if the caller has one: nothing here knows,
    * and so nothing can record, who is holding the code.
    */
-  followUp(tenantId: string | null, reference: string, code: string) {
+  followUp(tenantId: string | null, code: string) {
     return this.tenantDb.withTenant(tenantId ?? NO_TENANT, async (tx) => {
-      const id = await this.byFollowUpCode(tx, reference, code);
+      const found = await this.byFollowUpCode(tx, code);
       const view =
-        id &&
-        (await this.view(tx, eq(incidents.id, id), () => ANONYMOUS_REPORTER));
+        found &&
+        (await this.view(
+          tx,
+          eq(incidents.id, found.id),
+          () => ANONYMOUS_REPORTER,
+        ));
       if (!view) throw new NotFoundException();
       return view;
     });
   }
 
   /** A comment by the anonymous reporter, for everyone on the incident. */
-  followUpComment(
-    tenantId: string | null,
-    reference: string,
-    code: string,
-    body: string,
-  ) {
+  followUpComment(tenantId: string | null, code: string, body: string) {
     const scope = tenantId ?? NO_TENANT;
     return this.tenantDb.withTenant(scope, async (tx) => {
-      const id = await this.byFollowUpCode(tx, reference, code);
-      if (!id) throw new NotFoundException();
-      return this.addComment(tx, scope, id, null, {
-        body,
-        visibility: 'everyone',
-      });
+      const found = await this.byFollowUpCode(tx, code);
+      if (!found) throw new NotFoundException();
+      return this.addComment(
+        tx,
+        scope,
+        found,
+        { as: 'reporter', authorId: null },
+        { body, visibility: 'everyone' },
+      );
     });
   }
 }

@@ -444,6 +444,10 @@ export const incidents = pgTable(
     // Set by the reporter, corrected at triage.
     harmLevel: incidentHarmLevel().notNull(),
     isSentinel: boolean().notNull().default(false),
+    // Set once the incident has been a sentinel event or a death, when it is
+    // reported or triaged, and never cleared: closing it then takes a second
+    // person even if its harm level is lowered or the flag removed later.
+    signOffNeeded: boolean().notNull().default(false),
     status: incidentStatus().notNull().default('new'),
     // The department responsible, and the person in it. Both set at triage.
     ownerUnitId: uuid(),
@@ -491,6 +495,9 @@ export const incidents = pgTable(
   (t) => [
     unique('incidents_tenant_id_id_key').on(t.tenantId, t.id),
     unique('incidents_tenant_id_reference_key').on(t.tenantId, t.reference),
+    // A report is found by its follow-up code alone, so within a hospital no
+    // two reports may share one. (Reports without a code do not collide.)
+    unique('incidents_follow_up_code_key').on(t.tenantId, t.followUpCodeHash),
     foreignKey({
       name: 'incidents_category_fk',
       columns: [t.tenantId, t.categoryId],
@@ -551,6 +558,11 @@ export const incidents = pgTable(
     index('incidents_assigned_to_idx').on(t.tenantId, t.assignedTo),
     // What the deadline check looks for every five minutes, and the order of
     // the list "by deadline".
+    // How many reports came through the public link in the last hour: asked
+    // before every such report, for the ceiling per hospital.
+    index('incidents_public_recent_idx')
+      .on(t.tenantId, t.reportedAt)
+      .where(sql`${t.channel} = 'public'`),
     index('incidents_triage_due_idx').on(t.tenantId, t.status, t.triageDueAt),
     index('incidents_close_due_idx').on(t.tenantId, t.status, t.closeDueAt),
     tenantIsolation(),
@@ -610,8 +622,19 @@ export const incidentComments = pgTable(
     // Null for a comment written with a follow-up code: its author is the
     // anonymous reporter, and nothing may record who that is.
     authorId: uuid(),
-    // Written by the reporter with a follow-up code.
+    // Written as the reporter: with a follow-up code, or signed in by someone
+    // who at that moment saw the incident only because they reported it.
+    // Decided when the comment is written, never worked out afterwards from
+    // who the author is. To a reader not told who reported, such a comment
+    // is "by the reporter" and names nobody.
     byReporter: boolean().notNull().default(false),
+    // Written as one of the people handling the incident: the author saw all
+    // of it at that moment. Such a comment carries its author's name for
+    // every reader, also when the author happens to be the reporter, so a
+    // name on a comment says nothing about who reported. False on comments
+    // stored before this was recorded, and on any written by a release that
+    // does not record it: those keep being read the old, cautious way.
+    asHandler: boolean().notNull().default(false),
     body: text().notNull(),
     // No default: whoever writes a comment must say who may read it.
     visibility: incidentCommentVisibility().notNull(),
@@ -637,6 +660,11 @@ export const incidentComments = pgTable(
     check(
       'incident_comments_has_writer',
       sql`${t.authorId} is not null or ${t.byReporter}`,
+    ),
+    // Written as the reporter or as a handler, never as both.
+    check(
+      'incident_comments_one_capacity',
+      sql`not (${t.byReporter} and ${t.asHandler})`,
     ),
     tenantIsolation(),
   ],

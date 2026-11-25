@@ -1,4 +1,5 @@
 import {
+  callsForSignOff,
   chooseMove,
   hasSay,
   MOVE_KINDS,
@@ -20,8 +21,22 @@ const signer: Caller = { ...nobody, canSignOff: true };
 const officer: Caller = { ...nobody, canTriage: true, canSignOff: true };
 const requester: Caller = { ...officer, isRequester: true };
 
-const ordinary = { harmLevel: 'mild', isSentinel: false } as const;
-const sentinel = { harmLevel: 'severe', isSentinel: true } as const;
+const ordinary = {
+  harmLevel: 'mild',
+  isSentinel: false,
+  signOffNeeded: false,
+} as const;
+const sentinel = {
+  harmLevel: 'severe',
+  isSentinel: true,
+  signOffNeeded: true,
+} as const;
+/** Was a sentinel event; called something milder at a later triage. */
+const downgraded = {
+  harmLevel: 'mild',
+  isSentinel: false,
+  signOffNeeded: true,
+} as const;
 const at = <T extends object>(incident: T, status: IncidentStatus) => ({
   ...incident,
   status,
@@ -44,11 +59,61 @@ describe('incident status rules', () => {
   });
 
   it('asks for a second person for a sentinel event and for a death, and nothing else', () => {
-    expect(needsSignOff({ harmLevel: 'none', isSentinel: true })).toBe(true);
-    expect(needsSignOff({ harmLevel: 'death', isSentinel: false })).toBe(true);
-    expect(needsSignOff({ harmLevel: 'severe', isSentinel: false })).toBe(
+    const never = { signOffNeeded: false };
+    expect(callsForSignOff({ harmLevel: 'none', isSentinel: true })).toBe(true);
+    expect(callsForSignOff({ harmLevel: 'death', isSentinel: false })).toBe(
+      true,
+    );
+    expect(callsForSignOff({ harmLevel: 'severe', isSentinel: false })).toBe(
       false,
     );
+    expect(
+      needsSignOff({ harmLevel: 'none', isSentinel: true, ...never }),
+    ).toBe(true);
+    expect(
+      needsSignOff({ harmLevel: 'death', isSentinel: false, ...never }),
+    ).toBe(true);
+    expect(
+      needsSignOff({ harmLevel: 'severe', isSentinel: false, ...never }),
+    ).toBe(false);
+  });
+
+  it('goes on asking for a second person once it has, whatever the incident is called later', () => {
+    expect(needsSignOff(downgraded)).toBe(true);
+    for (const status of ['triaged', 'in_progress'] as const) {
+      expect(offered(at(downgraded, status), officer)).not.toContain(
+        'close>closed',
+      );
+      expect(offered(at(downgraded, status), officer)).toContain(
+        'request_sign_off>awaiting_sign_off',
+      );
+      expect(chooseMove(at(downgraded, status), 'closed', officer)).toBe(
+        'sign_off_required',
+      );
+      expect(
+        chooseMove(at(downgraded, status), 'closed', officer, 'close'),
+      ).toBe('sign_off_required');
+    }
+    // And the one who asked still cannot be the one who signs.
+    expect(
+      chooseMove(at(downgraded, 'awaiting_sign_off'), 'closed', requester),
+    ).toBe('same_person');
+  });
+
+  it('asks the signer, and nobody else, which revision they read', () => {
+    const all = (
+      ['new', 'triaged', 'in_progress', 'awaiting_sign_off', 'closed'] as const
+    ).flatMap((status) => [
+      ...movesFor(at(ordinary, status), officer),
+      ...movesFor(at(sentinel, status), officer),
+    ]);
+    expect(all.length).toBeGreaterThan(5);
+    for (const move of all) {
+      expect([move.kind, move.revision]).toEqual([
+        move.kind,
+        move.kind === 'sign_off' ? 'required' : 'optional',
+      ]);
+    }
   });
 
   it('replaces closing by a request for sign-off where one is needed', () => {

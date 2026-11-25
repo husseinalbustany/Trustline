@@ -6,9 +6,34 @@ const HOUR = 3_600_000;
 
 export const PUBLIC_REPORTS_PER_HOUR = 10;
 export const FOLLOW_UP_ATTEMPTS_PER_HOUR = 30;
+/**
+ * Reports through the public link that one hospital takes in an hour,
+ * whatever addresses they come from. The limit per address rests on the
+ * address being true, which the API cannot check for itself; this one rests
+ * on nothing a sender controls. Counted in the database by IncidentsService,
+ * so it is the same for every API process and survives a restart.
+ */
+export const PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR = 60;
+
+/** What every limit on the public routes answers when it is reached. */
+export function tooManyRequests(res: Response, retryAfterSeconds: number) {
+  res.setHeader(
+    'Retry-After',
+    String(Math.max(Math.ceil(retryAfterSeconds), 1)),
+  );
+  return new HttpException(
+    { statusCode: 429, code: 'too_many_requests' },
+    HttpStatus.TOO_MANY_REQUESTS,
+  );
+}
 
 /**
  * How often one address may use the routes that need no sign-in.
+ *
+ * The address is only as true as the proxy in front of the web app makes it:
+ * see app.setup.ts and the README. Anything that is not an IP address counts
+ * as one client. A hospital's public form has a ceiling of its own besides
+ * (PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR), which does not rest on the address.
  *
  * Counted per address and per kind of use, never per path: the count is
  * taken inside the route's own handler, so however an address is written to
@@ -35,10 +60,14 @@ export class PublicLimits {
   count(use: keyof typeof this.limiters, req: Request, res: Response) {
     const wait = this.limiters[use].hit(clientKey(req.ip));
     if (wait === 0) return;
-    res.setHeader('Retry-After', String(wait));
-    throw new HttpException(
-      { statusCode: 429, code: 'too_many_requests' },
-      HttpStatus.TOO_MANY_REQUESTS,
-    );
+    throw tooManyRequests(res, wait);
+  }
+
+  /**
+   * Forgets every count, as a restart of the process would. For tests, which
+   * all call from one address.
+   */
+  forget() {
+    for (const limiter of Object.values(this.limiters)) limiter.clear();
   }
 }

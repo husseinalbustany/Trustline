@@ -23,6 +23,7 @@ import {
   SessionGuard,
   type AuthedRequest,
 } from '../identity/session.guard.js';
+import { shiftDay, startOfDay } from '../i18n/time-zones.js';
 import { IncidentsService } from './incidents.service.js';
 import { MOVE_KINDS } from './status.js';
 import {
@@ -51,7 +52,8 @@ const listSchema = z.preprocess(
     harmLevel: z.enum(incidentHarmLevel.enumValues).optional(),
     sentinel: flag.optional(),
     orgUnitId: z.uuid().optional(),
-    // Days, both included, on the date of reporting (UTC).
+    // Days, both included, on the date of reporting: days on the hospital's
+    // own calendar, whatever time zone the caller's browser is in.
     from: z.iso.date().optional(),
     to: z.iso.date().optional(),
     // The start of a reference, or all of it: "inc-2026-0004". Digits alone
@@ -66,9 +68,12 @@ const listSchema = z.preprocess(
     // on the dashboard can link to exactly the incidents it counted.
     open: flag.default(false),
     serious: flag.default(false),
+    // What the summary counts as overdue: past the deadline it is working
+    // towards. Only among incidents the caller handles.
+    overdue: flag.default(false),
     assignedToMe: flag.default(false),
     mine: flag.default(false),
-    sort: z.enum(['newest', 'oldest', 'harm']).default('newest'),
+    sort: z.enum(['newest', 'oldest', 'harm', 'due']).default('newest'),
     page: z.coerce.number().int().min(1).max(100_000).default(1),
     pageSize: z.coerce.number().int().min(1).max(100).default(20),
   }),
@@ -132,12 +137,12 @@ export class IncidentsController {
     const parsed = listSchema.safeParse(query);
     if (!parsed.success) throw new BadRequestException();
     const { from, to, ...filters } = parsed.data;
-    const day = (date: string) => Date.parse(`${date}T00:00:00Z`);
+    const { timeZone } = req.auth.tenant;
     return this.incidents.list(req.auth, {
       ...filters,
-      ...(from && { reportedFrom: new Date(day(from)) }),
-      // Up to the end of the last day.
-      ...(to && { reportedBefore: new Date(day(to) + 86_400_000) }),
+      ...(from && { reportedFrom: startOfDay(from, timeZone) }),
+      // Up to the end of the last day, which is where the next one starts.
+      ...(to && { reportedBefore: startOfDay(shiftDay(to, 1), timeZone) }),
     });
   }
 

@@ -79,9 +79,17 @@ function wallTime(moment: number, timeZone: string) {
  */
 function momentOf(wall: number, timeZone: string) {
   const offsetAt = (moment: number) => wallTime(moment, timeZone) - moment;
-  // Two steps: the offset at a first guess, then the offset where that lands.
-  const guess = wall - offsetAt(wall);
-  return wall - offsetAt(guess);
+  const shows = (moment: number) => wallTime(moment, timeZone) === wall;
+  // The clock's offset a day before and a day after: the same, unless the
+  // clock changes in between. Counting with the earlier one first gives the
+  // first of two moments where there are two.
+  const before = wall - offsetAt(wall - DAY_MS);
+  if (shows(before)) return before;
+  const after = wall - offsetAt(wall + DAY_MS);
+  if (shows(after)) return after;
+  // No moment shows it: the clock skips it. Counted on as if it had not been
+  // put forward yet, which lands the length of the skip later.
+  return before;
 }
 
 const parseDay = (day: Day) => {

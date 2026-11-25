@@ -1,23 +1,39 @@
 import { Module } from '@nestjs/common';
 import { OrganizationModule } from '../organization/organization.module.js';
+import { DeadlineCheck } from './deadline-check.service.js';
 import {
   IncidentCategoriesController,
   IncidentsController,
 } from './incidents.controller.js';
 import { IncidentsService } from './incidents.service.js';
+import { NotificationsController } from './notifications.controller.js';
+import { NotificationsService } from './notifications.service.js';
+import { Notifier } from './notifier.js';
 import { PublicLimits } from './public-limits.js';
 import { PublicReportingController } from './public.controller.js';
+import { ResponseRulesService } from './response-rules.service.js';
 import { IncidentSettingsController } from './settings.controller.js';
 
-/** Reporting an incident, triaging it, and following it to its close. */
+/**
+ * Reporting an incident, triaging it, and following it to its close; its
+ * deadlines, and the notifications about all of it.
+ */
 @Module({
   imports: [OrganizationModule],
   controllers: [
     IncidentCategoriesController,
     IncidentsController,
     IncidentSettingsController,
+    NotificationsController,
     PublicReportingController,
   ],
-  providers: [IncidentsService, PublicLimits],
+  providers: [
+    DeadlineCheck,
+    IncidentsService,
+    NotificationsService,
+    Notifier,
+    PublicLimits,
+    ResponseRulesService,
+  ],
 })
 export class IncidentsModule {}

@@ -6,14 +6,26 @@ import {
   EARLIEST_OCCURRED_AT,
 } from './incidents.service.js';
 
-/** Free text: trimmed, within its limits, and storable (no NUL character). */
+// Control characters, other than the tab and the line breaks people type.
+// A NUL cannot be stored at all, and none of the others belongs in words.
+// eslint-disable-next-line no-control-regex
+const CONTROL = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
+
+/** Whether text carries a control character other than a tab or line break. */
+export const hasControlCharacter = (value: string) => CONTROL.test(value);
+
+/**
+ * Free text: trimmed, within its limits, and free of control characters, so
+ * nothing reaches a query that the database would refuse or that could hide
+ * in a log.
+ */
 export const text = (min: number, max: number) =>
   z
     .string()
     .trim()
     .min(min)
     .max(max)
-    .refine((v) => !v.includes('\u0000'));
+    .refine((v) => !hasControlCharacter(v));
 
 export const optionalText = (max: number) =>
   text(0, max)

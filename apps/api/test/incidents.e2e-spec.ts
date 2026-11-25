@@ -10,6 +10,7 @@ import { setupApp } from '../src/app.setup.js';
 import { createDatabase } from '../src/database/client.js';
 import { orgUnits } from '../src/database/schema.js';
 import { requireEnv } from '../src/env.js';
+import { lastDays } from '../src/i18n/time-zones.js';
 import { createPlatformAdmin } from '../src/platform/create-admin.js';
 import { removeTestData } from './cleanup.js';
 
@@ -236,18 +237,27 @@ describe('incident reporting', () => {
       closedLast30Days: number;
       assignedToMe: number;
       serious: number;
+      overdue: number;
+      triagedOnTime: number | null;
       medianSecondsToReport: number | null;
+      last30Days: { from: string; to: string };
     };
   };
 
-  /** A summary with nothing in it. */
+  /**
+   * A summary with nothing in it. The hospitals of this file keep the
+   * default time zone, UTC, so their last 30 days are UTC days.
+   */
   const EMPTY_SUMMARY = {
     open: 0,
     awaitingTriage: 0,
     closedLast30Days: 0,
     assignedToMe: 0,
     serious: 0,
+    overdue: 0,
+    triagedOnTime: null,
     medianSecondsToReport: null,
+    last30Days: (({ from, to }) => ({ from, to }))(lastDays(30, 'UTC')),
   };
 
   /** A new incident in the ward department, taken to the given status. */
@@ -821,16 +831,19 @@ describe('incident reporting', () => {
       expect(Object.keys(first).sort()).toEqual([
         'assignedToMe',
         'category',
+        'closeDueAt',
         'descriptionExcerpt',
         'harmLevel',
         'id',
         'isSentinel',
         'occurredAt',
         'orgUnit',
+        'overdue',
         'ownerUnit',
         'reference',
         'reportedAt',
         'status',
+        'triageDueAt',
         'type',
       ]);
       expect(first).toMatchObject({
@@ -1396,6 +1409,8 @@ describe('incident reporting', () => {
         ...none,
         open: 1,
         assignedToMe: 1,
+        // The one incident they handle was triaged within its time.
+        triagedOnTime: 100,
       });
     });
 
@@ -1859,15 +1874,30 @@ describe('incident reporting', () => {
       const mild = await report(reporter);
       const offered = await open(quality.cookie, mild.id).expect(200);
       expect(offered.body.moves).toEqual([
-        { to: 'rejected', noteRequired: true, kind: 'reject' },
+        {
+          to: 'rejected',
+          noteRequired: true,
+          revisionRequired: false,
+          kind: 'reject',
+        },
       ]);
       // Nothing is offered to someone who may not triage.
       const theirs = await open(reporter.cookie, mild.id).expect(200);
       expect(theirs.body).toMatchObject({ moves: [], canRetriage: false });
       const triaged = await triage(quality.cookie, mild.id).expect(200);
       expect(triaged.body.moves).toEqual([
-        { to: 'in_progress', noteRequired: false, kind: 'start' },
-        { to: 'closed', noteRequired: true, kind: 'close' },
+        {
+          to: 'in_progress',
+          noteRequired: false,
+          revisionRequired: false,
+          kind: 'start',
+        },
+        {
+          to: 'closed',
+          noteRequired: true,
+          revisionRequired: false,
+          kind: 'close',
+        },
       ]);
     });
 
