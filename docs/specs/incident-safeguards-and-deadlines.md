@@ -98,6 +98,19 @@ Protection, since these routes are open to the internet:
 - A signed-in user can also use it: the follow-up page works with or without
   a session, and never links the code to the session.
 
+### Decided after the first build
+
+- **Follow-up works whether or not public reporting is on.** A code given to
+  a signed-in member of staff who reported anonymously must work in a
+  hospital that never opens the public form. So the two follow-up routes
+  answer for every active hospital; only the two `/public/reporting` routes
+  depend on the switch. A wrong pair, an unknown hospital and a suspended one
+  still look the same.
+- **Someone reading with a follow-up code does not see staff names.** In that
+  view the actor of an event and the author of a comment written by staff
+  come back with no person and `byStaff: true`, and the `people` map is
+  empty. A named reporter who is signed in sees names as before.
+
 ### Comments by an anonymous reporter
 
 `incident_comments.author_id` becomes nullable and gains `by_reporter`
@@ -169,6 +182,16 @@ A sentinel incident uses the `death` row whatever its harm level.
 whole organization; hours 1 to 720, days 1 to 365), audited with from and to.
 
 Hours and days are calendar time. Working-hours calendars come later.
+
+### The hospital's own day
+
+`tenants.time_zone`: an IANA name (for example `Asia/Beirut`), default `UTC`,
+set by Trustline staff in the admin portal when the client is created or
+edited, and validated against the names the runtime knows. Every "day" the
+API works out for a hospital uses it: the `from` and `to` list filters, and
+"the last 30 days" in the summary. `GET /auth/me` returns it as
+`tenant.timeZone`, so screens show dates in the hospital's time, not the
+browser's. The client is never asked for an offset.
 
 ### On the incident
 
