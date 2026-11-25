@@ -351,19 +351,24 @@ description, no comment text, no names of people).
 ## Web
 
 - **Reporter:** the incident page shows "Reported by" only when
-  `reporterShown`. Otherwise it says the name is kept by the quality office.
-  Comments and timeline entries by the reporter say "The reporter".
+  `reporterShown`. Otherwise it says that only staff the hospital has
+  authorised, normally the quality team, can see it, in the same words for a
+  named and an anonymous report. Comments and timeline entries by the
+  reporter say "The reporter"; staff who are not named say "Hospital staff".
 - **Report form:** tells the reporter who will see their name. After an
   anonymous report, the follow-up code is shown once, large, with a copy
   button and a plain warning that it cannot be shown again.
 - **Public report page** `/[lang]/report/[slug]` (no sign-in, no app shell):
   the same form without the anonymous box, with `?unit=<id>` preselecting
-  where it happened. Works on a phone. After sending: the reference and the
-  follow-up code.
-- **Follow-up page** `/[lang]/follow-up/[slug]`: reference and code, then the
-  reporter's view with the comment box.
+  where it happened. Works on a phone, in plainer words than the staff form,
+  and says what to do if someone is in danger now. After sending: the
+  follow-up code and the address to come back to, and no incident number.
+- **Follow-up page** `/[lang]/follow-up/[slug]`: the code alone, then the
+  reporter's view with the comment box, with no staff names.
 - **Settings** (`/[lang]/admin/settings`, `settings.manage`): the switch for
   reporting without sign-in, with the link; and the deadline table.
+- **Admin portal:** the client form sets the hospital's time zone. Staff
+  screens show every date and time in the hospital's time.
 - **Organization:** when public reporting is on, each unit's page shows its
   reporting link and a QR code that can be printed.
 - **Sign-off:** the status actions follow `moves` from the API (the screen no
