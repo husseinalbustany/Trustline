@@ -46,11 +46,13 @@ import {
   movesFor,
   needsSignOff,
   OPEN_STATUSES,
+  SERIOUS_HARM,
   TRIAGE_FROM,
   type Caller,
   type EventKind,
   type HarmLevel,
   type IncidentStatus,
+  type MoveKind,
 } from './status.js';
 
 export type { HarmLevel, IncidentStatus } from './status.js';
@@ -113,6 +115,16 @@ const ANONYMOUS_REPORTER: Reader = {
  */
 const NO_TENANT = '00000000-0000-0000-0000-000000000000';
 
+// What the summary counts and the list filters by, written once so that a
+// count on the dashboard and the list it links to are the same incidents.
+/** Not yet ended. Awaiting sign-off is still open: it is not closed yet. */
+const isOpen = inArray(incidents.status, OPEN_STATUSES);
+/** Severe harm, a death, or a sentinel event: `isSerious()` for a query. */
+const isSeriousOne = or(
+  inArray(incidents.harmLevel, SERIOUS_HARM),
+  eq(incidents.isSentinel, true),
+)!;
+
 export type ListSort = 'newest' | 'oldest' | 'harm';
 
 export type ListInput = {
@@ -125,8 +137,15 @@ export type ListInput = {
   /** Reported at or after this moment, and before that one. */
   reportedFrom?: Date;
   reportedBefore?: Date;
-  /** The start of a reference, in any letter case. */
+  /**
+   * The start of a reference, in any letter case; or, when it is digits
+   * only, also the end of one: "42" finds INC-2026-00042.
+   */
   reference?: string;
+  /** Only what is not yet ended, as the summary counts "open". */
+  open: boolean;
+  /** Only severe harm, a death or a sentinel event, as the summary counts. */
+  serious: boolean;
   assignedToMe: boolean;
   mine: boolean;
   sort: ListSort;
@@ -501,11 +520,9 @@ export class IncidentsService {
         : undefined,
       input.reportedFrom && gte(incidents.reportedAt, input.reportedFrom),
       input.reportedBefore && lt(incidents.reportedAt, input.reportedBefore),
-      // The controller lets through letters, digits and hyphens only, so
-      // there is nothing here for LIKE to read as a wildcard.
-      input.reference
-        ? sql`upper(${incidents.reference}) like ${`${input.reference.toUpperCase()}%`}`
-        : undefined,
+      this.referenceLike(input.reference),
+      input.open ? isOpen : undefined,
+      input.serious ? isSeriousOne : undefined,
       input.assignedToMe ? eq(incidents.assignedTo, auth.user.id) : undefined,
       input.mine ? eq(incidents.reportedBy, auth.user.id) : undefined,
     );
@@ -560,27 +577,39 @@ export class IncidentsService {
     });
   }
 
+  /**
+   * Matches references that start with the text, in any letter case. Someone
+   * who types only digits means a number, not a prefix, so those also match
+   * references that end with them: "42" finds INC-2026-00042.
+   *
+   * The controller lets through letters, digits and hyphens only, so there
+   * is nothing here for LIKE to read as a wildcard.
+   */
+  private referenceLike(text?: string): SQL | undefined {
+    if (!text) return undefined;
+    const reference = sql`upper(${incidents.reference})`;
+    const starts = sql`${reference} like ${`${text.toUpperCase()}%`}`;
+    if (!/^\d+$/.test(text)) return starts;
+    return or(starts, sql`${reference} like ${`%${text}`}`);
+  }
+
   summary(auth: AuthContext) {
     const number = (condition: SQL) =>
       sql<number>`count(*) filter (where ${condition})`.mapWith(Number);
-    // Awaiting sign-off is still open: it is not closed until it is signed.
-    const open = inArray(incidents.status, OPEN_STATUSES);
     // How long reporting took, from opening the form to sending it.
     const seconds = sql`greatest(extract(epoch from ${incidents.reportedAt} - ${incidents.reportStartedAt}), 0)`;
     return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
       const [counts] = await tx
         .select({
-          open: number(open),
+          open: number(isOpen),
           awaitingTriage: number(sql`${incidents.status} = 'new'`),
           closedLast30Days: number(
             sql`${incidents.status} = 'closed' and ${incidents.closedAt} >= now() - interval '30 days'`,
           ),
           assignedToMe: number(
-            sql`${open} and ${incidents.assignedTo} = ${auth.user.id}`,
+            and(isOpen, eq(incidents.assignedTo, auth.user.id))!,
           ),
-          serious: number(
-            sql`${open} and (${incidents.harmLevel} in ('severe', 'death') or ${incidents.isSentinel})`,
-          ),
+          serious: number(and(isOpen, isSeriousOne)!),
           // The middle value, in whole seconds, over the reports of the last
           // 30 days that carry a start time. Null when there are none.
           medianSecondsToReport: sql<
@@ -805,7 +834,7 @@ export class IncidentsService {
       moves: movesFor(row, reader).map((m) => ({
         to: m.to,
         noteRequired: m.note === 'required',
-        action: m.action,
+        kind: m.kind,
       })),
       events,
       comments,
@@ -1032,8 +1061,16 @@ export class IncidentsService {
     to: IncidentStatus,
     note: string | null,
     revision?: number,
+    kind?: MoveKind,
   ) {
     const { tenant, user } = auth;
+    // Told to someone who sees the incident and may not triage it.
+    const noTriage = () =>
+      new ForbiddenException(
+        auth.permissions.includes('incidents.triage')
+          ? { code: 'outside_scope' }
+          : { code: 'missing_permission', permission: 'incidents.triage' },
+      );
     return this.tenantDb.withTenant(tenant.id, async (tx) => {
       const incident = await this.lock(tx, auth, id);
       const caller = this.readerOf(auth, incident);
@@ -1045,15 +1082,16 @@ export class IncidentsService {
             permission: 'incidents.sign_off',
           });
         }
-        throw new ForbiddenException(
-          auth.permissions.includes('incidents.triage')
-            ? { code: 'outside_scope' }
-            : { code: 'missing_permission', permission: 'incidents.triage' },
-        );
+        throw noTriage();
       }
       this.assertFresh(incident, revision);
       const from = incident.status;
-      const move = chooseMove(incident, to, caller);
+      const move = chooseMove(incident, to, caller, kind);
+      // Two moves lead there from here, and the caller did not say which.
+      if (move === 'kind_required') {
+        throw new BadRequestException({ code: 'kind_required' });
+      }
+      if (move === 'missing_triage_permission') throw noTriage();
       if (move === 'missing_sign_off_permission') {
         throw new ForbiddenException({
           code: 'missing_permission',
@@ -1070,10 +1108,7 @@ export class IncidentsService {
 
       const now = new Date();
       const noRequest = { closureRequestedBy: null, closureRequestedAt: null };
-      const fields: Record<
-        typeof move.action,
-        Partial<typeof incidents.$inferInsert>
-      > = {
+      const fields: Record<MoveKind, Partial<typeof incidents.$inferInsert>> = {
         start: {},
         close: { closedBy: user.id, closedAt: now, closureSummary: note },
         // Not closed yet: the summary is the one proposed, and nobody has
@@ -1104,15 +1139,15 @@ export class IncidentsService {
           status: to,
           revision: incident.revision + 1,
           updatedAt: now,
-          ...fields[move.action],
+          ...fields[move.kind],
         })
         .where(eq(incidents.id, id));
       const details = {
         ...(note && { note }),
-        ...(move.action === 'withdraw' && { withdrawn: true }),
+        ...(move.kind === 'withdraw' && { withdrawn: true }),
       };
       await this.addEvent(tx, tenant.id, id, {
-        kind: move.kind,
+        kind: move.event,
         actorId: user.id,
         fromStatus: from,
         toStatus: to,
@@ -1129,7 +1164,7 @@ export class IncidentsService {
         'incident_status_changed',
         'incident',
         id,
-        { from, to, action: move.action },
+        { from, to, kind: move.kind },
       );
       return this.detail(tx, auth, id);
     });

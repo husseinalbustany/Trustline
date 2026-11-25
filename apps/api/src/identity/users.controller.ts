@@ -95,7 +95,13 @@ const publicUser = {
   orgUnitId: users.orgUnitId,
   // Named here, switched off or not, so a screen that lists only the units
   // in use can still show where someone is, and not move them by accident.
-  orgUnit: { id: homeUnit.id, name: homeUnit.name, active: homeUnit.active },
+  // With its type, so the screen can say "department" or "unit" beside it.
+  orgUnit: {
+    id: homeUnit.id,
+    type: homeUnit.type,
+    name: homeUnit.name,
+    active: homeUnit.active,
+  },
   employeeNumber: users.employeeNumber,
   jobTitle: users.jobTitle,
   phone: users.phone,
@@ -140,6 +146,7 @@ export class UsersController {
         orgUnitId: roleAssignments.orgUnitId,
         orgUnit: {
           id: grantUnit.id,
+          type: grantUnit.type,
           name: grantUnit.name,
           active: grantUnit.active,
         },

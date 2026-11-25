@@ -713,15 +713,75 @@ describe('hospital users, roles and sign-in', () => {
       }).expect(201);
       expect(added.body.user).toMatchObject({
         orgUnitId: ward,
-        orgUnit: { id: ward, name: { en: 'SCOPE-WARD' }, active: true },
+        orgUnit: {
+          id: ward,
+          type: 'department',
+          name: { en: 'SCOPE-WARD' },
+          active: true,
+        },
         roles: [
           {
             code: 'reporter',
             orgUnitId: ward,
-            orgUnit: { id: ward, name: { en: 'SCOPE-WARD' }, active: true },
+            orgUnit: {
+              id: ward,
+              type: 'department',
+              name: { en: 'SCOPE-WARD' },
+              active: true,
+            },
           },
         ],
       });
+      // The unit comes with its type wherever a user or a grant names it:
+      // on the answer to creating, on one user, and in the list.
+      const wardUnit = {
+        id: ward,
+        type: 'department',
+        name: { en: 'SCOPE-WARD' },
+        active: true,
+      };
+      const one = await http()
+        .get(`/users/${added.body.user.id}`)
+        .set('Cookie', a.cookie)
+        .expect(200);
+      const all = await http()
+        .get('/users')
+        .set('Cookie', a.cookie)
+        .expect(200);
+      const listed = all.body.find(
+        (u: { id: string }) => u.id === added.body.user.id,
+      );
+      for (const user of [added.body.user, one.body, listed]) {
+        expect(user.orgUnit).toEqual(wardUnit);
+        expect(user.roles.map((r: { orgUnit: unknown }) => r.orgUnit)).toEqual([
+          wardUnit,
+        ]);
+      }
+      // A facility is told apart from a department the same way.
+      const units = await http()
+        .get('/org-units')
+        .set('Cookie', a.cookie)
+        .expect(200);
+      const site = units.body.find((u: { code: string }) => u.code === 'SCOPE');
+      const placed = await addUser(a.cookie, 'typed', {
+        orgUnitId: site.id,
+        roles: [
+          { roleId: a.roles.reporter, orgUnitId: site.id },
+          { roleId: a.roles.reporter, orgUnitId: null },
+        ],
+      }).expect(201);
+      expect(placed.body.user.orgUnit).toEqual({
+        id: site.id,
+        type: 'facility',
+        name: { en: 'SCOPE' },
+        active: true,
+      });
+      expect(
+        placed.body.user.roles
+          .map((r: { orgUnit: { type: string } | null }) => r.orgUnit?.type)
+          .sort(),
+      ).toEqual(['facility', undefined]);
+
       const link = await http()
         .post(`/users/${colleague}/invite`)
         .set('Cookie', wardManager.cookie)

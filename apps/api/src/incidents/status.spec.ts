@@ -1,6 +1,7 @@
 import {
   chooseMove,
   hasSay,
+  MOVE_KINDS,
   movesFor,
   needsSignOff,
   OPEN_STATUSES,
@@ -29,7 +30,7 @@ const at = <T extends object>(incident: T, status: IncidentStatus) => ({
 const offered = (
   incident: Parameters<typeof movesFor>[0],
   caller: Caller,
-): string[] => movesFor(incident, caller).map((m) => `${m.action}>${m.to}`);
+): string[] => movesFor(incident, caller).map((m) => `${m.kind}>${m.to}`);
 
 describe('incident status rules', () => {
   it('counts an incident awaiting sign-off as open, and not as triageable', () => {
@@ -68,11 +69,50 @@ describe('incident status rules', () => {
     }
   });
 
+  it('names every move with one of eight kinds, each used once', () => {
+    expect([...MOVE_KINDS].sort()).toEqual([
+      'close',
+      'reject',
+      'reopen',
+      'request_sign_off',
+      'send_back',
+      'sign_off',
+      'start',
+      'withdraw',
+    ]);
+    const everyone = { canTriage: true, canSignOff: true, isRequester: false };
+    const seen = new Set<string>();
+    for (const status of [
+      'new',
+      'triaged',
+      'in_progress',
+      'awaiting_sign_off',
+      'closed',
+      'rejected',
+    ] as const) {
+      for (const incident of [ordinary, sentinel]) {
+        for (const isRequester of [true, false]) {
+          const moves = movesFor(at(incident, status), {
+            ...everyone,
+            isRequester,
+          });
+          // Within what one person is offered, a kind says which move.
+          expect(new Set(moves.map((m) => m.kind)).size).toBe(moves.length);
+          for (const move of moves) seen.add(move.kind);
+        }
+      }
+    }
+    expect([...seen].sort()).toEqual([...MOVE_KINDS].sort());
+  });
+
   it('offers each person awaiting sign-off exactly what they may do', () => {
     const waiting = at(sentinel, 'awaiting_sign_off');
+    // The second person decides, and as a triager may also just take the
+    // request back: two moves to the same status, told apart by kind.
     expect(offered(waiting, officer)).toEqual([
       'sign_off>closed',
       'send_back>in_progress',
+      'withdraw>in_progress',
     ]);
     // Without the right to triage, the second person can still decide.
     expect(offered(waiting, signer)).toEqual([
@@ -88,43 +128,78 @@ describe('incident status rules', () => {
     ]);
   });
 
-  it('never offers one person two ways to the same status', () => {
-    for (const canTriage of [true, false]) {
-      for (const canSignOff of [true, false]) {
-        for (const isRequester of [true, false]) {
-          const caller = { canTriage, canSignOff, isRequester };
-          const targets = movesFor(
-            at(sentinel, 'awaiting_sign_off'),
-            caller,
-          ).map((m) => m.to);
-          expect(new Set(targets).size).toBe(targets.length);
-        }
-      }
+  it('needs the kind where two moves lead to the same status, and checks it elsewhere', () => {
+    const waiting = at(sentinel, 'awaiting_sign_off');
+    // Whoever asks, and whichever of the two they could make.
+    for (const caller of [officer, signer, triager, requester]) {
+      expect(chooseMove(waiting, 'in_progress', caller)).toBe('kind_required');
     }
+    expect(
+      chooseMove(waiting, 'in_progress', officer, 'send_back'),
+    ).toMatchObject({
+      kind: 'send_back',
+      event: 'sent_back',
+      note: 'required',
+    });
+    expect(
+      chooseMove(waiting, 'in_progress', officer, 'withdraw'),
+    ).toMatchObject({
+      kind: 'withdraw',
+      event: 'status_changed',
+      note: 'required',
+    });
+    // Only one move leads to closed: the kind may be left out, or be right.
+    expect(chooseMove(waiting, 'closed', officer)).toMatchObject({
+      kind: 'sign_off',
+      note: 'optional',
+    });
+    expect(chooseMove(waiting, 'closed', officer, 'sign_off')).toMatchObject({
+      kind: 'sign_off',
+    });
+    // A kind that does not lead there from here: the screen was out of date.
+    expect(chooseMove(waiting, 'closed', officer, 'close')).toBe(
+      'invalid_transition',
+    );
+    expect(chooseMove(waiting, 'in_progress', officer, 'reopen')).toBe(
+      'invalid_transition',
+    );
+    const triaged = at(ordinary, 'triaged');
+    expect(chooseMove(triaged, 'in_progress', triager)).toMatchObject({
+      kind: 'start',
+    });
+    expect(chooseMove(triaged, 'in_progress', triager, 'reopen')).toBe(
+      'invalid_transition',
+    );
+    expect(
+      chooseMove(at(ordinary, 'closed'), 'in_progress', triager, 'reopen'),
+    ).toMatchObject({ kind: 'reopen' });
   });
 
   it('refuses the one who asked, and anyone without the right, as second person', () => {
     const waiting = at(sentinel, 'awaiting_sign_off');
+    const onlyAsked = { ...nobody, isRequester: true };
     expect(chooseMove(waiting, 'closed', requester)).toBe('same_person');
+    expect(chooseMove(waiting, 'in_progress', requester, 'send_back')).toBe(
+      'same_person',
+    );
     expect(chooseMove(waiting, 'closed', triager)).toBe(
       'missing_sign_off_permission',
     );
-    expect(
-      chooseMove(waiting, 'closed', { ...nobody, isRequester: true }),
-    ).toBe('missing_sign_off_permission');
-    expect(chooseMove(waiting, 'closed', officer)).toMatchObject({
-      action: 'sign_off',
-      note: 'optional',
-    });
-    // Going back is a decision for the second person, a withdrawal otherwise.
-    expect(chooseMove(waiting, 'in_progress', officer)).toMatchObject({
-      action: 'send_back',
-      note: 'required',
-    });
-    expect(chooseMove(waiting, 'in_progress', requester)).toMatchObject({
-      action: 'withdraw',
-      note: 'required',
-    });
+    expect(chooseMove(waiting, 'in_progress', triager, 'send_back')).toBe(
+      'missing_sign_off_permission',
+    );
+    expect(chooseMove(waiting, 'closed', onlyAsked)).toBe(
+      'missing_sign_off_permission',
+    );
+    // Taking the request back is for whoever asked and for triagers.
+    expect(chooseMove(waiting, 'in_progress', signer, 'withdraw')).toBe(
+      'missing_triage_permission',
+    );
+    for (const caller of [requester, onlyAsked, triager, officer]) {
+      expect(
+        chooseMove(waiting, 'in_progress', caller, 'withdraw'),
+      ).toMatchObject({ kind: 'withdraw' });
+    }
     expect(chooseMove(waiting, 'rejected', officer)).toBe('invalid_transition');
   });
 
@@ -143,7 +218,7 @@ describe('incident status rules', () => {
       'serious_cannot_be_rejected',
     );
     expect(chooseMove(at(ordinary, 'new'), 'rejected', officer)).toMatchObject({
-      action: 'reject',
+      kind: 'reject',
     });
   });
 });

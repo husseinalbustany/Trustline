@@ -63,7 +63,7 @@ describe('incident safeguards', () => {
     body: string;
     visibility: string;
   };
-  type Move = { to: string; noteRequired: boolean; action: string };
+  type Move = { to: string; noteRequired: boolean; kind: string };
 
   let a: Hospital; // takes public reports
   let b: Hospital; // takes them too: another hospital entirely
@@ -1727,11 +1727,11 @@ describe('incident safeguards', () => {
         const res = await open(quality.cookie, id).expect(200);
         expect(res.body.needsSignOff).toBe(true);
         expect(res.body.moves).toEqual([
-          { to: 'in_progress', noteRequired: false, action: 'start' },
+          { to: 'in_progress', noteRequired: false, kind: 'start' },
           {
             to: 'awaiting_sign_off',
             noteRequired: true,
-            action: 'request_sign_off',
+            kind: 'request_sign_off',
           },
         ]);
         const direct = await move(quality.cookie, id, 'closed', 'Done').expect(
@@ -1746,7 +1746,7 @@ describe('incident safeguards', () => {
         {
           to: 'awaiting_sign_off',
           noteRequired: true,
-          action: 'request_sign_off',
+          kind: 'request_sign_off',
         },
       ]);
       await move(quality.cookie, flagged.id, 'closed', 'Done').expect(409);
@@ -1803,8 +1803,8 @@ describe('incident safeguards', () => {
       const res = await open(quality.cookie, id).expect(200);
       expect(res.body.needsSignOff).toBe(false);
       expect(res.body.moves).toEqual([
-        { to: 'in_progress', noteRequired: false, action: 'start' },
-        { to: 'closed', noteRequired: true, action: 'close' },
+        { to: 'in_progress', noteRequired: false, kind: 'start' },
+        { to: 'closed', noteRequired: true, kind: 'close' },
       ]);
       const refused = await move(
         quality.cookie,
@@ -1828,15 +1828,23 @@ describe('incident safeguards', () => {
     it('tells each person what they may do while it waits', async () => {
       const { id } = await awaitingSignOff();
       const secondPerson = [
-        { to: 'closed', noteRequired: false, action: 'sign_off' },
-        { to: 'in_progress', noteRequired: true, action: 'send_back' },
+        { to: 'closed', noteRequired: false, kind: 'sign_off' },
+        { to: 'in_progress', noteRequired: true, kind: 'send_back' },
       ];
       const withdraw = [
-        { to: 'in_progress', noteRequired: true, action: 'withdraw' },
+        { to: 'in_progress', noteRequired: true, kind: 'withdraw' },
       ];
       expect(await movesOf(quality, id)).toEqual(withdraw);
-      expect(await movesOf(quality2, id)).toEqual(secondPerson);
-      expect(await movesOf(wardQuality, id)).toEqual(secondPerson);
+      // A second person who may also triage has two ways back to "in
+      // progress", told apart by their kind.
+      expect(await movesOf(quality2, id)).toEqual([
+        ...secondPerson,
+        ...withdraw,
+      ]);
+      expect(await movesOf(wardQuality, id)).toEqual([
+        ...secondPerson,
+        ...withdraw,
+      ]);
       expect(await movesOf(signOnly, id)).toEqual(secondPerson);
       expect(await movesOf(triageOnly, id)).toEqual(withdraw);
       expect(await movesOf(manager, id)).toEqual([]);
@@ -1901,7 +1909,7 @@ describe('incident safeguards', () => {
         // The summary that was proposed, now the one it was closed with.
         closureSummary: PROPOSAL,
         closureRequestedBy: { id: quality.id },
-        moves: [{ to: 'in_progress', noteRequired: true, action: 'reopen' }],
+        moves: [{ to: 'in_progress', noteRequired: true, kind: 'reopen' }],
       });
       expect(res.body.closedAt).toBeTruthy();
       expect((res.body.events as Event[]).at(-1)).toMatchObject({
@@ -1959,15 +1967,24 @@ describe('incident safeguards', () => {
     it('can be sent back with a reason, which the reporter is not shown', async () => {
       const REASON = `not-yet-${run}`;
       const { id } = await awaitingSignOff();
+      const sendBack = { kind: 'send_back' };
       for (const note of [undefined, '  ']) {
-        const res = await move(quality2.cookie, id, 'in_progress', note).expect(
-          400,
-        );
+        const res = await move(
+          quality2.cookie,
+          id,
+          'in_progress',
+          note,
+          sendBack,
+        ).expect(400);
         expect(res.body.code).toBe('note_required');
       }
-      const res = await move(quality2.cookie, id, 'in_progress', REASON).expect(
-        200,
-      );
+      const res = await move(
+        quality2.cookie,
+        id,
+        'in_progress',
+        REASON,
+        sendBack,
+      ).expect(200);
       expect(res.body).toMatchObject({
         status: 'in_progress',
         closureSummary: null,
@@ -2011,7 +2028,9 @@ describe('incident safeguards', () => {
 
     it('checks the second person against whoever asked last', async () => {
       const { id } = await awaitingSignOff();
-      await move(quality2.cookie, id, 'in_progress', 'Needs more.').expect(200);
+      await move(quality2.cookie, id, 'in_progress', 'Needs more.', {
+        kind: 'send_back',
+      }).expect(200);
       // Now the other one asks. The first asker is free to sign; the new
       // asker is not.
       await move(
@@ -2032,17 +2051,23 @@ describe('incident safeguards', () => {
       expect((await stored(id)).closed_by).toBe(quality.id);
     });
 
-    it('can be withdrawn by whoever asked, or by a triager who cannot sign', async () => {
+    it('can be withdrawn by whoever asked, or by anyone who may triage it', async () => {
+      const withdraw = { kind: 'withdraw' };
       const first = await awaitingSignOff();
-      const none = await move(quality.cookie, first.id, 'in_progress').expect(
-        400,
-      );
+      const none = await move(
+        quality.cookie,
+        first.id,
+        'in_progress',
+        undefined,
+        withdraw,
+      ).expect(400);
       expect(none.body.code).toBe('note_required');
       const res = await move(
         quality.cookie,
         first.id,
         'in_progress',
         'Asked too early.',
+        withdraw,
       ).expect(200);
       expect(res.body).toMatchObject({
         status: 'in_progress',
@@ -2064,12 +2089,44 @@ describe('incident safeguards', () => {
         second.id,
         'in_progress',
         'Still being worked on.',
+        withdraw,
       ).expect(200);
       expect((other.body.events as Event[]).at(-1)).toMatchObject({
         kind: 'status_changed',
         actor: { id: triageOnly.id },
         details: { withdrawn: true },
       });
+
+      // Someone who could have sent it back may also just take it back:
+      // what they send decides which it is.
+      const third = await awaitingSignOff();
+      const taken = await move(
+        quality2.cookie,
+        third.id,
+        'in_progress',
+        'Wrong incident.',
+        withdraw,
+      ).expect(200);
+      expect((taken.body.events as Event[]).at(-1)).toMatchObject({
+        kind: 'status_changed',
+        actor: { id: quality2.id },
+        details: { note: 'Wrong incident.', withdrawn: true },
+      });
+
+      // Not someone who may sign off but not triage, and did not ask.
+      const fourth = await awaitingSignOff();
+      const refused = await move(
+        signOnly.cookie,
+        fourth.id,
+        'in_progress',
+        'Not mine to take back.',
+        withdraw,
+      ).expect(403);
+      expect(refused.body).toMatchObject({
+        code: 'missing_permission',
+        permission: 'incidents.triage',
+      });
+      expect((await stored(fourth.id)).status).toBe('awaiting_sign_off');
     });
 
     it('lets whoever asked withdraw even after losing the right to triage', async () => {
@@ -2089,19 +2146,139 @@ describe('incident safeguards', () => {
       const seen = await open(leaver.cookie, id).expect(200);
       expect(seen.body).toMatchObject({ canTriage: false });
       expect(seen.body.moves).toEqual([
-        { to: 'in_progress', noteRequired: true, action: 'withdraw' },
+        { to: 'in_progress', noteRequired: true, kind: 'withdraw' },
       ]);
       // Their own request, so not theirs to sign off or do anything else to.
       await move(leaver.cookie, id, 'closed').expect(403);
-      await move(leaver.cookie, id, 'in_progress', 'I have moved on.').expect(
-        200,
-      );
+      await move(leaver.cookie, id, 'in_progress', 'I have moved on.', {
+        kind: 'withdraw',
+      }).expect(200);
       // With the request gone they are a viewer like any other.
       const after = await move(leaver.cookie, id, 'closed', 'Done').expect(403);
       expect(after.body).toMatchObject({
         code: 'missing_permission',
         permission: 'incidents.triage',
       });
+    });
+
+    it('has to be told which way back is meant, and checks the kind of any move', async () => {
+      const { id } = await awaitingSignOff();
+      // Two moves lead from waiting to "in progress": nobody may leave it
+      // to the API to guess, whichever of the two they could make.
+      for (const who of [quality, quality2, triageOnly, signOnly]) {
+        const res = await move(who.cookie, id, 'in_progress', 'Back').expect(
+          400,
+        );
+        expect(res.body.code).toBe('kind_required');
+      }
+      // Each kind is open only to those the move is for.
+      const own = await move(quality.cookie, id, 'in_progress', 'Back', {
+        kind: 'send_back',
+      }).expect(403);
+      expect(own.body.code).toBe('same_person');
+      const without = await move(triageOnly.cookie, id, 'in_progress', 'Back', {
+        kind: 'send_back',
+      }).expect(403);
+      expect(without.body).toMatchObject({
+        code: 'missing_permission',
+        permission: 'incidents.sign_off',
+      });
+      // A kind that does not lead there from here, or is no kind at all.
+      for (const kind of ['reopen', 'start', 'sign_off', 'close']) {
+        const res = await move(quality2.cookie, id, 'in_progress', 'Back', {
+          kind,
+        }).expect(409);
+        expect(res.body.code).toBe('invalid_transition');
+      }
+      for (const kind of ['sent_back', 'SEND_BACK', '', null, 7]) {
+        await move(quality2.cookie, id, 'in_progress', 'Back', { kind }).expect(
+          400,
+        );
+      }
+      const wrong = await move(quality2.cookie, id, 'closed', undefined, {
+        kind: 'close',
+      }).expect(409);
+      expect(wrong.body.code).toBe('invalid_transition');
+      expect((await stored(id)).status).toBe('awaiting_sign_off');
+      // Where one move leads there, the kind may be left out or be right.
+      await move(quality2.cookie, id, 'closed', undefined, {
+        kind: 'sign_off',
+      }).expect(200);
+
+      const plain = await report(reporter);
+      await triage(quality.cookie, plain.id).expect(200);
+      const stale = await move(
+        quality.cookie,
+        plain.id,
+        'in_progress',
+        'Again',
+        {
+          kind: 'reopen',
+        },
+      ).expect(409);
+      expect(stale.body.code).toBe('invalid_transition');
+      await move(quality.cookie, plain.id, 'in_progress', undefined, {
+        kind: 'start',
+      }).expect(200);
+      await move(quality.cookie, plain.id, 'closed', 'Done.', {
+        kind: 'close',
+      }).expect(200);
+      const reopened = await move(
+        quality.cookie,
+        plain.id,
+        'in_progress',
+        'Again',
+        {
+          kind: 'reopen',
+        },
+      ).expect(200);
+      expect((reopened.body.events as Event[]).at(-1)).toMatchObject({
+        kind: 'reopened',
+      });
+    });
+
+    it('offers only moves it accepts back, by the kind and status it names', async () => {
+      // Every move offered to anyone, at every point of a sentinel event's
+      // life, sent back exactly as it was offered.
+      const followed = new Set<string>();
+      const follow = async (who: Staff, id: string, kind: string) => {
+        const offered = await movesOf(who, id);
+        const chosen = offered.find((m) => m.kind === kind);
+        expect([kind, offered.map((m) => m.kind)]).toEqual([
+          kind,
+          expect.arrayContaining([kind]),
+        ]);
+        // A kind names one move among those offered.
+        expect(new Set(offered.map((m) => m.kind)).size).toBe(offered.length);
+        const res = await move(who.cookie, id, chosen!.to, 'A reason.', {
+          kind: chosen!.kind,
+        }).expect(200);
+        expect(res.body.status).toBe(chosen!.to);
+        followed.add(kind);
+      };
+      const { id } = await sentinel();
+      await follow(quality, id, 'start');
+      await follow(quality, id, 'request_sign_off');
+      await follow(quality2, id, 'send_back');
+      await follow(quality2, id, 'request_sign_off');
+      await follow(quality2, id, 'withdraw');
+      await follow(quality, id, 'request_sign_off');
+      await follow(signOnly, id, 'sign_off');
+      await follow(quality, id, 'reopen');
+      const other = await report(reporter);
+      await follow(quality, other.id, 'reject');
+      await follow(quality, other.id, 'reopen');
+      await follow(quality, other.id, 'close');
+      expect([...followed].sort()).toEqual([
+        'close',
+        'reject',
+        'reopen',
+        'request_sign_off',
+        'send_back',
+        'sign_off',
+        'start',
+        'withdraw',
+      ]);
     });
 
     it('cannot be triaged while it waits', async () => {
@@ -2152,7 +2329,10 @@ describe('incident safeguards', () => {
       expect(stale.body.code).toBe('stale_incident');
       const [signed, sentBack] = await Promise.all([
         move(quality2.cookie, id, 'closed', undefined, { revision: seen }),
-        move(a.cookie, id, 'in_progress', 'Not yet', { revision: seen }),
+        move(a.cookie, id, 'in_progress', 'Not yet', {
+          revision: seen,
+          kind: 'send_back',
+        }),
       ]);
       expect([signed.status, sentBack.status].sort((x, y) => x - y)).toEqual([
         200, 409,
@@ -2255,7 +2435,7 @@ describe('incident safeguards', () => {
           changes: {
             from: 'triaged',
             to: 'awaiting_sign_off',
-            action: 'request_sign_off',
+            kind: 'request_sign_off',
           },
         },
         {
@@ -2263,7 +2443,7 @@ describe('incident safeguards', () => {
           changes: {
             from: 'awaiting_sign_off',
             to: 'closed',
-            action: 'sign_off',
+            kind: 'sign_off',
           },
         },
       ]);
@@ -2288,6 +2468,9 @@ describe('incident safeguards', () => {
       await move(quality.cookie, id, 'closed').expect(403);
       await move(triageOnly.cookie, id, 'closed').expect(403);
       await move(quality2.cookie, id, 'in_progress').expect(400);
+      await move(quality2.cookie, id, 'in_progress', undefined, {
+        kind: 'send_back',
+      }).expect(400);
       await move(quality2.cookie, id, 'rejected', 'No').expect(409);
       await triage(quality2.cookie, id).expect(409);
       expect(await count()).toBe(before);

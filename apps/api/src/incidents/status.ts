@@ -26,7 +26,7 @@ export const OPEN_STATUSES: IncidentStatus[] = [
  */
 export const TRIAGE_FROM: IncidentStatus[] = ['new', 'triaged', 'in_progress'];
 
-const SERIOUS_HARM: HarmLevel[] = ['severe', 'death'];
+export const SERIOUS_HARM: HarmLevel[] = ['severe', 'death'];
 
 type Gravity = { harmLevel: HarmLevel; isSentinel: boolean };
 
@@ -41,16 +41,23 @@ export const isSerious = (incident: Gravity) =>
 export const needsSignOff = (incident: Gravity) =>
   incident.isSentinel || incident.harmLevel === 'death';
 
-/** What a move is, whatever status it leads to. Screens label buttons by it. */
-export type MoveAction =
-  | 'start'
-  | 'close'
-  | 'request_sign_off'
-  | 'sign_off'
-  | 'send_back'
-  | 'withdraw'
-  | 'reject'
-  | 'reopen';
+/**
+ * What a move is, whatever status it leads to. A screen labels its button by
+ * it, and a caller names it where the status it leads to does not say enough:
+ * sending a closure request back and withdrawing it both lead to
+ * `in_progress`.
+ */
+export const MOVE_KINDS = [
+  'start',
+  'close',
+  'reject',
+  'reopen',
+  'request_sign_off',
+  'sign_off',
+  'send_back',
+  'withdraw',
+] as const;
+export type MoveKind = (typeof MOVE_KINDS)[number];
 
 /** What one person may do on one incident, as far as status goes. */
 export type Caller = {
@@ -63,11 +70,11 @@ export type Caller = {
 };
 
 export type Move = {
-  action: MoveAction;
+  kind: MoveKind;
   from: IncidentStatus[];
   to: IncidentStatus;
   /** The timeline entry it leaves. */
-  kind: EventKind;
+  event: EventKind;
   /** Whether the person must explain the change. */
   note: 'required' | 'optional';
   /** Whether this incident can take the move at all. */
@@ -84,84 +91,83 @@ const secondPerson = (caller: Caller) =>
 
 /**
  * Every allowed change of status outside triage. Two moves lead from
- * `awaiting_sign_off` back to `in_progress`; their `by` rules never both
- * hold, so one person is only ever offered one of them.
+ * `awaiting_sign_off` back to `in_progress`, and one person may be allowed
+ * both: there the caller has to say which they mean.
  */
 const MOVES: Move[] = [
   {
-    action: 'start',
+    kind: 'start',
     from: ['triaged'],
     to: 'in_progress',
-    kind: 'status_changed',
+    event: 'status_changed',
     note: 'optional',
     fits: always,
     by: triager,
   },
   {
-    action: 'close',
+    kind: 'close',
     from: ['triaged', 'in_progress'],
     to: 'closed',
-    kind: 'closed',
+    event: 'closed',
     note: 'required',
     fits: (incident) => !needsSignOff(incident),
     by: triager,
   },
   {
     // In place of closing: the note is the closure summary being proposed.
-    action: 'request_sign_off',
+    kind: 'request_sign_off',
     from: ['triaged', 'in_progress'],
     to: 'awaiting_sign_off',
-    kind: 'sign_off_requested',
+    event: 'sign_off_requested',
     note: 'required',
     fits: needsSignOff,
     by: triager,
   },
   {
-    action: 'sign_off',
+    kind: 'sign_off',
     from: ['awaiting_sign_off'],
     to: 'closed',
-    kind: 'signed_off',
+    event: 'signed_off',
     note: 'optional',
     fits: always,
     by: secondPerson,
   },
   {
-    action: 'send_back',
+    kind: 'send_back',
     from: ['awaiting_sign_off'],
     to: 'in_progress',
-    kind: 'sent_back',
+    event: 'sent_back',
     note: 'required',
     fits: always,
     by: secondPerson,
   },
   {
-    // The request is taken back: by whoever made it, or by a triager who is
-    // not in a position to judge it as the second person.
-    action: 'withdraw',
+    // The request is taken back, by whoever made it or by anyone who may
+    // triage the incident. Not a judgement on the closure, unlike `send_back`.
+    kind: 'withdraw',
     from: ['awaiting_sign_off'],
     to: 'in_progress',
-    kind: 'status_changed',
+    event: 'status_changed',
     note: 'required',
     fits: always,
-    by: (caller) =>
-      caller.isRequester || (caller.canTriage && !caller.canSignOff),
+    by: (caller) => caller.isRequester || caller.canTriage,
   },
   {
     // A serious report cannot be set aside: its harm level has to be lowered
     // at triage first, which leaves a trace of who decided so.
-    action: 'reject',
+    kind: 'reject',
     from: ['new'],
     to: 'rejected',
-    kind: 'rejected',
+    event: 'rejected',
     note: 'required',
     fits: (incident) => !isSerious(incident),
     by: triager,
   },
   {
-    action: 'reopen',
+    kind: 'reopen',
     from: ['closed', 'rejected'],
     to: 'in_progress',
-    kind: 'reopened',
+    event: 'reopened',
     note: 'required',
     fits: always,
     by: triager,
@@ -188,34 +194,47 @@ export const hasSay = (incident: Standing, caller: Caller) =>
 
 export type Refusal =
   | 'invalid_transition'
+  | 'kind_required'
   | 'serious_cannot_be_rejected'
   | 'sign_off_required'
+  | 'missing_triage_permission'
   | 'missing_sign_off_permission'
   | 'same_person';
 
 /**
  * The move that takes this incident to `to` for this person, or why there is
  * none. Assumes `hasSay()`.
+ *
+ * `kind` says which move is meant. It may be left out where only one move
+ * leads from the incident's status to `to`; where two do, it must be given.
+ * When given it must be that of a move that leads there: one that does not
+ * means the caller was looking at an incident in another status.
  */
 export function chooseMove(
   incident: Standing,
   to: IncidentStatus,
   caller: Caller,
+  kind?: MoveKind,
 ): Move | Refusal {
-  const possible = MOVES.filter(
+  const leading = MOVES.filter(
     (m) => m.to === to && m.from.includes(incident.status),
   );
-  if (possible.length === 0) return 'invalid_transition';
-  const fitting = possible.filter((m) => m.fits(incident));
-  if (fitting.length === 0) {
+  if (leading.length > 1 && !kind) return 'kind_required';
+  const meant = kind ? leading.filter((m) => m.kind === kind) : leading;
+  // At most one is left: no two moves share a status, a target and a kind.
+  const move = meant.find((m) => m.fits(incident));
+  if (!move) {
+    if (meant.length === 0) return 'invalid_transition';
     if (to === 'rejected') return 'serious_cannot_be_rejected';
     // Closing outright what needs a second person.
     if (to === 'closed') return 'sign_off_required';
     return 'invalid_transition';
   }
-  const allowed = fitting.find((m) => m.by(caller));
-  if (allowed) return allowed;
-  // Only the second person's moves can be open to some and not to others
-  // who have a say: without the right, or with it but having asked.
+  if (move.by(caller)) return move;
+  // Has a say, but not this one. A decision for the second person: without
+  // the right, or with it but having asked. Anything else is for a triager.
+  if (move.kind !== 'sign_off' && move.kind !== 'send_back') {
+    return 'missing_triage_permission';
+  }
   return caller.canSignOff ? 'same_person' : 'missing_sign_off_permission';
 }

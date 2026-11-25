@@ -129,6 +129,18 @@ Applies to an incident that is sentinel or whose harm level is death (below:
   waits.
 - An incident that does not need sign-off closes as today.
 - `moves` on `GET /incidents/:id` reflects all of this for the caller.
+  > **Added while building (API engineer, section 3, asked for by the web
+  > engineer): every move has a `kind`.** Sending back and withdrawing both
+  > lead to `in_progress`, and someone who may sign off and triage may do
+  > either, so `to` alone does not say which is meant. Each entry of `moves`
+  > is `{ to, noteRequired, kind }`, with `kind` one of `start`, `close`,
+  > `reject`, `reopen`, `request_sign_off`, `sign_off`, `send_back`,
+  > `withdraw`. `POST /incidents/:id/status` takes an optional `kind`: from
+  > `awaiting_sign_off` to `in_progress` it is required (400 `kind_required`),
+  > elsewhere it is checked when sent (409 `invalid_transition` if no move of
+  > that kind leads there). A withdrawal is written to the timeline as
+  > `status_changed` with `details.withdrawn: true`; no fourth event kind was
+  > added.
 - New event kinds: `sign_off_requested`, `signed_off`, `sent_back`. All
   visible to the reporter except the notes of `sent_back`.
 - `awaiting_sign_off` counts as open in the summary.

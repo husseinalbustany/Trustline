@@ -894,6 +894,10 @@ describe('incident reporting', () => {
         'pageSize=0',
         'sort=asc',
         'status=new&status=closed',
+        'open=yes',
+        'open=1',
+        'serious=yes',
+        'open=true&open=false',
       ]) {
         await http()
           .get(`/incidents?${query}`)
@@ -1601,6 +1605,139 @@ describe('incident reporting', () => {
     });
   });
 
+  describe('the lists behind the summary', () => {
+    const OPEN = ['new', 'triaged', 'in_progress', 'awaiting_sign_off'];
+    type Item = {
+      id: string;
+      status: string;
+      harmLevel: string;
+      isSentinel: boolean;
+      assignedToMe: boolean;
+    };
+    const find = async (cookie: string, query: string) => {
+      const res = await http()
+        .get(`/incidents?pageSize=100${query}`)
+        .set('Cookie', cookie)
+        .expect(200);
+      return res.body as { total: number; items: Item[] };
+    };
+    const isSerious = (i: Item) =>
+      i.isSentinel || ['severe', 'death'].includes(i.harmLevel);
+    let waiting: string; // a sentinel event awaiting sign-off, assigned
+    let ended: string; // a severe incident, closed, assigned to the same
+    let flagged: string; // a sentinel event whose harm was only mild
+
+    beforeAll(async () => {
+      // So that every filter has something to keep and something to drop:
+      // serious and open, serious and closed, both assigned to one person.
+      waiting = (await report(reporter, { harmLevel: 'severe' })).id;
+      await triage(quality.cookie, waiting, {
+        harmLevel: 'severe',
+        isSentinel: true,
+        assignedTo: labTriager.id,
+      }).expect(200);
+      await move(quality.cookie, waiting, 'awaiting_sign_off', 'Done.').expect(
+        200,
+      );
+      ended = (await report(reporter, { harmLevel: 'severe' })).id;
+      await triage(quality.cookie, ended, {
+        harmLevel: 'severe',
+        assignedTo: labTriager.id,
+      }).expect(200);
+      await move(quality.cookie, ended, 'closed', 'Done.').expect(200);
+      flagged = (await report(reporter, { harmLevel: 'mild' })).id;
+      await triage(quality.cookie, flagged, {
+        harmLevel: 'mild',
+        isSentinel: true,
+      }).expect(200);
+    });
+
+    it('show exactly the incidents each count counted, for each kind of caller', async () => {
+      for (const who of [
+        reporter,
+        wardViewer,
+        labTriager,
+        allViewer,
+        quality,
+      ]) {
+        const summary = await summaryOf(who.cookie);
+        const open = await find(who.cookie, '&open=true');
+        expect(open.total).toBe(summary.open);
+        expect(open.items).toHaveLength(open.total);
+        expect(open.items.every((i) => OPEN.includes(i.status))).toBe(true);
+
+        const serious = await find(who.cookie, '&open=true&serious=true');
+        expect(serious.total).toBe(summary.serious);
+        expect(serious.items.every(isSerious)).toBe(true);
+        expect(serious.items.every((i) => OPEN.includes(i.status))).toBe(true);
+
+        const mine = await find(who.cookie, '&open=true&assignedToMe=true');
+        expect(mine.total).toBe(summary.assignedToMe);
+        expect(mine.items.every((i) => i.assignedToMe)).toBe(true);
+
+        expect((await find(who.cookie, '&status=new')).total).toBe(
+          summary.awaitingTriage,
+        );
+      }
+    });
+
+    it('keep what is open and drop what has ended, awaiting sign-off included', async () => {
+      const open = await find(
+        labTriager.cookie,
+        '&open=true&assignedToMe=true',
+      );
+      expect(open.items.map((i) => i.id)).toContain(waiting);
+      expect(open.items.map((i) => i.id)).not.toContain(ended);
+      expect((await summaryOf(labTriager.cookie)).assignedToMe).toBe(
+        open.total,
+      );
+      // Without "open", what is assigned to them includes what has ended.
+      const all = await find(labTriager.cookie, '&assignedToMe=true');
+      expect(all.items.map((i) => i.id)).toEqual(
+        expect.arrayContaining([waiting, ended]),
+      );
+      expect(all.total).toBeGreaterThan(open.total);
+    });
+
+    it('find the serious ones whatever their status, unless asked for the open ones', async () => {
+      const serious = await find(quality.cookie, '&serious=true');
+      // Serious by its harm or by being a sentinel event, either is enough.
+      expect(serious.items.map((i) => i.id)).toEqual(
+        expect.arrayContaining([waiting, ended, flagged]),
+      );
+      expect(serious.items.every(isSerious)).toBe(true);
+      const everything = await find(quality.cookie, '');
+      expect(serious.total).toBe(everything.items.filter(isSerious).length);
+      expect(serious.total).toBeLessThan(everything.total);
+      // A filter left at false is a filter not set.
+      expect(
+        (await find(quality.cookie, '&open=false&serious=false')).total,
+      ).toBe(everything.total);
+      // Combined with another filter, both hold.
+      const closedSerious = await find(
+        quality.cookie,
+        '&serious=true&status=closed',
+      );
+      expect(closedSerious.items.map((i) => i.id)).toContain(ended);
+      expect(closedSerious.items.map((i) => i.id)).not.toContain(waiting);
+      expect(
+        (await find(quality.cookie, '&open=true&status=closed')).total,
+      ).toBe(0);
+    });
+
+    it('stay inside what the caller may see', async () => {
+      // Someone with no rights gets nothing, whatever they ask for.
+      for (const query of ['&open=true', '&serious=true']) {
+        expect(await listOf(noRoles.cookie, query)).toEqual({
+          items: [],
+          total: 0,
+        });
+      }
+      const theirs = await find(b.cookie, '&open=true');
+      expect(theirs.items.map((i) => i.id)).not.toContain(waiting);
+    });
+  });
+
   describe('the audit log', () => {
     it('records every change, without any of the free text', async () => {
       const { id } = await report(reporter, {
@@ -1722,15 +1859,15 @@ describe('incident reporting', () => {
       const mild = await report(reporter);
       const offered = await open(quality.cookie, mild.id).expect(200);
       expect(offered.body.moves).toEqual([
-        { to: 'rejected', noteRequired: true, action: 'reject' },
+        { to: 'rejected', noteRequired: true, kind: 'reject' },
       ]);
       // Nothing is offered to someone who may not triage.
       const theirs = await open(reporter.cookie, mild.id).expect(200);
       expect(theirs.body).toMatchObject({ moves: [], canRetriage: false });
       const triaged = await triage(quality.cookie, mild.id).expect(200);
       expect(triaged.body.moves).toEqual([
-        { to: 'in_progress', noteRequired: false, action: 'start' },
-        { to: 'closed', noteRequired: true, action: 'close' },
+        { to: 'in_progress', noteRequired: false, kind: 'start' },
+        { to: 'closed', noteRequired: true, kind: 'close' },
       ]);
     });
 
@@ -1923,6 +2060,25 @@ describe('incident reporting', () => {
       ]);
       expect(await ids(`&reference=inc-${year}-`)).toContain(hazard.id);
       expect(await ids(`&reference=${elsewhere.reference}`)).toEqual([]);
+      // Digits alone are a number: they also match the end of a reference.
+      const digits = death.reference.slice(-5);
+      const number = String(Number(digits));
+      for (const typed of [digits, number, digits.slice(1)]) {
+        const found = await listOf(finder.cookie, `&reference=${typed}`);
+        expect(found.items.map((i) => i.id)).toContain(death.id);
+        expect(found.items.every((i) => i.reference.endsWith(typed))).toBe(
+          true,
+        );
+        expect(found.total).toBe(found.items.length);
+      }
+      // Still inside what they may see, and still a prefix for anything else.
+      expect(await ids(`&reference=${elsewhere.reference.slice(-5)}`)).toEqual(
+        [],
+      );
+      expect(await ids(`&reference=${digits}x`)).toEqual([]);
+      expect(await ids(`&reference=-${digits}`)).toEqual([]);
+      expect(await ids(`&reference=${year}`)).toEqual([]);
+      expect(await ids('&reference=99999999')).toEqual([]);
       const today = new Date().toISOString().slice(0, 10);
       expect(await ids(`&from=${today}&to=${today}`)).toContain(death.id);
       expect(await ids('&to=2000-01-01')).toEqual([]);
@@ -1948,6 +2104,8 @@ describe('incident reporting', () => {
         'sentinel=1',
         'from=yesterday',
         'reference=%25',
+        'reference=4_2',
+        `reference=${'4'.repeat(21)}`,
       ]) {
         await http()
           .get(`/incidents?${query}`)

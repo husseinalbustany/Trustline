@@ -24,6 +24,7 @@ import {
   type AuthedRequest,
 } from '../identity/session.guard.js';
 import { IncidentsService } from './incidents.service.js';
+import { MOVE_KINDS } from './status.js';
 import {
   optionalText,
   parseReport,
@@ -53,13 +54,18 @@ const listSchema = z.preprocess(
     // Days, both included, on the date of reporting (UTC).
     from: z.iso.date().optional(),
     to: z.iso.date().optional(),
-    // The start of a reference, or all of it: "inc-2026-0004".
+    // The start of a reference, or all of it: "inc-2026-0004". Digits alone
+    // are also taken as the end of one: "42".
     reference: z
       .string()
       .trim()
       .max(20)
       .regex(/^[A-Za-z0-9-]+$/)
       .optional(),
+    // What the summary counts as open, and as serious, so that each count
+    // on the dashboard can link to exactly the incidents it counted.
+    open: flag.default(false),
+    serious: flag.default(false),
     assignedToMe: flag.default(false),
     mine: flag.default(false),
     sort: z.enum(['newest', 'oldest', 'harm']).default('newest'),
@@ -82,6 +88,9 @@ const triageSchema = z.strictObject({
 
 const statusSchema = z.strictObject({
   to: z.enum(incidentStatus.enumValues),
+  // Which move is meant, as `moves` on the incident names it. Needed only
+  // where two moves lead to the same status; checked whenever it is sent.
+  kind: z.enum(MOVE_KINDS).optional(),
   note: optionalText(2000),
   revision,
 });
@@ -182,13 +191,14 @@ export class IncidentsController {
     const incidentId = this.parseId(id);
     const parsed = statusSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException();
-    const { to, note, revision } = parsed.data;
+    const { to, kind, note, revision } = parsed.data;
     return this.incidents.changeStatus(
       req.auth,
       incidentId,
       to,
       note,
       revision,
+      kind,
     );
   }
 
