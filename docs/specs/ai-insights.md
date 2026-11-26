@@ -182,21 +182,36 @@ said plainly at onboarding and in sales.
   similar cases.
 - Use is metered through `ai_usage` (see `modules-and-subscriptions.md`).
 
-## Decisions needed
+## Decisions taken
 
-1. **Which suggestions first.** Recommended: the three on incidents (triage
-   help, duplicates, closure summary), because their data exists.
-2. **Root cause: how far.** Hypotheses with what would confirm or rule out
-   each (recommended), or not at all until investigators ask for more.
-3. **Automatic on arrival.** On by default once a client enables AI, or
-   opt-in per client (recommended: opt-in).
-4. **Who sees suggestions.** Everyone who handles a record, or the quality
-   office first.
-5. **Evidence from other clients.** This design forbids it. Shared,
-   anonymised learning across clients ("organizations like yours usually…")
-   is valuable and a different contract and privacy question; say if you want
-   it prepared separately.
-6. **Regulated advice.** In healthcare, software that suggests a cause or an
-   action can touch medical-device rules in some countries. Needs a legal
-   view before it is sold to hospitals.
-7. **The AI service and where it runs**, as for drafting.
+1. **First suggestions:** the three on incidents: triage help, duplicate
+   detection, and the draft closure summary.
+2. **Root cause:** offered as hypotheses to test, each with what would
+   confirm it and what would rule it out; never a single answer.
+3. **Running on its own:** each client opts in. The scheduled digest and
+   trend check can run daily, weekly or monthly, as the client sets.
+4. **Learning stays inside the client.** Suggestions draw on that client's
+   own data only. Nothing is learnt from, or shared with, another client.
+5. **No medical suggestions.** The assistant does not suggest anything
+   clinical: no diagnosis, no treatment, no clinical cause, no clinical
+   action. Where a record is about clinical care it keeps to organization and
+   process (staffing, handover, equipment, the procedure that applies) or
+   suggests nothing. A legal view is still wanted before sale to healthcare
+   clients, but the product does not rely on it: this rule holds everywhere.
+6. **Always marked as a suggestion.** Every place a suggestion appears
+   carries the same plain notice, in the user's language, that cannot be
+   switched off or styled away:
+
+   > This is a suggestion from the AI assistant, based on the records listed
+   > below. It can be wrong or incomplete. Check it and investigate further
+   > before you decide.
+
+   The notice is repeated in anything exported or printed that contains a
+   suggestion, and a text that began as a suggestion says so in its history
+   after a person has taken it over.
+
+## Still to decide
+
+- **Who sees suggestions:** everyone who handles a record, or the quality
+  office first.
+- **The AI service and where it runs**, as for drafting.
