@@ -64,6 +64,52 @@ incidents that need a medical decision get facts on request (status, dates,
 who is handling) but no suggestion, unless the client has activated that
 option and signed the agreement.
 
+## Asking for help with a problem
+
+The user can also bring a problem, not only a question: "We keep getting
+late deliveries signed off without a check. What should I do, and how?"
+
+1. **It asks before it answers**: where and how often it happens, what the
+   current way of working is, what has been tried. A few questions, each
+   with a reason.
+2. **It looks at what the client already has**, within what the user may
+   see: the procedure that covers this step (or the fact that none does),
+   related incidents and how they ended, open risks and actions, and whether
+   the people involved were trained.
+3. **It proposes options, not one answer.** Each says what it would change,
+   why, how much effort it is, and what it rests on. Typical options:
+   - a new or revised **policy** (the rule);
+   - a new or revised **procedure** (who does what, in which order);
+   - a **work instruction** or checklist for one task (a new kind of
+     document: one page, for the place where the work is done);
+   - **training** or a short awareness message for the people concerned;
+   - an entry in the **risk register**, or a **corrective action** with an
+     owner and a date;
+   - reporting it as an **incident or hazard**, if that has not been done.
+   It says which options are strong and which are weak on their own:
+   changing how the work is set up is stronger than a reminder or training
+   alone.
+4. **It explains how**: the steps to carry out the chosen option in
+   Trustline, and who has to approve.
+5. **It can start the work**, on the user's confirmation: open a draft
+   document with the drafting assistant (`ai-policy-drafting.md`), with this
+   conversation as its starting point; open a draft training, action or risk
+   for the user to complete. Starting a draft is an everyday action. The
+   draft then goes through the normal review, approval and signature by
+   people.
+
+Limits:
+
+- It advises on how the organization works: rules, steps, responsibilities,
+  training. It does not give legal, medical or engineering advice, and says
+  so when a problem needs a specialist.
+- Its options are suggestions and carry the same notice as every other
+  suggestion: check it and look further before deciding.
+- If the problem is really a safety event, it says so first and offers to
+  report it.
+- Where a module is not switched on for the client (for example training),
+  it may still name that kind of option but cannot start it.
+
 ## Deciding and doing
 
 The user takes the decision; the assistant carries it out. Nothing happens
@@ -204,24 +250,32 @@ Suggested order:
 - User preferences: voice on or off, read aloud or not.
 - Use is metered through `ai_usage`.
 
-## Decisions needed
+## Decisions taken
 
-1. **What "take some decisions" covers.** Is the three-group split right? In
-   particular: may triage and closing an ordinary incident be done through
-   the assistant with on-screen confirmation (as proposed), or only everyday
-   actions at first (safer)?
-2. **Signatures.** This design keeps every signature out of the assistant.
-   Confirm.
-3. **Where it starts.** Recommended: questions about incidents by chat, then
-   reporting by voice.
-4. **Who gets it.** Everyone, or handlers and managers first, with voice
-   reporting for everyone.
-5. **Spoken answers.** Off by default on shared devices, as proposed, or
-   left to each client.
-6. **How long conversations are kept**, and whether a client's administrator
-   may read staff conversations (recommended: no; only the audit trail of
-   actions).
-7. **Arabic.** Which dialects matter for the first clients, so they can be
-   tested.
-8. **The AI and speech services, and where they run**, as for the other AI
-   features.
+1. **Decisions through the assistant: the safer start.** Only everyday
+   actions at first (comment, assign a person, set a reminder, start a
+   report or a draft). Triage, status changes, scores and closing stay on
+   the screens until this has been used for a while and is reviewed.
+2. **Signatures stay out of the assistant.** Confirmed.
+3. **Who gets it: managers only at first**, not every member of staff.
+   "Manager" here means a user holding a new permission, "use the
+   assistant", which each client grants to its managers and quality staff.
+4. **A client's administrator cannot read staff conversations.** Only the
+   audit trail of actions taken through the assistant is visible to them.
+5. **Arabic as spoken in Lebanon, Saudi Arabia, Kuwait and the United Arab
+   Emirates** is what voice must be tested with, including speech mixed
+   with English or French terms. Each needs native testers before it is
+   offered in that country.
+6. **Start with** questions about incidents by chat, then reporting by
+   voice (the recommended order; no objection raised).
+
+## Still to decide
+
+- **Voice reporting of an incident.** With the assistant limited to
+  managers, should every member of staff still be able to report by voice?
+  It is a different use (filling in a form, not a conversation about the
+  organization's data) and is where voice helps most.
+- **Spoken answers** off by default on shared devices, as proposed, or left
+  to each client.
+- **How long conversations are kept.**
+- **The AI and speech services, and where they run.**
