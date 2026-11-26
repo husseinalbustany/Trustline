@@ -71,7 +71,7 @@ A plan sets:
 | Modules included | Policies only; training only; everything |
 | Limits | Named users (reporters free or counted), sites, storage, public reports a month |
 | AI allowance | Units a month; see below |
-| Extras | Single sign-on, number of languages, dedicated hosting, API access, support level |
+| Extras | Single sign-on, number of languages, dedicated hosting, API access, support level, AI suggestions on clinical incidents (needs a signed agreement; see `ai-insights.md`) |
 | Term and price | Monthly or yearly; price per user, per site or flat |
 
 A client's **subscription** is its plan plus what was agreed for that client:

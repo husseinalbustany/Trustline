@@ -192,23 +192,44 @@ said plainly at onboarding and in sales.
    trend check can run daily, weekly or monthly, as the client sets.
 4. **Learning stays inside the client.** Suggestions draw on that client's
    own data only. Nothing is learnt from, or shared with, another client.
-5. **No suggestions on incidents that need a medical decision, for now.**
-   Such an incident gets no AI suggestion of any kind: no triage help, no
-   cause, no action, no closure summary. The panel says that the assistant
-   is not used on this incident, so its absence is not taken for "nothing to
-   suggest".
+5. **Suggestions on incidents that need a medical decision are off unless
+   the client activates them and signs an agreement.**
+   - **Off by default.** Such an incident gets no AI suggestion of any kind:
+     no triage help, no cause, no action, no closure summary. The panel says
+     that the assistant is not used on this incident, so its absence is not
+     taken for "nothing to suggest". These incidents are also left out of
+     what the assistant reads when it looks for similar cases and trends.
    - **How an incident is known to need one:** each client marks which of
      its incident categories are clinical, and whoever triages can mark any
      single incident as needing a medical decision. Either is enough. A
-     report in a clinical category is excluded from the moment it arrives,
-     before anyone has triaged it; when in doubt the incident is excluded.
-   - Such incidents are also left out of what the assistant reads when it
-     looks for similar cases, clusters and trends.
-   - **Later this may change.** If suggestions are ever offered on these
-     incidents, the client is told first, in writing and in the product, that
-     a suggestion is a draft, that the decision must be reviewed by a
-     specialist in the field, and that the final approval is signed by a
-     person.
+     report in a clinical category is treated this way from the moment it
+     arrives; when in doubt the incident is treated as needing one.
+   - **Activating the option.** A client that wants suggestions on these
+     incidents switches on "AI suggestions on clinical incidents" in its
+     settings. The switch does nothing until an agreement is signed:
+     - The agreement states that a suggestion is a draft and not medical
+       advice, that every such suggestion must be reviewed by a specialist
+       in the field, that the final approval is signed by a person, and that
+       the client remains responsible for its decisions.
+     - It is accepted in the product by a person the client has authorised
+       to commit it (a new permission, held by nobody until granted), who
+       re-enters their password. Trustline staff then confirm in the admin
+       portal that the signed contract addendum is on file. Both steps are
+       needed, and both are in the audit trail with name and time.
+     - The version of the agreement accepted is kept. If its text changes,
+       the option pauses until the new version is accepted.
+     - The client can switch the option off at any time, with immediate
+       effect; Trustline staff can suspend it.
+     - It is a separate entitlement on the subscription, so a plan can
+       include or exclude it.
+   - **When it is on,** suggestions on these incidents carry a second notice
+     beside the standard one: "This incident needs a medical decision. This
+     is a draft only: it must be reviewed by a specialist before it is
+     used." Using such a suggestion asks the person to confirm that a
+     specialist has reviewed it, and records who.
+   - **Not before a legal view.** Offering this option at all needs the
+     legal check on medical-device rules in each country where it is sold;
+     until that is done the switch is not shown to clients.
 6. **A person signs the final approval, everywhere.** Whatever the assistant
    drafted or suggested, closing an incident, approving an investigation
    report, approving an action and approving a document are done and signed
