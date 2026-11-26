@@ -269,12 +269,12 @@ Suggested order:
 6. **Start with** questions about incidents by chat, then reporting by
    voice (the recommended order; no objection raised).
 
+7. **Voice reporting by all staff: not now.** Reporting an incident by
+   voice is, like the rest of the assistant, for managers only at first.
+   Opening it to every member of staff is left for later.
+
 ## Still to decide
 
-- **Voice reporting of an incident.** With the assistant limited to
-  managers, should every member of staff still be able to report by voice?
-  It is a different use (filling in a form, not a conversation about the
-  organization's data) and is where voice helps most.
 - **Spoken answers** off by default on shared devices, as proposed, or left
   to each client.
 - **How long conversations are kept.**
