@@ -192,13 +192,28 @@ said plainly at onboarding and in sales.
    trend check can run daily, weekly or monthly, as the client sets.
 4. **Learning stays inside the client.** Suggestions draw on that client's
    own data only. Nothing is learnt from, or shared with, another client.
-5. **No medical suggestions.** The assistant does not suggest anything
-   clinical: no diagnosis, no treatment, no clinical cause, no clinical
-   action. Where a record is about clinical care it keeps to organization and
-   process (staffing, handover, equipment, the procedure that applies) or
-   suggests nothing. A legal view is still wanted before sale to healthcare
-   clients, but the product does not rely on it: this rule holds everywhere.
-6. **Always marked as a suggestion.** Every place a suggestion appears
+5. **No suggestions on incidents that need a medical decision, for now.**
+   Such an incident gets no AI suggestion of any kind: no triage help, no
+   cause, no action, no closure summary. The panel says that the assistant
+   is not used on this incident, so its absence is not taken for "nothing to
+   suggest".
+   - **How an incident is known to need one:** each client marks which of
+     its incident categories are clinical, and whoever triages can mark any
+     single incident as needing a medical decision. Either is enough. A
+     report in a clinical category is excluded from the moment it arrives,
+     before anyone has triaged it; when in doubt the incident is excluded.
+   - Such incidents are also left out of what the assistant reads when it
+     looks for similar cases, clusters and trends.
+   - **Later this may change.** If suggestions are ever offered on these
+     incidents, the client is told first, in writing and in the product, that
+     a suggestion is a draft, that the decision must be reviewed by a
+     specialist in the field, and that the final approval is signed by a
+     person.
+6. **A person signs the final approval, everywhere.** Whatever the assistant
+   drafted or suggested, closing an incident, approving an investigation
+   report, approving an action and approving a document are done and signed
+   by a named person. The assistant can never be that signer.
+7. **Always marked as a suggestion.** Every place a suggestion appears
    carries the same plain notice, in the user's language, that cannot be
    switched off or styled away:
 
