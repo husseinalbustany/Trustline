@@ -1,5 +1,9 @@
 # AI-assisted policy and procedure drafting: preparation
 
+Trustline's clients are not only hospitals. This feature is written for any
+organization: a hospital, a factory, a logistics company, a school. Examples
+below are deliberately general.
+
 Status: preparation only. Nothing here is built. This document says what the
 feature is, what has to exist before it, and what must be decided first.
 
@@ -7,7 +11,7 @@ feature is, what has to exist before it, and what must be decided first.
 
 When someone creates a new policy or procedure, they tell an assistant what
 they need. The assistant asks the questions it needs answered, then writes a
-draft. Two things make the draft belong to the hospital and not read as
+draft. Two things make the draft belong to the client and not read as
 generic text:
 
 1. **A profile for each client**: what kind of organization it is, so the
@@ -21,8 +25,7 @@ generic text:
 1. **Start.** On "New policy" or "New procedure" the user chooses to write it
    themselves or to draft it with the assistant.
 2. **Say what is needed**, in their own words and their own language: "a
-   procedure for checking the crash cart every shift in the emergency
-   department".
+   procedure for the monthly inspection of fire extinguishers at every site".
 3. **Answer questions.** The assistant asks only what it cannot work out from
    the profile and the request, a few at a time, each with a reason. Typical
    ones: who it applies to, who is responsible for each step, how often, what
@@ -50,18 +53,18 @@ draft, so that the user is not asked the same things each time.
 
 | Part | What it holds | Why the assistant needs it |
 |---|---|---|
-| Identity | Legal and trading name in each language, type (general hospital, specialist centre, clinic group, other sector), ownership, size (beds, staff, sites) | Tone, scale, what "department" means here |
-| Services | Clinical and support services offered and not offered | Not writing an ICU step for a hospital without an ICU |
+| Identity | Legal and trading name in each language, sector and type (for example a hospital, a factory, a logistics company, a school), ownership, size (staff, sites, and what the sector counts: beds, production lines, vehicles) | Tone, scale, what "department" means here |
+| Services | What the organization does and does not do | Not writing a step for a unit or activity the client does not have |
 | Structure | Taken from the organization tree already in Trustline; committees and what each approves | Who is responsible, who approves |
-| Roles and titles | The job titles the client actually uses, and which Trustline role each maps to | "Charge nurse" and not "shift supervisor" if that is what they say |
-| Standards | Accreditation standard and edition (JCI, CBAHI, other), national regulations, licensing body | Which requirements a document must meet and cite |
+| Roles and titles | The job titles the client actually uses, and which Trustline role each maps to | The client's own titles, not generic ones |
+| Standards | Standards followed and their edition (ISO 9001, ISO 45001, JCI, CBAHI, sector rules), national regulations, licensing body | Which requirements a document must meet and cite |
 | Languages | Document languages, which one is authoritative when they differ | Language of the draft, bilingual layout |
 | Terms | A glossary of preferred and forbidden terms, abbreviations allowed | Consistent wording across documents |
 | House rules | Review period, who may own a document, numbering scheme, retention | Filling the document's control block correctly |
-| Related systems | Names of the systems staff use (the HIS, the pharmacy system) | "Record it in <their system>" and not "in the system" |
+| Related systems | Names of the systems staff use (the ERP, the maintenance system, the hospital information system) | "Record it in <their system>" and not "in the system" |
 
-The profile holds facts about the organization, never about patients or
-individual staff.
+The profile holds facts about the organization, never about individual
+people: no customers, patients or named staff.
 
 ## The document design
 
@@ -83,10 +86,10 @@ required. A common starting set, which each client adjusts:
   record, exceptions and escalation, references, revision history.
 
 **The writing rules.** What the assistant must follow and a human author is
-reminded of: voice and tense ("the nurse checks", not "should be checked"),
+reminded of: voice and tense ("the supervisor checks", not "should be checked"),
 sentence length, how steps are written, how a requirement is distinguished
 from guidance (must, should, may), how standards are cited, which terms from
-the glossary apply, and what never appears (patient names, staff names,
+the glossary apply, and what never appears (names of customers, patients or staff,
 brand names unless necessary).
 
 The design is what makes the fiftieth document look like the first. It is
@@ -100,10 +103,9 @@ module, not of the assistant.
 | The client profile and design | Every draft | That client's only |
 | The client's own approved documents | Agreeing with what exists, citing related documents, flagging conflicts | That client's only; only documents the user may read |
 | A library of standards requirements | Citing the requirement a section meets | Only texts Trustline has the right to use; see open questions |
-| What the user types in the conversation | The draft | Screened for patient identifiers first |
+| What the user types in the conversation | The draft | Screened for personal identifiers first |
 
-It reads nothing from another client. It reads no incident, patient or
-staff record.
+It reads nothing from another client. It reads no incident record and no record about a person.
 
 ## Safeguards
 
@@ -117,7 +119,7 @@ Trustline is built.
 - **No invented facts.** Where the assistant lacks an answer it leaves a
   marked gap. A citation of a standard must point at a requirement in the
   library; one it cannot find is not written.
-- **Patient details stay out.** Text is screened for identifiers before it
+- **Personal details stay out.** Text is screened for identifiers before it
   leaves Trustline. The profile and design hold none.
 - **Each client chooses.** The feature is off until the client switches it
   on. A client that may not send text to an external service can use a model
@@ -141,7 +143,7 @@ In order:
    numbering, owners, review dates, an approval cycle with signature, a
    library people can search and read, export to PDF. This is already in the
    first-release scope of the business document.
-2. **Client profile.** New screens in the hospital's settings and in the
+2. **Client profile.** New screens in the client's settings and in the
    admin portal.
 3. **Document design.** Template, structure and writing rules per client,
    used by the editor and the PDF export.
@@ -175,9 +177,9 @@ which is shared and read-only.
 ## Decisions needed before building
 
 1. **Which AI service, and where it runs.** A hosted model in a region that
-   satisfies each pilot's data rules, a model the client hosts, or both. This
-   decides cost, quality in Arabic, and whether the Saudi pilot can use it.
-2. **Standards texts.** JCI and CBAHI standards are copyrighted. Either
+   satisfies each client's data rules, a model the client hosts, or both. This
+   decides cost, quality in Arabic, and whether a client in Saudi Arabia can use it.
+2. **Standards texts.** ISO, JCI and CBAHI standards are copyrighted. Either
    Trustline licenses them, or each client loads the edition it has bought,
    or drafts cite a requirement by number only, without its text.
 3. **Languages of a draft.** One language then translate, or both at once;
