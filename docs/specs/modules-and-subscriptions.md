@@ -35,7 +35,7 @@ off on its own.
 | **Policies and procedures** | Library, versions, approval and signature, acknowledgement, the client's document design | Core |
 | **Risk management** | Registers, scoring, controls, reviews | Core; links to incidents when both are on |
 | **Training and awareness** | Catalog, matrix, sessions, attendance, quizzes, certificates | Core; links to policies when both are on |
-| **AI assistant** (add-on) | Drafting policies and procedures first; later triage help, quiz questions, summaries | The module it assists |
+| **AI assistant** (add-on) | Drafting policies and procedures (`ai-policy-drafting.md`); insights and suggestions on incidents, investigations, actions and risks (`ai-insights.md`) | The module it assists |
 
 Two rules make "only policies" or "only training" work:
 
