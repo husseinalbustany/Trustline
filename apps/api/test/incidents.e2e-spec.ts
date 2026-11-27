@@ -373,7 +373,9 @@ describe('incident reporting', () => {
         'actions.manage',
         'incidents.report',
         'incidents.view',
+        'policies.approve',
         'policies.view',
+        'policies.view_all',
         'reports.view',
       ]);
       // The department and the unit beneath it, not its sibling or parent.

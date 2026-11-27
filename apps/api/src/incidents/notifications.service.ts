@@ -1,8 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { and, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import { incidents, notifications } from '../database/schema.js';
+import { ApprovalEngine } from '../approvals/approval-engine.service.js';
+import { documents, incidents, notifications } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
 import type { AuthContext } from '../identity/auth.service.js';
+import {
+  viewerOf,
+  visible as documentVisible,
+} from '../policies/visibility.js';
 import { kindsInUse } from './notifier.js';
 import { visibleTo } from './visibility.js';
 
@@ -13,7 +18,10 @@ import { visibleTo } from './visibility.js';
  */
 @Injectable()
 export class NotificationsService {
-  constructor(private readonly tenantDb: TenantDb) {}
+  constructor(
+    private readonly tenantDb: TenantDb,
+    private readonly engine: ApprovalEngine,
+  ) {}
 
   /**
    * Whose they are: the caller's, and with `unread`, those not yet read. Of
@@ -34,6 +42,12 @@ export class NotificationsService {
    * caller can still open it: someone taken off an incident, or whose role
    * changed, keeps the notification and is not given the incident. One
    * about the hospital itself (`public_form_paused`) has `incident: null`.
+   *
+   * One about a controlled document (the policies module) has
+   * `document: { id, number, title, canOpen }` instead, and the title only
+   * while the caller can open the document (policies/visibility.ts): a
+   * notification never tells anyone what a document they cannot see is
+   * called.
    */
   list(
     auth: AuthContext,
@@ -45,6 +59,10 @@ export class NotificationsService {
         .select({ total: count() })
         .from(notifications)
         .where(where);
+      // Only asked when documents can be among them.
+      const seesDocument = auth.tenant.modules.includes('policies')
+        ? documentVisible(await viewerOf(tx, auth, this.engine), this.engine)
+        : sql`false`;
       const rows = await tx
         .select({
           id: notifications.id,
@@ -54,16 +72,33 @@ export class NotificationsService {
           incidentId: incidents.id,
           reference: incidents.reference,
           canOpen: sql<boolean>`coalesce(${visibleTo(auth)}, false)`,
+          documentId: documents.id,
+          number: documents.number,
+          canOpenDocument: sql<boolean>`(${documents.id} is not null and ${seesDocument})`,
+          documentTitle: sql<Record<
+            string,
+            string
+          > | null>`case when ${documents.id} is not null and ${seesDocument} then ${documents.title} end`,
           data: notifications.data,
         })
         .from(notifications)
         .leftJoin(incidents, eq(incidents.id, notifications.incidentId))
+        .leftJoin(documents, eq(documents.id, notifications.documentId))
         .where(where)
         .orderBy(desc(notifications.createdAt), desc(notifications.id))
         .limit(input.pageSize)
         .offset((input.page - 1) * input.pageSize);
       const items = rows.map(
-        ({ incidentId, reference, canOpen, ...notification }) => ({
+        ({
+          incidentId,
+          reference,
+          canOpen,
+          documentId,
+          number,
+          canOpenDocument,
+          documentTitle,
+          ...notification
+        }) => ({
           id: notification.id,
           kind: notification.kind,
           createdAt: notification.createdAt,
@@ -72,6 +107,15 @@ export class NotificationsService {
             incidentId === null || reference === null
               ? null
               : { id: incidentId, reference, canOpen },
+          document:
+            documentId === null || number === null
+              ? null
+              : {
+                  id: documentId,
+                  number,
+                  title: canOpenDocument ? documentTitle : null,
+                  canOpen: canOpenDocument,
+                },
           data: notification.data,
         }),
       );

@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
 import { listen, setupApp } from './app.setup.js';
 import { DeadlineCheck } from './incidents/deadline-check.service.js';
+import { PolicyCheck } from './policies/policy-check.service.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -18,5 +19,9 @@ async function bootstrap() {
   // the application (a test, a script) runs it. Safe in every API process
   // at once; it stops with the application.
   app.get(DeadlineCheck, { strict: false }).start();
+  // The daily check of the policies module (scheduled publishing, review
+  // and acknowledgement reminders), every fifteen minutes, with the same
+  // safety for several processes.
+  app.get(PolicyCheck, { strict: false }).start();
 }
 await bootstrap();

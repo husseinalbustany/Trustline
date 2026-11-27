@@ -1,0 +1,2011 @@
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { and, asc, desc, eq, inArray, isNull, max, sql } from 'drizzle-orm';
+import {
+  ApprovalEngine,
+  type Run,
+  type RunStep,
+  type SubjectContext,
+} from '../approvals/approval-engine.service.js';
+import { contentHash, SignatureService } from '../approvals/signatures.js';
+import type { Transaction } from '../database/client.js';
+import {
+  documentAcknowledgements,
+  documentAudiences,
+  documentCategories,
+  documentReviews,
+  documents,
+  documentTypes,
+  documentVersions,
+  orgUnits,
+  roles,
+  users,
+  type DocumentContent,
+  type DocumentSection,
+} from '../database/schema.js';
+import { TenantDb } from '../database/tenant-db.service.js';
+import { AuthService, type AuthContext } from '../identity/auth.service.js';
+import { ProvisioningService } from '../identity/provisioning.service.js';
+import { covers } from '../identity/scope.js';
+import { fitsLanguages, type Localized } from '../i18n/locales.js';
+import { addMonths, dayOf, shiftDay } from '../i18n/time-zones.js';
+import { OrgUnitsService } from '../organization/org-units.service.js';
+import {
+  compareVersions,
+  contentSize,
+  languagesOf,
+  markupProblem,
+  missingSections,
+  normalizeSection,
+  SECTION_MAX_CHARS,
+  VERSION_MAX_CHARS,
+} from './content.js';
+import { DocumentNotifier } from './document-notifier.js';
+import { loadDocument, type LoadedDocument } from './document-access.js';
+import type {
+  AudienceInput,
+  CreateInput,
+  EditVersionInput,
+  UpdateInput,
+} from './input.js';
+import { nextDocumentNumber } from './numbering.js';
+import { Publisher } from './publisher.js';
+import { signedVersion } from './signed-content.js';
+import {
+  APPROVE_PERMISSION,
+  userInAudience,
+  viewerOf,
+  type Viewer,
+} from './visibility.js';
+
+export type VersionStatus = (typeof documentVersions.status.enumValues)[number];
+
+/** A version that is still being worked on: at most one per document. */
+export const IN_PROGRESS: VersionStatus[] = ['draft', 'in_review', 'approved'];
+
+/** How far ahead a review counts as due in the library and the summary. */
+export const REVIEW_DUE_DAYS = 30;
+
+const versionFields = {
+  id: documentVersions.id,
+  documentId: documentVersions.documentId,
+  version: documentVersions.version,
+  status: documentVersions.status,
+  sections: documentVersions.sections,
+  content: documentVersions.content,
+  changeSummary: documentVersions.changeSummary,
+  preparedBy: documentVersions.preparedBy,
+  preparedAt: documentVersions.preparedAt,
+  contributors: documentVersions.contributors,
+  effectiveOn: documentVersions.effectiveOn,
+  scheduledBy: documentVersions.scheduledBy,
+  approvedAt: documentVersions.approvedAt,
+  publishedAt: documentVersions.publishedAt,
+  publishedBy: documentVersions.publishedBy,
+  supersededAt: documentVersions.supersededAt,
+  withdrawnAt: documentVersions.withdrawnAt,
+  withdrawnBy: documentVersions.withdrawnBy,
+  acknowledgementRequired: documentVersions.acknowledgementRequired,
+  acknowledgeWithinDays: documentVersions.acknowledgeWithinDays,
+  revision: documentVersions.revision,
+  createdAt: documentVersions.createdAt,
+  updatedAt: documentVersions.updatedAt,
+};
+
+type VersionRow = Pick<
+  typeof documentVersions.$inferSelect,
+  keyof typeof versionFields
+>;
+
+/** Whether the review of an active document is due or past, today. */
+export function reviewState(
+  doc: { status: string; nextReviewOn: string | null },
+  today: string,
+): 'due' | 'overdue' | null {
+  if (doc.status !== 'active' || !doc.nextReviewOn) return null;
+  if (doc.nextReviewOn < today) return 'overdue';
+  if (doc.nextReviewOn <= shiftDay(today, REVIEW_DUE_DAYS)) return 'due';
+  return null;
+}
+
+const refuse = {
+  outsideScope: () => new ForbiddenException({ code: 'outside_scope' }),
+  staleDocument: () => new ConflictException({ code: 'stale_document' }),
+  staleVersion: () => new ConflictException({ code: 'stale_version' }),
+  retired: () => new ConflictException({ code: 'document_retired' }),
+};
+
+/**
+ * Controlled documents and their versions, from the first draft to
+ * retirement: who may see and do what (visibility.ts), the approval of each
+ * version through the approval engine, publishing, acknowledgement and the
+ * periodic review. Every change is audited in its own transaction, and
+ * every approval, review sign-off and acknowledgement is a signature,
+ * written only after the signer re-entered their password in the same
+ * request.
+ */
+@Injectable()
+export class DocumentsService {
+  constructor(
+    private readonly tenantDb: TenantDb,
+    private readonly provisioning: ProvisioningService,
+    private readonly engine: ApprovalEngine,
+    private readonly signatures: SignatureService,
+    private readonly auth: AuthService,
+    private readonly notifier: DocumentNotifier,
+    private readonly publisher: Publisher,
+    private readonly orgUnits: OrgUnitsService,
+  ) {}
+
+  // Reading.
+
+  get(auth: AuthContext, id: string) {
+    return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
+      const viewer = await viewerOf(tx, auth, this.engine);
+      const doc = await this.find(tx, viewer, id);
+      return this.detail(tx, auth, viewer, doc);
+    });
+  }
+
+  /** The document if the viewer may see it; 404 otherwise. */
+  private async find(
+    tx: Transaction,
+    viewer: Viewer,
+    id: string,
+    lock = false,
+  ) {
+    const doc = await loadDocument(tx, viewer, this.engine, id, { lock });
+    if (!doc) throw new NotFoundException();
+    return doc;
+  }
+
+  /** As `find`, locked, for a change that only a manager of it may make. */
+  private async forManager(tx: Transaction, viewer: Viewer, id: string) {
+    const doc = await this.find(tx, viewer, id, true);
+    if (!doc.access.manages) throw refuse.outsideScope();
+    return doc;
+  }
+
+  private async names(tx: Transaction, ids: (string | null)[]) {
+    const wanted = [...new Set(ids.filter((id): id is string => !!id))];
+    if (wanted.length === 0) return new Map<string, Localized>();
+    const found = await tx
+      .select({ id: users.id, name: users.name })
+      .from(users)
+      .where(inArray(users.id, wanted));
+    return new Map(found.map((u) => [u.id, u.name]));
+  }
+
+  /** One document as this viewer may see it, with what they may do. */
+  private async detail(
+    tx: Transaction,
+    auth: AuthContext,
+    viewer: Viewer,
+    doc: LoadedDocument,
+  ) {
+    const { access } = doc;
+    const today = dayOf(new Date(), auth.tenant.timeZone);
+    const [type] = await tx
+      .select({
+        id: documentTypes.id,
+        code: documentTypes.code,
+        name: documentTypes.name,
+      })
+      .from(documentTypes)
+      .where(eq(documentTypes.id, doc.typeId));
+    const [category] = await tx
+      .select({
+        id: documentCategories.id,
+        code: documentCategories.code,
+        name: documentCategories.name,
+      })
+      .from(documentCategories)
+      .where(eq(documentCategories.id, doc.categoryId));
+    const [ownerUnit] = await tx
+      .select({ id: orgUnits.id, name: orgUnits.name })
+      .from(orgUnits)
+      .where(eq(orgUnits.id, doc.ownerUnitId));
+    const people = await this.names(tx, [doc.ownerId, doc.retiredBy]);
+    const audience = await this.audienceOf(tx, doc.id);
+    const versions = await tx
+      .select({
+        id: documentVersions.id,
+        version: documentVersions.version,
+        status: documentVersions.status,
+        effectiveOn: documentVersions.effectiveOn,
+        publishedAt: documentVersions.publishedAt,
+        acknowledgementRequired: documentVersions.acknowledgementRequired,
+      })
+      .from(documentVersions)
+      .where(eq(documentVersions.documentId, doc.id))
+      .orderBy(desc(documentVersions.version));
+    const published = versions.find((v) => v.id === doc.publishedVersionId);
+    const inProgress = versions.find((v) => IN_PROGRESS.includes(v.status));
+    const shownInProgress =
+      access.full || (inProgress && inProgress.id === access.assignedVersionId)
+        ? inProgress
+        : undefined;
+    const acknowledgement =
+      published && access.reads
+        ? await this.acknowledgementOf(tx, viewer, doc, published, today)
+        : null;
+    const moves: string[] = [];
+    if (access.manages && doc.status !== 'retired') {
+      moves.push('edit');
+      if (!inProgress) moves.push('new_version');
+      moves.push('retire');
+    }
+    if ((access.manages || access.owner) && doc.status === 'active') {
+      moves.push('confirm_review');
+    }
+    return {
+      id: doc.id,
+      number: doc.number,
+      title: doc.title,
+      type,
+      category,
+      owner: { id: doc.ownerId, name: people.get(doc.ownerId) ?? null },
+      ownerUnit,
+      confidentiality: doc.confidentiality,
+      audience,
+      keywords: doc.keywords,
+      references: doc.references,
+      reviewMonths: doc.reviewMonths,
+      nextReviewOn: doc.nextReviewOn,
+      lastReviewedOn: doc.lastReviewedOn,
+      review: reviewState(doc, today),
+      status: doc.status,
+      retiredAt: doc.retiredAt,
+      retiredBy:
+        access.full && doc.retiredBy
+          ? { id: doc.retiredBy, name: people.get(doc.retiredBy) ?? null }
+          : null,
+      retireReason: access.full ? doc.retireReason : null,
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
+      revision: doc.revision,
+      // How much of it the caller sees: everything, the published version
+      // as a reader, or one version as an assignee of its review.
+      access: access.full
+        ? ('full' as const)
+        : access.reads
+          ? ('reader' as const)
+          : ('assignee' as const),
+      published: published
+        ? {
+            id: published.id,
+            version: published.version,
+            effectiveOn: published.effectiveOn,
+            publishedAt: published.publishedAt,
+            acknowledgementRequired: published.acknowledgementRequired,
+          }
+        : null,
+      inProgress: shownInProgress
+        ? {
+            id: shownInProgress.id,
+            version: shownInProgress.version,
+            status: shownInProgress.status,
+          }
+        : null,
+      myAcknowledgement: acknowledgement,
+      moves,
+    };
+  }
+
+  private async audienceOf(tx: Transaction, documentId: string) {
+    const rows = await tx
+      .select({
+        orgUnitId: documentAudiences.orgUnitId,
+        roleId: documentAudiences.roleId,
+      })
+      .from(documentAudiences)
+      .where(eq(documentAudiences.documentId, documentId));
+    const unitIds = [...new Set(rows.map((r) => r.orgUnitId))];
+    const roleIds = [
+      ...new Set(rows.map((r) => r.roleId).filter((id) => id !== null)),
+    ];
+    const units = unitIds.some((id) => id)
+      ? await tx
+          .select({ id: orgUnits.id, name: orgUnits.name })
+          .from(orgUnits)
+          .where(
+            inArray(
+              orgUnits.id,
+              unitIds.filter((id) => id !== null),
+            ),
+          )
+          .orderBy(asc(orgUnits.code))
+      : [];
+    const roleList =
+      roleIds.length > 0
+        ? await tx
+            .select({ id: roles.id, name: roles.name })
+            .from(roles)
+            .where(inArray(roles.id, roleIds))
+            .orderBy(asc(roles.code))
+        : [];
+    return {
+      wholeOrganization: unitIds.includes(null),
+      orgUnits: units,
+      roles: roleList,
+    };
+  }
+
+  /**
+   * Where the viewer stands with acknowledging the published version: null
+   * when it asks nothing of them. Asked when they were assigned it, or when
+   * they are in its audience (someone who joined it since the daily check
+   * last ran is asked already).
+   */
+  private async acknowledgementOf(
+    tx: Transaction,
+    viewer: Viewer,
+    doc: LoadedDocument,
+    published: { id: string; acknowledgementRequired: boolean },
+    today: string,
+  ) {
+    if (!published.acknowledgementRequired || doc.status !== 'active') {
+      return null;
+    }
+    const [row] = await tx
+      .select({
+        dueOn: documentAcknowledgements.dueOn,
+        acknowledgedAt: documentAcknowledgements.acknowledgedAt,
+      })
+      .from(documentAcknowledgements)
+      .where(
+        and(
+          eq(documentAcknowledgements.versionId, published.id),
+          eq(documentAcknowledgements.userId, viewer.userId),
+        ),
+      );
+    if (!row && !(await this.isMember(tx, viewer.userId, doc.id))) return null;
+    return {
+      versionId: published.id,
+      dueOn: row?.dueOn ?? null,
+      acknowledgedAt: row?.acknowledgedAt ?? null,
+      overdue: !row?.acknowledgedAt && !!row?.dueOn && row.dueOn < today,
+    };
+  }
+
+  private async isMember(tx: Transaction, userId: string, documentId: string) {
+    const [found] = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(
+        and(
+          eq(users.id, userId),
+          userInAudience(sql`${documentId}::uuid`),
+        ),
+      );
+    return !!found;
+  }
+
+  /**
+   * The versions of a document the viewer may see, newest first, and its
+   * periodic reviews for those with full sight. A reader sees the published
+   * version; an assignee that and the one under review.
+   */
+  history(auth: AuthContext, id: string) {
+    return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
+      const viewer = await viewerOf(tx, auth, this.engine);
+      const doc = await this.find(tx, viewer, id);
+      const list = await tx
+        .select({
+          id: documentVersions.id,
+          version: documentVersions.version,
+          status: documentVersions.status,
+          changeSummary: documentVersions.changeSummary,
+          preparedAt: documentVersions.preparedAt,
+          effectiveOn: documentVersions.effectiveOn,
+          publishedAt: documentVersions.publishedAt,
+          supersededAt: documentVersions.supersededAt,
+          withdrawnAt: documentVersions.withdrawnAt,
+        })
+        .from(documentVersions)
+        .where(eq(documentVersions.documentId, doc.id))
+        .orderBy(desc(documentVersions.version));
+      const versions = list.filter((v) => this.mayReadVersion(doc, v));
+      const reviews = doc.access.full
+        ? await tx
+            .select({
+              id: documentReviews.id,
+              dueOn: documentReviews.dueOn,
+              outcome: documentReviews.outcome,
+              comment: documentReviews.comment,
+              reviewedBy: documentReviews.reviewedBy,
+              reviewedAt: documentReviews.reviewedAt,
+              nextReviewOn: documentReviews.nextReviewOn,
+              signatureId: documentReviews.signatureId,
+            })
+            .from(documentReviews)
+            .where(eq(documentReviews.documentId, doc.id))
+            .orderBy(desc(documentReviews.reviewedAt))
+        : [];
+      const people = await this.names(
+        tx,
+        reviews.map((r) => r.reviewedBy),
+      );
+      return {
+        versions,
+        reviews: reviews.map(({ reviewedBy, ...r }) => ({
+          ...r,
+          reviewedBy: { id: reviewedBy, name: people.get(reviewedBy) ?? null },
+        })),
+      };
+    });
+  }
+
+  private mayReadVersion(doc: LoadedDocument, version: { id: string }) {
+    return (
+      doc.access.full ||
+      (version.id === doc.publishedVersionId &&
+        (doc.access.reads || !!doc.access.assignedVersionId)) ||
+      version.id === doc.access.assignedVersionId
+    );
+  }
+
+  /** One version as the viewer may see it, or 404. */
+  getVersion(auth: AuthContext, id: string, versionId: string) {
+    return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
+      const viewer = await viewerOf(tx, auth, this.engine);
+      const doc = await this.find(tx, viewer, id);
+      const version = await this.versionOf(tx, doc, versionId);
+      return this.versionView(tx, auth, viewer, doc, version);
+    });
+  }
+
+  /** A version of this document the viewer may see; 404 otherwise. */
+  private async versionOf(
+    tx: Transaction,
+    doc: LoadedDocument,
+    versionId: string,
+    lock = false,
+  ) {
+    const query = tx
+      .select(versionFields)
+      .from(documentVersions)
+      .where(
+        and(
+          eq(documentVersions.id, versionId),
+          eq(documentVersions.documentId, doc.id),
+        ),
+      );
+    const [version] = lock ? await query.for('update') : await query;
+    if (!version || !this.mayReadVersion(doc, version)) {
+      throw new NotFoundException();
+    }
+    return version;
+  }
+
+  private async versionView(
+    tx: Transaction,
+    auth: AuthContext,
+    viewer: Viewer,
+    doc: LoadedDocument,
+    version: VersionRow,
+  ) {
+    const { access } = doc;
+    const today = dayOf(new Date(), auth.tenant.timeZone);
+    const runs = await this.engine.runsOf(tx, 'document_version', [version.id]);
+    const latest = runs[0] ?? null;
+    // The run whose signatures stand behind the version: the one that
+    // approved it, or, while it is in review, the one in progress.
+    const standing =
+      runs.find((r) => r.status === 'approved') ??
+      runs.find((r) => r.status === 'in_progress') ??
+      null;
+    const signed = await this.signatures.of(tx, 'document_version', [
+      version.id,
+    ]);
+    const decided = [
+      ...new Set(
+        runs.flatMap((r) => r.steps.map((s) => s.decidedBy)),
+      ),
+    ];
+    const roleIds = [
+      ...new Set(
+        runs.flatMap((r) =>
+          r.steps.map((s) => s.assigneeRoleId).filter((x) => x !== null),
+        ),
+      ),
+    ];
+    const people = await this.names(tx, [
+      version.preparedBy,
+      version.publishedBy,
+      version.scheduledBy,
+      ...decided,
+      ...runs.flatMap((r) => r.steps.map((s) => s.assigneeUserId)),
+    ]);
+    const roleNames =
+      roleIds.length > 0
+        ? new Map(
+            (
+              await tx
+                .select({ id: roles.id, name: roles.name })
+                .from(roles)
+                .where(inArray(roles.id, roleIds))
+            ).map((r) => [r.id, r.name]),
+          )
+        : new Map<string, Localized>();
+    const person = (id: string | null) =>
+      id ? { id, name: people.get(id) ?? null } : null;
+    const signatureById = new Map(signed.map((s) => [s.id, s]));
+    // The control block: who approved it and when, from the signatures of
+    // the run that stands behind it. Shown to every reader.
+    const approvals = (standing?.steps ?? [])
+      .filter((s) => s.status === 'approved' && s.signatureId)
+      .map((s) => {
+        const signature = signatureById.get(s.signatureId!);
+        return {
+          position: s.position,
+          kind: s.kind,
+          meaning: signature?.meaning ?? null,
+          signedBy: person(s.decidedBy),
+          signedAt: signature?.signedAt ?? s.decidedAt,
+          contentHash: signature?.contentHash ?? null,
+        };
+      });
+    // Everything about the runs is for those with full sight, and for the
+    // assignees of the version under review.
+    const seesRuns = access.full || access.assignedVersionId === version.id;
+    const runView = (run: Run) => ({
+      id: run.id,
+      status: run.status,
+      currentPosition: run.currentPosition,
+      startedAt: run.startedAt,
+      completedAt: run.completedAt,
+      steps: run.steps.map((s) => ({
+        position: s.position,
+        kind: s.kind,
+        assignee: s.assigneeUserId
+          ? { type: 'user' as const, user: person(s.assigneeUserId) }
+          : {
+              type: 'role' as const,
+              role: {
+                id: s.assigneeRoleId!,
+                name: roleNames.get(s.assigneeRoleId!) ?? null,
+              },
+            },
+        status: s.status,
+        dueAt: s.dueAt,
+        overdue:
+          s.status === 'pending' && !!s.dueAt && s.dueAt.getTime() < Date.now(),
+        decidedBy: person(s.decidedBy),
+        decidedAt: s.decidedAt,
+        comment: s.comment,
+      })),
+    });
+    // What it was returned with, while it is a draft again.
+    const returned =
+      seesRuns && version.status === 'draft' && latest?.status === 'returned'
+        ? latest.steps
+            .filter((s) => s.status === 'returned')
+            .map((s) => ({
+              position: s.position,
+              comment: s.comment,
+              by: person(s.decidedBy),
+              at: s.decidedAt,
+            }))
+        : [];
+    // Compared with the published version, section by section, for a
+    // version that is not the published one.
+    const base =
+      doc.publishedVersionId && doc.publishedVersionId !== version.id
+        ? (
+            await tx
+              .select({ content: documentVersions.content })
+              .from(documentVersions)
+              .where(eq(documentVersions.id, doc.publishedVersionId))
+          )[0]
+        : null;
+    const comparison =
+      version.id === doc.publishedVersionId
+        ? null
+        : compareVersions(version, base ?? null, auth.tenant.locales);
+
+    // What the viewer may do with it.
+    const pending = latest ? this.engine.pendingStep(latest) : null;
+    const myStep =
+      pending &&
+      version.status === 'in_review' &&
+      this.engine.isAssignee(viewer.assignment, pending, doc.ownerUnitId)
+        ? pending
+        : null;
+    const moves: string[] = [];
+    const live = doc.status !== 'retired';
+    if (access.manages && live) {
+      if (version.status === 'draft') moves.push('edit', 'submit');
+      if (version.status === 'in_review') moves.push('recall');
+      if (version.status === 'approved') moves.push('publish');
+      if (IN_PROGRESS.includes(version.status)) moves.push('withdraw');
+    }
+    if (myStep && !version.contributors.includes(viewer.userId)) {
+      moves.push('approve', 'return');
+    }
+    let acknowledgement = null;
+    if (version.id === doc.publishedVersionId && access.reads) {
+      acknowledgement = await this.acknowledgementOf(
+        tx,
+        viewer,
+        doc,
+        version,
+        today,
+      );
+      if (acknowledgement && !acknowledgement.acknowledgedAt) {
+        moves.push('acknowledge');
+      }
+    }
+    return {
+      id: version.id,
+      documentId: doc.id,
+      number: doc.number,
+      title: doc.title,
+      version: version.version,
+      status: version.status,
+      sections: version.sections,
+      content: version.content,
+      // The languages it has text in, the client's default first; a reader
+      // whose language is missing is shown the default with a note.
+      languages: languagesOf(version.content, [
+        auth.tenant.defaultLocale,
+        ...auth.tenant.locales.filter((l) => l !== auth.tenant.defaultLocale),
+      ]),
+      contentHash: contentHash(signedVersion(doc, version)),
+      changeSummary: version.changeSummary,
+      preparedBy: person(version.preparedBy),
+      preparedAt: version.preparedAt,
+      effectiveOn: version.effectiveOn,
+      // Approved and waiting for the day it was scheduled for.
+      scheduledFor:
+        version.status === 'approved' ? version.effectiveOn : null,
+      scheduledBy: version.status === 'approved' ? person(version.scheduledBy) : null,
+      approvedAt: version.approvedAt,
+      publishedAt: version.publishedAt,
+      publishedBy: person(version.publishedBy),
+      supersededAt: version.supersededAt,
+      withdrawnAt: version.withdrawnAt,
+      acknowledgementRequired: version.acknowledgementRequired,
+      acknowledgeWithinDays: version.acknowledgeWithinDays,
+      // The control block, with the document's own.
+      control: {
+        number: doc.number,
+        version: version.version,
+        owner: { id: doc.ownerId, name: (await this.names(tx, [doc.ownerId])).get(doc.ownerId) ?? null },
+        effectiveOn: version.effectiveOn,
+        nextReviewOn:
+          version.id === doc.publishedVersionId ? doc.nextReviewOn : null,
+        approvals,
+      },
+      run: seesRuns && latest ? runView(latest) : null,
+      returned,
+      comparison,
+      myStep: myStep
+        ? {
+            position: myStep.position,
+            kind: myStep.kind,
+            dueAt: myStep.dueAt,
+            // The one who prepared the version decides no step of it.
+            samePerson: version.contributors.includes(viewer.userId),
+          }
+        : null,
+      myAcknowledgement: acknowledgement,
+      revision: version.revision,
+      moves,
+    };
+  }
+
+  // Creating and editing documents.
+
+  create(auth: AuthContext, input: CreateInput) {
+    const { tenant, user } = auth;
+    if (!covers(auth, 'policies.manage', input.ownerUnitId)) {
+      throw refuse.outsideScope();
+    }
+    if (!fitsLanguages(input.title, tenant)) {
+      throw new BadRequestException({ code: 'language_mismatch' });
+    }
+    return this.tenantDb.withTenant(tenant.id, async (tx) => {
+      const [type] = await tx
+        .select({
+          id: documentTypes.id,
+          numberPrefix: documentTypes.numberPrefix,
+          sections: documentTypes.sections,
+          defaultReviewMonths: documentTypes.defaultReviewMonths,
+        })
+        .from(documentTypes)
+        .where(
+          and(
+            eq(documentTypes.id, input.typeId),
+            eq(documentTypes.active, true),
+          ),
+        )
+        .for('share');
+      if (!type) throw new BadRequestException({ code: 'unknown_type' });
+      const category = await this.assertCategory(tx, input.categoryId);
+      await this.assertOwner(tx, input.ownerId);
+      await this.orgUnits.assertActive(tx, [
+        input.ownerUnitId,
+        ...input.audience.orgUnitIds,
+      ]);
+      await this.assertRoles(tx, input.audience.roleIds);
+
+      const number = await nextDocumentNumber(
+        tx,
+        tenant.id,
+        type.numberPrefix,
+        category.code,
+      );
+      const [doc] = await tx
+        .insert(documents)
+        .values({
+          tenantId: tenant.id,
+          number,
+          typeId: type.id,
+          categoryId: category.id,
+          title: input.title,
+          ownerId: input.ownerId,
+          ownerUnitId: input.ownerUnitId,
+          confidentiality: input.confidentiality,
+          keywords: input.keywords,
+          references: input.references,
+          reviewMonths: input.reviewMonths ?? type.defaultReviewMonths,
+          createdBy: user.id,
+        })
+        .returning({ id: documents.id });
+      await this.setAudience(tx, tenant.id, doc.id, input.audience);
+      const [version] = await tx
+        .insert(documentVersions)
+        .values({
+          tenantId: tenant.id,
+          documentId: doc.id,
+          version: 1,
+          sections: type.sections,
+          preparedBy: user.id,
+          contributors: [user.id],
+          acknowledgementRequired: input.acknowledgementRequired,
+          acknowledgeWithinDays: input.acknowledgeWithinDays,
+        })
+        .returning({ id: documentVersions.id });
+      await this.provisioning.audit(
+        tx,
+        tenant.id,
+        user.id,
+        'document_created',
+        'document',
+        doc.id,
+        {
+          number,
+          typeId: type.id,
+          categoryId: category.id,
+          ownerId: input.ownerId,
+          ownerUnitId: input.ownerUnitId,
+          confidentiality: input.confidentiality,
+          audience: input.audience,
+          versionId: version.id,
+        },
+      );
+      const viewer = await viewerOf(tx, auth, this.engine);
+      return this.detail(tx, auth, viewer, await this.find(tx, viewer, doc.id));
+    });
+  }
+
+  private async assertCategory(tx: Transaction, id: string) {
+    const [category] = await tx
+      .select({ id: documentCategories.id, code: documentCategories.code })
+      .from(documentCategories)
+      .where(
+        and(
+          eq(documentCategories.id, id),
+          eq(documentCategories.active, true),
+        ),
+      )
+      .for('share');
+    if (!category) throw new BadRequestException({ code: 'unknown_category' });
+    return category;
+  }
+
+  /** The owner is an active member of the client's staff. */
+  private async assertOwner(tx: Transaction, id: string) {
+    const [owner] = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(and(eq(users.id, id), eq(users.status, 'active')))
+      .for('share');
+    if (!owner) throw new BadRequestException({ code: 'unknown_owner' });
+  }
+
+  private async assertRoles(tx: Transaction, ids: string[]) {
+    const wanted = [...new Set(ids)];
+    if (wanted.length === 0) return;
+    const found = await tx
+      .select({ id: roles.id })
+      .from(roles)
+      .where(inArray(roles.id, wanted))
+      .for('share');
+    if (found.length !== wanted.length) {
+      throw new BadRequestException({ code: 'unknown_role' });
+    }
+  }
+
+  /** Replaces the audience: each unit (or the whole organization) × role. */
+  private async setAudience(
+    tx: Transaction,
+    tenantId: string,
+    documentId: string,
+    audience: AudienceInput,
+  ) {
+    await tx
+      .delete(documentAudiences)
+      .where(eq(documentAudiences.documentId, documentId));
+    const units = audience.orgUnitIds.length
+      ? [...new Set(audience.orgUnitIds)]
+      : [null];
+    const roleIds = audience.roleIds.length
+      ? [...new Set(audience.roleIds)]
+      : [null];
+    await tx.insert(documentAudiences).values(
+      units.flatMap((orgUnitId) =>
+        roleIds.map((roleId) => ({ tenantId, documentId, orgUnitId, roleId })),
+      ),
+    );
+  }
+
+  update(auth: AuthContext, id: string, input: UpdateInput) {
+    const { tenant, user } = auth;
+    if (input.title && !fitsLanguages(input.title, tenant)) {
+      throw new BadRequestException({ code: 'language_mismatch' });
+    }
+    return this.tenantDb.withTenant(tenant.id, async (tx) => {
+      const viewer = await viewerOf(tx, auth, this.engine);
+      const doc = await this.forManager(tx, viewer, id);
+      if (
+        input.ownerUnitId &&
+        !covers(auth, 'policies.manage', input.ownerUnitId)
+      ) {
+        throw refuse.outsideScope();
+      }
+      if (input.revision !== doc.revision) throw refuse.staleDocument();
+      if (doc.status === 'retired') throw refuse.retired();
+      if (input.categoryId) await this.assertCategory(tx, input.categoryId);
+      if (input.ownerId) await this.assertOwner(tx, input.ownerId);
+      await this.orgUnits.assertActive(tx, [
+        input.ownerUnitId ?? null,
+        ...(input.audience?.orgUnitIds ?? []),
+      ]);
+      if (input.audience) await this.assertRoles(tx, input.audience.roleIds);
+
+      const set: Partial<typeof documents.$inferInsert> = {};
+      const changes: Record<string, { from: unknown; to: unknown }> = {};
+      const fields = [
+        'categoryId',
+        'title',
+        'ownerId',
+        'ownerUnitId',
+        'confidentiality',
+        'keywords',
+        'references',
+        'reviewMonths',
+      ] as const;
+      for (const field of fields) {
+        const to = input[field];
+        if (to === undefined) continue;
+        if (JSON.stringify(to) === JSON.stringify(doc[field])) continue;
+        (set as Record<string, unknown>)[field] = to;
+        changes[field] = { from: doc[field], to };
+      }
+      if (input.audience) {
+        const before = await this.audienceOf(tx, doc.id);
+        await this.setAudience(tx, tenant.id, doc.id, input.audience);
+        changes.audience = {
+          from: {
+            orgUnitIds: before.orgUnits.map((u) => u.id),
+            wholeOrganization: before.wholeOrganization,
+            roleIds: before.roles.map((r) => r.id),
+          },
+          to: input.audience,
+        };
+      }
+      // A new review period counts from the last review.
+      if (set.reviewMonths && doc.status === 'active' && doc.lastReviewedOn) {
+        set.nextReviewOn = addMonths(doc.lastReviewedOn, set.reviewMonths);
+        set.reviewNoticeRank = null;
+        set.reviewNoticeFor = null;
+        changes.nextReviewOn = { from: doc.nextReviewOn, to: set.nextReviewOn };
+      }
+      if (Object.keys(changes).length > 0) {
+        await tx
+          .update(documents)
+          .set({
+            ...set,
+            revision: sql`${documents.revision} + 1`,
+            updatedAt: new Date(),
+          })
+          .where(eq(documents.id, doc.id));
+        await this.provisioning.audit(
+          tx,
+          tenant.id,
+          user.id,
+          'document_updated',
+          'document',
+          doc.id,
+          changes,
+        );
+      }
+      const after = await viewerOf(tx, auth, this.engine);
+      const fresh = await loadDocument(tx, after, this.engine, doc.id);
+      // A manager who moved it out of their own reach no longer sees it.
+      if (!fresh) return { id: doc.id, moved: true };
+      return this.detail(tx, auth, after, fresh);
+    });
+  }
+
+  retire(auth: AuthContext, id: string, input: { reason: string; revision: number }) {
+    const { tenant, user } = auth;
+    return this.tenantDb.withTenant(tenant.id, async (tx) => {
+      const viewer = await viewerOf(tx, auth, this.engine);
+      const doc = await this.forManager(tx, viewer, id);
+      if (input.revision !== doc.revision) throw refuse.staleDocument();
+      if (doc.status === 'retired') throw refuse.retired();
+      const now = new Date();
+      // A version still being worked on is withdrawn with it.
+      const [open] = await tx
+        .select({ id: documentVersions.id, version: documentVersions.version })
+        .from(documentVersions)
+        .where(
+          and(
+            eq(documentVersions.documentId, doc.id),
+            inArray(documentVersions.status, IN_PROGRESS),
+          ),
+        )
+        .for('update');
+      if (open) await this.withdrawVersion(tx, open.id, user.id, now);
+      if (doc.status === 'active') {
+        await tx.insert(documentReviews).values({
+          tenantId: tenant.id,
+          documentId: doc.id,
+          dueOn: doc.nextReviewOn,
+          outcome: 'retired',
+          comment: input.reason,
+          reviewedBy: user.id,
+          reviewedAt: now,
+        });
+      }
+      await tx
+        .update(documents)
+        .set({
+          status: 'retired',
+          retiredAt: now,
+          retiredBy: user.id,
+          retireReason: input.reason,
+          revision: sql`${documents.revision} + 1`,
+          updatedAt: now,
+        })
+        .where(eq(documents.id, doc.id));
+      await this.provisioning.audit(
+        tx,
+        tenant.id,
+        user.id,
+        'document_retired',
+        'document',
+        doc.id,
+        {
+          status: { from: doc.status, to: 'retired' },
+          reason: input.reason,
+          withdrawnVersionId: open?.id ?? null,
+        },
+      );
+      return this.detail(tx, auth, viewer, await this.find(tx, viewer, doc.id));
+    });
+  }
+
+  /** Withdraws a version in progress, ending its run if it has one. */
+  private async withdrawVersion(
+    tx: Transaction,
+    versionId: string,
+    userId: string,
+    now: Date,
+  ) {
+    const run = await this.engine.current(tx, 'document_version', versionId, {
+      lock: true,
+    });
+    if (run) await this.engine.cancel(tx, run, now);
+    await tx
+      .update(documentVersions)
+      .set({
+        status: 'withdrawn',
+        withdrawnAt: now,
+        withdrawnBy: userId,
+        effectiveOn: null,
+        scheduledBy: null,
+        revision: sql`${documentVersions.revision} + 1`,
+        updatedAt: now,
+      })
+      .where(eq(documentVersions.id, versionId));
+    return run;
+  }
+
+  // Versions.
+
+  /**
+   * A new version of a document: the next number, the type's sections as
+   * they are now, and the text of the published version (or, for a
+   * document never published, of its latest version) for the sections it
+   * still has.
+   */
+  createVersion(auth: AuthContext, id: string) {
+    const { tenant, user } = auth;
+    return this.tenantDb.withTenant(tenant.id, async (tx) => {
+      const viewer = await viewerOf(tx, auth, this.engine);
+      const doc = await this.forManager(tx, viewer, id);
+      if (doc.status === 'retired') throw refuse.retired();
+      const all = await tx
+        .select(versionFields)
+        .from(documentVersions)
+        .where(eq(documentVersions.documentId, doc.id))
+        .orderBy(desc(documentVersions.version));
+      if (all.some((v) => IN_PROGRESS.includes(v.status))) {
+        throw new ConflictException({ code: 'version_in_progress' });
+      }
+      const base = all.find((v) => v.id === doc.publishedVersionId) ?? all[0];
+      const [type] = await tx
+        .select({ sections: documentTypes.sections })
+        .from(documentTypes)
+        .where(eq(documentTypes.id, doc.typeId));
+      const keys = new Set(type.sections.map((s) => s.key));
+      const content: DocumentContent = {};
+      for (const [locale, sections] of Object.entries(base?.content ?? {})) {
+        const kept = Object.fromEntries(
+          Object.entries(sections ?? {}).filter(([key]) => keys.has(key)),
+        );
+        if (Object.keys(kept).length > 0) content[locale] = kept;
+      }
+      const [{ last }] = await tx
+        .select({ last: max(documentVersions.version) })
+        .from(documentVersions)
+        .where(eq(documentVersions.documentId, doc.id));
+      const [created] = await tx
+        .insert(documentVersions)
+        .values({
+          tenantId: tenant.id,
+          documentId: doc.id,
+          version: (last ?? 0) + 1,
+          sections: type.sections,
+          content,
+          preparedBy: user.id,
+          contributors: [user.id],
+          acknowledgementRequired: base?.acknowledgementRequired ?? false,
+          acknowledgeWithinDays: base?.acknowledgeWithinDays ?? 14,
+        })
+        .returning(versionFields);
+      await this.provisioning.audit(
+        tx,
+        tenant.id,
+        user.id,
+        'document_version_created',
+        'document',
+        doc.id,
+        {
+          versionId: created.id,
+          version: created.version,
+          copiedFromVersionId: base?.id ?? null,
+        },
+      );
+      const fresh = await this.find(tx, viewer, doc.id);
+      return this.versionView(tx, auth, viewer, fresh, created);
+    });
+  }
+
+  /** Locks a document a manager is changing, and its version. */
+  private async managedVersion(
+    tx: Transaction,
+    auth: AuthContext,
+    id: string,
+    versionId: string,
+    revision: number,
+  ) {
+    const viewer = await viewerOf(tx, auth, this.engine);
+    const doc = await this.forManager(tx, viewer, id);
+    const version = await this.versionOf(tx, doc, versionId, true);
+    if (version.revision !== revision) throw refuse.staleVersion();
+    if (doc.status === 'retired') throw refuse.retired();
+    return { viewer, doc, version };
+  }
+
+  editVersion(
+    auth: AuthContext,
+    id: string,
+    versionId: string,
+    input: EditVersionInput,
+  ) {
+    const { tenant, user } = auth;
+    return this.tenantDb.withTenant(tenant.id, async (tx) => {
+      const { viewer, doc, version } = await this.managedVersion(
+        tx,
+        auth,
+        id,
+        versionId,
+        input.revision,
+      );
+      if (version.status !== 'draft') {
+        throw new ConflictException({ code: 'not_draft' });
+      }
+      const content = structuredClone(version.content);
+      const edited: string[] = [];
+      const keys = new Set(version.sections.map((s: DocumentSection) => s.key));
+      for (const [locale, sections] of Object.entries(input.content ?? {})) {
+        if (!tenant.locales.includes(locale)) {
+          throw new BadRequestException({ code: 'language_mismatch' });
+        }
+        for (const [key, raw] of Object.entries(sections)) {
+          if (!keys.has(key)) {
+            throw new BadRequestException({
+              code: 'unknown_section',
+              section: key,
+            });
+          }
+          const value = raw === null ? '' : normalizeSection(raw);
+          const problem = value ? markupProblem(value) : null;
+          if (problem) {
+            throw new BadRequestException({
+              code: 'unsupported_markup',
+              locale,
+              section: key,
+              problem,
+            });
+          }
+          if (value.length > SECTION_MAX_CHARS) {
+            throw new BadRequestException({
+              code: 'section_too_long',
+              locale,
+              section: key,
+              max: SECTION_MAX_CHARS,
+            });
+          }
+          const before = content[locale]?.[key] ?? '';
+          if (before === value) continue;
+          edited.push(`${locale}.${key}`);
+          const into = { ...content[locale] };
+          if (value) into[key] = value;
+          else delete into[key];
+          if (Object.keys(into).length > 0) content[locale] = into;
+          else delete content[locale];
+        }
+      }
+      if (contentSize(content) > VERSION_MAX_CHARS) {
+        throw new BadRequestException({
+          code: 'content_too_large',
+          max: VERSION_MAX_CHARS,
+        });
+      }
+      if (
+        input.changeSummary &&
+        !fitsLanguages(input.changeSummary, tenant, { required: false })
+      ) {
+        throw new BadRequestException({ code: 'language_mismatch' });
+      }
+      const set: Partial<typeof documentVersions.$inferInsert> = {};
+      const changes: Record<string, unknown> = {};
+      if (edited.length > 0) {
+        set.content = content;
+        changes.sections = edited;
+      }
+      if (
+        input.changeSummary !== undefined &&
+        JSON.stringify(input.changeSummary) !==
+          JSON.stringify(version.changeSummary)
+      ) {
+        set.changeSummary = input.changeSummary;
+        changes.changeSummary = {
+          from: version.changeSummary,
+          to: input.changeSummary,
+        };
+      }
+      for (const field of [
+        'acknowledgementRequired',
+        'acknowledgeWithinDays',
+      ] as const) {
+        const to = input[field];
+        if (to !== undefined && to !== version[field]) {
+          (set as Record<string, unknown>)[field] = to;
+          changes[field] = { from: version[field], to };
+        }
+      }
+      let saved = version;
+      if (Object.keys(changes).length > 0) {
+        [saved] = await tx
+          .update(documentVersions)
+          .set({
+            ...set,
+            contributors: [...new Set([...version.contributors, user.id])],
+            revision: sql`${documentVersions.revision} + 1`,
+            updatedAt: new Date(),
+          })
+          .where(eq(documentVersions.id, version.id))
+          .returning(versionFields);
+        // What changed, not the text: the version keeps that, and its hash
+        // says what it was.
+        await this.provisioning.audit(
+          tx,
+          tenant.id,
+          user.id,
+          'document_version_edited',
+          'document',
+          doc.id,
+          {
+            versionId: version.id,
+            version: version.version,
+            ...changes,
+            contentHash: contentHash(signedVersion(doc, saved)),
+          },
+        );
+      }
+      return this.versionView(tx, auth, viewer, doc, saved);
+    });
+  }
+
+  /**
+   * Sends a draft for review: every required section written in the
+   * client's default language, a change summary from version 2, and an
+   * approval route for its type whose every step someone other than those
+   * who prepared it could decide. The first step's assignees are told.
+   */
+  submit(auth: AuthContext, id: string, versionId: string, revision: number) {
+    const { tenant, user } = auth;
+    return this.tenantDb.withTenant(tenant.id, async (tx) => {
+      const { viewer, doc, version } = await this.managedVersion(
+        tx,
+        auth,
+        id,
+        versionId,
+        revision,
+      );
+      if (version.status !== 'draft') {
+        throw new ConflictException({ code: 'not_draft' });
+      }
+      const missing = missingSections(
+        version.sections,
+        version.content,
+        tenant.defaultLocale,
+      );
+      if (missing.length > 0) {
+        throw new BadRequestException({
+          code: 'missing_sections',
+          locale: tenant.defaultLocale,
+          sections: missing,
+        });
+      }
+      if (
+        version.version >= 2 &&
+        !version.changeSummary?.[tenant.defaultLocale as 'en']
+      ) {
+        throw new BadRequestException({ code: 'change_summary_required' });
+      }
+      const route = await this.engine.routeFor(tx, 'document', doc.typeId);
+      if (!route) throw new ConflictException({ code: 'no_route' });
+      const contributors = [...new Set([...version.contributors, user.id])];
+      const now = new Date();
+      const { run, assignees } = await this.engine.start(tx, tenant.id, {
+        routeId: route.id,
+        subjectType: 'document_version',
+        subjectId: version.id,
+        startedBy: user.id,
+        ctx: this.contextOf(doc),
+        excluded: contributors,
+        now,
+        timeZone: tenant.timeZone,
+      });
+      const [saved] = await tx
+        .update(documentVersions)
+        .set({
+          status: 'in_review',
+          contributors,
+          revision: sql`${documentVersions.revision} + 1`,
+          updatedAt: now,
+        })
+        .where(eq(documentVersions.id, version.id))
+        .returning(versionFields);
+      const first = run.steps[0];
+      await this.notifier.send(tx, tenant.id, doc, user.id, [
+        {
+          kind: 'document_step_assigned',
+          data: {
+            version: version.version,
+            position: first.position,
+            step: first.kind,
+          },
+          to: assignees,
+          about: 'in_progress',
+          assignees,
+        },
+      ]);
+      await this.provisioning.audit(
+        tx,
+        tenant.id,
+        user.id,
+        'document_submitted',
+        'document',
+        doc.id,
+        {
+          versionId: version.id,
+          version: version.version,
+          status: { from: 'draft', to: 'in_review' },
+          runId: run.id,
+          routeId: route.id,
+          contentHash: contentHash(signedVersion(doc, saved)),
+        },
+      );
+      return this.versionView(tx, auth, viewer, doc, saved);
+    });
+  }
+
+  private contextOf(doc: { ownerUnitId: string }): SubjectContext {
+    return { unitId: doc.ownerUnitId, permission: APPROVE_PERMISSION };
+  }
+
+  /**
+   * The step the viewer is to decide on a version in review, refused in the
+   * order a person would want to be told: not something they may see (404),
+   * not in review (409 `not_in_review`), out of date (409 `stale_version`),
+   * not theirs (403 `not_assignee`, or 409 `not_current_step` when theirs
+   * comes later), or theirs but they prepared the version (403
+   * `same_person`).
+   */
+  private async decision(
+    tx: Transaction,
+    auth: AuthContext,
+    id: string,
+    versionId: string,
+    revision: number,
+    lock: boolean,
+  ) {
+    const viewer = await viewerOf(tx, auth, this.engine);
+    const doc = await this.find(tx, viewer, id, lock);
+    const version = await this.versionOf(tx, doc, versionId, lock);
+    if (version.status !== 'in_review') {
+      throw new ConflictException({ code: 'not_in_review' });
+    }
+    if (version.revision !== revision) throw refuse.staleVersion();
+    const run = await this.engine.current(tx, 'document_version', version.id, {
+      lock,
+    });
+    const step = run ? this.engine.pendingStep(run) : null;
+    if (!run || !step) throw new ConflictException({ code: 'not_in_review' });
+    const mine = (s: RunStep) =>
+      this.engine.isAssignee(viewer.assignment, s, doc.ownerUnitId);
+    if (!mine(step)) {
+      if (run.steps.some((s) => s.status === 'waiting' && mine(s))) {
+        throw new ConflictException({ code: 'not_current_step' });
+      }
+      throw new ForbiddenException({ code: 'not_assignee' });
+    }
+    if (version.contributors.includes(auth.user.id)) {
+      throw new ForbiddenException({ code: 'same_person' });
+    }
+    return { viewer, doc, version, run, step };
+  }
+
+  /**
+   * Approves the current step with the approver's signature. Everything is
+   * checked before the password, so that a refusal for another reason
+   * neither asks for it nor counts it, and again, under the lock, after.
+   */
+  async approve(
+    auth: AuthContext,
+    id: string,
+    versionId: string,
+    input: { password: string; comment: string | null; revision: number },
+    ip: string | null,
+  ) {
+    const { tenant, user } = auth;
+    await this.tenantDb.withTenant(tenant.id, (tx) =>
+      this.decision(tx, auth, id, versionId, input.revision, false),
+    );
+    await this.auth.confirmPassword(auth, input.password, 'approval', ip);
+    return this.tenantDb.withTenant(tenant.id, async (tx) => {
+      const { viewer, doc, version, run, step } = await this.decision(
+        tx,
+        auth,
+        id,
+        versionId,
+        input.revision,
+        true,
+      );
+      const now = new Date();
+      const signature = await this.signatures.sign(tx, tenant.id, {
+        userId: user.id,
+        meaning: step.kind === 'review' ? 'reviewed' : 'approved',
+        subjectType: 'document_version',
+        subjectId: version.id,
+        content: signedVersion(doc, version),
+      });
+      const outcome = await this.engine.decide(tx, run, {
+        userId: user.id,
+        outcome: 'approved',
+        comment: input.comment,
+        signatureId: signature.id,
+        ctx: this.contextOf(doc),
+        excluded: version.contributors,
+        now,
+        timeZone: tenant.timeZone,
+      });
+      const approved = outcome.status === 'approved';
+      const [saved] = await tx
+        .update(documentVersions)
+        .set({
+          ...(approved && { status: 'approved' as const, approvedAt: now }),
+          revision: sql`${documentVersions.revision} + 1`,
+          updatedAt: now,
+        })
+        .where(eq(documentVersions.id, version.id))
+        .returning(versionFields);
+      if (approved) {
+        const holders = await this.managersOf(tx, doc.ownerUnitId);
+        await this.notifier.send(tx, tenant.id, doc, user.id, [
+          {
+            kind: 'document_approved',
+            data: { version: version.version },
+            to: [version.preparedBy, ...version.contributors, ...holders],
+            about: 'in_progress',
+          },
+        ]);
+      } else if (outcome.next) {
+        await this.notifier.send(tx, tenant.id, doc, user.id, [
+          {
+            kind: 'document_step_assigned',
+            data: {
+              version: version.version,
+              position: outcome.next.position,
+              step: outcome.next.kind,
+            },
+            to: outcome.nextAssignees,
+            about: 'in_progress',
+            assignees: outcome.nextAssignees,
+          },
+        ]);
+      }
+      await this.provisioning.audit(
+        tx,
+        tenant.id,
+        user.id,
+        'document_step_approved',
+        'document',
+        doc.id,
+        {
+          versionId: version.id,
+          version: version.version,
+          runId: run.id,
+          position: step.position,
+          kind: step.kind,
+          signatureId: signature.id,
+          contentHash: signature.contentHash,
+          comment: input.comment,
+          ...(approved && { status: { from: 'in_review', to: 'approved' } }),
+        },
+      );
+      return this.versionView(tx, auth, viewer, doc, saved);
+    });
+  }
+
+  /** The active people who manage documents of this unit. */
+  private async managersOf(tx: Transaction, unitId: string) {
+    const { rows } = await tx.execute<{ id: string }>(sql`
+      with recursive up (id, parent_id) as (
+        select o.id, o.parent_id from ${orgUnits} o where o.id = ${unitId}
+        union
+        select o.id, o.parent_id from ${orgUnits} o join up on o.id = up.parent_id
+      )
+      select distinct ra.user_id as id
+      from role_assignments ra
+      join roles r on r.id = ra.role_id
+      join users u on u.id = ra.user_id and u.status = 'active'
+      where 'policies.manage' = any(r.permissions)
+        and (ra.org_unit_id is null or ra.org_unit_id in (select id from up))`);
+    return rows.map((r) => r.id);
+  }
+
+  /**
+   * Returns the version to draft from the current step, with a comment.
+   * Not a signature: nothing is approved. The run ends; the comment is
+   * shown on the draft.
+   */
+  returnVersion(
+    auth: AuthContext,
+    id: string,
+    versionId: string,
+    input: { comment: string; revision: number },
+  ) {
+    const { tenant, user } = auth;
+    return this.tenantDb.withTenant(tenant.id, async (tx) => {
+      const { viewer, doc, version, run, step } = await this.decision(
+        tx,
+        auth,
+        id,
+        versionId,
+        input.revision,
+        true,
+      );
+      const now = new Date();
+      await this.engine.decide(tx, run, {
+        userId: user.id,
+        outcome: 'returned',
+        comment: input.comment,
+        signatureId: null,
+        ctx: this.contextOf(doc),
+        excluded: version.contributors,
+        now,
+        timeZone: tenant.timeZone,
+      });
+      const [saved] = await tx
+        .update(documentVersions)
+        .set({
+          status: 'draft',
+          revision: sql`${documentVersions.revision} + 1`,
+          updatedAt: now,
+        })
+        .where(eq(documentVersions.id, version.id))
+        .returning(versionFields);
+      await this.notifier.send(tx, tenant.id, doc, user.id, [
+        {
+          kind: 'document_returned',
+          data: { version: version.version, position: step.position },
+          to: [version.preparedBy, ...version.contributors],
+          about: 'in_progress',
+        },
+      ]);
+      await this.provisioning.audit(
+        tx,
+        tenant.id,
+        user.id,
+        'document_returned',
+        'document',
+        doc.id,
+        {
+          versionId: version.id,
+          version: version.version,
+          runId: run.id,
+          position: step.position,
+          kind: step.kind,
+          status: { from: 'in_review', to: 'draft' },
+          comment: input.comment,
+        },
+      );
+      const fresh = await this.find(tx, viewer, doc.id);
+      return this.versionView(tx, auth, viewer, fresh, saved);
+    });
+  }
+
+  /** Takes a version out of review, back to draft, ending its run. */
+  recall(auth: AuthContext, id: string, versionId: string, revision: number) {
+    const { tenant, user } = auth;
+    return this.tenantDb.withTenant(tenant.id, async (tx) => {
+      const { viewer, doc, version } = await this.managedVersion(
+        tx,
+        auth,
+        id,
+        versionId,
+        revision,
+      );
+      if (version.status !== 'in_review') {
+        throw new ConflictException({ code: 'not_in_review' });
+      }
+      const now = new Date();
+      const run = await this.engine.current(
+        tx,
+        'document_version',
+        version.id,
+        { lock: true },
+      );
+      if (run) await this.engine.cancel(tx, run, now);
+      const [saved] = await tx
+        .update(documentVersions)
+        .set({
+          status: 'draft',
+          revision: sql`${documentVersions.revision} + 1`,
+          updatedAt: now,
+        })
+        .where(eq(documentVersions.id, version.id))
+        .returning(versionFields);
+      await this.provisioning.audit(
+        tx,
+        tenant.id,
+        user.id,
+        'document_recalled',
+        'document',
+        doc.id,
+        {
+          versionId: version.id,
+          version: version.version,
+          runId: run?.id ?? null,
+          status: { from: 'in_review', to: 'draft' },
+        },
+      );
+      return this.versionView(tx, auth, viewer, doc, saved);
+    });
+  }
+
+  withdraw(
+    auth: AuthContext,
+    id: string,
+    versionId: string,
+    input: { reason: string | null; revision: number },
+  ) {
+    const { tenant, user } = auth;
+    return this.tenantDb.withTenant(tenant.id, async (tx) => {
+      const { viewer, doc, version } = await this.managedVersion(
+        tx,
+        auth,
+        id,
+        versionId,
+        input.revision,
+      );
+      if (!IN_PROGRESS.includes(version.status)) {
+        throw new ConflictException({ code: 'not_in_progress' });
+      }
+      const now = new Date();
+      const run = await this.withdrawVersion(tx, version.id, user.id, now);
+      await this.provisioning.audit(
+        tx,
+        tenant.id,
+        user.id,
+        'document_version_withdrawn',
+        'document',
+        doc.id,
+        {
+          versionId: version.id,
+          version: version.version,
+          status: { from: version.status, to: 'withdrawn' },
+          runId: run?.id ?? null,
+          reason: input.reason,
+        },
+      );
+      const fresh = await this.find(tx, viewer, doc.id);
+      return this.versionView(
+        tx,
+        auth,
+        viewer,
+        fresh,
+        await this.versionOf(tx, fresh, version.id),
+      );
+    });
+  }
+
+  /**
+   * Publishes an approved version now, or schedules it for a later day on
+   * the client's calendar (the daily check publishes it that day). Refused
+   * if what was approved is not what the version holds now (409
+   * `content_changed`), which no route allows but which is checked anyway:
+   * a signature must stand behind what is published.
+   */
+  publish(
+    auth: AuthContext,
+    id: string,
+    versionId: string,
+    input: { effectiveOn?: string; revision: number },
+  ) {
+    const { tenant, user } = auth;
+    return this.tenantDb.withTenant(tenant.id, async (tx) => {
+      const { viewer, doc, version } = await this.managedVersion(
+        tx,
+        auth,
+        id,
+        versionId,
+        input.revision,
+      );
+      if (version.status !== 'approved') {
+        throw new ConflictException({ code: 'not_approved' });
+      }
+      await this.assertSigned(tx, doc, version);
+      const now = new Date();
+      const today = dayOf(now, tenant.timeZone);
+      const day = input.effectiveOn ?? today;
+      if (day < today) {
+        throw new BadRequestException({ code: 'effective_in_past' });
+      }
+      if (day > today) {
+        await tx
+          .update(documentVersions)
+          .set({
+            effectiveOn: day,
+            scheduledBy: user.id,
+            revision: sql`${documentVersions.revision} + 1`,
+            updatedAt: now,
+          })
+          .where(eq(documentVersions.id, version.id));
+        await this.provisioning.audit(
+          tx,
+          tenant.id,
+          user.id,
+          'document_publish_scheduled',
+          'document',
+          doc.id,
+          {
+            versionId: version.id,
+            version: version.version,
+            effectiveOn: { from: version.effectiveOn, to: day },
+          },
+        );
+      } else {
+        await this.publisher.publish(tx, tenant.id, doc, version, {
+          actorId: user.id,
+          effectiveOn: today,
+          today,
+          now,
+        });
+      }
+      const fresh = await this.find(tx, viewer, doc.id);
+      return this.versionView(
+        tx,
+        auth,
+        viewer,
+        fresh,
+        await this.versionOf(tx, fresh, version.id),
+      );
+    });
+  }
+
+  /**
+   * Every approval of the run that approved the version signed what it
+   * holds now.
+   */
+  async assertSigned(
+    tx: Transaction,
+    doc: { id: string; number: string },
+    version: VersionRow,
+  ) {
+    const runs = await this.engine.runsOf(tx, 'document_version', [version.id]);
+    const approvedRun = runs.find((r) => r.status === 'approved');
+    const signed = await this.signatures.of(tx, 'document_version', [
+      version.id,
+    ]);
+    const hash = contentHash(signedVersion(doc, version));
+    const ids = new Set(
+      approvedRun?.steps.map((s) => s.signatureId).filter(Boolean) ?? [],
+    );
+    const behind = signed.filter((s) => ids.has(s.id));
+    if (
+      !approvedRun ||
+      behind.length !== approvedRun.steps.length ||
+      behind.some((s) => s.contentHash !== hash)
+    ) {
+      throw new ConflictException({ code: 'content_changed' });
+    }
+  }
+
+  // Acknowledgement and periodic review.
+
+  /**
+   * What an acknowledgement needs, checked before the password and again
+   * after it, under the lock: the published version of an active document,
+   * which asks for acknowledgement, of someone it was assigned to or who is
+   * in its audience, and who has not acknowledged it yet.
+   */
+  private async acknowledgeable(
+    tx: Transaction,
+    auth: AuthContext,
+    id: string,
+    versionId: string,
+    lock: boolean,
+  ) {
+    const viewer = await viewerOf(tx, auth, this.engine);
+    const doc = await this.find(tx, viewer, id, lock);
+    const version = await this.versionOf(tx, doc, versionId);
+    if (!doc.access.reads) throw new NotFoundException();
+    if (version.id !== doc.publishedVersionId || doc.status !== 'active') {
+      throw refuse.staleVersion();
+    }
+    if (!version.acknowledgementRequired) {
+      throw new ConflictException({ code: 'acknowledgement_not_required' });
+    }
+    const query = tx
+      .select({
+        id: documentAcknowledgements.id,
+        acknowledgedAt: documentAcknowledgements.acknowledgedAt,
+      })
+      .from(documentAcknowledgements)
+      .where(
+        and(
+          eq(documentAcknowledgements.versionId, version.id),
+          eq(documentAcknowledgements.userId, auth.user.id),
+        ),
+      );
+    const [row] = lock ? await query.for('update') : await query;
+    if (row?.acknowledgedAt) {
+      throw new ConflictException({ code: 'already_acknowledged' });
+    }
+    if (!row && !(await this.isMember(tx, auth.user.id, doc.id))) {
+      throw new ForbiddenException({ code: 'not_in_audience' });
+    }
+    return { doc, version, row: row ?? null };
+  }
+
+  async acknowledge(
+    auth: AuthContext,
+    id: string,
+    versionId: string,
+    password: string,
+    ip: string | null,
+  ) {
+    const { tenant, user } = auth;
+    await this.tenantDb.withTenant(tenant.id, (tx) =>
+      this.acknowledgeable(tx, auth, id, versionId, false),
+    );
+    await this.auth.confirmPassword(auth, password, 'acknowledgement', ip);
+    return this.tenantDb.withTenant(tenant.id, async (tx) => {
+      const { doc, version, row } = await this.acknowledgeable(
+        tx,
+        auth,
+        id,
+        versionId,
+        true,
+      );
+      const now = new Date();
+      const signature = await this.signatures.sign(tx, tenant.id, {
+        userId: user.id,
+        meaning: 'acknowledged',
+        subjectType: 'document_version',
+        subjectId: version.id,
+        content: signedVersion(doc, version),
+      });
+      const today = dayOf(now, tenant.timeZone);
+      if (row) {
+        await tx
+          .update(documentAcknowledgements)
+          .set({ acknowledgedAt: now, signatureId: signature.id })
+          .where(
+            and(
+              eq(documentAcknowledgements.id, row.id),
+              isNull(documentAcknowledgements.acknowledgedAt),
+            ),
+          );
+      } else {
+        await tx.insert(documentAcknowledgements).values({
+          tenantId: tenant.id,
+          versionId: version.id,
+          userId: user.id,
+          assignedAt: now,
+          dueOn: shiftDay(today, version.acknowledgeWithinDays),
+          acknowledgedAt: now,
+          signatureId: signature.id,
+        });
+      }
+      await this.provisioning.audit(
+        tx,
+        tenant.id,
+        user.id,
+        'document_acknowledged',
+        'document',
+        doc.id,
+        {
+          versionId: version.id,
+          version: version.version,
+          signatureId: signature.id,
+          contentHash: signature.contentHash,
+        },
+      );
+      return {
+        versionId: version.id,
+        acknowledgedAt: now,
+        signature: {
+          id: signature.id,
+          meaning: signature.meaning,
+          signedAt: signature.signedAt,
+          contentHash: signature.contentHash,
+        },
+      };
+    });
+  }
+
+  private async reviewable(
+    tx: Transaction,
+    auth: AuthContext,
+    id: string,
+    revision: number,
+    lock: boolean,
+  ) {
+    const viewer = await viewerOf(tx, auth, this.engine);
+    const doc = await this.find(tx, viewer, id, lock);
+    if (!doc.access.manages && !doc.access.owner) {
+      throw refuse.outsideScope();
+    }
+    if (doc.revision !== revision) throw refuse.staleDocument();
+    if (doc.status !== 'active') {
+      throw new ConflictException({ code: 'not_active' });
+    }
+    return { viewer, doc };
+  }
+
+  /**
+   * The owner, or a manager of the document, confirms at its periodic
+   * review that it needs no change: a signature of the published version as
+   * it is, a `document_reviews` row, and the next review date moved on by
+   * the review period from today.
+   */
+  async confirmReview(
+    auth: AuthContext,
+    id: string,
+    input: { password: string; comment: string | null; revision: number },
+    ip: string | null,
+  ) {
+    const { tenant, user } = auth;
+    await this.tenantDb.withTenant(tenant.id, (tx) =>
+      this.reviewable(tx, auth, id, input.revision, false),
+    );
+    await this.auth.confirmPassword(auth, input.password, 'review', ip);
+    return this.tenantDb.withTenant(tenant.id, async (tx) => {
+      const { viewer, doc } = await this.reviewable(
+        tx,
+        auth,
+        id,
+        input.revision,
+        true,
+      );
+      const now = new Date();
+      const today = dayOf(now, tenant.timeZone);
+      const [published] = await tx
+        .select(versionFields)
+        .from(documentVersions)
+        .where(eq(documentVersions.id, doc.publishedVersionId!));
+      const nextReviewOn = addMonths(today, doc.reviewMonths);
+      const signature = await this.signatures.sign(tx, tenant.id, {
+        userId: user.id,
+        meaning: 'reviewed_no_change',
+        subjectType: 'document',
+        subjectId: doc.id,
+        content: {
+          documentId: doc.id,
+          number: doc.number,
+          publishedVersionId: published.id,
+          versionHash: contentHash(signedVersion(doc, published)),
+          dueOn: doc.nextReviewOn,
+          reviewedOn: today,
+          nextReviewOn,
+          comment: input.comment,
+        },
+      });
+      await tx.insert(documentReviews).values({
+        tenantId: tenant.id,
+        documentId: doc.id,
+        dueOn: doc.nextReviewOn,
+        outcome: 'no_change',
+        comment: input.comment,
+        reviewedBy: user.id,
+        reviewedAt: now,
+        signatureId: signature.id,
+        nextReviewOn,
+      });
+      await tx
+        .update(documents)
+        .set({
+          nextReviewOn,
+          lastReviewedOn: today,
+          reviewNoticeRank: null,
+          reviewNoticeFor: null,
+          revision: sql`${documents.revision} + 1`,
+          updatedAt: now,
+        })
+        .where(eq(documents.id, doc.id));
+      await this.provisioning.audit(
+        tx,
+        tenant.id,
+        user.id,
+        'document_reviewed',
+        'document',
+        doc.id,
+        {
+          outcome: 'no_change',
+          nextReviewOn: { from: doc.nextReviewOn, to: nextReviewOn },
+          signatureId: signature.id,
+          contentHash: signature.contentHash,
+          comment: input.comment,
+        },
+      );
+      return this.detail(tx, auth, viewer, await this.find(tx, viewer, doc.id));
+    });
+  }
+}

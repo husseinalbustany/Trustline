@@ -13,6 +13,13 @@ export const PERMISSIONS = [
   'actions.manage',
   'policies.view',
   'policies.manage',
+  // May be named in a step of an approval route by role. Being assigned a
+  // step gives the right to see that version and decide that step, nothing
+  // else.
+  'policies.approve',
+  // Read every document, restricted ones and drafts included, and see the
+  // acknowledgement figures. For the quality team and auditors.
+  'policies.view_all',
   'reports.view',
   'organization.manage',
   'users.manage',
@@ -38,6 +45,8 @@ export const PERMISSION_MODULE: Record<Permission, ModuleKey> = {
   'actions.manage': 'actions',
   'policies.view': 'policies',
   'policies.manage': 'policies',
+  'policies.approve': 'policies',
+  'policies.view_all': 'policies',
   // Reports draw on whichever modules are on.
   'reports.view': 'core',
   'organization.manage': 'core',
@@ -65,8 +74,8 @@ export const permissionInUse = (
  *
  * A change here reaches a new client through ensureSystemRoles() and the demo
  * hospitals through the seed. Clients that already exist get it only from a
- * migration: write one with the change, as
- * 0020_built_in_roles_reporter_and_sign_off.sql does.
+ * migration: write one with the change, and an audit entry per client, as
+ * 0039_policies_grants_and_existing_clients.sql does.
  */
 export const SYSTEM_ROLES: {
   code: string;
@@ -105,6 +114,8 @@ export const SYSTEM_ROLES: {
       'actions.manage',
       'policies.view',
       'policies.manage',
+      'policies.approve',
+      'policies.view_all',
       'reports.view',
     ],
   },
@@ -112,15 +123,17 @@ export const SYSTEM_ROLES: {
     code: 'department_manager',
     name: { en: 'Department manager', ar: 'مدير القسم', fr: 'Chef de service' },
     description: {
-      en: 'Sees incidents and manages actions for a department.',
-      ar: 'يطّلع على الحوادث ويدير الإجراءات التصحيحية في قسمه.',
-      fr: 'Consulte les incidents et gère les actions de son service.',
+      en: 'Sees incidents, manages actions, and reads and approves documents for a department.',
+      ar: 'يطّلع على الحوادث ويدير الإجراءات التصحيحية ويقرأ الوثائق ويعتمدها في قسمه.',
+      fr: 'Consulte les incidents, gère les actions, et lit et approuve les documents de son service.',
     },
     permissions: [
       'incidents.report',
       'incidents.view',
       'actions.manage',
       'policies.view',
+      'policies.approve',
+      'policies.view_all',
       'reports.view',
     ],
   },

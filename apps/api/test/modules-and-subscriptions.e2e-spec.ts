@@ -28,6 +28,7 @@ import { hashToken } from '../src/identity/provisioning.service.js';
 import { SessionGuard } from '../src/identity/session.guard.js';
 import { DeadlineCheck } from '../src/incidents/deadline-check.service.js';
 import { IncidentsModule } from '../src/incidents/incidents.module.js';
+import { PoliciesModule } from '../src/policies/policies.module.js';
 import { NotificationsController } from '../src/incidents/notifications.controller.js';
 import { PublicLimits } from '../src/incidents/public-limits.js';
 import { REFUSAL_STEP_MS } from '../src/incidents/public.controller.js';
@@ -246,6 +247,29 @@ describe('modules and subscriptions', () => {
       for (const [name, value] of Object.entries(declared)) {
         expect(`${name}: ${value}`).toBe(`${name}: incidents`);
       }
+    });
+
+    it('is policies for every controller of the policies module, and every one of its routes is signed in', () => {
+      const container = bench.app.get(ModulesContainer);
+      const module = [...container.values()].find(
+        (m) => m.metatype === PoliciesModule,
+      )!;
+      const names = [...module.controllers.values()].map(
+        (w) => (w.metatype as { name: string }).name,
+      );
+      expect(names.length).toBeGreaterThanOrEqual(2);
+      const routes = routesOf(bench).filter((r) => names.includes(r.controller));
+      expect(routes.length).toBeGreaterThanOrEqual(30);
+      for (const route of routes) {
+        expect(`${route.controller} ${route.method} ${route.path}: ${route.module} ${route.signedIn}`).toBe(
+          `${route.controller} ${route.method} ${route.path}: policies true`,
+        );
+      }
+      // And no controller elsewhere serves its paths.
+      const elsewhere = routesOf(bench).filter(
+        (r) => r.path.startsWith('/policies') && !names.includes(r.controller),
+      );
+      expect(elsewhere).toEqual([]);
     });
 
     it('refuses a signed-in route whose controller declares none, before anything else', async () => {

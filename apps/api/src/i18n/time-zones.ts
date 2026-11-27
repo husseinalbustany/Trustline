@@ -169,3 +169,28 @@ export function lastDays(count: number, timeZone: string, now = new Date()) {
   const from = shiftDay(to, 1 - count);
   return { from, to, since: startOfDay(from, timeZone) };
 }
+
+/**
+ * The day `months` calendar months after this one. A day the shorter month
+ * does not have becomes its last: 31 January plus one month is 28 (or 29)
+ * February, as a review date "a year after 29 February" is 28 February.
+ */
+export function addMonths(day: Day, months: number): Day {
+  const [year, month, date] = day.split('-').map(Number);
+  const target = new Date(Date.UTC(year, month - 1 + months, 1));
+  const last = new Date(
+    Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0),
+  ).getUTCDate();
+  return formatDay(
+    Date.UTC(
+      target.getUTCFullYear(),
+      target.getUTCMonth(),
+      Math.min(date, last),
+    ),
+  );
+}
+
+/** How many days from one day to another (negative when it is before). */
+export function daysBetween(from: Day, to: Day): number {
+  return Math.round((parseDay(to) - parseDay(from)) / DAY_MS);
+}

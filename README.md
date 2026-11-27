@@ -217,7 +217,7 @@ deadlines, attachments, investigations and actions.
 The product is sold in modules: `incidents`, `investigations`, `actions`,
 `policies`, `risks`, `training` and `ai_assistant`, besides core (sign-in,
 users, roles, structure, notifications, audit, settings), which every client
-has. Only incidents is built. The list is a constant in
+has. Incidents and policies are built. The list is a constant in
 `apps/api/src/subscriptions/modules.ts`, with what each needs
 (investigations needs incidents; the AI assistant needs another module).
 
@@ -266,6 +266,53 @@ The rules and what was decided are in `docs/specs/modules-and-subscriptions.md`.
 
 Not built yet: the portal's and the client's screens for this, AI metering,
 and self-service or online payment.
+
+## Policies and procedures
+
+The `policies` module: one library of each client's controlled documents
+(policies, procedures, work instructions), each with a number for life
+(`PRC-SAF-014`), versions, approval with signatures, publication,
+acknowledgement by the people it applies to, and periodic review. The
+database and the API are built; the screens are not.
+
+- **The cycle:** a manager drafts a version, section by section in each of
+  the client's languages (Markdown limited to paragraphs, lists, bold and
+  headings), sends it for review, and its approval route runs: each step
+  is decided in order by an assignee (a named person or a role held over
+  the document's unit), who approves with a signature or returns it with a
+  comment. An approved version is published now or on a later day; the one
+  before it is superseded. Nothing is deleted: a document is retired, a
+  version withdrawn or superseded.
+- **Signatures:** every approval, review sign-off and acknowledgement takes
+  the password again in the same request, counted against the same lock as
+  sign-in (`401 wrong_password` without ending the session), and keeps a
+  SHA-256 hash of exactly what was signed. The application role can add
+  signatures and read them, never change or delete one.
+- **Who sees what:** published documents are read by all staff, or, when
+  restricted, by their audience; drafts and versions in review only by
+  those who manage the document or see all documents (`policies.view_all`)
+  and by the assignees of its run. Lists, counts, search over the text,
+  notifications and the summary all keep to this (`policies/visibility.ts`).
+  Whoever prepared a version decides no step of it.
+- **The daily check** (every 15 minutes, beside the incident deadline check
+  and as safe with several processes) publishes what is scheduled, reminds
+  owners of reviews 60, 30 and 7 days ahead and when overdue, asks people
+  who joined an audience to acknowledge, and reminds those who have not.
+- **The summary** gives the two measures the business named: documents
+  past their review date as a share (target under 5%) and acknowledgement
+  completion as a share of the people asked (target 90% or more).
+- **The approval engine** (`apps/api/src/approvals/`) is generic: the
+  document code calls it, and investigations will.
+- `pnpm db:seed` gives each demo client five example documents in
+  different states and three fictional members of staff who wrote,
+  reviewed and approved them (invited, never signed in).
+
+The rules, what was decided while building, and every route are in
+`docs/specs/policies-and-procedures.md` ("Built: database and API").
+
+Not built yet: the screens, an owner asking to retire, notifications for
+an overdue approval step, and everything the spec leaves out of this
+release (uploads, attachments, delegation, email, a server-made PDF).
 
 ## API
 

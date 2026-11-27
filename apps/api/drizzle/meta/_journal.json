@@ -267,6 +267,20 @@
       "when": 1795789755312,
       "tag": "0037_client_access_reset",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1795808147629,
+      "tag": "0038_policies_and_procedures",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1795808331193,
+      "tag": "0039_policies_grants_and_existing_clients",
+      "breakpoints": true
     }
   ]
 }

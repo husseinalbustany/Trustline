@@ -31,6 +31,15 @@ export const NOTIFICATION_MODULE: Record<NotificationKind, ModuleKey> = {
   overdue: 'incidents',
   sentinel_flagged: 'incidents',
   public_form_paused: 'incidents',
+  document_step_assigned: 'policies',
+  document_returned: 'policies',
+  document_approved: 'policies',
+  document_published: 'policies',
+  acknowledgement_assigned: 'policies',
+  acknowledgement_due: 'policies',
+  acknowledgement_overdue: 'policies',
+  review_due: 'policies',
+  review_overdue: 'policies',
 };
 
 /** The kinds a client with these modules is shown. */

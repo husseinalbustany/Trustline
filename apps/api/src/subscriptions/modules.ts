@@ -40,7 +40,7 @@ export const MODULE_RULES: Record<ModuleCode, ModuleRule> = {
   investigations: { built: false, requiresAnyOf: ['incidents'] },
   // Fed by any other module that is on, but a tracker on its own works.
   actions: { built: false, requiresAnyOf: [] },
-  policies: { built: false, requiresAnyOf: [] },
+  policies: { built: true, requiresAnyOf: [] },
   risks: { built: false, requiresAnyOf: [] },
   training: { built: false, requiresAnyOf: [] },
   // Assists another module: on its own it has nothing to assist.

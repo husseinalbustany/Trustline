@@ -1,7 +1,18 @@
 import { eq, inArray, or, sql } from 'drizzle-orm';
 import { createDatabase } from '../src/database/client.js';
 import {
+  approvalRoutes,
+  approvalRouteSteps,
+  approvalRuns,
+  approvalRunSteps,
   auditLog,
+  documentAcknowledgements,
+  documentAudiences,
+  documentCategories,
+  documentReviews,
+  documents,
+  documentTypes,
+  documentVersions,
   incidentCategories,
   incidentComments,
   incidentEvents,
@@ -16,6 +27,7 @@ import {
   roleAssignments,
   roles,
   sessions,
+  signatures,
   subscriptions,
   tenants,
   users,
@@ -62,11 +74,30 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
           inArray(platformAuditLog.adminId, admins),
         ),
       );
+    // A document and its published version point at each other.
+    await db
+      .update(documents)
+      .set({ publishedVersionId: null, status: 'draft' })
+      .where(inArray(documents.tenantId, ids));
     // Children before what they point to: notifications, the timeline and
-    // comments before incidents, incidents before categories, users and org units.
+    // comments before incidents, incidents before categories, users and org
+    // units; acknowledgements, reviews and run steps before signatures,
+    // runs before routes, versions before documents before their types.
     for (const table of [
       subscriptions,
       notifications,
+      documentAcknowledgements,
+      documentReviews,
+      approvalRunSteps,
+      approvalRuns,
+      signatures,
+      approvalRouteSteps,
+      approvalRoutes,
+      documentAudiences,
+      documentVersions,
+      documents,
+      documentTypes,
+      documentCategories,
       incidentResponseRules,
       incidentEvents,
       incidentComments,

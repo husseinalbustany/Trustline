@@ -802,6 +802,8 @@ describe('incident reporting after the second quality review', () => {
           createdAt: expect.any(String),
           readAt: null,
           incident: null,
+          // About a controlled document: none.
+          document: null,
           data: { limit: PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR, serious: false },
         });
         const count = await http()

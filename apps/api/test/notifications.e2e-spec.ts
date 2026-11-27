@@ -667,6 +667,7 @@ describe('notifications', () => {
       expect(Object.keys(latest).sort()).toEqual([
         'createdAt',
         'data',
+        'document',
         'id',
         'incident',
         'kind',
@@ -1281,6 +1282,7 @@ describe('notifications', () => {
         expect(Object.keys(item).sort()).toEqual([
           'createdAt',
           'data',
+          'document',
           'id',
           'incident',
           'kind',

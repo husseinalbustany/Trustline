@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ApprovalsModule } from '../approvals/approvals.module.js';
 import { OrganizationModule } from '../organization/organization.module.js';
 import { DeadlineCheck } from './deadline-check.service.js';
 import {
@@ -19,7 +20,9 @@ import { IncidentSettingsController } from './settings.controller.js';
  * deadlines, and the notifications about all of it.
  */
 @Module({
-  imports: [OrganizationModule],
+  // The approval engine, for whether a notification's document can be
+  // opened by its reader.
+  imports: [ApprovalsModule, OrganizationModule],
   controllers: [
     IncidentCategoriesController,
     IncidentsController,

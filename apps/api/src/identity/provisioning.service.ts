@@ -3,7 +3,11 @@ import { Injectable } from '@nestjs/common';
 import { and, count, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import type { Transaction } from '../database/client.js';
 import {
+  approvalRoutes,
+  approvalRouteSteps,
   auditLog,
+  documentCategories,
+  documentTypes,
   incidentCategories,
   incidentResponseRules,
   roleAssignments,
@@ -18,6 +22,12 @@ import {
   DEFAULT_RESPONSE_RULES,
   HARM_LEVELS,
 } from '../incidents/response-rules.js';
+import {
+  DEFAULT_DOCUMENT_CATEGORIES,
+  DEFAULT_DOCUMENT_TYPES,
+  DEFAULT_ROUTE_NAMES,
+  DEFAULT_ROUTE_STEPS,
+} from '../policies/defaults.js';
 import { EntitlementsService } from '../subscriptions/entitlements.service.js';
 import { SYSTEM_ROLES } from './permissions.js';
 
@@ -176,6 +186,82 @@ export class ProvisioningService {
           incidentResponseRules.harmLevel,
         ],
       });
+  }
+
+  /**
+   * Adds what the policies module starts with (policies/defaults.ts) where
+   * the client does not have it yet: the three document types, the
+   * categories, and, for each type that has no approval route at all, its
+   * starting route. What the client has already, changed, switched off or
+   * made itself is left alone. Safe to repeat. Needs the built-in roles,
+   * which the route's steps name: call it after `ensureSystemRoles`.
+   */
+  async ensurePolicyDefaults(tx: Transaction, tenantId: string) {
+    await tx
+      .insert(documentTypes)
+      .values(DEFAULT_DOCUMENT_TYPES.map((t) => ({ ...t, tenantId })))
+      .onConflictDoNothing({
+        target: [documentTypes.tenantId, documentTypes.code],
+      });
+    await tx
+      .insert(documentCategories)
+      .values(DEFAULT_DOCUMENT_CATEGORIES.map((c) => ({ ...c, tenantId })))
+      .onConflictDoNothing({
+        target: [documentCategories.tenantId, documentCategories.code],
+      });
+    const types = await tx
+      .select({ id: documentTypes.id, code: documentTypes.code })
+      .from(documentTypes)
+      .where(
+        and(
+          // Named, not left to row-level security: the seed runs this as
+          // the owner role, which sees every client.
+          eq(documentTypes.tenantId, tenantId),
+          inArray(
+            documentTypes.code,
+            DEFAULT_DOCUMENT_TYPES.map((t) => t.code),
+          ),
+          sql`not exists (select from ${approvalRoutes} r where r.tenant_id = ${tenantId} and r.document_type_id = ${documentTypes.id})`,
+        ),
+      );
+    if (types.length === 0) return;
+    const builtIn = await tx
+      .select({ id: roles.id, code: roles.code })
+      .from(roles)
+      .where(
+        and(
+          eq(roles.tenantId, tenantId),
+          eq(roles.isSystem, true),
+          inArray(
+            roles.code,
+            DEFAULT_ROUTE_STEPS.map((s) => s.roleCode),
+          ),
+        ),
+      );
+    const roleOf = new Map(builtIn.map((r) => [r.code, r.id]));
+    for (const type of types) {
+      const [route] = await tx
+        .insert(approvalRoutes)
+        .values({
+          tenantId,
+          name: DEFAULT_ROUTE_NAMES[type.code],
+          subject: 'document',
+          documentTypeId: type.id,
+        })
+        .returning({ id: approvalRoutes.id });
+      const steps = DEFAULT_ROUTE_STEPS.filter((s) => roleOf.has(s.roleCode));
+      if (steps.length === 0) continue;
+      await tx.insert(approvalRouteSteps).values(
+        steps.map((s) => ({
+          tenantId,
+          routeId: route.id,
+          position: s.position,
+          kind: s.kind,
+          assigneeRoleId: roleOf.get(s.roleCode)!,
+          dueInDays: s.dueInDays,
+        })),
+      );
+    }
   }
 
   async createUser(

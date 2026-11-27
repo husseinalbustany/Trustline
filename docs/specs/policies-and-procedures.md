@@ -288,3 +288,242 @@ acknowledgement reminders.
 completion: 90% or more of targeted staff". The summary route must produce
 both, over what the caller may see, and the dashboard shows them to those
 allowed.
+
+## Built: database and API
+
+Status: the database and the API are built (migrations 0038 and 0039,
+`apps/api/src/policies/`, `apps/api/src/approvals/`). The web screens are
+not. What was decided where this document left it open is marked
+**Chosen**; the full request and response shapes are below.
+
+### Where the code is
+
+- `src/approvals/`: the approval engine (routes, runs, steps, who an
+  assignee is) and electronic signatures, generic. It knows nothing of
+  documents and has no routes of its own: the document code calls it and
+  tells it the subject's owning unit and the permission an assignee needs
+  (`policies.approve`). Investigations will call it the same way.
+- `src/policies/`: documents, versions, publishing, acknowledgement,
+  periodic review, settings, the daily check (`policy-check.service.ts`),
+  and who sees what (`visibility.ts`, written once for every list, count,
+  search, lookup and notification).
+
+### Who sees and does what
+
+- **Chosen: scope.** `policies.manage` and `policies.view_all` are scoped
+  to the document's owning unit (granted for the whole organization, for
+  that unit or for one above it). `policies.view` is not: held anywhere, it
+  reads every published document open to all staff. Types, categories and
+  routes belong to the whole organization: changing them needs
+  `policies.manage` for the whole organization.
+- **Full sight** (every version, drafts, history, reviews, acknowledgement
+  figures): `policies.manage` or `policies.view_all` over the owning unit.
+- **Readers** see the published version of an active document: all staff
+  for `all_staff`, the audience for `restricted`. **Chosen:** the
+  document's owner always reads its published version, whatever its
+  confidentiality, and is told of its reviews; and the owner may confirm a
+  review with no change (as may a manager of it). Readers do not see older
+  versions: the history shows them the published version only.
+- **Assignees** of any step of an approval run in progress on a version
+  see the document, that version and, **chosen**, the published version it
+  is compared with (the comparison needs it). Nothing else, and nothing once
+  the run has ended.
+- A retired document is seen only with full sight.
+- **Chosen: the audience.** A person is in a document's audience when their
+  own unit (`users.org_unit_id`) is one of the audience's units or beneath
+  one (or the audience is the whole organization), and, if the audience is
+  narrowed to roles, they hold one of those roles anywhere; and they hold a
+  permission that reads documents at all. A person with no unit of their
+  own is in whole-organization audiences only.
+- Searching section text searches only versions the caller may open.
+  Notifications name the document's number and a version or a day, never
+  its title or text; the list adds the title only while the reader can
+  open it (`document.canOpen`).
+
+### The approval engine
+
+- **Chosen: assignees.** A step names a person or a role. A role may be
+  named only if it includes `policies.approve` (400
+  `role_cannot_approve`); a person only if they are active and hold
+  `policies.approve` somewhere (400 `user_cannot_approve`). Who may decide
+  a step is worked out when it is decided: the person named, if they still
+  hold it; or everyone holding the role over the owning unit, if the role
+  still includes it.
+- **Chosen: the starting route** of each type: review by the Quality
+  officer role, then approval by the Administrator role (every client has
+  one from its first day), seven days each. The last step of a route must
+  be an approval (400 `last_step_must_approve`). At most one active route
+  per type, and one for "any type" (409 `route_exists`).
+- A run copies the route's steps when it starts; changing a route changes
+  nothing for a run in progress.
+- **Chosen: the same-person rule** covers everyone who created, edited or
+  sent the version for review (`document_versions.contributors`), for
+  every step, review or approval (403 `same_person`). Sending for review is
+  refused when a step has nobody else who could decide it (409
+  `no_assignee` with its `position`), so a run cannot be started that can
+  never end.
+- Two people deciding the same step at once take turns on the document's
+  row lock: one decides it, the other is answered 409 (`stale_version`).
+- **Chosen:** a manager may **recall** a version in review (back to draft,
+  run cancelled) and **withdraw** a version in progress. Not in the list
+  above, but without them a run whose assignees have left could never end.
+- Step due dates are stored and shown (`dueAt`, `overdue`); nothing is
+  sent when a step is overdue (not in this release's list of
+  notifications).
+
+### Signatures
+
+- Every approval, review sign-off and acknowledgement takes the password
+  again in the same request. It is checked as sign-in checks it: the same
+  counter of wrong passwords and the same 15-minute lock after five, shared
+  with sign-in. Wrong: 401 `{ code: "wrong_password" }`; while locked
+  (whatever was typed): 401 `{ code: "password_locked" }`. Neither ends the
+  session. A failure is audited as `password_confirmation_failed` with
+  `{ locked, purpose }`; the password is never stored, logged or audited.
+  Everything else is checked before the password, so a request refused
+  for another reason neither asks for it nor counts it.
+- `signatures` holds who, when, the meaning (`reviewed` for a review step,
+  `approved` for an approval step, `reviewed_no_change`, `acknowledged`),
+  the subject, `method: "password"`, and `content_hash`: SHA-256 (hex) of
+  the canonical JSON (keys sorted) of what was signed. For a version:
+  `{ documentId, number, versionId, version, sections, content,
+  changeSummary, acknowledgementRequired, acknowledgeWithinDays }`, shown on
+  the version as `contentHash`. **Chosen:** the title is not in it: it is
+  the document's, edited on its own. Publishing checks that every approval
+  of the approving run signed what the version holds (409
+  `content_changed`, which no route can bring about).
+- The application role may insert and read signatures, never update or
+  delete them (migration 0039). Reviews are insert-only too.
+
+### Content
+
+- Markdown limited to paragraphs, headings of levels 1 to 3, bulleted and
+  numbered lists (nested by indenting) and bold. Refused with 400
+  `unsupported_markup` (`locale`, `section`, `problem`): HTML tags and
+  comments and autolinks (`html`), links of any form (`link`), images
+  (`image`), code spans and blocks (`code`, `indented`), block quotes
+  (`quote`), tables (`table`), headings of level 4 and deeper
+  (`heading_level`), and control characters as elsewhere
+  (`control_character`). "Less than < 5" is text. The API stores the text
+  and never renders HTML.
+- **Chosen: sizes.** 20,000 characters a section in one language (400
+  `section_too_long`), 200,000 for the version in all languages together
+  (400 `content_too_large`). A request body is at most 100 kB, so a long
+  version is saved a few sections at a time.
+- **Chosen:** a version keeps the sections its type had when it was
+  created; a later change of the type counts for new versions.
+- The comparison with the published version is section by section and
+  language by language, with whether it changed and the lines kept, added
+  and removed.
+
+### Numbering, defaults and dates
+
+- `<prefix>-<category code>-<n>`, at least three digits (more past 999),
+  from `reference_counters` (series = the text before the number, year 0).
+  Two at once queue on the counter's row; a number is never given twice.
+  **Chosen:** a category's code is fixed once created (it is in every
+  number); a type's prefix may change and numbers documents from then on.
+- Types, categories and routes are created for every new client
+  (`ensurePolicyDefaults`) and were given to existing ones by migration
+  0039, in English, Arabic and French. Migration 0039 also gave the
+  built-in Administrator, Quality officer and Department manager of every
+  existing client `policies.approve` and `policies.view_all`, with one
+  audit entry per client (`built_in_roles_changed_by_system`).
+- Every day is a day on the client's calendar. The next review is the
+  effective day plus the review period (a missing day becomes the month's
+  last); confirming a review counts from the day it is confirmed.
+- **Chosen:** publishing a new version of an active document records the
+  periodic review as answered by a revision (`document_reviews`,
+  `revised`); retiring an active one records `retired` with the reason.
+- **Chosen:** a document's metadata (title, owner, owning unit, audience,
+  confidentiality, keywords, references, review period, category) is
+  edited directly, audited, not through a version. Its type cannot change.
+
+### Acknowledgement
+
+- Asked of everyone in the audience when the version is published (one row
+  each, due after `acknowledgeWithinDays` days), and by the daily check of
+  anyone who joins the audience later. Someone in the audience who has not
+  been asked yet may acknowledge already.
+- **Chosen: who is targeted** for the completion measure: everyone asked to
+  acknowledge the published version of an active document who is still an
+  active user. Someone who left the audience after being asked stays
+  counted.
+- Reminders: at half the time allowed (the due day less half the days,
+  rounded down) and the day after the due day, each once.
+
+### The daily check
+
+- Beside the incident deadline check and built the same way: every API
+  process may run it, each thing is claimed by a row lock and marked in the
+  transaction that writes its notifications, batches of 100, pieces of at
+  most 1,000 rows per statement, no statement longer than 30 seconds, a
+  client that fails is named in the log with the kind of failure only, and
+  `run(now, only)` lets a test name its own clients.
+- **Chosen:** it runs every 15 minutes (the days are each client's own, so
+  a client's midnight comes at a different moment for each), and does each
+  thing once whatever the number of runs. It skips a client without the
+  module, suspended by Trustline or cancelled; what came due meanwhile is
+  done once when it is back.
+- Review reminders go to the owner at 60, 30 and 7 days, and when overdue
+  to the owner and the document's managers; once per review date, and a
+  document found later than a stage is sent the latest stage only.
+
+### Subscription status
+
+- While suspended, every write of the module is refused (403
+  `subscription_suspended`) except acknowledging, which stays open
+  (`@OpenWhileSuspended()`): agreed, it is safety work, and changes nothing
+  anyone else relies on. The daily check keeps running for a suspended
+  subscription (only a client Trustline suspended, or a cancelled one, is
+  skipped), so scheduled publishing and reminders go on.
+
+### Not built in this release
+
+- The owner asking a manager to retire a document: there is no route; the
+  owner tells a manager, who retires it.
+- Notifications for an overdue approval step.
+- The owner unit head as an assignee, and `required` other than 1, as the
+  spec says.
+
+### The API (under `/api/v1/policies`)
+
+Every route: session (401 without), `@ForModule('policies')` (404 like an
+unknown route when the module is off), strict bodies (400 on anything
+else), 404 for a record of another client or one the caller may not see.
+`revision` is required on every change and answered 409 `stale_document`,
+`stale_version` or `stale_route` when out of date. Writes are audited.
+
+| Route | Who | Body / query | Answers |
+|---|---|---|---|
+| `GET /documents` | any policies permission | `q`, `typeId`, `categoryId`, `ownerUnitId`, `status`, `review=due\|overdue`, `appliesToMe`, `awaitingMyAcknowledgement`, `sort=number\|title\|next_review\|recently_published`, `page`, `pageSize` | `{ items, total }` |
+| `POST /documents` | `policies.manage` over `ownerUnitId` | `typeId, categoryId, title, ownerId, ownerUnitId, audience?, confidentiality?, keywords?, references?, reviewMonths?, acknowledgementRequired?, acknowledgeWithinDays?` | 201 document |
+| `GET /documents/:id` | any | | document |
+| `PATCH /documents/:id` | manager | metadata fields, `revision` | document |
+| `POST /documents/:id/retire` | manager | `reason, revision` | document |
+| `POST /documents/:id/review` | owner or manager | `password, comment?, revision` | document |
+| `GET /documents/:id/versions` | any | | `{ versions, reviews }` |
+| `POST /documents/:id/versions` | manager | `{}` | 201 version |
+| `GET /documents/:id/versions/:versionId` | any | | version |
+| `PATCH /documents/:id/versions/:versionId` | manager | `content?, changeSummary?, acknowledgementRequired?, acknowledgeWithinDays?, revision` | version |
+| `POST …/submit` | manager | `revision` | version |
+| `POST …/approve` | `policies.approve`, assignee | `password, comment?, revision` | version |
+| `POST …/return` | `policies.approve`, assignee | `comment, revision` | version |
+| `POST …/recall` | manager | `revision` | version |
+| `POST …/withdraw` | manager | `reason?, revision` | version |
+| `POST …/publish` | manager | `effectiveOn?, revision` | version |
+| `POST …/acknowledge` | reader in the audience | `password` | `{ versionId, acknowledgedAt, signature }` |
+| `GET …/acknowledgements` | full sight | `state?, page, pageSize` | counts, `byUnit`, `people` |
+| `GET /approvals` | `policies.approve` | | `{ items, total }` |
+| `GET /reviews` | any | | `{ items, total }` |
+| `GET /summary` | any | | counts and the two measures |
+| `GET /people` | `policies.manage` | `q?, approvers?` | `[{ id, name, orgUnitId }]` |
+| `GET /types`, `GET /categories` | any (`includeInactive` for managers) | | list |
+| `POST/PATCH /types`, `/categories` | `policies.manage` everywhere | | the record |
+| `GET /approval-routes` | `policies.manage` | | list with steps |
+| `POST/PATCH /approval-routes` | `policies.manage` everywhere | `name, documentTypeId, active?, steps[{ kind, userId \| roleId, dueInDays }], revision` (PATCH) | the route |
+
+Each document and version carries `moves`, the actions the caller may take
+now: on a document `edit`, `new_version`, `retire`, `confirm_review`; on a
+version `edit`, `submit`, `recall`, `publish`, `withdraw`, `approve`,
+`return`, `acknowledge`.

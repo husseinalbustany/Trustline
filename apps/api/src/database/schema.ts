@@ -15,6 +15,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import type { Localized } from '../i18n/locales.js';
@@ -777,6 +778,26 @@ export const notificationKind = pgEnum('notification_kind', [
   // The hospital's public form turned a report away because it had taken
   // its hour's worth. About the hospital, not about an incident.
   'public_form_paused',
+  // Policies and procedures: about a controlled document (`document_id`).
+  // A step of an approval run is now the recipient's to decide.
+  'document_step_assigned',
+  // A version was returned to draft by a reviewer or approver.
+  'document_returned',
+  // A version passed the last step of its route.
+  'document_approved',
+  // A version requiring acknowledgement was published to its audience.
+  'document_published',
+  // Someone who joined a document's audience after it was published is
+  // asked to acknowledge it.
+  'acknowledgement_assigned',
+  // Half the time allowed to acknowledge has gone.
+  'acknowledgement_due',
+  // The time allowed to acknowledge has passed.
+  'acknowledgement_overdue',
+  // A document's periodic review is 60, 30 or 7 days away.
+  'review_due',
+  // A document's periodic review date has passed.
+  'review_overdue',
 ]);
 
 // Something a user is told about an incident they can see. Stored so that it
@@ -794,8 +815,12 @@ export const notifications = pgTable(
     userId: uuid().notNull(),
     kind: notificationKind().notNull(),
     // Null only for a notification about the hospital itself rather than
-    // one of its incidents (`public_form_paused`).
+    // one of its incidents (`public_form_paused`), and for one about a
+    // controlled document, which names `document_id` instead.
     incidentId: uuid(),
+    // The controlled document a notification of the policies module is
+    // about. Whoever reads the list is told whether they can still open it.
+    documentId: uuid(),
     // The incident's reference, whether it is serious and, for some kinds,
     // which deadline or which outcome. Never a name, a description or the
     // text of a comment: nothing a patient, a reporter or a member of staff
@@ -815,17 +840,23 @@ export const notifications = pgTable(
       columns: [t.tenantId, t.incidentId],
       foreignColumns: [incidents.tenantId, incidents.id],
     }),
+    foreignKey({
+      name: 'notifications_document_fk',
+      columns: [t.tenantId, t.documentId],
+      foreignColumns: [documents.tenantId, documents.id],
+    }),
     // A user's own, newest first; and the count of those not yet read.
     index('notifications_user_idx').on(t.tenantId, t.userId, t.createdAt),
     index('notifications_unread_idx')
       .on(t.tenantId, t.userId)
       .where(sql`${t.readAt} is null`),
-    // Every notification is about an incident, except the one kind that is
-    // about the hospital. Compared as text so that the check does not need
-    // the new kind to be committed before it is created.
+    // Every notification is about an incident or a document, never both,
+    // except the one kind that is about the hospital. Compared as text so
+    // that the check does not need a new kind to be committed before it is
+    // created.
     check(
-      'notifications_about_incident',
-      sql`${t.incidentId} is not null or ${t.kind}::text = 'public_form_paused'`,
+      'notifications_about_one_thing',
+      sql`(${t.incidentId} is null or ${t.documentId} is null) and (${t.incidentId} is not null or ${t.documentId} is not null or ${t.kind}::text = 'public_form_paused')`,
     ),
     tenantIsolation(),
   ],
@@ -848,6 +879,741 @@ export const referenceCounters = pgTable(
       name: 'reference_counters_pkey',
       columns: [t.tenantId, t.prefix, t.year],
     }),
+    tenantIsolation(),
+  ],
+);
+
+// Policies and procedures (docs/specs/policies-and-procedures.md), and the
+// approval engine documents go through. Every table is tenant data under
+// row-level security, every reference to another row is a composite foreign
+// key with the tenant, and nothing a client writes is ever deleted: a
+// document is retired, a version withdrawn or superseded. The grants for the
+// application role are in the migration that follows this one.
+
+/** One section a type of document is written in. */
+export type DocumentSection = {
+  /** Lowercase, fixed: the key of the section's text in a version. */
+  key: string;
+  name: Localized;
+  /** Must be written in the default language before review. */
+  required: boolean;
+};
+
+/**
+ * A version's text: per language, per section key, Markdown limited to
+ * paragraphs, lists, bold and headings (see policies/content.ts).
+ */
+export type DocumentContent = Partial<Record<string, Record<string, string>>>;
+
+export const documentStatus = pgEnum('document_status', [
+  // Never published.
+  'draft',
+  // Has a published version.
+  'active',
+  'retired',
+]);
+
+export const documentConfidentiality = pgEnum('document_confidentiality', [
+  // Anyone who may read documents.
+  'all_staff',
+  // Only its audience, and those who manage documents or see them all.
+  'restricted',
+]);
+
+export const documentVersionStatus = pgEnum('document_version_status', [
+  'draft',
+  'in_review',
+  'approved',
+  'published',
+  'superseded',
+  'withdrawn',
+]);
+
+export const documentReviewOutcome = pgEnum('document_review_outcome', [
+  'no_change',
+  'revised',
+  'retired',
+]);
+
+// Policy, procedure, work instruction: the three every client starts with
+// (policies/defaults.ts), and any it adds. Switched off, never deleted.
+export const documentTypes = pgTable(
+  'document_types',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    // Lowercase, fixed once created.
+    code: text().notNull(),
+    name: jsonb().$type<Localized>().notNull(),
+    // The start of each number: POL, PRC, WI. A change numbers documents
+    // created from then on; a document keeps its number for life.
+    numberPrefix: text().notNull(),
+    // In order. A version takes the type's sections when it is created and
+    // keeps them, so a later change here does not alter what was written.
+    sections: jsonb().$type<DocumentSection[]>().notNull(),
+    defaultReviewMonths: integer().notNull(),
+    active: boolean().notNull().default(true),
+    position: integer().notNull().default(0),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('document_types_tenant_id_id_key').on(t.tenantId, t.id),
+    unique('document_types_tenant_id_code_key').on(t.tenantId, t.code),
+    check(
+      'document_types_prefix_shape',
+      sql`${t.numberPrefix} ~ '^[A-Z][A-Z0-9]{1,5}$'`,
+    ),
+    check(
+      'document_types_review_months',
+      sql`${t.defaultReviewMonths} between 1 and 120`,
+    ),
+    tenantIsolation(),
+  ],
+);
+
+// What a document is about (governance, safety…), as a tree. The code is
+// the middle of each number: PRC-SAF-014. Switched off, never deleted.
+export const documentCategories = pgTable(
+  'document_categories',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    // Capitals and digits, fixed once created: it is in every number.
+    code: text().notNull(),
+    name: jsonb().$type<Localized>().notNull(),
+    parentId: uuid(),
+    active: boolean().notNull().default(true),
+    position: integer().notNull().default(0),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('document_categories_tenant_id_id_key').on(t.tenantId, t.id),
+    unique('document_categories_tenant_id_code_key').on(t.tenantId, t.code),
+    foreignKey({
+      name: 'document_categories_parent_fk',
+      columns: [t.tenantId, t.parentId],
+      foreignColumns: [t.tenantId, t.id],
+    }),
+    check(
+      'document_categories_code_shape',
+      sql`${t.code} ~ '^[A-Z][A-Z0-9]{1,5}$'`,
+    ),
+    tenantIsolation(),
+  ],
+);
+
+// One controlled document, which keeps its number for life. The
+// application role cannot delete one.
+export const documents = pgTable(
+  'documents',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    // <prefix>-<category code>-<at least 3 digits>, from reference_counters
+    // when the document is created (policies/numbering.ts). Never reused.
+    number: text().notNull(),
+    typeId: uuid().notNull(),
+    categoryId: uuid().notNull(),
+    title: jsonb().$type<Localized>().notNull(),
+    // The person accountable for it, and the unit that owns it. Managers
+    // scoped to a unit manage the documents that unit and those below own.
+    ownerId: uuid().notNull(),
+    ownerUnitId: uuid().notNull(),
+    confidentiality: documentConfidentiality().notNull().default('all_staff'),
+    keywords: text()
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    // Free text, e.g. "JCI IPSG.1", "ISO 45001 7.2".
+    references: text()
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    reviewMonths: integer().notNull(),
+    // Days on the client's calendar.
+    nextReviewOn: date({ mode: 'string' }),
+    lastReviewedOn: date({ mode: 'string' }),
+    status: documentStatus().notNull().default('draft'),
+    // Its foreign key to document_versions (documents_published_version_fk,
+    // with the tenant) is added by the migration that follows this table's:
+    // the two tables point at each other, which this file cannot type.
+    publishedVersionId: uuid(),
+    retiredAt: timestamp({ withTimezone: true }),
+    retiredBy: uuid(),
+    retireReason: text(),
+    createdBy: uuid().notNull(),
+    // Which review reminder was sent last (1: 60 days, 2: 30, 3: 7,
+    // 4: overdue) and for which review date, so each is sent once. Claimed
+    // by the daily check in the transaction that writes the notifications.
+    reviewNoticeRank: integer(),
+    reviewNoticeFor: date({ mode: 'string' }),
+    // Raised by every change a decision rests on. Someone saving says which
+    // revision they read, so a change made on an out-of-date screen is
+    // refused (409 `stale_document`).
+    revision: integer().notNull().default(1),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('documents_tenant_id_id_key').on(t.tenantId, t.id),
+    unique('documents_tenant_id_number_key').on(t.tenantId, t.number),
+    foreignKey({
+      name: 'documents_type_fk',
+      columns: [t.tenantId, t.typeId],
+      foreignColumns: [documentTypes.tenantId, documentTypes.id],
+    }),
+    foreignKey({
+      name: 'documents_category_fk',
+      columns: [t.tenantId, t.categoryId],
+      foreignColumns: [documentCategories.tenantId, documentCategories.id],
+    }),
+    foreignKey({
+      name: 'documents_owner_fk',
+      columns: [t.tenantId, t.ownerId],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'documents_owner_unit_fk',
+      columns: [t.tenantId, t.ownerUnitId],
+      foreignColumns: [orgUnits.tenantId, orgUnits.id],
+    }),
+    foreignKey({
+      name: 'documents_retired_by_fk',
+      columns: [t.tenantId, t.retiredBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'documents_created_by_fk',
+      columns: [t.tenantId, t.createdBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    check(
+      'documents_review_months',
+      sql`${t.reviewMonths} between 1 and 120`,
+    ),
+    // Active means published: the one published version is named.
+    check(
+      'documents_active_is_published',
+      sql`${t.status} <> 'active' or ${t.publishedVersionId} is not null`,
+    ),
+    index('documents_status_idx').on(t.tenantId, t.status, t.nextReviewOn),
+    index('documents_owner_unit_idx').on(t.tenantId, t.ownerUnitId),
+    index('documents_owner_idx').on(t.tenantId, t.ownerId),
+    tenantIsolation(),
+  ],
+);
+
+// Whom a document applies to: one row per org unit (null: the whole
+// organization; a unit covers its descendants), optionally narrowed to
+// people holding a role (null: anyone). Replaced as a whole when edited.
+export const documentAudiences = pgTable(
+  'document_audiences',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    documentId: uuid().notNull(),
+    orgUnitId: uuid(),
+    roleId: uuid(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'document_audiences_document_fk',
+      columns: [t.tenantId, t.documentId],
+      foreignColumns: [documents.tenantId, documents.id],
+    }),
+    foreignKey({
+      name: 'document_audiences_org_unit_fk',
+      columns: [t.tenantId, t.orgUnitId],
+      foreignColumns: [orgUnits.tenantId, orgUnits.id],
+    }),
+    // A role the audience is narrowed to cannot be deleted from under it.
+    foreignKey({
+      name: 'document_audiences_role_fk',
+      columns: [t.tenantId, t.roleId],
+      foreignColumns: [roles.tenantId, roles.id],
+    }),
+    unique('document_audiences_once_key')
+      .on(t.tenantId, t.documentId, t.orgUnitId, t.roleId)
+      .nullsNotDistinct(),
+    tenantIsolation(),
+  ],
+);
+
+// One edition of a document's content. The application role cannot delete
+// one. At most one is published and at most one is in progress (draft, in
+// review or approved) per document, which the two indexes below keep.
+export const documentVersions = pgTable(
+  'document_versions',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    documentId: uuid().notNull(),
+    version: integer().notNull(),
+    status: documentVersionStatus().notNull().default('draft'),
+    // The type's sections when the version was created, kept as they were.
+    sections: jsonb().$type<DocumentSection[]>().notNull(),
+    content: jsonb()
+      .$type<DocumentContent>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    // Required from version 2, before review.
+    changeSummary: jsonb().$type<Localized>(),
+    preparedBy: uuid().notNull(),
+    preparedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    // Everyone who created, edited or sent this version for review. None of
+    // them may decide a step of its approval (403 `same_person`).
+    contributors: uuid()
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
+    // The day it takes effect, on the client's calendar. Set when it is
+    // published, or when publishing is scheduled for a later day.
+    effectiveOn: date({ mode: 'string' }),
+    // Who scheduled it for `effective_on`, while it waits for that day.
+    scheduledBy: uuid(),
+    approvedAt: timestamp({ withTimezone: true }),
+    publishedAt: timestamp({ withTimezone: true }),
+    // Null when the daily check published it on its scheduled day.
+    publishedBy: uuid(),
+    supersededAt: timestamp({ withTimezone: true }),
+    withdrawnAt: timestamp({ withTimezone: true }),
+    withdrawnBy: uuid(),
+    acknowledgementRequired: boolean().notNull().default(false),
+    acknowledgeWithinDays: integer().notNull().default(14),
+    // As documents.revision, for the version's own changes and decisions
+    // (409 `stale_version`).
+    revision: integer().notNull().default(1),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('document_versions_tenant_id_id_key').on(t.tenantId, t.id),
+    unique('document_versions_number_key').on(
+      t.tenantId,
+      t.documentId,
+      t.version,
+    ),
+    foreignKey({
+      name: 'document_versions_document_fk',
+      columns: [t.tenantId, t.documentId],
+      foreignColumns: [documents.tenantId, documents.id],
+    }),
+    foreignKey({
+      name: 'document_versions_prepared_by_fk',
+      columns: [t.tenantId, t.preparedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'document_versions_scheduled_by_fk',
+      columns: [t.tenantId, t.scheduledBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'document_versions_published_by_fk',
+      columns: [t.tenantId, t.publishedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'document_versions_withdrawn_by_fk',
+      columns: [t.tenantId, t.withdrawnBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    uniqueIndex('document_versions_one_published')
+      .on(t.tenantId, t.documentId)
+      .where(sql`${t.status} = 'published'`),
+    uniqueIndex('document_versions_one_in_progress')
+      .on(t.tenantId, t.documentId)
+      .where(sql`${t.status} in ('draft', 'in_review', 'approved')`),
+    check('document_versions_version', sql`${t.version} >= 1`),
+    check(
+      'document_versions_acknowledge_days',
+      sql`${t.acknowledgeWithinDays} between 1 and 365`,
+    ),
+    // What the daily check looks for: approved versions due to publish.
+    index('document_versions_scheduled_idx')
+      .on(t.tenantId, t.effectiveOn)
+      .where(sql`${t.status} = 'approved' and ${t.effectiveOn} is not null`),
+    tenantIsolation(),
+  ],
+);
+
+export const approvalStepKind = pgEnum('approval_step_kind', [
+  'review',
+  'approve',
+]);
+
+export const approvalRunStatus = pgEnum('approval_run_status', [
+  'in_progress',
+  'approved',
+  'returned',
+  'cancelled',
+]);
+
+export const approvalRunStepStatus = pgEnum('approval_run_step_status', [
+  // Not reached yet.
+  'waiting',
+  // The current step, to be decided.
+  'pending',
+  'approved',
+  'returned',
+  // Never reached: the run was returned or cancelled before it.
+  'skipped',
+]);
+
+export const signatureMeaning = pgEnum('signature_meaning', [
+  'reviewed',
+  'approved',
+  'reviewed_no_change',
+  'acknowledged',
+]);
+
+// The ordered steps something must pass before it is approved. Generic
+// (approvals/): `subject` is `document` today, investigations later. Each
+// client starts with one per document type (policies/defaults.ts).
+export const approvalRoutes = pgTable(
+  'approval_routes',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    name: jsonb().$type<Localized>().notNull(),
+    subject: text().notNull(),
+    // The route for documents of that type; null: for any type without one.
+    documentTypeId: uuid(),
+    active: boolean().notNull().default(true),
+    revision: integer().notNull().default(1),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('approval_routes_tenant_id_id_key').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'approval_routes_document_type_fk',
+      columns: [t.tenantId, t.documentTypeId],
+      foreignColumns: [documentTypes.tenantId, documentTypes.id],
+    }),
+    check('approval_routes_subject', sql`${t.subject} in ('document')`),
+    // One active route per subject and type, so which applies is never in
+    // doubt.
+    uniqueIndex('approval_routes_one_active')
+      .on(
+        t.tenantId,
+        t.subject,
+        sql`coalesce(${t.documentTypeId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+      )
+      .where(sql`${t.active}`),
+    tenantIsolation(),
+  ],
+);
+
+// A step of a route. Its assignee is a named user or a role (anyone holding
+// it over the subject's owning unit), never both. Replaced as a whole when
+// the route is edited; a run copies its steps when it starts.
+export const approvalRouteSteps = pgTable(
+  'approval_route_steps',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    routeId: uuid().notNull(),
+    position: integer().notNull(),
+    kind: approvalStepKind().notNull(),
+    assigneeUserId: uuid(),
+    assigneeRoleId: uuid(),
+    // How many people of a role must act. 1 in this release.
+    required: integer().notNull().default(1),
+    dueInDays: integer().notNull(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'approval_route_steps_route_fk',
+      columns: [t.tenantId, t.routeId],
+      foreignColumns: [approvalRoutes.tenantId, approvalRoutes.id],
+    }),
+    foreignKey({
+      name: 'approval_route_steps_user_fk',
+      columns: [t.tenantId, t.assigneeUserId],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'approval_route_steps_role_fk',
+      columns: [t.tenantId, t.assigneeRoleId],
+      foreignColumns: [roles.tenantId, roles.id],
+    }),
+    unique('approval_route_steps_position_key').on(
+      t.tenantId,
+      t.routeId,
+      t.position,
+    ),
+    check(
+      'approval_route_steps_one_assignee',
+      sql`(${t.assigneeUserId} is null) <> (${t.assigneeRoleId} is null)`,
+    ),
+    check('approval_route_steps_required', sql`${t.required} = 1`),
+    check(
+      'approval_route_steps_due_days',
+      sql`${t.dueInDays} between 1 and 365`,
+    ),
+    tenantIsolation(),
+  ],
+);
+
+// One pass of a subject through a route. At most one in progress per
+// subject.
+export const approvalRuns = pgTable(
+  'approval_runs',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    routeId: uuid().notNull(),
+    // `document_version` today.
+    subjectType: text().notNull(),
+    subjectId: uuid().notNull(),
+    status: approvalRunStatus().notNull().default('in_progress'),
+    currentPosition: integer(),
+    startedBy: uuid().notNull(),
+    startedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [
+    unique('approval_runs_tenant_id_id_key').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'approval_runs_route_fk',
+      columns: [t.tenantId, t.routeId],
+      foreignColumns: [approvalRoutes.tenantId, approvalRoutes.id],
+    }),
+    foreignKey({
+      name: 'approval_runs_started_by_fk',
+      columns: [t.tenantId, t.startedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    check(
+      'approval_runs_subject_type',
+      sql`${t.subjectType} in ('document_version')`,
+    ),
+    index('approval_runs_subject_idx').on(
+      t.tenantId,
+      t.subjectType,
+      t.subjectId,
+    ),
+    uniqueIndex('approval_runs_one_in_progress')
+      .on(t.tenantId, t.subjectType, t.subjectId)
+      .where(sql`${t.status} = 'in_progress'`),
+    tenantIsolation(),
+  ],
+);
+
+// A step of a run, copied from the route when the run started so that a
+// later change of the route does not alter a run in progress.
+export const approvalRunSteps = pgTable(
+  'approval_run_steps',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    runId: uuid().notNull(),
+    position: integer().notNull(),
+    kind: approvalStepKind().notNull(),
+    assigneeUserId: uuid(),
+    assigneeRoleId: uuid(),
+    dueInDays: integer().notNull(),
+    status: approvalRunStepStatus().notNull().default('waiting'),
+    // Set when the step becomes the current one.
+    activatedAt: timestamp({ withTimezone: true }),
+    dueAt: timestamp({ withTimezone: true }),
+    decidedBy: uuid(),
+    decidedAt: timestamp({ withTimezone: true }),
+    comment: text(),
+    // The signature of an approval; none for a return.
+    signatureId: uuid(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'approval_run_steps_run_fk',
+      columns: [t.tenantId, t.runId],
+      foreignColumns: [approvalRuns.tenantId, approvalRuns.id],
+    }),
+    foreignKey({
+      name: 'approval_run_steps_user_fk',
+      columns: [t.tenantId, t.assigneeUserId],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'approval_run_steps_role_fk',
+      columns: [t.tenantId, t.assigneeRoleId],
+      foreignColumns: [roles.tenantId, roles.id],
+    }),
+    foreignKey({
+      name: 'approval_run_steps_decided_by_fk',
+      columns: [t.tenantId, t.decidedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'approval_run_steps_signature_fk',
+      columns: [t.tenantId, t.signatureId],
+      foreignColumns: [signatures.tenantId, signatures.id],
+    }),
+    unique('approval_run_steps_position_key').on(
+      t.tenantId,
+      t.runId,
+      t.position,
+    ),
+    check(
+      'approval_run_steps_one_assignee',
+      sql`(${t.assigneeUserId} is null) <> (${t.assigneeRoleId} is null)`,
+    ),
+    // "My pending steps".
+    index('approval_run_steps_pending_idx')
+      .on(t.tenantId, t.status)
+      .where(sql`${t.status} = 'pending'`),
+    tenantIsolation(),
+  ],
+);
+
+// An electronic signature: written only after the signer re-entered their
+// password in the same request, with a hash of exactly what was signed. The
+// application role may add and read them, never change or delete one.
+export const signatures = pgTable(
+  'signatures',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    userId: uuid().notNull(),
+    signedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    meaning: signatureMeaning().notNull(),
+    // `document_version` or `document`.
+    subjectType: text().notNull(),
+    subjectId: uuid().notNull(),
+    // SHA-256, hex, of the canonical JSON of what was signed
+    // (approvals/signatures.ts).
+    contentHash: text().notNull(),
+    method: text().notNull().default('password'),
+  },
+  (t) => [
+    unique('signatures_tenant_id_id_key').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'signatures_user_fk',
+      columns: [t.tenantId, t.userId],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    check(
+      'signatures_subject_type',
+      sql`${t.subjectType} in ('document_version', 'document')`,
+    ),
+    check('signatures_method', sql`${t.method} in ('password')`),
+    check('signatures_hash_shape', sql`${t.contentHash} ~ '^[0-9a-f]{64}$'`),
+    index('signatures_subject_idx').on(t.tenantId, t.subjectType, t.subjectId),
+    tenantIsolation(),
+  ],
+);
+
+// A periodic review of a document. Written once, never changed.
+export const documentReviews = pgTable(
+  'document_reviews',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    documentId: uuid().notNull(),
+    // The review date this answers.
+    dueOn: date({ mode: 'string' }),
+    outcome: documentReviewOutcome().notNull(),
+    comment: text(),
+    reviewedBy: uuid().notNull(),
+    reviewedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    signatureId: uuid(),
+    nextReviewOn: date({ mode: 'string' }),
+  },
+  (t) => [
+    foreignKey({
+      name: 'document_reviews_document_fk',
+      columns: [t.tenantId, t.documentId],
+      foreignColumns: [documents.tenantId, documents.id],
+    }),
+    foreignKey({
+      name: 'document_reviews_reviewed_by_fk',
+      columns: [t.tenantId, t.reviewedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'document_reviews_signature_fk',
+      columns: [t.tenantId, t.signatureId],
+      foreignColumns: [signatures.tenantId, signatures.id],
+    }),
+    index('document_reviews_document_idx').on(t.tenantId, t.documentId),
+    tenantIsolation(),
+  ],
+);
+
+// Who is asked to acknowledge a published version, and whether they have.
+// One row per person and version: made when it is published, for everyone
+// in its audience then, and by the daily check for those who join later.
+export const documentAcknowledgements = pgTable(
+  'document_acknowledgements',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    versionId: uuid().notNull(),
+    userId: uuid().notNull(),
+    assignedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    // A day on the client's calendar.
+    dueOn: date({ mode: 'string' }).notNull(),
+    acknowledgedAt: timestamp({ withTimezone: true }),
+    signatureId: uuid(),
+    // When the reminder at half the time was sent, and the one when overdue.
+    remindedAt: timestamp({ withTimezone: true }),
+    overdueRemindedAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [
+    foreignKey({
+      name: 'document_acknowledgements_version_fk',
+      columns: [t.tenantId, t.versionId],
+      foreignColumns: [documentVersions.tenantId, documentVersions.id],
+    }),
+    foreignKey({
+      name: 'document_acknowledgements_user_fk',
+      columns: [t.tenantId, t.userId],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'document_acknowledgements_signature_fk',
+      columns: [t.tenantId, t.signatureId],
+      foreignColumns: [signatures.tenantId, signatures.id],
+    }),
+    unique('document_acknowledgements_once_key').on(
+      t.tenantId,
+      t.versionId,
+      t.userId,
+    ),
+    check(
+      'document_acknowledgements_signed',
+      sql`(${t.acknowledgedAt} is null) = (${t.signatureId} is null)`,
+    ),
+    index('document_acknowledgements_user_idx')
+      .on(t.tenantId, t.userId)
+      .where(sql`${t.acknowledgedAt} is null`),
     tenantIsolation(),
   ],
 );

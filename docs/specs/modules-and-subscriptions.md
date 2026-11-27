@@ -247,9 +247,10 @@ silent. Each choice is marked **Chosen**.
 
 - The modules are a constant in the code (`apps/api/src/subscriptions/modules.ts`):
   `incidents`, `investigations`, `actions`, `policies`, `risks`, `training`,
-  `ai_assistant`. Core is not on the list: every client has it. Only
-  `incidents` is built; the others exist so that plans and subscriptions can
-  name them.
+  `ai_assistant`. Core is not on the list: every client has it.
+  `incidents` and `policies` are built (policies: see
+  `policies-and-procedures.md`); the others exist so that plans and
+  subscriptions can name them.
 - What each needs: `investigations` needs `incidents`; `ai_assistant` needs
   at least one other module. **Chosen:** "the module it assists" is read as
   "any other module", since the assistant serves several. A subscription

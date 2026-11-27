@@ -181,6 +181,7 @@ export class PlatformTenantsController {
         await this.provisioning.ensureSystemRoles(tx, tenant.id);
         await this.provisioning.ensureIncidentCategories(tx, tenant.id);
         await this.provisioning.ensureResponseRules(tx, tenant.id);
+        await this.provisioning.ensurePolicyDefaults(tx, tenant.id);
       });
       return tenant;
     } catch (e) {
@@ -333,6 +334,7 @@ export class PlatformTenantsController {
         await this.provisioning.ensureSystemRoles(tx, tenant.id);
         await this.provisioning.ensureIncidentCategories(tx, tenant.id);
         await this.provisioning.ensureResponseRules(tx, tenant.id);
+        await this.provisioning.ensurePolicyDefaults(tx, tenant.id);
         const [administrator] = await tx
           .select({ id: roles.id })
           .from(roles)

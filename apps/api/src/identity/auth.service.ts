@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { and, eq, gt, isNull, lt, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Database, Transaction } from '../database/client.js';
@@ -314,6 +314,90 @@ export class AuthService {
         ...access,
       };
     });
+  }
+
+  /**
+   * Checks the password of the person signed in, re-entered for a
+   * signature, exactly as sign-in checks it: the same hash, the same
+   * counter of wrong passwords, the same lock after five of them, and the
+   * same entry in the audit log on a failure (`password_confirmation_failed`,
+   * with what it was for). The password itself is never stored, logged or
+   * audited.
+   *
+   * Refuses with 401 `wrong_password`, or 401 `password_locked` while the
+   * account is locked (whatever was typed). Neither ends the session: the
+   * person is signed in, and only the signature is refused. Call it before
+   * the transaction that signs, not inside it: a refusal must be counted
+   * even though nothing else is written, and the slow hash must not hold a
+   * connection.
+   */
+  async confirmPassword(
+    auth: AuthContext,
+    password: string,
+    purpose: string,
+    ip: string | null = null,
+  ): Promise<void> {
+    const tenantId = auth.tenant.id;
+    const [user] = await this.tenantDb.withTenant(tenantId, (tx) =>
+      tx
+        .select({ id: users.id, passwordHash: users.passwordHash })
+        .from(users)
+        .where(eq(users.id, auth.user.id)),
+    );
+    const valid = user?.passwordHash
+      ? await verifyPassword(password, user.passwordHash)
+      : (await this.burnTime(password), false);
+    const outcome = await this.tenantDb.withTenant(tenantId, async (tx) => {
+      // Under a row lock, as at sign-in: parallel guesses are counted one by
+      // one, and a lock set a moment ago is seen.
+      const [fresh] = await tx
+        .select({
+          status: users.status,
+          passwordHash: users.passwordHash,
+          lockedUntil: users.lockedUntil,
+        })
+        .from(users)
+        .where(eq(users.id, auth.user.id))
+        .for('update');
+      const locked = !!fresh?.lockedUntil && fresh.lockedUntil > new Date();
+      const stillValid =
+        valid &&
+        fresh?.status === 'active' &&
+        fresh.passwordHash === user?.passwordHash;
+      if (!locked && stillValid) {
+        await tx
+          .update(users)
+          .set({ failedAttempts: 0, lockedUntil: null })
+          .where(eq(users.id, auth.user.id));
+        return 'ok' as const;
+      }
+      if (!locked) {
+        await tx
+          .update(users)
+          .set({
+            failedAttempts: sql`case when ${users.failedAttempts} + 1 >= ${MAX_FAILED_ATTEMPTS} then 0 else ${users.failedAttempts} + 1 end`,
+            lockedUntil: sql`case when ${users.failedAttempts} + 1 >= ${MAX_FAILED_ATTEMPTS} then now() + make_interval(mins => ${LOCK_MINUTES}) else ${users.lockedUntil} end`,
+          })
+          .where(eq(users.id, auth.user.id));
+      }
+      await this.provisioning.audit(
+        tx,
+        tenantId,
+        auth.user.id,
+        'password_confirmation_failed',
+        'user',
+        auth.user.id,
+        { locked, purpose },
+        ip,
+      );
+      return locked ? ('locked' as const) : ('wrong' as const);
+    });
+    if (outcome === 'locked') {
+      throw new UnauthorizedException({ code: 'password_locked' });
+    }
+    if (outcome === 'wrong') {
+      throw new UnauthorizedException({ code: 'wrong_password' });
+    }
   }
 
   async logout(auth: AuthContext) {

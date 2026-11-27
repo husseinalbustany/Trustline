@@ -3,6 +3,9 @@ import { requireEnv } from '../env.js';
 import { createDatabase } from './client.js';
 import type { Locale, Localized } from '../i18n/locales.js';
 import { SYSTEM_ROLES } from '../identity/permissions.js';
+import { ProvisioningService } from '../identity/provisioning.service.js';
+import type { EntitlementsService } from '../subscriptions/entitlements.service.js';
+import { seedDocuments } from './seed-documents.js';
 import { DEFAULT_INCIDENT_CATEGORIES } from '../incidents/categories.js';
 import {
   DEFAULT_RESPONSE_RULES,
@@ -251,6 +254,8 @@ export async function seed() {
       .from(plans)
       .where(eq(plans.code, 'complete'));
 
+    // Only what needs no entitlements: the module's starting data.
+    const provisioning = new ProvisioningService({} as EntitlementsService);
     for (const { structure, ...tenant } of demoTenants) {
       await db.transaction(async (tx) => {
         await tx
@@ -342,6 +347,21 @@ export async function seed() {
               incidentResponseRules.harmLevel,
             ],
           });
+
+        // The policies module's types, categories and routes, as a new
+        // client gets them, and a few example documents in different
+        // states. Both leave alone what is there already.
+        await provisioning.ensurePolicyDefaults(tx, tenantId);
+        const [{ timeZone }] = await tx
+          .select({ timeZone: tenants.timeZone })
+          .from(tenants)
+          .where(eq(tenants.id, tenantId));
+        await seedDocuments(tx, {
+          id: tenantId,
+          locales: tenant.locales,
+          timeZone,
+          qualityUnitCode: `${structure.code}-QM`,
+        });
       });
     }
   } finally {
