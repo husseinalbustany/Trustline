@@ -175,7 +175,7 @@ export class Publisher {
         [
           {
             kind: 'document_published',
-            data: { version: version.version, dueOn },
+            data: { version: version.version, versionId: version.id, dueOn },
             to: added,
             about: 'published',
           },

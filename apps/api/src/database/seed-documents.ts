@@ -11,6 +11,7 @@ import {
   documentAcknowledgements,
   documentAudiences,
   documentCategories,
+  documentReviewRounds,
   documents,
   documentTypes,
   documentVersions,
@@ -428,6 +429,16 @@ export async function seedDocuments(
           completedAt: input.decided === 2 ? at(shiftDay(input.on, -1)) : null,
         })
         .returning({ id: approvalRuns.id });
+      // What its reviewers read, as sending it for review keeps it.
+      await tx.insert(documentReviewRounds).values({
+        tenantId,
+        versionId: version.id,
+        runId: run.id,
+        sections: version.sections,
+        content: version.content,
+        changeSummary: version.changeSummary,
+        createdAt: at(shiftDay(input.on, -6)),
+      });
       for (const [i, who] of (['reviewer', 'approver'] as const).entries()) {
         const decided = i < input.decided;
         const signedAt = at(shiftDay(input.on, i === 0 ? -4 : -1));

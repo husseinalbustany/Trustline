@@ -1467,12 +1467,15 @@ describe('policies and procedures', () => {
     it('is confirmed with no change by the owner, with a signature, and moves the next review on', async () => {
       const { doc } = await published();
       const current = (await get(writer.cookie, `/documents/${doc.id}`).expect(200)).body;
-      await post(reader.cookie, `/documents/${doc.id}/review`, { password, revision: current.revision }).expect(403);
+      const comment = 'Checked against current practice.';
+      await post(reader.cookie, `/documents/${doc.id}/review`, { password, comment, revision: current.revision }).expect(403);
+      // A comment is required.
+      await post(writer.cookie, `/documents/${doc.id}/review`, { password, revision: current.revision }).expect(400);
       expect(
-        (await post(writer.cookie, `/documents/${doc.id}/review`, { password, revision: 1 }).expect(409)).body.code,
+        (await post(writer.cookie, `/documents/${doc.id}/review`, { password, comment, revision: 1 }).expect(409)).body.code,
       ).toBe('stale_document');
       expect(
-        (await post(writer.cookie, `/documents/${doc.id}/review`, { password: 'nope', revision: current.revision }).expect(401)).body.code,
+        (await post(writer.cookie, `/documents/${doc.id}/review`, { password: 'nope', comment, revision: current.revision }).expect(401)).body.code,
       ).toBe('wrong_password');
       await bench.owner.db.execute(sql`update documents set next_review_on = current_date - 3 where id = ${doc.id}`);
       const due = (await get(writer.cookie, '/reviews').expect(200)).body;
@@ -1490,7 +1493,7 @@ describe('policies and procedures', () => {
       expect(signature).toMatchObject({ meaning: 'reviewed_no_change', subjectType: 'document', subjectId: doc.id });
       const draft = (await newDocument(writer.cookie).expect(201)).body;
       expect(
-        (await post(writer.cookie, `/documents/${draft.id}/review`, { password, revision: draft.revision }).expect(409)).body.code,
+        (await post(writer.cookie, `/documents/${draft.id}/review`, { password, comment, revision: draft.revision }).expect(409)).body.code,
       ).toBe('not_active');
     });
   });
@@ -1616,23 +1619,31 @@ describe('policies and procedures', () => {
       await post(writer.cookie, '/types', { ...body, name: { fr: 'Liste' } }).expect(400);
       const created = (await post(writer.cookie, '/types', body).expect(201)).body;
       expect((await post(writer.cookie, '/types', body).expect(409)).body.code).toBe('code_taken');
-      const off = (await patch(writer.cookie, `/types/${created.id}`, { active: false }).expect(200)).body;
-      expect(off.active).toBe(false);
+      expect(created.revision).toBe(1);
+      // The revision read is required, and refused when out of date.
+      await patch(writer.cookie, `/types/${created.id}`, { active: false }).expect(400);
+      expect(
+        (await patch(writer.cookie, `/types/${created.id}`, { active: false, revision: 2 }).expect(409)).body.code,
+      ).toBe('stale_type');
+      const off = (await patch(writer.cookie, `/types/${created.id}`, { active: false, revision: 1 }).expect(200)).body;
+      expect(off).toMatchObject({ active: false, revision: 2 });
       expect((await get(writer.cookie, '/types').expect(200)).body.map((t: { id: string }) => t.id)).not.toContain(created.id);
       expect(
         (await newDocument(writer.cookie, { typeId: created.id }).expect(400)).body.code,
       ).toBe('unknown_type');
-      await patch(writer.cookie, `/types/${randomUUIDLike()}`, { active: true }).expect(404);
+      await patch(writer.cookie, `/types/${randomUUIDLike()}`, { active: true, revision: 1 }).expect(404);
       const bTypes = (await get(b.cookie, '/types').expect(200)).body;
-      await patch(writer.cookie, `/types/${bTypes[0].id}`, { active: false }).expect(404);
+      await patch(writer.cookie, `/types/${bTypes[0].id}`, { active: false, revision: bTypes[0].revision }).expect(404);
     });
 
     it('keep the tree of categories free of loops', async () => {
       const parent = (await post(writer.cookie, '/categories', { code: 'cln', name: { en: 'Cleaning' } }).expect(201)).body;
       expect(parent.code).toBe('CLN');
       const child = (await post(writer.cookie, '/categories', { code: 'CLF', name: { en: 'Floors' }, parentId: parent.id }).expect(201)).body;
-      expect((await patch(writer.cookie, `/categories/${parent.id}`, { parentId: child.id }).expect(400)).body.code).toBe('invalid_parent');
-      expect((await patch(writer.cookie, `/categories/${parent.id}`, { parentId: parent.id }).expect(400)).body.code).toBe('invalid_parent');
+      expect((await patch(writer.cookie, `/categories/${parent.id}`, { parentId: child.id, revision: 1 }).expect(400)).body.code).toBe('invalid_parent');
+      expect((await patch(writer.cookie, `/categories/${parent.id}`, { parentId: parent.id, revision: 1 }).expect(400)).body.code).toBe('invalid_parent');
+      expect((await patch(writer.cookie, `/categories/${parent.id}`, { position: 4, revision: 3 }).expect(409)).body.code).toBe('stale_category');
+      expect((await patch(writer.cookie, `/categories/${parent.id}`, { position: 4, revision: 1 }).expect(200)).body).toMatchObject({ position: 4, revision: 2 });
       expect((await post(writer.cookie, '/categories', { code: 'CLN', name: { en: 'Again' } }).expect(409)).body.code).toBe('code_taken');
       await post(writer.cookie, '/categories', { code: 'C', name: { en: 'Short' } }).expect(400);
       // Filtering by a category takes those beneath it.

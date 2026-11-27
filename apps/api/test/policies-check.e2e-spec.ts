@@ -313,7 +313,7 @@ describe('policies: the daily check, the module and the subscription', () => {
         (await sentAbout(writer.id, doc.id)).filter((n) => n.kind.startsWith('review_'));
       expect((await reviews()).map((n) => n.kind)).toEqual(['review_overdue']);
       const after = (
-        await post(writer.cookie, `/documents/${doc.id}/review`, { password, revision: before.revision }).expect(200)
+        await post(writer.cookie, `/documents/${doc.id}/review`, { password, comment: 'Still right.', revision: before.revision }).expect(200)
       ).body;
       expect(after.nextReviewOn).toBe(addMonths(dayOf(new Date(), 'Asia/Riyadh'), 1));
       await runCheck(new Date(Date.now() + DAY));
@@ -398,12 +398,30 @@ describe('policies: the daily check, the module and the subscription', () => {
         }
       }
       await bench.owner.db.execute(sql`update documents set next_review_on = current_date - 1 where id = ${ids[3]}`);
-      const summary = (await get(w.cookie, '/summary').expect(200)).body;
+      let summary = (await get(w.cookie, '/summary').expect(200)).body;
       expect(summary.pastReview).toEqual({ count: 1, of: 4, percent: 25, target: 5, met: false });
       // Everyone in the audience (the whole organization) who may read:
       // the two readers, the three who manage, review and approve, and the
-      // client's first administrator.
-      expect(summary.acknowledgement).toEqual({ targeted: 6, acknowledged: 1, percent: 16.7, target: 90, met: false });
+      // client's first administrator. None of them is due yet, so the
+      // measure has no one to count; the figure as it stands today does.
+      expect(summary.acknowledgement).toEqual({
+        basis: 'due_date_passed',
+        targeted: 0,
+        acknowledged: 0,
+        percent: null,
+        target: 90,
+        met: null,
+        live: { targeted: 6, acknowledged: 1, percent: 16.7 },
+      });
+      // Once their time has run out, they count.
+      const first = (await get(w.cookie, `/documents/${ids[0]}`).expect(200)).body.published.id as string;
+      await bench.owner.db.execute(sql`update document_acknowledgements set due_on = current_date - 10 where version_id = ${first}`);
+      summary = (await get(w.cookie, '/summary').expect(200)).body;
+      expect(summary.acknowledgement).toMatchObject({ targeted: 6, acknowledged: 1, percent: 16.7, met: false });
+      // Of six people due, one has not yet run out of time: five are counted.
+      await bench.owner.db.execute(sql`update document_acknowledgements set due_on = current_date + 1 where version_id = ${first} and user_id = ${r2.id}`);
+      summary = (await get(w.cookie, '/summary').expect(200)).body;
+      expect(summary.acknowledgement).toMatchObject({ targeted: 5, acknowledged: 1, percent: 20, live: { targeted: 6 } });
       expect((await get(r2.cookie, '/summary').expect(200)).body).toMatchObject({
         awaitingMyAcknowledgement: 1,
         pastReview: { count: 1, of: 4 },
@@ -535,7 +553,7 @@ describe('policies: the daily check, the module and the subscription', () => {
   });
 
   describe('a suspended subscription', () => {
-    it('leaves acknowledging open and makes everything else in the module read-only', async () => {
+    it('leaves acknowledging, publishing and retiring open, makes everything else in the module read-only, and offers only what is open', async () => {
       const h = await bench.createHospital('susp');
       const f = await bench.createUnit(h, 'facility', 'F', null);
       await bench.createRole(h, 'writer', ['policies.view', 'policies.manage']);
@@ -558,21 +576,38 @@ describe('policies: the daily check, the module and the subscription', () => {
       const refused = async (res: { status: number; body: { code?: string } }) => {
         expect({ status: res.status, code: res.body.code }).toEqual({ status: 403, code: 'subscription_suspended' });
       };
+      const current = (await get(w.cookie, `/documents/${doc.id}`).expect(200)).body;
       await refused(await post(w.cookie, '/documents', { typeId: t.policy, categoryId: cat.GOV, title: { en: 'x' }, ownerId: w.id, ownerUnitId: f }));
-      await refused(await post(w.cookie, `/documents/${pending.doc.id}/versions/${pending.version.id}/publish`, { revision: pending.version.revision }));
-      await refused(await post(w.cookie, `/documents/${doc.id}/retire`, { reason: 'x', revision: 1 }));
-      await refused(await patch(w.cookie, `/types/${t.policy}`, { active: false }));
-      await refused(await post(w.cookie, `/documents/${doc.id}/review`, { password, revision: 1 }));
+      await refused(await patch(w.cookie, `/types/${t.policy}`, { active: false, revision: 1 }));
+      await refused(await patch(w.cookie, `/documents/${doc.id}`, { keywords: ['x'], revision: current.revision }));
+      await refused(await post(w.cookie, `/documents/${doc.id}/review`, { password, comment: 'x', revision: current.revision }));
+      await refused(await post(w.cookie, `/documents/${pending.doc.id}/versions/${pending.version.id}/withdraw`, { reason: 'x', revision: pending.version.revision }));
+      // What is offered is what stays open: no edit, review or withdrawal.
+      expect(current.moves).toEqual(['retire']);
+      const waiting = (await get(w.cookie, `/documents/${pending.doc.id}/versions/${pending.version.id}`).expect(200)).body;
+      expect(waiting.moves).toEqual(['publish']);
       // Reading goes on.
       await get(r.cookie, `/documents/${doc.id}`).expect(200);
       await get(w.cookie, '/summary').expect(200);
       // Acknowledging stays open: reading and confirming what applies to oneself.
+      const toAcknowledge = (await get(r.cookie, `/documents/${doc.id}/versions/${live.id}`).expect(200)).body;
+      expect(toAcknowledge.moves).toEqual(['acknowledge']);
       await post(r.cookie, `/documents/${doc.id}/versions/${live.id}/acknowledge`, { password }).expect(200);
       const asked = await bench.owner.db
         .select({ at: documentAcknowledgements.acknowledgedAt })
         .from(documentAcknowledgements)
         .where(and(eq(documentAcknowledgements.versionId, live.id), inArray(documentAcknowledgements.userId, [r.id])));
       expect(asked[0].at).not.toBeNull();
+      // Publishing an approved version stays open: a corrected document
+      // goes in force. And retiring: an unsafe one is taken from readers.
+      const out = (
+        await post(w.cookie, `/documents/${pending.doc.id}/versions/${pending.version.id}/publish`, { revision: pending.version.revision }).expect(200)
+      ).body;
+      expect(out.status).toBe('published');
+      const retired = (
+        await post(w.cookie, `/documents/${doc.id}/retire`, { reason: 'Unsafe, replaced.', revision: current.revision }).expect(200)
+      ).body;
+      expect(retired.status).toBe('retired');
     }, 120_000);
   });
 });

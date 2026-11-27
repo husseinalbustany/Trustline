@@ -31,14 +31,20 @@ describe('the policies migration, for clients that existed before it', () => {
   const run = randomBytes(4).toString('hex');
   const prefix = `polmig-${run}`;
   const owner = createDatabase(requireEnv('DATABASE_URL'));
-  const statements = readFileSync(
-    resolve(import.meta.dirname, '../drizzle/0039_policies_grants_and_existing_clients.sql'),
-    'utf8',
-  )
-    .split('--> statement-breakpoint')
-    // Without its grants: a grant would hold the tables against every other
-    // test file until this one rolls back.
-    .filter((s) => !/^\s*GRANT/m.test(s.replace(/--.*$/gm, '')));
+  const statementsOf = (file: string) =>
+    readFileSync(resolve(import.meta.dirname, `../drizzle/${file}.sql`), 'utf8')
+      .split('--> statement-breakpoint')
+      // Without its grants: a grant would hold the tables against every
+      // other test file until this one rolls back.
+      .filter((s) => !/^\s*GRANT/m.test(s.replace(/--.*$/gm, '')));
+  // What a client from before the module went through: the module's
+  // starting data (0039), then its rewording after language review 6
+  // (0043).
+  const statements = [
+    ...statementsOf('0039_policies_grants_and_existing_clients'),
+    ...statementsOf('0043_policies_grants_and_starting_wording'),
+  ];
+  const rewording = statementsOf('0043_policies_grants_and_starting_wording');
   const ours = `"tenant_id" in (select id from public.tenants where ${startsWith('slug', prefix)})`;
 
   afterAll(() => owner.pool.end());
@@ -120,6 +126,7 @@ describe('the policies migration, for clients that existed before it', () => {
           tenants: startsWith('slug', prefix),
           roles: ours,
           document_types: ours,
+          document_categories: ours,
           approval_routes: ours,
         });
         // A client made now gets the same from the code.
@@ -177,6 +184,76 @@ describe('the policies migration, for clients that existed before it', () => {
     ]);
     // Word for word what the code gives a new client.
     expect(migrated).toEqual(found.provisioned);
+  });
+
+  it('rewords the starting sections and categories only where a client has not renamed them, audited once', async () => {
+    const rollback = new Error('rollback');
+    let found: Record<string, unknown> = {};
+    await expect(
+      owner.db.transaction(async (tx) => {
+        const id = await legacy(tx, 'renamed');
+        // The module's starting data as 0039 gave it.
+        await applyToOwnRows(tx, statementsOf('0039_policies_grants_and_existing_clients'), {
+          tenants: startsWith('slug', prefix),
+          roles: ours,
+          document_types: ours,
+          document_categories: ours,
+          approval_routes: ours,
+        });
+        // The client renamed the procedure's steps in French, and its INF
+        // category in English, itself.
+        const [procedure] = await tx
+          .select({ id: documentTypes.id, sections: documentTypes.sections })
+          .from(documentTypes)
+          .where(and(eq(documentTypes.tenantId, id), eq(documentTypes.code, 'procedure')));
+        await tx
+          .update(documentTypes)
+          .set({
+            sections: procedure.sections.map((s) =>
+              s.key === 'steps' ? { ...s, name: { ...s.name, fr: 'Les étapes chez nous' } } : s,
+            ),
+          })
+          .where(eq(documentTypes.id, procedure.id));
+        await tx
+          .update(documentCategories)
+          .set({ name: { en: 'Our records', ar: 'المعلومات', fr: 'Information' } })
+          .where(and(eq(documentCategories.tenantId, id), eq(documentCategories.code, 'INF')));
+        await applyToOwnRows(tx, rewording, {
+          document_types: ours,
+          document_categories: ours,
+        });
+        const settings = await settingsOf(tx, id);
+        const sectionName = (type: string, key: string) =>
+          settings.types.find((t) => t.code === type)!.sections.find((s) => s.key === key)!.name;
+        found = {
+          procedureSteps: sectionName('procedure', 'steps'),
+          instructionSteps: sectionName('work_instruction', 'steps'),
+          statements: sectionName('policy', 'policy_statements'),
+          inf: settings.categories.find((c) => c.code === 'INF')!.name,
+          entries: await tx
+            .select({ actorId: auditLog.actorId, changes: auditLog.changes })
+            .from(auditLog)
+            .where(and(eq(auditLog.tenantId, id), eq(auditLog.action, 'policy_defaults_reworded_by_system'))),
+        };
+        throw rollback;
+      }),
+    ).rejects.toBe(rollback);
+    // Arabic reworded; the French the client wrote kept.
+    expect(found.procedureSteps).toEqual({ en: 'Steps', ar: 'خطوات العمل', fr: 'Les étapes chez nous' });
+    expect(found.instructionSteps).toEqual({ en: 'Steps', ar: 'خطوات العمل', fr: 'Déroulement' });
+    expect(found.statements).toEqual({ en: 'Policy statements', ar: 'بنود السياسة', fr: 'Dispositions' });
+    expect(found.inf).toEqual({ en: 'Our records', ar: 'إدارة المعلومات', fr: 'Gestion de l’information' });
+    // Applied twice, audited once.
+    expect(found.entries).toEqual([
+      {
+        actorId: null,
+        changes: {
+          migration: '0043_policies_grants_and_starting_wording',
+          types: ['policy', 'procedure', 'work_instruction'],
+          categories: ['INF'],
+        },
+      },
+    ]);
   });
 
   it('match the built-in roles in the code', () => {

@@ -129,6 +129,9 @@ blocked by a billing matter:
     be issued, so that anyone can get in to report.
   - **Taking access away stays open:** disabling a user, taking roles from
     a user, taking permissions from a role, deleting a role.
+  - **Document safety work stays open** (policies module): acknowledging a
+    document, publishing a version already approved, and retiring a
+    document.
   - **Everything else is read-only:** nothing else can be created or
     changed.
 - **Cancelled:** access ends on the agreed date; the client can export its
@@ -379,6 +382,11 @@ silent. Each choice is marked **Chosen**.
     grant moved to another place, a permission added) is refused with 403
     `subscription_suspended`. Every other check of these routes applies as
     at any time.
+  - **The safety work of the policies module:** `POST …/acknowledge`,
+    `POST …/publish` (a version already approved, now or on a later day)
+    and `POST /policies/documents/:id/retire`. The `moves` of documents and
+    versions offer only these while suspended
+    (docs/specs/policies-and-procedures.md).
   - **What is not a change to the client's records:** signing out and
     marking one's own notifications read.
   - **The routes without sign-in** (public reporting and following up a

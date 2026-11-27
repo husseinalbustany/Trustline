@@ -101,7 +101,14 @@ human resources, information); each client edits it.
 Languages: a version must have every required section in the client's
 default language before it can be sent for review. Other languages are
 optional; when one is missing a reader sees the default language with a
-plain note.
+plain note. **Decided (quality review 2, C1):** this is per section, not
+per version: a section with no text in the reader's language shows the
+authoritative language's text there, with a note; a section changed in the
+authoritative language since the previous published version but not in
+another is flagged "translation not updated", at review and to readers.
+The authoritative language is the client's default for now (business
+question Q4 is open); `authoritativeLocale()` in
+`src/policies/languages.ts` is the one place that says so.
 
 ### Approval routes (built generically, to be reused by investigations and others)
 
@@ -292,10 +299,12 @@ allowed.
 
 ## Built: database and API
 
-Status: the database and the API are built (migrations 0038 to 0041,
-`apps/api/src/policies/`, `apps/api/src/approvals/`). The web screens are
-not. What was decided where this document left it open is marked
-**Chosen**; the full request and response shapes are below.
+Status: the database and the API are built (migrations 0038 to 0043,
+`apps/api/src/policies/`, `apps/api/src/approvals/`), and so are the web
+screens (`apps/web/src/components/policies/`). What was decided where this
+document left it open is marked **Chosen**; the full request and response
+shapes are below. What changed after the second quality review and
+language review 6 is in "After quality review 2" at the end.
 
 ### Where the code is
 
@@ -375,17 +384,19 @@ not. What was decided where this document left it open is marked
   different people other than the contributors (409 `no_assignee` with the
   `position` of the first step left without anyone), so a run cannot be
   started that can never end. A route that names one person for two
-  steps is refused this way at its second step; a route whose first step
-  is a role and whose second names one of its holders is accepted, since
-  another holder can take the first.
+  steps is refused when it is saved (400 `same_person_in_two_steps`, with
+  the `userId` and the `positions`), and one saved so before that rule at
+  sending, at its second step; a route whose first step is a role and
+  whose second names one of its holders is accepted, since another holder
+  can take the first.
 - Two people deciding the same step at once take turns on the document's
   row lock: one decides it, the other is answered 409 (`stale_version`).
 - **Chosen:** a manager may **recall** a version in review (back to draft,
   run cancelled) and **withdraw** a version in progress. Not in the list
   above, but without them a run whose assignees have left could never end.
-- Step due dates are stored and shown (`dueAt`, `overdue`); nothing is
-  sent when a step is overdue (not in this release's list of
-  notifications).
+- Step due dates are stored and shown (`dueAt`, `overdue`). **Decided
+  (C8):** a step past its due time is reported once to the document's
+  managers by the daily check (`document_step_overdue`).
 
 ### Signatures
 
@@ -410,8 +421,9 @@ not. What was decided where this document left it open is marked
   on the scheduled day check that every step of the approving run is
   approved by the person whose signature it holds, of what the version
   holds now (409 `content_changed`, which no route can bring about; the
-  daily check leaves such a version approved, unpublished, and names it
-  and its client in the log).
+  daily check leaves such a version approved, unpublished, names it and
+  its client in the log, and, **decided (D10)**, tells the document's
+  managers once: `document_publish_failed`).
 - The application role may insert and read signatures, never update or
   delete them (migration 0039). Reviews are insert-only too.
 - **The database keeps what is signed** (migration 0041), whoever writes:
@@ -499,7 +511,10 @@ not. What was decided where this document left it open is marked
 - **Chosen: who is targeted** for the completion measure: everyone asked to
   acknowledge the published version of an active document who is still an
   active user. Someone who left the audience after being asked stays
-  counted.
+  counted. **Decided (C6):** only acknowledgements whose due date has
+  passed count, in the targeted and the acknowledged alike
+  (`basis: "due_date_passed"`); the figure over everyone asked, due or
+  not, is given beside it as `live`.
 - Reminders: at half the time allowed (the due day less half the days,
   rounded down) and the day after the due day, each once.
 
@@ -525,7 +540,11 @@ not. What was decided where this document left it open is marked
 - While suspended, every write of the module is refused (403
   `subscription_suspended`) except acknowledging, which stays open
   (`@OpenWhileSuspended()`): agreed, it is safety work, and changes nothing
-  anyone else relies on. The daily check keeps running for a suspended
+  anyone else relies on. **Decided (D11):** publishing an approved version
+  (now or on a later day) and retiring a document stay open too: a
+  corrected procedure goes in force, an unsafe one is taken from readers.
+  `moves` offers only these while suspended (`publish`, `retire`,
+  `acknowledge`). The daily check keeps running for a suspended
   subscription (only a client Trustline suspended, or a cancelled one, is
   skipped), so scheduled publishing and reminders go on.
 
@@ -533,7 +552,8 @@ not. What was decided where this document left it open is marked
 
 - The owner asking a manager to retire a document: there is no route; the
   owner tells a manager, who retires it.
-- Notifications for an overdue approval step.
+- Email: the weekly digest of overdue acknowledgements is in the app only
+  until the mail decision (Q8).
 - The owner unit head as an assignee, and `required` other than 1, as the
   spec says.
 
@@ -550,9 +570,10 @@ else), 404 for a record of another client or one the caller may not see.
 | `GET /documents` | any policies permission | `q`, `typeId`, `categoryId`, `ownerUnitId`, `status`, `review=due\|overdue`, `appliesToMe`, `awaitingMyAcknowledgement`, `sort=number\|title\|next_review\|recently_published`, `page`, `pageSize` | `{ items, total }` |
 | `POST /documents` | `policies.manage` over `ownerUnitId` | `typeId, categoryId, title, ownerId, ownerUnitId, audience?, confidentiality?, keywords?, references?, reviewMonths?, acknowledgementRequired?, acknowledgeWithinDays?` | 201 document |
 | `GET /documents/:id` | any | | document |
-| `PATCH /documents/:id` | manager | metadata fields, `revision` | document |
-| `POST /documents/:id/retire` | manager | `reason, revision` | document |
-| `POST /documents/:id/review` | owner or manager | `password, comment?, revision` | document |
+| `PATCH /documents/:id` | manager | metadata fields, `reason?` (required when `reviewMonths` changes), `revision` | document |
+| `POST /documents/:id/retire` | manager (open while suspended) | `reason, revision` | document |
+| `POST /documents/:id/review` | owner or manager | `password, comment, revision` | document |
+| `GET /documents/:id/changes` | full sight | | `{ items, total }` |
 | `GET /documents/:id/versions` | any | | `{ versions, reviews }` |
 | `POST /documents/:id/versions` | manager | `{}` | 201 version |
 | `GET /documents/:id/versions/:versionId` | any | | version |
@@ -561,16 +582,22 @@ else), 404 for a record of another client or one the caller may not see.
 | `POST …/approve` | `policies.approve`, assignee | `password, comment?, revision` | version |
 | `POST …/return` | `policies.approve`, assignee | `comment, revision` | version |
 | `POST …/recall` | manager | `revision` | version |
-| `POST …/withdraw` | manager | `reason?, revision` | version |
-| `POST …/publish` | manager | `effectiveOn?, revision` | version |
+| `POST …/withdraw` | manager | `reason, revision` | version |
+| `POST …/publish` | manager (open while suspended) | `effectiveOn?, revision` | version |
 | `POST …/acknowledge` | reader in the audience | `password` | `{ versionId, acknowledgedAt, signature }` |
-| `GET …/acknowledgements` | full sight | `state?, page, pageSize` | counts, `byUnit`, `people` |
+| `GET …/acknowledgements` | full sight | `state?, includeLeft?, page, pageSize` | counts, `byUnit`, `people` |
+| `GET …/acknowledgements/export` | full sight | `locale?` | CSV file |
+| `GET /exports/documents` | any | the library's filters and `sort`, `locale?` | CSV file |
+| `GET /acknowledgements/overdue` | `policies.manage` or `policies.view_all` | `page, pageSize` | `{ today, items, total }` |
 | `GET /approvals` | `policies.approve` | | `{ items, total }` |
 | `GET /reviews` | any | | `{ items, total }` |
 | `GET /summary` | any | | counts and the two measures |
 | `GET /people` | `policies.manage` | `q?, approvers?` | `[{ id, name, orgUnitId }]` |
-| `GET /types`, `GET /categories` | any (`includeInactive` for managers) | | list |
-| `POST/PATCH /types`, `/categories` | `policies.manage` everywhere | | the record |
+| `GET /types`, `GET /categories` | any (`includeInactive` for managers) | | list, each with `revision` |
+| `POST/PATCH /types`, `/categories` | `policies.manage` everywhere | PATCH: `revision` (409 `stale_type`, `stale_category`) | the record |
+| `GET /roles` | `policies.manage` | | `[{ id, code, name, isSystem, approves }]` |
+| `GET /settings` | any | | `{ maxReviewMonths, revision }` |
+| `PATCH /settings` | `policies.manage` everywhere | `maxReviewMonths, revision` | `{ maxReviewMonths, revision }` |
 | `GET /approval-routes` | `policies.manage` | | list with steps |
 | `POST/PATCH /approval-routes` | `policies.manage` everywhere | `name, documentTypeId, active?, steps[{ kind, userId \| roleId, dueInDays }], revision` (PATCH) | the route |
 
@@ -578,3 +605,166 @@ Each document and version carries `moves`, the actions the caller may take
 now: on a document `edit`, `new_version`, `retire`, `confirm_review`; on a
 version `edit`, `submit`, `recall`, `publish`, `withdraw`, `approve`,
 `return`, `acknowledge`.
+
+## After quality review 2 (and language review 6)
+
+What the lead decided from the second quality review
+(`quality-policies.md`, "Being fixed now") and language review 6, as the
+API builds it. Migrations 0042 (schema) and 0043 (grants, and the new
+starting wording for existing clients). Each new route answers 401 without
+a session, 403 without its permission, 404 for a record of another client
+or one the caller may not see, and 400 for anything but its strict input.
+
+### Languages (C1)
+
+- Every version carries `languageStatus`, for anyone who may read it:
+  `{ authoritative, comparedWith: { id, version } | null, sections: [{
+  key, locales: { <locale>: state } }], byLocale: { <locale>: { written,
+  fallback, lagging, empty } }, lagging }`. A state is `written` (text in
+  that language), `fallback` (none there, the authoritative text is shown
+  with a note), `lagging` (changed in the authoritative language since the
+  previous published version, not in this one: "translation not
+  updated"), or `empty` (no text there nor in the authoritative language).
+  `comparedWith` is the version published before this one: for a version
+  in progress, the one in force; for a published or superseded one, the
+  one it replaced.
+- `languages` lists the authoritative language first.
+
+### Review rounds (earlier rounds; comparison with what was returned)
+
+- Sending for review keeps what the version holds (`document_review_rounds`,
+  one per run, insert-only): what its reviewers read, since the database
+  keeps a version in review from changing.
+- A version carries `rounds`: every run, newest first, as `run` is shaped,
+  with `snapshot` (whether what it held is kept; runs from before 0042 have
+  none). For those who see runs: full sight, and the assignees of the run
+  in progress. `run` and `returned` stay as they were.
+- `sinceReturned`, for a version in progress whose latest returned run has
+  a snapshot: `{ runId, returnedAt, changeSummaryChanged, comparison }`,
+  `comparison` shaped as `comparison` (against the published version) but
+  against what the version held when it was returned.
+
+### The control block and printing (C3, as far as the API goes)
+
+- `today` (the client's day) on a document and a version, for "printed on
+  <date>, valid on that day only".
+- `control` adds `title`, `status`, `documentStatus`, `preparedBy`
+  (language decision 4) and `inForce`: the published version of an active
+  document on or after its effective day, the one copy a print may call
+  controlled. The current version of a document is always
+  `GET /documents/:id` (`published`), which is what a QR code opens.
+- `source` on a version: `written` for every version now; `imported` and
+  `ai_drafted` are for later (not part of what is signed).
+
+### Exports (C5)
+
+- CSV, UTF-8 with a byte-order mark, every cell quoted, CRLF lines, and
+  every cell that a spreadsheet would run as a formula (starting, after
+  any spaces, with `=`, `+`, `-`, `@`, their full-width forms, a tab or a
+  carriage return) given a leading apostrophe. `Content-Disposition:
+  attachment`, `Cache-Control: no-store`. Headings and values (statuses,
+  yes and no) in the caller's language: `locale` if given (one of the
+  client's, 400 `language_mismatch` otherwise), else their own language if
+  the client has it, else the client's default (`export-wording.ts`).
+  Names and titles in that language, else the default. At most 50,000
+  rows. Every export is audited (`documents_exported`,
+  `acknowledgements_exported`).
+- `GET /exports/documents`: the library as the caller sees it (the same
+  `visible()` and filters as `GET /documents`, every page): number, title,
+  type, category, responsible area, owner, status, who can read it,
+  version in force, in force from, next review, periodic review state,
+  last reviewed, review period, acknowledgement asked, and, for documents
+  the caller sees in full, the version in progress and its status.
+- `GET /documents/:id/versions/:versionId/acknowledgements/export`: full
+  sight only (403 `missing_permission` otherwise). Any version of the
+  document, superseded included, and everyone asked, those no longer
+  active included and marked: document number, version and its status,
+  person, employee number, their area, account (active, no longer active,
+  invited), asked on, due on, where it stands, acknowledged at (the
+  client's time), and the fingerprint of what was signed.
+- On screen, `GET …/acknowledgements?includeLeft=true` lists those no
+  longer active too (`left: true`, `account`); the counts stay over active
+  people.
+
+### Measures (C6)
+
+See "Acknowledgement" above: only acknowledgements past their due date.
+
+### Review periods, reasons and the history of a document (C7)
+
+- `document_settings` (one row per client once it changes anything):
+  `maxReviewMonths`, 36 by default. `GET /settings` for any user of the
+  module, `PATCH /settings` for `policies.manage` everywhere (409
+  `stale_settings`; 409 `type_exceeds_max` with the `types` whose own
+  period is longer: lower those first). Audited
+  (`document_settings_updated`).
+- A document's review period, on creating it (its own or its type's) or
+  changing it, and a type's period, are refused past the maximum (400
+  `review_period_too_long`, with `max`). A document set longer before the
+  maximum was lowered keeps its period until it is next changed.
+- Changing a document's review period needs `reason` in the same `PATCH`
+  (400 `reason_required`, `field: "reviewMonths"`); the reason is kept in
+  the audit entry.
+- `GET /documents/:id/changes` (full sight; 403 for anyone else who may
+  see it): the audit entries `document_updated`, oldest first: `{ id, at,
+  by, reason, changes: [{ field, from, to }] }`, `field` one of `title`,
+  `category`, `owner`, `ownerUnit`, `audience`, `confidentiality`,
+  `reviewMonths`, `nextReviewOn`, `keywords`, `references`, with people,
+  units, categories and roles named as they are now.
+- A periodic review's `comment` is required, as is a withdrawal's
+  `reason`.
+
+### Reaching someone (C8, D10)
+
+- The daily check reports an approval step past its due time once to the
+  document's managers (`document_step_overdue`), and a scheduled version
+  left unpublished because its signatures no longer match once to them
+  (`document_publish_failed`). Each is claimed in `policy_reminders`
+  (insert-only, one row per thing sent once) in the transaction that
+  writes the notification.
+- **Weekly digest** (`acknowledgements_overdue_digest`): from the first run
+  of each ISO week on the client's calendar, every manager of the units
+  whose people have acknowledgements overdue (on the version in force of
+  an active document) is told how many (`data: { overdue, people, week }`),
+  once that week. **Chosen:** a person's managers are whoever holds
+  `policies.manage` or `policies.view_all` through a grant for the
+  person's unit or one above it (a grant for a unit, not for the whole
+  organization); where there is none, or the person has no unit, those
+  who hold `policies.manage` for the whole organization. The digest is
+  about no one document (`document_id` null) and names no document or
+  person. It leads to `GET /acknowledgements/overdue`: the overdue
+  acknowledgements of the people in the caller's reach (`policies.manage`
+  or `policies.view_all`), most overdue first, each `{ user, orgUnit,
+  document: { id, number, title, canOpen }, version, dueOn, daysOverdue }`,
+  the title only while the caller may open the document. In the app only
+  until the mail decision.
+
+### Notifications
+
+- Every notification about a version carries `versionId` in `data` beside
+  `version`: step assigned, returned, approved, published, acknowledgement
+  asked, due and overdue, step overdue, publishing failed.
+
+### Settings and routes
+
+- Types and categories carry `revision`; a `PATCH` gives the revision read
+  (409 `stale_type`, `stale_category`).
+- `GET /roles` for `policies.manage`: the client's roles by name, with
+  `approves` (whether a step may name it), without needing `users.manage`
+  or `roles.manage`.
+
+### Starting wording (language review 6)
+
+- `defaults.ts` words the procedure's and work instruction's steps «خطوات
+  العمل» / « Déroulement », exceptions and escalation « Exceptions et
+  procédure d’alerte », safety notes «تنبيهات السلامة», policy statements
+  « Dispositions », and the INF category "Information management" /
+  «إدارة المعلومات» / « Gestion de l’information ». Migration 0043 rewords
+  the clients that exist, one language at a time and only where it still
+  reads as first given, with one audit entry per client
+  (`policy_defaults_reworded_by_system`). Versions keep the sections they
+  were written and signed with.
+- The seed's example documents follow the review's table (French
+  « vérification » throughout). Demo clients already seeded keep the
+  example documents they have: their text is signed, and the seed adds
+  only what is missing.

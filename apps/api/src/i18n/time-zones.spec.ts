@@ -2,8 +2,10 @@ import {
   addDays,
   canonicalTimeZone,
   dayOf,
+  isoWeekOf,
   isTimeZone,
   lastDays,
+  momentIn,
   shiftDay,
   startOfDay,
 } from './time-zones.js';
@@ -292,5 +294,25 @@ describe("a hospital's own calendar", () => {
       expect(after.to).toBe('2026-03-10');
       expect(after.since.getTime() - before.since.getTime()).toBe(86_400_000);
     });
+  });
+});
+
+describe('weeks and wall-clock times', () => {
+  it('names the ISO week a day is in, the year going by its Thursday', () => {
+    expect(isoWeekOf('2026-11-27')).toBe('2026-W48');
+    expect(isoWeekOf('2026-11-23')).toBe('2026-W48');
+    expect(isoWeekOf('2026-11-29')).toBe('2026-W48');
+    expect(isoWeekOf('2026-11-30')).toBe('2026-W49');
+    // 1 January 2027 is a Friday: still the last week of 2026.
+    expect(isoWeekOf('2027-01-01')).toBe('2026-W53');
+    expect(isoWeekOf('2027-01-04')).toBe('2027-W01');
+    // 29 December 2025 is a Monday whose Thursday is in 2026.
+    expect(isoWeekOf('2025-12-29')).toBe('2026-W01');
+  });
+
+  it('writes a moment as the clock on the wall shows it there', () => {
+    const moment = new Date('2026-11-27T21:30:00Z');
+    expect(momentIn(moment, 'Asia/Riyadh')).toBe('2026-11-28 00:30');
+    expect(momentIn(moment, 'UTC')).toBe('2026-11-27 21:30');
   });
 });
