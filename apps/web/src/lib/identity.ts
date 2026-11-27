@@ -1,3 +1,4 @@
+import type { ModuleCode } from "@/config/modules";
 import type { Localized } from "./localized";
 
 export type Session = {
@@ -16,6 +17,16 @@ export type Session = {
      * date and time its staff see or type is on it, wherever they are.
      */
     timeZone: string;
+    /** The modules switched on for this client. Core is never listed. */
+    modules: ModuleCode[];
+    subscription: {
+      status: "trial" | "active" | "past_due" | "suspended";
+      /**
+       * What this user is to be told: `past_due` only to whoever holds
+       * `settings.manage` for the whole organization, `suspended` to all.
+       */
+      notice: "past_due" | "suspended" | null;
+    };
   };
   user: {
     id: string;

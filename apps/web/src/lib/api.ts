@@ -6,6 +6,12 @@ export class ApiError extends Error {
     readonly permission?: string,
     /** With "too many requests": the seconds to wait before trying again. */
     readonly retryAfter?: number,
+    /**
+     * The rest of what the API said, for a code that carries more: `limit`
+     * and `max` with `limit_reached`, `module` and `requiresAnyOf` with
+     * `module_dependency_missing`.
+     */
+    readonly details: Record<string, unknown> = {},
   ) {
     super(`API error ${status}`);
   }
@@ -37,6 +43,7 @@ export async function api<T>(
       data.code,
       typeof data.permission === "string" ? data.permission : undefined,
       Number.isFinite(wait) && wait > 0 ? wait : undefined,
+      data && typeof data === "object" ? data : {},
     );
   }
   return res.status === 204 ? (undefined as T) : res.json();
@@ -53,3 +60,20 @@ export const retryAfterOf = (err: unknown) =>
 
 export const permissionOf = (err: unknown) =>
   err instanceof ApiError ? err.permission : undefined;
+
+export const detailsOf = (err: unknown): Record<string, unknown> =>
+  err instanceof ApiError ? err.details : {};
+
+/**
+ * What a refusal at a limit of the plan says: which limit, and how many it
+ * allows. Null for any other answer.
+ */
+export function limitOf(
+  err: unknown,
+): { limit: "users" | "sites"; max: number } | null {
+  if (codeOf(err) !== "limit_reached") return null;
+  const { limit, max } = detailsOf(err);
+  return (limit === "users" || limit === "sites") && typeof max === "number"
+    ? { limit, max }
+    : null;
+}
