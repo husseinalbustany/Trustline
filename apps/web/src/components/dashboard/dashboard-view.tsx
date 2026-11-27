@@ -26,6 +26,7 @@ import {
 } from "@/lib/format";
 import { incidentsPath } from "@/lib/incident-filters";
 import type { IncidentList, IncidentSummary } from "@/lib/incidents";
+import { libraryPath, type PolicySummary } from "@/lib/policies";
 import { pick } from "@/lib/localized";
 
 type Loaded = { summary: IncidentSummary; recent: IncidentList };
@@ -42,6 +43,8 @@ type Tile = {
   href?: string;
   /** Drawn so it cannot be missed. */
   alert?: boolean;
+  /** Where the figure stands against the target the business set. */
+  measure?: { met: boolean | null; text: string };
 };
 
 /**
@@ -71,6 +74,24 @@ export function DashboardView({
   };
 
   const incidentsOn = hasModule(session, "incidents");
+  const policiesOn = hasModule(session, "policies");
+  const [policies, setPolicies] = useState<PolicySummary | null>(null);
+  const [policiesProblem, setPoliciesProblem] = useState(false);
+
+  useEffect(() => {
+    if (!policiesOn) return;
+    let current = true;
+    api<PolicySummary>("/policies/summary")
+      .then((next) => {
+        if (!current) return;
+        setPolicies(next);
+        setPoliciesProblem(false);
+      })
+      .catch(() => current && setPoliciesProblem(true));
+    return () => {
+      current = false;
+    };
+  }, [policiesOn]);
 
   useEffect(() => {
     // Nothing to ask for when the client has no incidents.
@@ -106,6 +127,14 @@ export function DashboardView({
   // person's own reports: it is for the people who handle incidents.
   const handles =
     can(session, "incidents.triage") || can(session, "incidents.view");
+  const looksAfterDocuments =
+    can(session, "policies.manage") || can(session, "policies.view_all");
+  // The API's shares come to one decimal place: "4.5%".
+  const share = (value: number) =>
+    new Intl.NumberFormat(
+      new Intl.Locale(lang, { numberingSystem: "latn" }).toString(),
+      { style: "percent", maximumFractionDigits: 1 },
+    ).format(value / 100);
 
   const drawn: Tile[] = [
     // Each count links to the list of exactly the incidents it counts.
@@ -171,7 +200,81 @@ export function DashboardView({
         ]
       : []),
     { key: "overdueActions" },
-    { key: "policiesDue" },
+    // Review dates are for those who look after documents; what awaits a
+    // person is for everyone.
+    ...(looksAfterDocuments
+      ? [
+          {
+            key: "documentsPastReview" as const,
+            live: true,
+            figure: count(policies?.pastReview.count),
+            help: policies
+              ? fill(t.pastReviewHelp, {
+                  percent: policies.pastReview.percent === null ? "–" : share(policies.pastReview.percent),
+                  of: numbers.format(policies.pastReview.of),
+                })
+              : undefined,
+            href: libraryPath(lang, { review: "overdue", sort: "next_review" }),
+            alert: !!policies && policies.pastReview.met === false,
+            measure: policies
+              ? {
+                  met: policies.pastReview.met,
+                  text: fill(t.pastReviewTarget, {
+                    target: share(policies.pastReview.target),
+                  }),
+                }
+              : undefined,
+          },
+          {
+            key: "policiesDue" as const,
+            live: true,
+            figure: count(policies?.dueWithin30Days),
+            help: t.policiesDueHelp,
+            href: libraryPath(lang, { review: "due", sort: "next_review" }),
+          },
+        ]
+      : []),
+    ...(can(session, "policies.approve")
+      ? [
+          {
+            key: "awaitingMyApproval" as const,
+            live: true,
+            figure: count(policies?.awaitingMyApproval),
+            href: `/${lang}/policies/awaiting`,
+          },
+        ]
+      : []),
+    {
+      key: "awaitingMyAcknowledgement",
+      live: true,
+      figure: count(policies?.awaitingMyAcknowledgement),
+      href: libraryPath(lang, { awaitingMyAcknowledgement: true }),
+    },
+    // The share of people asked who have acknowledged, for those who may
+    // see acknowledgement figures.
+    ...(policies?.acknowledgement
+      ? [
+          {
+            key: "acknowledgementCompletion" as const,
+            live: true,
+            figure:
+              policies.acknowledgement.percent === null
+                ? null
+                : share(policies.acknowledgement.percent),
+            help: fill(t.acknowledgementHelp, {
+              acknowledged: numbers.format(policies.acknowledgement.acknowledged),
+              targeted: numbers.format(policies.acknowledgement.targeted),
+            }),
+            alert: policies.acknowledgement.met === false,
+            measure: {
+              met: policies.acknowledgement.met,
+              text: fill(t.acknowledgementTarget, {
+                target: share(policies.acknowledgement.target),
+              }),
+            },
+          },
+        ]
+      : []),
   ];
   // In the order the configuration gives, for the modules the client has.
   const tiles = dashboardTiles
@@ -181,6 +284,7 @@ export function DashboardView({
   const showTasks = hasModule(session, dashboardPanels.myTasks);
   // While a live figure is on its way, or could not be fetched.
   const pending = problem ? t.loadError : i.loading;
+  const policiesPending = policiesProblem ? t.policiesLoadError : i.loading;
 
   return (
     <>
@@ -192,7 +296,7 @@ export function DashboardView({
 
       {tiles.length > 0 && (
         <dl className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-3">
-          {tiles.map(({ key, figure, live, help, href, alert }) => (
+          {tiles.map(({ key, figure, live, help, href, alert, measure }) => (
             <div
               key={key}
               className={`relative rounded-lg border p-4 ${
@@ -222,12 +326,33 @@ export function DashboardView({
                   <>
                     <span aria-hidden>–</span>
                     <span className="sr-only">
-                      {live && figure === undefined ? pending : t.noData}
+                      {live && figure === undefined
+                        ? dashboardTiles.find((x) => x.key === key)?.module === "policies"
+                          ? policiesPending
+                          : pending
+                        : t.noData}
                     </span>
                   </>
                 )}
               </dd>
               {help && <dd className="mt-1 text-xs text-muted">{help}</dd>}
+              {measure && (
+                <dd
+                  className={`mt-1 text-xs font-medium ${
+                    measure.met === false ? "text-danger" : measure.met ? "text-accent" : "text-muted"
+                  }`}
+                >
+                  {measure.text}{" "}
+                  <span className="inline-block">
+                    {"· "}
+                    {measure.met === null
+                      ? t.measureNone
+                      : measure.met
+                        ? t.measureMet
+                        : t.measureMissed}
+                  </span>
+                </dd>
+              )}
             </div>
           ))}
         </dl>

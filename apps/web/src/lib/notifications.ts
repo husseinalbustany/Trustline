@@ -1,3 +1,5 @@
+import type { Localized } from "./localized";
+
 /**
  * Something that happened on an incident, told to one person. It carries
  * the incident's reference and a word or two about what happened, and never
@@ -20,8 +22,26 @@ export type Notification = {
     /** False once the reader can no longer see the incident. */
     canOpen: boolean;
   } | null;
+  /**
+   * Null for one about anything but a controlled document. The title is
+   * given only while the reader can still open the document.
+   */
+  document: {
+    id: string;
+    number: string;
+    title: Localized | null;
+    canOpen: boolean;
+  } | null;
   data: {
     reference?: string;
+    /** With a document's: its number, the version and the day it is about. */
+    number?: string;
+    version?: number;
+    dueOn?: string;
+    /** With `document_step_assigned`: review or approve. */
+    step?: string;
+    /** With `review_due`: 60, 30 or 7 days before. */
+    days?: number;
     /**
      * About severe harm, a death or a sentinel event. Missing from those
      * written before the API said so: read as not serious.
@@ -46,6 +66,8 @@ const detailOf = {
   overdue: "deadline",
   sign_off_decided: "decision",
   status_changed: "change",
+  document_step_assigned: "step",
+  review_due: "days",
 } as const;
 
 /** A sentence, or a set of them by what `data` adds, with `other` as a rest. */
@@ -66,7 +88,7 @@ export function sentenceFor(
   const detail = Object.hasOwn(detailOf, kind)
     ? data?.[detailOf[kind as keyof typeof detailOf]]
     : undefined;
-  return detail && Object.hasOwn(wording, detail)
-    ? wording[detail]
+  return detail !== undefined && Object.hasOwn(wording, String(detail))
+    ? wording[String(detail)]
     : (wording.other ?? general);
 }

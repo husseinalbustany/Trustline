@@ -46,7 +46,7 @@ export const moduleRules: Record<ModuleCode, ModuleRule> = {
   incidents: { built: true, requiresAnyOf: [] },
   investigations: { built: false, requiresAnyOf: ["incidents"] },
   actions: { built: false, requiresAnyOf: [] },
-  policies: { built: false, requiresAnyOf: [] },
+  policies: { built: true, requiresAnyOf: [] },
   risks: { built: false, requiresAnyOf: [] },
   training: { built: false, requiresAnyOf: [] },
   ai_assistant: {

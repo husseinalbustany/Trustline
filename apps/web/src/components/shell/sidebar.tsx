@@ -49,8 +49,13 @@ export function Sidebar({
     const full = `/${lang}${href}`;
     return pathname === full || pathname.startsWith(`${full}/`);
   };
+  // The item with the longest address the page is under: on
+  // /policies/awaiting that is "Awaiting me", not the library above it.
+  const hrefs = navigation.flatMap((g) => g.items.map((i) => i.href));
   const isActive = (key: NavItemKey, href: string) =>
-    under(href) || (alsoActive[key] ? under(alsoActive[key]) : false);
+    (under(href) &&
+      !hrefs.some((other) => other.length > href.length && under(other))) ||
+    (alsoActive[key] ? under(alsoActive[key]) : false);
 
   const groups = navigation
     .map((group) => ({

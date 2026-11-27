@@ -16,11 +16,13 @@ import type { Dictionary } from "@/i18n/dictionaries";
 import { api } from "@/lib/api";
 import {
   dateTimeFormat,
+  dayFormat,
   fill,
   momentFrom,
   numberFormat,
   timeAgoFormat,
 } from "@/lib/format";
+import { pick } from "@/lib/localized";
 import {
   sentenceFor,
   type Notification,
@@ -84,7 +86,11 @@ export function NotificationsView({
   const path = `/${lang}/notifications`;
   // Notifications are core, but so far only incidents send any: without
   // them the page does not speak of incidents.
-  const aboutIncidents = hasModule(session, "incidents");
+  // With documents too, the page speaks of what concerns the reader in
+  // general.
+  const aboutIncidents =
+    hasModule(session, "incidents") && !hasModule(session, "policies");
+  const day = dayFormat(lang);
   const seriousNote = hasModule(session, features.seriousNotifications);
   // Where the form for reporting without sign-in is switched, for whoever
   // may switch it: a notification that it is paused leads there.
@@ -185,17 +191,32 @@ export function NotificationsView({
     (unreadCount ?? 0) > 0 || !!data?.items.some((n) => !n.readAt);
 
   const row = (n: Notification, at: Date) => {
-    const reference = n.data?.reference ?? n.incident?.reference ?? "";
-    // About the organization rather than an incident: nothing to open,
-    // except the settings, for whoever may change them.
-    const about = n.incident;
-    const opens = about?.canOpen ? `/${lang}/incidents/${about.id}` : null;
+    const doc = n.document;
+    const reference =
+      n.data?.reference ??
+      n.incident?.reference ??
+      n.data?.number ??
+      doc?.number ??
+      "";
+    // About the organization rather than an incident or a document:
+    // nothing to open, except the settings, for whoever may change them.
+    const about = n.incident ?? doc;
+    const opens = n.incident?.canOpen
+      ? `/${lang}/incidents/${n.incident.id}`
+      : doc?.canOpen
+        ? `/${lang}/policies/${doc.id}`
+        : null;
+    const title = doc?.canOpen && doc.title
+      ? pick(doc.title, lang, session.tenant.defaultLocale)
+      : null;
     const serious = n.data?.serious === true;
     // The reference is one piece, left to right and never broken at its
     // hyphens: put in with the words, it would wrap as "INC-2026-" and
     // "00042", and in Arabic its parts would be reordered across the lines.
     const sentence = fill(sentenceFor(t.kinds, n), {
       limit: numbers.format(n.data?.limit ?? 0),
+      version: numbers.format(n.data?.version ?? 0),
+      date: day(n.data?.dueOn) ?? "",
     })
       .split("{reference}")
       .flatMap((words, i) =>
@@ -252,8 +273,15 @@ export function NotificationsView({
               sentence
             )}
           </p>
+          {title && (
+            <p dir="auto" className="mt-0.5 text-sm break-words text-muted">
+              {title}
+            </p>
+          )}
           {about && !about.canOpen && (
-            <p className="mt-0.5 text-sm text-muted">{t.unavailable}</p>
+            <p className="mt-0.5 text-sm text-muted">
+              {doc ? t.documentUnavailable : t.unavailable}
+            </p>
           )}
           {!about && settingsPath && (
             <p className="mt-1 text-sm">

@@ -25,7 +25,8 @@ export const hasModule = (session: Session, module: ModuleKey) =>
 /**
  * Whether the organization's account is read-only: its subscription is
  * suspended. Everything that writes is refused then, except reporting an
- * incident, signing out and marking notifications read.
+ * incident, acknowledging a document, signing out and marking
+ * notifications read.
  */
 export const isReadOnly = (session: Session) =>
   session.tenant.subscription?.status === "suspended";
@@ -109,6 +110,8 @@ export function SubscriptionBanner({
         <div className="flex flex-col gap-1">
           <p className="font-medium">{t.suspendedTitle}</p>
           <p>{reports ? t.suspended : t.suspendedNoReporting}</p>
+          {/* Acknowledging a document is safety work too, and stays open. */}
+          {hasModule(session, "policies") && <p>{t.suspendedAcknowledge}</p>}
         </div>
       </div>
     );

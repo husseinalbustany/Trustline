@@ -25,7 +25,7 @@ const LIST_ITEM = /^( *)([-*]|(\d{1,3})[.)]) +(.*)$/;
 /** Bold is `**…**`, on one line. Anything else is text as typed. */
 export function inline(text: string): Inline[] {
   const out: Inline[] = [];
-  const pattern = /\*\*(?=\S)(.+?)(?<=\S)\*\*/g;
+  const pattern = /\*\*(\S(?:.*?\S)?)\*\*/g;
   let last = 0;
   for (const match of text.matchAll(pattern)) {
     const at = match.index ?? 0;
@@ -210,7 +210,7 @@ export function toggleBold(
       to: to - 2,
     };
   }
-  if (/^\*\*.+\*\*$/s.test(selected)) {
+  if (/^\*\*[\s\S]+\*\*$/.test(selected)) {
     const inner = selected.slice(2, -2);
     return {
       text: text.slice(0, from) + inner + text.slice(to),

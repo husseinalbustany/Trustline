@@ -1,7 +1,9 @@
 import {
+  BookCheck,
   Building2,
   ChartColumn,
   FileText,
+  FolderCog,
   GraduationCap,
   LayoutDashboard,
   ListChecks,
@@ -27,12 +29,15 @@ export type ModuleKey =
   | "users"
   | "settings";
 
-export type NavItemKey = "dashboard" | ModuleKey;
+/** The pages of a module beside its main one. */
+export type SubItemKey = "policiesAwaiting" | "policiesSettings";
+
+export type NavItemKey = "dashboard" | ModuleKey | SubItemKey;
 
 /** The areas not built yet, which show what they will cover. */
 export type PlaceholderKey = Exclude<
   ModuleKey,
-  "incidents" | "organization" | "users" | "settings"
+  "incidents" | "policies" | "organization" | "users" | "settings"
 >;
 
 export type NavGroupKey =
@@ -93,6 +98,34 @@ export const navigation: { key: NavGroupKey; items: NavItem[] }[] = [
         href: "/policies",
         icon: FileText,
         module: "policies",
+        // Anyone who may use the module, as the API lets them in.
+        permissions: [
+          "policies.view",
+          "policies.manage",
+          "policies.approve",
+          "policies.view_all",
+        ],
+      },
+      {
+        key: "policiesAwaiting",
+        href: "/policies/awaiting",
+        icon: BookCheck,
+        module: "policies",
+        permissions: [
+          "policies.view",
+          "policies.manage",
+          "policies.approve",
+          "policies.view_all",
+        ],
+      },
+      {
+        key: "policiesSettings",
+        href: "/policies/settings",
+        icon: FolderCog,
+        module: "policies",
+        // The settings belong to the whole organization; the page says so
+        // to a manager of one unit.
+        permissions: ["policies.manage"],
       },
       {
         key: "risks",
@@ -169,7 +202,11 @@ export const dashboardTiles: {
   { key: "triagedOnTime", module: "incidents" },
   { key: "timeToReport", module: "incidents" },
   { key: "overdueActions", module: "actions" },
+  { key: "documentsPastReview", module: "policies" },
   { key: "policiesDue", module: "policies" },
+  { key: "awaitingMyApproval", module: "policies" },
+  { key: "awaitingMyAcknowledgement", module: "policies" },
+  { key: "acknowledgementCompletion", module: "policies" },
 ];
 
 /** The dashboard's panels under the figures. */
