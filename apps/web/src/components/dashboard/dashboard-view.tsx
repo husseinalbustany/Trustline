@@ -261,10 +261,17 @@ export function DashboardView({
               policies.acknowledgement.percent === null
                 ? null
                 : share(policies.acknowledgement.percent),
+            // Over the acknowledgements already due; today's figure over
+            // everyone asked comes second.
             help: fill(t.acknowledgementHelp, {
               acknowledged: numbers.format(policies.acknowledgement.acknowledged),
               targeted: numbers.format(policies.acknowledgement.targeted),
+              live:
+                policies.acknowledgement.live.percent === null
+                  ? "–"
+                  : share(policies.acknowledgement.live.percent),
             }),
+            href: `/${lang}/policies/overdue`,
             alert: policies.acknowledgement.met === false,
             measure: {
               met: policies.acknowledgement.met,

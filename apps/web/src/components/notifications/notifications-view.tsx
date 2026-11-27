@@ -24,6 +24,8 @@ import {
 } from "@/lib/format";
 import { pick } from "@/lib/localized";
 import {
+  aboutReview,
+  overdueDigest,
   sentenceFor,
   type Notification,
   type NotificationList,
@@ -201,11 +203,16 @@ export function NotificationsView({
     // About the organization rather than an incident or a document:
     // nothing to open, except the settings, for whoever may change them.
     const about = n.incident ?? doc;
+    // About a version in review: straight to it.
     const opens = n.incident?.canOpen
       ? `/${lang}/incidents/${n.incident.id}`
-      : doc?.canOpen
-        ? `/${lang}/policies/${doc.id}`
-        : null;
+      : doc?.canOpen && n.data?.versionId && aboutReview.has(n.kind)
+        ? `/${lang}/policies/${doc.id}/versions/${n.data.versionId}`
+        : doc?.canOpen
+          ? `/${lang}/policies/${doc.id}`
+          : n.kind === overdueDigest
+            ? `/${lang}/policies/overdue`
+            : null;
     const title = doc?.canOpen && doc.title
       ? pick(doc.title, lang, session.tenant.defaultLocale)
       : null;
@@ -216,7 +223,10 @@ export function NotificationsView({
     const sentence = fill(sentenceFor(t.kinds, n), {
       limit: numbers.format(n.data?.limit ?? 0),
       version: numbers.format(n.data?.version ?? 0),
-      date: day(n.data?.dueOn) ?? "",
+      date: day(n.data?.dueOn ?? n.data?.effectiveOn) ?? "",
+      position: numbers.format(n.data?.position ?? 0),
+      overdue: numbers.format(n.data?.overdue ?? 0),
+      people: numbers.format(n.data?.people ?? 0),
     })
       .split("{reference}")
       .flatMap((words, i) =>
@@ -283,7 +293,7 @@ export function NotificationsView({
               {doc ? t.documentUnavailable : t.unavailable}
             </p>
           )}
-          {!about && settingsPath && (
+          {!about && settingsPath && n.kind !== overdueDigest && (
             <p className="mt-1 text-sm">
               <Link
                 href={settingsPath}

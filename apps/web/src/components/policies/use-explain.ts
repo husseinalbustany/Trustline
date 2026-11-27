@@ -3,7 +3,7 @@
 import { useCallback } from "react";
 import { useSession } from "@/components/shell/session";
 import { useSubscriptionRefusal } from "@/components/shell/subscription";
-import { languageNameIn } from "@/lib/format";
+import { durationFormat, languageNameIn } from "@/lib/format";
 import { pick } from "@/lib/localized";
 import type { Section } from "@/lib/policies";
 import { explain, type PoliciesText } from "./types";
@@ -32,6 +32,9 @@ export function useExplain(
         },
         // Inside a sentence, in the reader's language: "in Arabic".
         language: languageNameIn(lang),
+        months: (count) => durationFormat(lang)(count, "month"),
+        list: (items) =>
+          new Intl.ListFormat(lang, { type: "conjunction" }).format(items),
       }),
     [refusal, t, sections, lang, session.tenant.defaultLocale],
   );

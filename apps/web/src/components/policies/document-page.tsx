@@ -12,7 +12,6 @@ import {
   type ReactNode,
 } from "react";
 import { useSession } from "@/components/shell/session";
-import { ReadOnlyFieldset } from "@/components/shell/subscription";
 import { Button } from "@/components/ui/button";
 import { ButtonLink } from "@/components/ui/button-link";
 import { Field } from "@/components/ui/field";
@@ -32,6 +31,7 @@ import {
   documentPath,
   shownLanguage,
   versionPath,
+  type DocumentChange,
   type DocumentVersion,
   type History,
   type Named,
@@ -46,12 +46,14 @@ import {
   VersionStatusPill,
 } from "./pills";
 import { isStale, textareaClass, type PoliciesProps } from "./types";
-import { Sentence } from "./sentence";
+import { Sentence, Words } from "./sentence";
 import { useExplain } from "./use-explain";
 
 type Loaded = {
   doc: PolicyDocument;
   history: History | null;
+  /** The history of its details, for those with full sight. */
+  changes: { items: DocumentChange[]; total: number } | null;
   published: DocumentVersion | null;
   inProgress: DocumentVersion | null;
 };
@@ -59,8 +61,13 @@ type Loaded = {
 /** Reads a document with its published version, its history and what is in progress. */
 export async function loadDocument(id: string): Promise<Loaded> {
   const doc = await api<PolicyDocument>(`/policies/documents/${id}`);
-  const [history, published, inProgress] = await Promise.all([
+  const [history, changes, published, inProgress] = await Promise.all([
     api<History>(`/policies/documents/${id}/versions`).catch(() => null),
+    doc.access === "full"
+      ? api<{ items: DocumentChange[]; total: number }>(
+          `/policies/documents/${id}/changes`,
+        ).catch(() => null)
+      : null,
     doc.published
       ? api<DocumentVersion>(
           `/policies/documents/${id}/versions/${doc.published.id}`,
@@ -72,7 +79,7 @@ export async function loadDocument(id: string): Promise<Loaded> {
         ).catch(() => null)
       : null,
   ]);
-  return { doc, history, published, inProgress };
+  return { doc, history, changes, published, inProgress };
 }
 
 /**
@@ -159,7 +166,7 @@ function DocumentView({
   refresh: () => Promise<void>;
 }) {
   const session = useSession();
-  const { doc, history, published, inProgress } = loaded;
+  const { doc, history, changes, published, inProgress } = loaded;
   const [asked, setAsked] = useState<string | null>(null);
   const inLang = (text: Localized | null | undefined) =>
     pick(text, lang, session.tenant.defaultLocale);
@@ -398,12 +405,137 @@ function DocumentView({
         </div>
       )}
 
+      {changes && (
+        <div className="mt-6 print:hidden">
+          <DetailChanges lang={lang} t={t} changes={changes.items} />
+        </div>
+      )}
+
       <p className="mt-6 text-sm print:hidden">
         <Link href={`/${lang}/policies`} className="text-accent hover:underline">
           {t.back}
         </Link>
       </p>
     </>
+  );
+}
+
+/**
+ * What was changed in the document's details since it was created: by
+ * whom, when, why (a change of review period always says why), and each
+ * field from what to what.
+ */
+function DetailChanges({
+  lang,
+  t,
+  changes,
+}: PoliciesProps & { changes: DocumentChange[] }) {
+  const session = useSession();
+  const inLang = (text: Localized | null | undefined) =>
+    pick(text, lang, session.tenant.defaultLocale);
+  const moments = dateTimeFormat(lang, session.tenant.timeZone);
+  const day = dayFormat(lang);
+  const months = durationFormat(lang);
+  const d = t.document;
+  const labels: Record<string, string> = {
+    title: t.form.title,
+    category: d.category,
+    owner: d.owner,
+    ownerUnit: d.ownerUnit,
+    audience: d.appliesTo,
+    confidentiality: d.confidentialityLabel,
+    reviewMonths: d.reviewPeriod,
+    nextReviewOn: d.nextReviewOn,
+    keywords: d.keywords,
+    references: d.references,
+  };
+  const named = (value: unknown) =>
+    value && typeof value === "object" && "name" in value
+      ? inLang((value as { name: Localized | null }).name)
+      : "";
+  const shown = (field: string, value: unknown): string => {
+    if (value === null || value === undefined || value === "") return d.none;
+    switch (field) {
+      case "title":
+        return inLang(value as Localized) || d.none;
+      case "category":
+      case "ownerUnit":
+        return named(value) || d.none;
+      case "owner":
+        return named(value) || d.unknownPerson;
+      case "audience": {
+        const a = value as {
+          wholeOrganization?: boolean;
+          orgUnits?: { name: Localized | null }[];
+          roles?: { name: Localized | null }[];
+        };
+        const where = a.wholeOrganization
+          ? d.wholeOrganization
+          : (a.orgUnits ?? []).map((u) => inLang(u.name)).join(" · ");
+        const roles = (a.roles ?? []).map((r) => inLang(r.name)).join(" · ");
+        return roles ? `${where} (${roles})` : where;
+      }
+      case "confidentiality":
+        return Object.hasOwn(t.confidentiality, String(value))
+          ? t.confidentiality[value as keyof typeof t.confidentiality]
+          : String(value);
+      case "reviewMonths":
+        return typeof value === "number" ? months(value, "month") : String(value);
+      case "nextReviewOn":
+        return day(String(value)) ?? String(value);
+      case "keywords":
+      case "references":
+        return Array.isArray(value) && value.length > 0
+          ? value.join(", ")
+          : d.none;
+      default:
+        return typeof value === "string" ? value : d.none;
+    }
+  };
+  return (
+    <Panel title={d.changesTitle}>
+      {changes.length === 0 ? (
+        <EmptyState>{d.noChanges}</EmptyState>
+      ) : (
+        <ul>
+          {changes.map((entry) => (
+            <li
+              key={entry.id}
+              className="border-b border-line px-4 py-3 text-sm last:border-b-0"
+            >
+              <p className="text-xs text-muted">
+                {fill(d.reviewedOnBy, {
+                  name: inLang(entry.by?.name) || d.unknownPerson,
+                  date: moments.format(new Date(entry.at)),
+                })}
+              </p>
+              <ul className="mt-1 flex flex-col gap-0.5">
+                {entry.changes.map((c) => (
+                  <li key={c.field} className="break-words">
+                    <Words
+                      text={d.changeLine}
+                      values={{
+                        field: labels[c.field] ?? d.otherDetail,
+                        from: <bdi className="text-muted">{shown(c.field, c.from)}</bdi>,
+                        to: <bdi className="font-medium">{shown(c.field, c.to)}</bdi>,
+                      }}
+                    />
+                  </li>
+                ))}
+              </ul>
+              {entry.reason && (
+                <p className="mt-1">
+                  <span className="text-muted">{d.changeReason}</span>{" "}
+                  <bdi dir="auto" className="whitespace-pre-line">
+                    {entry.reason}
+                  </bdi>
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
   );
 }
 
@@ -680,7 +812,9 @@ function DocumentActions({
 
   return (
     <Panel title={x.title}>
-      <ReadOnlyFieldset>
+      {/* The API offers only what stays open while the account is
+          suspended (publish, retire, acknowledge): no fieldset turns it off. */}
+      <>
         <div className="flex flex-col gap-3 p-4">
           {doc.moves.includes("confirm_review") && (
             <div className="flex flex-col gap-2">
@@ -697,7 +831,11 @@ function DocumentActions({
                     <Sentence text={x.confirmReviewIntro} number={doc.number} />
                   }
                   confirm={x.confirmReview}
-                  comment={{ label: x.reviewComment }}
+                  comment={{
+                    label: x.reviewComment,
+                    help: x.reviewCommentHelp,
+                    required: true,
+                  }}
                   explainError={explainError}
                   onCancel={() => setOpen(null)}
                   submit={async (password, comment) => {
@@ -707,7 +845,7 @@ function DocumentActions({
                         body: {
                           password,
                           revision: doc.revision,
-                          ...(comment.trim() ? { comment: comment.trim() } : {}),
+                          comment: comment.trim(),
                         },
                       });
                     } catch (err) {
@@ -803,7 +941,7 @@ function DocumentActions({
             </p>
           )}
         </div>
-      </ReadOnlyFieldset>
+      </>
     </Panel>
   );
 }

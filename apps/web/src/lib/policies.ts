@@ -37,6 +37,7 @@ export type DocumentType = {
   defaultReviewMonths: number;
   active: boolean;
   position: number;
+  revision: number;
 };
 
 export type DocumentCategory = {
@@ -46,6 +47,7 @@ export type DocumentCategory = {
   parentId: string | null;
   active: boolean;
   position: number;
+  revision: number;
 };
 
 type Kind = { id: string; code: string; name: Localized };
@@ -106,6 +108,8 @@ export type PolicyDocument = {
   } | null;
   inProgress: { id: string; version: number; status: VersionStatus } | null;
   myAcknowledgement: MyAcknowledgement | null;
+  /** Today on the client's calendar. */
+  today: string;
   moves: DocumentMove[];
 };
 
@@ -166,6 +170,41 @@ export type SectionComparison = {
   locales: Record<string, { changed: boolean; lines: DiffLine[] }>;
 };
 
+/**
+ * Where a section stands in one language, against the authoritative one:
+ * written; not written, so its readers are shown the authoritative text
+ * (`fallback`); written, but not updated since the authoritative text
+ * changed (`lagging`); or written in neither (`empty`).
+ */
+export type SectionLanguageState =
+  | "written"
+  | "fallback"
+  | "lagging"
+  | "empty"
+  | (string & {});
+
+export type LanguageStatus = {
+  /** The language whose text applies where two languages differ. */
+  authoritative: string;
+  /** The version published before this one, which it was compared with. */
+  comparedWith: { id: string; version: number } | null;
+  sections: { key: string; locales: Record<string, SectionLanguageState> }[];
+  byLocale: Record<
+    string,
+    { written: number; fallback: number; lagging: number; empty: number }
+  >;
+  lagging: boolean;
+};
+
+export type Run = {
+  id: string;
+  status: "in_progress" | "approved" | "returned" | "cancelled" | (string & {});
+  currentPosition: number;
+  startedAt: string;
+  completedAt: string | null;
+  steps: RunStep[];
+};
+
 /** Per language, per section key: the section's text. */
 export type Content = Record<string, Record<string, string>>;
 
@@ -203,22 +242,23 @@ export type DocumentVersion = {
   withdrawnAt: string | null;
   acknowledgementRequired: boolean;
   acknowledgeWithinDays: number;
+  languageStatus: LanguageStatus | null;
+  today: string;
   control: {
     number: string;
     version: number;
+    status: VersionStatus;
+    documentStatus: DocumentStatus;
+    /** The one copy a print may call controlled. */
+    inForce: boolean;
     owner: Named;
     effectiveOn: string | null;
     nextReviewOn: string | null;
     approvals: Approval[];
   };
-  run: {
-    id: string;
-    status: "in_progress" | "approved" | "returned" | "cancelled";
-    currentPosition: number;
-    startedAt: string;
-    completedAt: string | null;
-    steps: RunStep[];
-  } | null;
+  run: Run | null;
+  /** Every round of review, newest first, for those who see the runs. */
+  rounds: (Run & { snapshot: boolean })[];
   returned: {
     position: number;
     comment: string | null;
@@ -226,6 +266,13 @@ export type DocumentVersion = {
     at: string | null;
   }[];
   comparison: SectionComparison[] | null;
+  /** Compared with what it held when it was last returned. */
+  sinceReturned: {
+    runId: string;
+    returnedAt: string | null;
+    changeSummaryChanged: boolean;
+    comparison: SectionComparison[];
+  } | null;
   myStep: {
     position: number;
     kind: StepKind;
@@ -299,8 +346,19 @@ export type PolicySummary = {
   dueWithin30Days: number;
   awaitingMyApproval: number;
   awaitingMyAcknowledgement: number;
-  /** Null for those who may not see acknowledgement figures. */
-  acknowledgement: (Measure & { targeted: number; acknowledged: number }) | null;
+  /**
+   * Of the acknowledgements whose due date has passed, the share given;
+   * `live` is the same over everyone asked today. Null for those who may
+   * not see acknowledgement figures.
+   */
+  acknowledgement:
+    | (Measure & {
+        basis: "due_date_passed" | (string & {});
+        targeted: number;
+        acknowledged: number;
+        live: { targeted: number; acknowledged: number; percent: number | null };
+      })
+    | null;
 };
 
 export type AcknowledgementFigures = {
@@ -328,9 +386,62 @@ export type AcknowledgementFigures = {
       dueOn: string;
       acknowledgedAt: string | null;
       overdue: boolean;
+      /** No longer an active user: kept as evidence, not counted. */
+      left: boolean;
     }[];
     total: number;
   };
+};
+
+/** A role as the document settings and forms may name it. */
+export type PolicyRole = {
+  id: string;
+  code: string;
+  name: Localized;
+  isSystem: boolean;
+  /** Whether it may be named in an approval step. */
+  approves: boolean;
+};
+
+export type PolicySettings = { maxReviewMonths: number; revision: number };
+
+export type ChangeField =
+  | "title"
+  | "category"
+  | "owner"
+  | "ownerUnit"
+  | "audience"
+  | "confidentiality"
+  | "reviewMonths"
+  | "nextReviewOn"
+  | "keywords"
+  | "references";
+
+/** A change to a document's details, as its history shows it. */
+export type DocumentChange = {
+  id: string;
+  at: string;
+  by: Named | null;
+  reason: string | null;
+  changes: { field: ChangeField | (string & {}); from: unknown; to: unknown }[];
+};
+
+export type OverdueList = {
+  today: string;
+  items: {
+    user: Named;
+    orgUnit: Named | null;
+    document: {
+      id: string;
+      number: string;
+      title: Localized | null;
+      canOpen: boolean;
+    };
+    version: { id: string; version: number };
+    dueOn: string;
+    daysOverdue: number;
+  }[];
+  total: number;
 };
 
 export type Person = { id: string; name: Localized; orgUnitId: string | null };
@@ -441,6 +552,17 @@ export function libraryPath(
   return `/${lang}/policies${query ? `?${query}` : ""}`;
 }
 
+/** The master list as a CSV file, with the library's filters and order. */
+export function documentsExportPath(
+  filters: LibraryFilters,
+  locale: string | null,
+): string {
+  const query = new URLSearchParams(libraryQuery({ ...filters, page: 1 }));
+  if (locale) query.set("locale", locale);
+  const text = query.toString();
+  return `/policies/exports/documents${text ? `?${text}` : ""}`;
+}
+
 export const documentPath = (lang: string, id: string) =>
   `/${lang}/policies/${id}`;
 
@@ -465,18 +587,19 @@ export function shownLanguage(
 export type NotInForce = "retired" | "superseded" | "withdrawn" | "unpublished";
 
 /**
- * Why a version is not the one in force, as its statuses say, or null for
- * the published version of a current document. A retired document's
- * versions are all out of force, whatever each one's own status.
+ * Why a version is not the one in force, or null for the one the API says
+ * is in force (`control.inForce`). A retired document's versions are all
+ * out of force, whatever each one's own status.
  */
 export function notInForce(
   document: Pick<PolicyDocument, "status">,
-  version: Pick<DocumentVersion, "status">,
+  version: Pick<DocumentVersion, "status" | "control">,
 ): NotInForce | null {
+  if (version.control.inForce) return null;
   if (document.status === "retired") return "retired";
-  if (version.status === "published") return null;
   if (version.status === "superseded") return "superseded";
   if (version.status === "withdrawn") return "withdrawn";
+  // Published but before its day, or anything not yet published.
   return "unpublished";
 }
 

@@ -19,6 +19,10 @@ export function explain(
     section?: (key: string) => string;
     /** A language's name, for a refusal about one language. */
     language?: (locale: string) => string;
+    /** A number of months, in words: "36 months". */
+    months?: (count: number) => string;
+    /** Several items as one phrase: "1 and 2". */
+    list?: (items: string[]) => string;
   } = {},
 ): string {
   const errors = t.errors;
@@ -43,6 +47,30 @@ export function explain(
       sections: sections.map((s) => names.section?.(s) ?? s).join(", "),
       language: names.language?.(String(details.locale ?? "")) ?? "",
     });
+  }
+  const months = (value: unknown) =>
+    typeof value === "number"
+      ? (names.months?.(value) ?? String(value))
+      : String(value ?? "");
+  const list = (items: string[]) => names.list?.(items) ?? items.join(", ");
+  if (code === "review_period_too_long") {
+    return fill(errors.review_period_too_long, { max: months(details.max) });
+  }
+  if (code === "type_exceeds_max") {
+    const types = Array.isArray(details.types)
+      ? (details.types as { code?: string; defaultReviewMonths?: number }[])
+      : [];
+    return fill(errors.type_exceeds_max, {
+      types: list(
+        types.map((x) => `${x.code ?? ""} (${months(x.defaultReviewMonths)})`),
+      ),
+    });
+  }
+  if (code === "same_person_in_two_steps") {
+    const positions = Array.isArray(details.positions)
+      ? (details.positions as unknown[]).map(String)
+      : [];
+    return fill(errors.same_person_in_two_steps, { positions: list(positions) });
   }
   if (code === "same_person" && details.reason === "decided_earlier_step") {
     return errors.same_person_decided;
@@ -86,6 +114,9 @@ export const isStale = (err: unknown) =>
     "document_retired",
     "version_in_progress",
     "already_acknowledged",
+    "stale_type",
+    "stale_category",
+    "stale_settings",
   ].includes(codeOf(err) ?? "");
 
 export const textareaClass =

@@ -10,7 +10,6 @@ import {
   type FormEvent,
 } from "react";
 import { useSession } from "@/components/shell/session";
-import { ReadOnlyFieldset } from "@/components/shell/subscription";
 import { Button } from "@/components/ui/button";
 import { ButtonLink } from "@/components/ui/button-link";
 import { Field, inputClass } from "@/components/ui/field";
@@ -25,6 +24,7 @@ import {
   durationFormat,
   fill,
   languageListIn,
+  languageNameIn,
   numberFormat,
 } from "@/lib/format";
 import { pick, type Localized } from "@/lib/localized";
@@ -37,6 +37,7 @@ import {
   type Named,
   type PolicyDocument,
   type RunStep,
+  type SectionComparison,
 } from "@/lib/policies";
 import { ControlledDocument, LanguageSwitch } from "./controlled-document";
 import { Markup } from "./markup";
@@ -170,21 +171,36 @@ function VersionView({
   const day = dayFormat(lang);
   const r = t.review;
   const [asked, setAsked] = useState<string | null>(null);
-  const comparable =
-    !!version.comparison &&
-    !!doc.published &&
-    ["draft", "in_review", "approved"].includes(version.status);
-  const [mode, setMode] = useState<"changes" | "document">(
-    comparable ? "changes" : "document",
+  const inProgress = ["draft", "in_review", "approved"].includes(
+    version.status,
   );
-  const languages = comparable
-    ? [
-        ...new Set([
-          ...version.languages,
-          ...(version.comparison ?? []).flatMap((s) => Object.keys(s.locales)),
-        ]),
-      ]
-    : version.languages;
+  const comparable = !!version.comparison && !!doc.published && inProgress;
+  const sinceReturned = inProgress ? version.sinceReturned : null;
+  // A reviewer looks first at what changed since they returned it.
+  const [mode, setMode] = useState<"changes" | "returned" | "document">(
+    sinceReturned ? "returned" : comparable ? "changes" : "document",
+  );
+  const languages =
+    comparable || sinceReturned
+      ? [
+          ...new Set([
+            ...version.languages,
+            ...(comparable ? (version.comparison ?? []) : []).flatMap((s) =>
+              Object.keys(s.locales),
+            ),
+            ...(sinceReturned?.comparison ?? []).flatMap((s) =>
+              Object.keys(s.locales),
+            ),
+          ]),
+        ]
+      : version.languages;
+  const status = version.languageStatus;
+  const languageName = languageNameIn(lang);
+  // Languages left behind where the authoritative text changed, said
+  // before anyone signs.
+  const behind = inProgress && status?.lagging
+    ? Object.entries(status.byLocale).filter(([, n]) => n.lagging > 0)
+    : [];
   const shownIn = shownLanguage(languages, asked, lang);
 
   const chip = (on: boolean) =>
@@ -262,16 +278,28 @@ function VersionView({
             </Panel>
           )}
           <div className="flex flex-wrap items-center gap-3">
-            {comparable && (
+            {(comparable || sinceReturned) && (
               <div role="group" aria-label={r.viewLabel} className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  aria-pressed={mode === "changes"}
-                  onClick={() => setMode("changes")}
-                  className={chip(mode === "changes")}
-                >
-                  {r.showChanges}
-                </button>
+                {sinceReturned && (
+                  <button
+                    type="button"
+                    aria-pressed={mode === "returned"}
+                    onClick={() => setMode("returned")}
+                    className={chip(mode === "returned")}
+                  >
+                    {r.sinceReturned}
+                  </button>
+                )}
+                {comparable && (
+                  <button
+                    type="button"
+                    aria-pressed={mode === "changes"}
+                    onClick={() => setMode("changes")}
+                    className={chip(mode === "changes")}
+                  >
+                    {r.showChanges}
+                  </button>
+                )}
                 <button
                   type="button"
                   aria-pressed={mode === "document"}
@@ -292,8 +320,59 @@ function VersionView({
           {!doc.published && ["draft", "in_review", "approved"].includes(version.status) && (
             <p className="text-sm text-muted">{r.firstVersion}</p>
           )}
-          {comparable && mode === "changes" ? (
-            <Comparison lang={lang} t={t} version={version} shown={shownIn} />
+          {behind.length > 0 && (
+            <div
+              role="note"
+              className="flex flex-col gap-1 rounded-lg border border-warn bg-warn-soft px-4 py-3 text-sm"
+            >
+              <p className="font-medium">{r.notUpdatedTitle}</p>
+              <ul className="list-disc ps-5">
+                {behind.map(([locale, n]) => (
+                  <li key={locale}>
+                    {fill(r.notUpdatedLine, {
+                      language: languageName(locale),
+                      count: numbers.format(n.lagging),
+                    })}
+                  </li>
+                ))}
+              </ul>
+              <p className="text-muted">
+                {fill(r.notUpdatedHelp, {
+                  authoritative: languageName(status!.authoritative),
+                })}
+              </p>
+            </div>
+          )}
+          {sinceReturned && mode === "returned" ? (
+            <>
+              <p className="text-sm text-muted">
+                {fill(r.sinceReturnedHelp, {
+                  date: sinceReturned.returnedAt
+                    ? moments.format(new Date(sinceReturned.returnedAt))
+                    : "",
+                })}{" "}
+                {sinceReturned.changeSummaryChanged
+                  ? r.summaryChanged
+                  : r.summaryUnchanged}
+              </p>
+              <Comparison
+                lang={lang}
+                t={t}
+                version={version}
+                sections={sinceReturned.comparison}
+                shown={shownIn}
+                lagging={false}
+              />
+            </>
+          ) : comparable && mode === "changes" ? (
+            <Comparison
+              lang={lang}
+              t={t}
+              version={version}
+              sections={version.comparison ?? []}
+              shown={shownIn}
+              lagging
+            />
           ) : (
             <ControlledDocument
               lang={lang}
@@ -315,6 +394,9 @@ function VersionView({
             onDecided={onDecided}
           />
           {version.run && <RunPanel lang={lang} t={t} steps={version.run.steps} current={version.run.status === "in_progress" ? version.run.currentPosition : null} />}
+          {version.rounds.length > 1 && (
+            <EarlierRounds lang={lang} t={t} rounds={version.rounds} />
+          )}
           <Panel title={r.facts}>
             <dl className="flex flex-col gap-3 px-4 py-3 text-sm">
               <div>
@@ -366,13 +448,26 @@ function Comparison({
   lang,
   t,
   version,
+  sections,
   shown,
-}: PoliciesProps & { version: DocumentVersion; shown: string | null }) {
+  lagging: withLagging,
+}: PoliciesProps & {
+  version: DocumentVersion;
+  sections: SectionComparison[];
+  shown: string | null;
+  /** Mark the sections this language did not follow (against the published version). */
+  lagging: boolean;
+}) {
   const session = useSession();
   const r = t.review;
   const locale = shown ?? session.tenant.defaultLocale;
-  const sections = version.comparison ?? [];
+  const status = version.languageStatus;
+  const languageName = languageNameIn(lang);
+  const lags = (key: string) =>
+    withLagging &&
+    status?.sections.find((x) => x.key === key)?.locales[locale] === "lagging";
   const changed = sections.filter((s) => s.locales[locale]?.changed).length;
+  const behind = sections.filter((s) => lags(s.key)).length;
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted">
@@ -383,14 +478,23 @@ function Comparison({
               total: numberFormat(lang).format(sections.length),
             })}
       </p>
+      {behind > 0 && status && (
+        <p className="rounded-md border border-warn bg-warn-soft px-3 py-2 text-sm text-warn">
+          {fill(r.laggingCount, {
+            count: numberFormat(lang).format(behind),
+            authoritative: languageName(status.authoritative),
+          })}
+        </p>
+      )}
       <ol className="flex flex-col gap-4" lang={locale} dir={direction(locale)}>
         {sections.map((section, i) => {
           const here = section.locales[locale];
+          const behindHere = lags(section.key);
           const title = `${i + 1}. ${pick(section.name, locale, session.tenant.defaultLocale)}`;
           return (
             <li
               key={section.key}
-              className={`rounded-lg border ${here?.changed ? "border-warn" : "border-line"}`}
+              className={`rounded-lg border ${here?.changed || behindHere ? "border-warn" : "border-line"}`}
             >
               <div
                 dir={direction(lang)}
@@ -402,10 +506,24 @@ function Comparison({
                 </h3>
                 {here?.changed ? (
                   <Pill tone="warn">{r.changed}</Pill>
+                ) : behindHere ? (
+                  <Pill tone="warn">{r.lagging}</Pill>
                 ) : (
                   <Pill tone="neutral">{here ? r.unchanged : r.empty}</Pill>
                 )}
               </div>
+              {behindHere && status && (
+                <p
+                  lang={lang}
+                  dir={direction(lang)}
+                  className="border-b border-line px-4 py-2 text-xs text-warn"
+                >
+                  {fill(r.laggingHere, {
+                    language: languageName(locale),
+                    authoritative: languageName(status.authoritative),
+                  })}
+                </p>
+              )}
               <div className="px-4 py-3">
                 {!here ? (
                   <p className="text-sm text-muted">{r.emptyHere}</p>
@@ -461,14 +579,70 @@ function RunPanel({
   steps,
   current,
 }: PoliciesProps & { steps: RunStep[]; current: number | null }) {
+  return (
+    <Panel title={t.review.steps}>
+      <StepList lang={lang} t={t} steps={steps} current={current} />
+    </Panel>
+  );
+}
+
+/**
+ * The rounds before the latest: each with its steps, who decided them and
+ * what they wrote, so comments made on a round that was returned stay in
+ * sight after the version is sent again.
+ */
+function EarlierRounds({
+  lang,
+  t,
+  rounds,
+}: PoliciesProps & { rounds: DocumentVersion["rounds"] }) {
+  const session = useSession();
+  const moments = dateTimeFormat(lang, session.tenant.timeZone);
+  const r = t.review;
+  return (
+    <Panel title={r.rounds}>
+      <ol>
+        {rounds.slice(1).map((round, i) => (
+          <li key={round.id} className="border-b border-line last:border-b-0">
+            <details>
+              <summary className="cursor-pointer px-4 py-3 text-sm">
+                <span className="font-medium">
+                  {fill(r.roundTitle, {
+                    number: numberFormat(lang).format(rounds.length - 1 - i),
+                  })}
+                </span>
+                {" · "}
+                {Object.hasOwn(r.roundStatus, round.status)
+                  ? r.roundStatus[round.status as keyof typeof r.roundStatus]
+                  : r.roundStatus.other}
+                <span className="block text-xs text-muted">
+                  {fill(r.roundStarted, {
+                    date: moments.format(new Date(round.startedAt)),
+                  })}
+                </span>
+              </summary>
+              <StepList lang={lang} t={t} steps={round.steps} current={null} />
+            </details>
+          </li>
+        ))}
+      </ol>
+    </Panel>
+  );
+}
+
+function StepList({
+  lang,
+  t,
+  steps,
+  current,
+}: PoliciesProps & { steps: RunStep[]; current: number | null }) {
   const session = useSession();
   const inLang = (text: Localized | null | undefined) =>
     pick(text, lang, session.tenant.defaultLocale);
   const moments = dateTimeFormat(lang, session.tenant.timeZone);
   const r = t.review;
   return (
-    <Panel title={r.steps}>
-      <ol className="flex flex-col">
+    <ol className="flex flex-col">
         {steps.map((step) => (
           <li
             key={step.position}
@@ -526,8 +700,7 @@ function RunPanel({
             )}
           </li>
         ))}
-      </ol>
-    </Panel>
+    </ol>
   );
 }
 
@@ -631,7 +804,7 @@ function VersionActions({
     e.preventDefault();
     const form = e.currentTarget;
     const reason = String(new FormData(form).get("reason") ?? "").trim();
-    if (await act("withdraw", reason ? { reason } : {}, x.withdrawn)) form.reset();
+    if (await act("withdraw", { reason }, x.withdrawn)) form.reset();
   }
 
   const shown = moves.filter((m) => m !== "acknowledge");
@@ -639,7 +812,9 @@ function VersionActions({
 
   return (
     <Panel title={x.title}>
-      <ReadOnlyFieldset>
+      {/* The API offers only what stays open while the account is
+          suspended (publish, retire, acknowledge): no fieldset turns it off. */}
+      <>
         <div className="flex flex-col gap-4 p-4">
           {version.myStep && !moves.includes("approve") && version.myStep.samePerson && (
             <p className="text-sm text-muted">{r.samePerson}</p>
@@ -830,6 +1005,7 @@ function VersionActions({
                 <Field label={x.withdrawReason}>
                   <textarea
                     name="reason"
+                    required
                     rows={2}
                     maxLength={1000}
                     dir="auto"
@@ -874,7 +1050,7 @@ function VersionActions({
             </p>
           )}
         </div>
-      </ReadOnlyFieldset>
+      </>
     </Panel>
   );
 }

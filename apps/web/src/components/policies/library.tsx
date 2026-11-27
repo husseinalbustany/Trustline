@@ -1,9 +1,15 @@
 "use client";
 
-import { Plus, Search, SlidersHorizontal } from "lucide-react";
+import { FileDown, Plus, Search, SlidersHorizontal } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { can, useSession } from "@/components/shell/session";
 import { Button } from "@/components/ui/button";
 import { ButtonLink } from "@/components/ui/button-link";
@@ -11,8 +17,8 @@ import { Field, inputClass } from "@/components/ui/field";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
-import { api } from "@/lib/api";
-import { dayFormat, fill, numberFormat } from "@/lib/format";
+import { api, download } from "@/lib/api";
+import { dayFormat, fill, languageNameIn, numberFormat } from "@/lib/format";
 import type { OrgUnit } from "@/lib/identity";
 import { pick, type Localized } from "@/lib/localized";
 import { unitOptions } from "@/lib/org-units";
@@ -21,6 +27,7 @@ import {
   documentPath,
   documentStatuses,
   libraryPath,
+  documentsExportPath,
   libraryQuery,
   librarySorts,
   noLibraryFilters,
@@ -37,6 +44,7 @@ import {
   versionStatusWord,
 } from "./pills";
 import type { PoliciesProps } from "./types";
+import { useExplain } from "./use-explain";
 
 const PAGE_SIZE = 20;
 
@@ -57,7 +65,27 @@ export function Library({ lang, t }: PoliciesProps) {
   const [units, setUnits] = useState<OrgUnit[]>([]);
   const [moreOpen, setMoreOpen] = useState<boolean | null>(null);
   const searchInput = useRef<HTMLInputElement>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exported, setExported] = useState<{ ok: boolean; text: string } | null>(
+    null,
+  );
+  useLayoutEffect(() => () => setExported(null), []);
+  const explainError = useExplain(t, lang);
   const l = t.list;
+  // The file is in the reader's language when the client uses it.
+  const fileLocale = session.tenant.locales.includes(lang) ? lang : null;
+
+  async function exportList() {
+    setExporting(true);
+    setExported(null);
+    try {
+      await download(documentsExportPath(filters, fileLocale));
+      setExported({ ok: true, text: t.export.done });
+    } catch (err) {
+      setExported({ ok: false, text: explainError(err) });
+    }
+    setExporting(false);
+  }
   const inLang = (text: Localized | null | undefined) =>
     pick(text, lang, session.tenant.defaultLocale);
   const day = dayFormat(lang);
@@ -481,6 +509,30 @@ export function Library({ lang, t }: PoliciesProps) {
             </Button>
           </span>
         </nav>
+      )}
+
+      {data && data.total > 0 && (
+        <div className="mt-6 flex flex-col items-start gap-1 print:hidden">
+          <Button variant="secondary" disabled={exporting} onClick={exportList}>
+            <FileDown className="size-4" aria-hidden />
+            {exporting ? t.export.preparing : t.export.list}
+          </Button>
+          <p className="max-w-md text-xs text-muted">
+            {fill(t.export.listHelp, {
+              language: languageNameIn(lang)(
+                fileLocale ?? session.tenant.defaultLocale,
+              ),
+            })}
+          </p>
+          {exported && (
+            <p
+              role={exported.ok ? "status" : "alert"}
+              className={`text-xs ${exported.ok ? "text-accent" : "text-danger"}`}
+            >
+              {exported.text}
+            </p>
+          )}
+        </div>
       )}
     </>
   );

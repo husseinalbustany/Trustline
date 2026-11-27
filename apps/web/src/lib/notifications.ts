@@ -37,7 +37,16 @@ export type Notification = {
     /** With a document's: its number, the version and the day it is about. */
     number?: string;
     version?: number;
+    /** With every notification about one version: which. */
+    versionId?: string;
     dueOn?: string;
+    /** With `document_publish_failed`: the day it was to be published. */
+    effectiveOn?: string;
+    /** With `document_step_overdue`: the step's place in the route. */
+    position?: number;
+    /** With `acknowledgements_overdue_digest`: how many, and for how many people. */
+    overdue?: number;
+    people?: number;
     /** With `document_step_assigned`: review or approve. */
     step?: string;
     /** With `review_due`: 60, 30 or 7 days before. */
@@ -60,6 +69,21 @@ export type Notification = {
 
 export type NotificationList = { items: Notification[]; total: number };
 
+/**
+ * The kinds about a version that someone must act on in the review: they
+ * open the version itself, not the document's page.
+ */
+export const aboutReview = new Set([
+  "document_step_assigned",
+  "document_step_overdue",
+  "document_returned",
+  "document_approved",
+  "document_publish_failed",
+]);
+
+/** About no one document: the overdue acknowledgements of the week. */
+export const overdueDigest = "acknowledgements_overdue_digest";
+
 /** What says more about each kind, beyond the kind itself. */
 const detailOf = {
   due_soon: "deadline",
@@ -67,6 +91,7 @@ const detailOf = {
   sign_off_decided: "decision",
   status_changed: "change",
   document_step_assigned: "step",
+  document_step_overdue: "step",
   review_due: "days",
 } as const;
 

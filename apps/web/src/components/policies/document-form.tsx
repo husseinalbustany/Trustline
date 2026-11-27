@@ -20,7 +20,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Panel } from "@/components/ui/panel";
 import { api, codeOf, statusOf } from "@/lib/api";
 import { durationFormat, fill } from "@/lib/format";
-import type { OrgUnit, Role } from "@/lib/identity";
+import type { OrgUnit } from "@/lib/identity";
 import { pick, readForm, type Localized } from "@/lib/localized";
 import { unitOptions } from "@/lib/org-units";
 import {
@@ -31,6 +31,8 @@ import {
   type DocumentType,
   type Named,
   type Person,
+  type PolicyRole,
+  type PolicySettings,
   type PolicyDocument,
 } from "@/lib/policies";
 import { textareaClass, type PoliciesProps } from "./types";
@@ -42,20 +44,29 @@ type Lists = {
   units: OrgUnit[];
   people: Person[];
   /** Null when this person may not list the roles. */
-  roles: Role[] | null;
+  roles: PolicyRole[] | null;
+  /** The organization's longest review period; null if it could not be read. */
+  maxReviewMonths: number | null;
 };
 
 async function loadLists(): Promise<Lists> {
-  const [types, categories, units, people, roles] = await Promise.all([
-    api<DocumentType[]>("/policies/types"),
-    api<DocumentCategory[]>("/policies/categories"),
-    api<OrgUnit[]>("/org-units"),
-    api<Person[]>("/policies/people").catch(() => []),
-    api<{ roles: Role[] }>("/roles")
-      .then((r) => r.roles)
-      .catch(() => null),
-  ]);
-  return { types, categories, units, people, roles };
+  const [types, categories, units, people, roles, settings] =
+    await Promise.all([
+      api<DocumentType[]>("/policies/types"),
+      api<DocumentCategory[]>("/policies/categories"),
+      api<OrgUnit[]>("/org-units"),
+      api<Person[]>("/policies/people").catch(() => []),
+      api<PolicyRole[]>("/policies/roles").catch(() => null),
+      api<PolicySettings>("/policies/settings").catch(() => null),
+    ]);
+  return {
+    types,
+    categories,
+    units,
+    people,
+    roles,
+    maxReviewMonths: settings?.maxReviewMonths ?? null,
+  };
 }
 
 /** A new document: its details, then its first version in the editor. */
@@ -164,6 +175,13 @@ function DocumentForm({
   const [typeId, setTypeId] = useState(doc?.type.id ?? "");
   const [whole, setWhole] = useState(doc ? doc.audience.wholeOrganization : true);
   const [ackRequired, setAckRequired] = useState(false);
+  // A change of review period is kept with its reason.
+  const [periodChanged, setPeriodChanged] = useState(false);
+  const maxMonths = Math.max(
+    lists.maxReviewMonths ?? 120,
+    // A period set longer before the maximum stays until it changes.
+    doc?.reviewMonths ?? 0,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [people, setPeople] = useState<Person[]>(lists.people);
@@ -260,6 +278,8 @@ function DocumentForm({
         return;
       }
       if (!months) body.reviewMonths = doc.reviewMonths;
+      const reason = String(data.get("reason") ?? "").trim();
+      if (periodChanged && reason) body.reason = reason;
       const saved = await api<PolicyDocument | { id: string; moved: true }>(
         `/policies/documents/${doc.id}`,
         { method: "PATCH", body: { ...body, revision: doc.revision } },
@@ -489,16 +509,32 @@ function DocumentForm({
               <Field
                 label={f.reviewMonths}
                 help={
-                  type
-                    ? fill(f.reviewMonthsHelp, { months: durationFormat(lang)(type.defaultReviewMonths, "month") })
-                    : f.reviewMonthsHelpNoType
+                  [
+                    type
+                      ? fill(f.reviewMonthsHelp, { months: durationFormat(lang)(type.defaultReviewMonths, "month") })
+                      : f.reviewMonthsHelpNoType,
+                    lists.maxReviewMonths
+                      ? fill(f.reviewMonthsMax, {
+                          months: durationFormat(lang)(lists.maxReviewMonths, "month"),
+                        })
+                      : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")
                 }
               >
                 <input
                   name="reviewMonths"
                   type="number"
                   min={1}
-                  max={120}
+                  max={maxMonths}
+                  onChange={(e) =>
+                    setPeriodChanged(
+                      !!doc &&
+                        e.target.value !== "" &&
+                        Number(e.target.value) !== doc.reviewMonths,
+                    )
+                  }
                   inputMode="numeric"
                   dir="ltr"
                   defaultValue={doc ? String(doc.reviewMonths) : ""}
@@ -507,6 +543,18 @@ function DocumentForm({
                 />
               </Field>
             </div>
+            {periodChanged && (
+              <Field label={f.reason} help={f.reasonHelp}>
+                <textarea
+                  name="reason"
+                  required
+                  rows={2}
+                  maxLength={1000}
+                  dir="auto"
+                  className={textareaClass}
+                />
+              </Field>
+            )}
             <Field label={f.keywords} help={f.keywordsHelp}>
               <input
                 name="keywords"

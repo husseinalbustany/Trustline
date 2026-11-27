@@ -23,7 +23,6 @@ import { Pill } from "@/components/ui/pill";
 import { direction, hasLocale, localeNames } from "@/i18n/config";
 import { api, codeOf } from "@/lib/api";
 import { durationFormat, fill } from "@/lib/format";
-import type { Role } from "@/lib/identity";
 import { pick, type Localized } from "@/lib/localized";
 import {
   categoriesInOrder,
@@ -32,33 +31,36 @@ import {
   type DocumentType,
   type Named,
   type Person,
+  type PolicyRole,
+  type PolicySettings as OrganizationSettings,
   type StepKind,
 } from "@/lib/policies";
 import type { PoliciesProps, PoliciesText } from "./types";
 import { useExplain } from "./use-explain";
 
-const tabs = ["types", "categories", "routes"] as const;
+const tabs = ["types", "categories", "routes", "general"] as const;
 type Tab = (typeof tabs)[number];
 
 type Lists = {
   types: DocumentType[];
   categories: DocumentCategory[];
   routes: ApprovalRoute[];
-  roles: Role[] | null;
+  roles: PolicyRole[] | null;
   approvers: Person[];
+  settings: OrganizationSettings | null;
 };
 
 async function loadLists(): Promise<Lists> {
-  const [types, categories, routes, roles, approvers] = await Promise.all([
-    api<DocumentType[]>("/policies/types?includeInactive=true"),
-    api<DocumentCategory[]>("/policies/categories?includeInactive=true"),
-    api<ApprovalRoute[]>("/policies/approval-routes"),
-    api<{ roles: Role[] }>("/roles")
-      .then((r) => r.roles)
-      .catch(() => null),
-    api<Person[]>("/policies/people?approvers=true").catch(() => []),
-  ]);
-  return { types, categories, routes, roles, approvers };
+  const [types, categories, routes, roles, approvers, settings] =
+    await Promise.all([
+      api<DocumentType[]>("/policies/types?includeInactive=true"),
+      api<DocumentCategory[]>("/policies/categories?includeInactive=true"),
+      api<ApprovalRoute[]>("/policies/approval-routes"),
+      api<PolicyRole[]>("/policies/roles").catch(() => null),
+      api<Person[]>("/policies/people?approvers=true").catch(() => []),
+      api<OrganizationSettings>("/policies/settings").catch(() => null),
+    ]);
+  return { types, categories, routes, roles, approvers, settings };
 }
 
 const languageName = (locale: string) =>
@@ -142,8 +144,10 @@ export function PolicySettings({ lang, t }: PoliciesProps) {
               <Types lang={lang} t={t} lists={lists} reload={reload} />
             ) : tab === "categories" ? (
               <Categories lang={lang} t={t} lists={lists} reload={reload} />
-            ) : (
+            ) : tab === "routes" ? (
               <Routes lang={lang} t={t} lists={lists} reload={reload} />
+            ) : (
+              <General lang={lang} t={t} lists={lists} reload={reload} />
             )}
           </div>
         </>
@@ -217,6 +221,71 @@ function useMessage() {
 const iconButton =
   "inline-flex size-9 items-center justify-center rounded-md border border-line text-muted hover:bg-surface hover:text-foreground disabled:opacity-40";
 
+// The organization's own settings.
+
+/** The longest review period any type or document may set. */
+function General({ lang, t, lists, reload }: PartProps) {
+  const explainError = useExplain(t, lang);
+  const s = t.settings;
+  const settings = lists.settings;
+  const [busy, setBusy] = useState(false);
+  const [message, say] = useMessage();
+  if (!settings) return <EmptyState>{t.loadError}</EmptyState>;
+
+  async function submit(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const months = Number(new FormData(e.currentTarget).get("maxReviewMonths"));
+    setBusy(true);
+    say(null);
+    try {
+      await api("/policies/settings", {
+        method: "PATCH",
+        body: { maxReviewMonths: months, revision: settings!.revision },
+      });
+      await reload();
+      say({ ok: true, text: s.saved });
+    } catch (err) {
+      say({ ok: false, text: explainError(err) });
+    }
+    setBusy(false);
+  }
+
+  return (
+    <Panel title={s.tabs.general}>
+      <form
+        // Drawn again from what was saved, so the field shows it.
+        key={settings.revision}
+        onSubmit={submit}
+        className="flex flex-col gap-4 p-4"
+      >
+        <ReadOnlyFieldset>
+          <div className="max-w-xs">
+            <Field label={s.maxReviewMonths} help={s.maxReviewMonthsHelp}>
+              <input
+                name="maxReviewMonths"
+                type="number"
+                min={1}
+                max={120}
+                required
+                defaultValue={settings.maxReviewMonths}
+                dir="ltr"
+                inputMode="numeric"
+                className={inputClass}
+              />
+            </Field>
+          </div>
+          <div>
+            <Button type="submit" disabled={busy}>
+              {s.save}
+            </Button>
+          </div>
+        </ReadOnlyFieldset>
+        {message}
+      </form>
+    </Panel>
+  );
+}
+
 // Types.
 
 type SectionDraft = {
@@ -269,6 +338,7 @@ function Types({ lang, t, lists, reload }: PartProps) {
                   lang={lang}
                   t={t}
                   type={type}
+                  maxMonths={lists.settings?.maxReviewMonths ?? 120}
                   onDone={async () => {
                     setEditing(null);
                     await reload();
@@ -286,6 +356,7 @@ function Types({ lang, t, lists, reload }: PartProps) {
             lang={lang}
             t={t}
             type={null}
+            maxMonths={lists.settings?.maxReviewMonths ?? 120}
             onDone={async () => {
               setEditing(null);
               await reload();
@@ -311,10 +382,13 @@ function TypeForm({
   lang,
   t,
   type,
+  maxMonths,
   onDone,
   onCancel,
 }: PoliciesProps & {
   type: DocumentType | null;
+  /** The organization's longest review period. */
+  maxMonths: number;
   onDone: () => Promise<void>;
   onCancel: () => void;
 }) {
@@ -367,7 +441,7 @@ function TypeForm({
       if (type) {
         await api(`/policies/types/${type.id}`, {
           method: "PATCH",
-          body: { ...body, active },
+          body: { ...body, active, revision: type.revision },
         });
       } else {
         await api("/policies/types", {
@@ -416,7 +490,7 @@ function TypeForm({
             <input
               type="number"
               min={1}
-              max={120}
+              max={maxMonths}
               value={months}
               onChange={(e) => setMonths(e.target.value)}
               required
@@ -667,7 +741,7 @@ function CategoryForm({
       if (category) {
         await api(`/policies/categories/${category.id}`, {
           method: "PATCH",
-          body: { ...body, active },
+          body: { ...body, active, revision: category.revision },
         });
       } else {
         await api("/policies/categories", {
@@ -895,7 +969,7 @@ function RouteForm({
   // right to list roles, those already named in the route.
   const roleChoices: Named[] = lists.roles
     ? lists.roles
-        .filter((r) => r.permissions.includes("policies.approve"))
+        .filter((r) => r.approves)
         .map((r) => ({ id: r.id, name: r.name }))
     : (route?.steps ?? []).flatMap((x) =>
         x.assignee.type === "role" ? [x.assignee.role] : [],

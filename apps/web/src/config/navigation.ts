@@ -1,5 +1,6 @@
 import {
   BookCheck,
+  CalendarClock,
   Building2,
   ChartColumn,
   FileText,
@@ -30,7 +31,10 @@ export type ModuleKey =
   | "settings";
 
 /** The pages of a module beside its main one. */
-export type SubItemKey = "policiesAwaiting" | "policiesSettings";
+export type SubItemKey =
+  | "policiesAwaiting"
+  | "policiesOverdue"
+  | "policiesSettings";
 
 export type NavItemKey = "dashboard" | ModuleKey | SubItemKey;
 
@@ -117,6 +121,15 @@ export const navigation: { key: NavGroupKey; items: NavItem[] }[] = [
           "policies.approve",
           "policies.view_all",
         ],
+      },
+      {
+        key: "policiesOverdue",
+        href: "/policies/overdue",
+        icon: CalendarClock,
+        module: "policies",
+        // Where the weekly digest leads: for those who see acknowledgement
+        // figures.
+        permissions: ["policies.manage", "policies.view_all"],
       },
       {
         key: "policiesSettings",

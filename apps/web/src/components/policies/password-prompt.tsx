@@ -39,8 +39,8 @@ export function PasswordPrompt({
   /** What to say for a refusal that is not about the password. */
   explainError: (err: unknown) => string;
   onCancel?: () => void;
-  /** An optional comment that goes with the signature, and its label. */
-  comment?: { label: string; help?: string };
+  /** A comment that goes with the signature, its label, and whether it must be written. */
+  comment?: { label: string; help?: string; required?: boolean };
   /** Shown above the password: a box to tick, for instance. */
   children?: ReactNode;
 }) {
@@ -98,6 +98,7 @@ export function PasswordPrompt({
         <Field label={comment.label} help={comment.help}>
           <textarea
             name="comment"
+            required={comment.required}
             rows={2}
             maxLength={1000}
             dir="auto"

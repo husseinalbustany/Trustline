@@ -49,6 +49,36 @@ export async function api<T>(
   return res.status === 204 ? (undefined as T) : res.json();
 }
 
+/**
+ * Downloads a file the API writes (a CSV export) under the name the API
+ * gives it. A refusal throws an `ApiError`, as `api` does, so the page can
+ * say why nothing was downloaded.
+ */
+export async function download(path: string): Promise<void> {
+  const res = await fetch(`/api/v1${path}`, { credentials: "same-origin" });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new ApiError(
+      res.status,
+      data.code,
+      typeof data.permission === "string" ? data.permission : undefined,
+      undefined,
+      data && typeof data === "object" ? data : {},
+    );
+  }
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const name =
+    /filename="([^"]+)"/.exec(disposition)?.[1] ?? "export.csv";
+  const url = URL.createObjectURL(await res.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export const statusOf = (err: unknown) =>
   err instanceof ApiError ? err.status : 0;
 

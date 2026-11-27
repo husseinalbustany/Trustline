@@ -1,22 +1,33 @@
 "use client";
 
+import { FileDown } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 import { useSession } from "@/components/shell/session";
 import { Button } from "@/components/ui/button";
+import { Field, inputClass } from "@/components/ui/field";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
-import { api, codeOf, statusOf } from "@/lib/api";
-import { dateTimeFormat, dayFormat, fill, numberFormat } from "@/lib/format";
+import { api, codeOf, download, statusOf } from "@/lib/api";
+import {
+  dateTimeFormat,
+  dayFormat,
+  fill,
+  languageNameIn,
+  numberFormat,
+} from "@/lib/format";
 import { pick, type Localized } from "@/lib/localized";
 import {
   documentPath,
   type AcknowledgementFigures,
+  type History,
   type PolicyDocument,
 } from "@/lib/policies";
+import { VersionStatusPill } from "./pills";
 import type { PoliciesProps } from "./types";
+import { useExplain } from "./use-explain";
 
 const PAGE_SIZE = 100;
 const states = ["", "pending", "overdue", "acknowledged"] as const;
@@ -32,42 +43,61 @@ export function percentOf(lang: string, value: number | null) {
 }
 
 /**
- * Who has acknowledged the published version and who has not, by unit and
- * by person. For those with full sight of the document only.
+ * Who has acknowledged a published version and who has not, by unit and
+ * by person: the version in force first, or any earlier one (who had
+ * acknowledged the version in force on a given day). People who have left
+ * can be listed as evidence, and the whole list exported. For those with
+ * full sight of the document only.
  */
 export function Acknowledgements({ lang, t }: PoliciesProps) {
   const session = useSession();
   const { id } = useParams<{ id: string }>();
+  const explainError = useExplain(t, lang);
   const [doc, setDoc] = useState<PolicyDocument | null>(null);
+  const [versions, setVersions] = useState<History["versions"]>([]);
+  const [chosen, setChosen] = useState<string | null>(null);
+  const [withLeft, setWithLeft] = useState(false);
   const [state, setState] = useState<State>("");
   const [page, setPage] = useState(1);
+  const [exporting, setExporting] = useState(false);
+  const [exported, setExported] = useState<{ ok: boolean; text: string } | null>(
+    null,
+  );
   const [answer, setAnswer] = useState<{
     key: string;
     figures: AcknowledgementFigures;
   } | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  useLayoutEffect(() => () => setExported(null), []);
   const inLang = (text: Localized | null | undefined) =>
     pick(text, lang, session.tenant.defaultLocale);
   const numbers = numberFormat(lang);
   const day = dayFormat(lang);
   const moments = dateTimeFormat(lang, session.tenant.timeZone);
   const k = t.acknowledgements;
-  const key = `${id}:${state}:${page}`;
+  const key = `${id}:${chosen}:${withLeft}:${state}:${page}`;
 
   useEffect(() => {
     let current = true;
-    api<PolicyDocument>(`/policies/documents/${id}`)
-      .then(async (d) => {
+    Promise.all([
+      api<PolicyDocument>(`/policies/documents/${id}`),
+      api<History>(`/policies/documents/${id}/versions`).catch(() => null),
+    ])
+      .then(async ([d, history]) => {
         if (!current) return;
         setDoc(d);
-        if (!d.published) return setProblem(k.notPublished);
+        const published = (history?.versions ?? []).filter((v) => v.publishedAt);
+        setVersions(published);
+        const versionId = chosen ?? d.published?.id ?? published[0]?.id;
+        if (!versionId) return setProblem(k.notPublished);
         const query = new URLSearchParams({
           page: String(page),
           pageSize: String(PAGE_SIZE),
           ...(state ? { state } : {}),
+          ...(withLeft ? { includeLeft: "true" } : {}),
         });
         const figures = await api<AcknowledgementFigures>(
-          `/policies/documents/${id}/versions/${d.published.id}/acknowledgements?${query}`,
+          `/policies/documents/${id}/versions/${versionId}/acknowledgements?${query}`,
         );
         if (!current) return;
         setAnswer({ key, figures });
@@ -86,7 +116,28 @@ export function Acknowledgements({ lang, t }: PoliciesProps) {
     return () => {
       current = false;
     };
-  }, [id, state, page, key, k, t]);
+  }, [id, chosen, withLeft, state, page, key, k, t]);
+
+  async function exportFile(versionId: string) {
+    setExporting(true);
+    setExported(null);
+    try {
+      const locale = session.tenant.locales.includes(lang) ? lang : null;
+      await download(
+        `/policies/documents/${id}/versions/${versionId}/acknowledgements/export${
+          locale ? `?${new URLSearchParams({ locale })}` : ""
+        }`,
+      );
+      setExported({ ok: true, text: t.export.done });
+    } catch (err) {
+      setExported({ ok: false, text: explainError(err) });
+    }
+    setExporting(false);
+  }
+  // The file is in the reader's language when the client uses it.
+  const fileLanguage = languageNameIn(lang)(
+    session.tenant.locales.includes(lang) ? lang : session.tenant.defaultLocale,
+  );
 
   const figures = answer?.key === key ? answer.figures : null;
   const shownDoc = doc?.id === id ? doc : null;
@@ -125,6 +176,58 @@ export function Acknowledgements({ lang, t }: PoliciesProps) {
         <EmptyState>{t.loading}</EmptyState>
       ) : (
         <div className="mt-6 flex flex-col gap-6">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            {versions.length > 1 && (
+              <div className="w-full max-w-xs">
+                <Field label={k.versionLabel}>
+                  <select
+                    value={figures.versionId}
+                    onChange={(e) => {
+                      setChosen(e.target.value);
+                      setPage(1);
+                    }}
+                    className={inputClass}
+                  >
+                    {versions.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {fill(k.versionOption, {
+                          version: numbers.format(v.version),
+                          status: Object.hasOwn(t.versionStatus, v.status)
+                            ? t.versionStatus[v.status as keyof typeof t.versionStatus]
+                            : t.versionStatus.other,
+                        })}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+            )}
+            <div className="flex flex-col items-start gap-1">
+              <Button
+                variant="secondary"
+                disabled={exporting}
+                onClick={() => exportFile(figures.versionId)}
+              >
+                <FileDown className="size-4" aria-hidden />
+                {exporting ? t.export.preparing : t.export.acknowledgements}
+              </Button>
+              <p className="max-w-sm text-xs text-muted">
+                {fill(t.export.acknowledgementsHelp, { language: fileLanguage })}
+              </p>
+              {exported && (
+                <p
+                  role={exported.ok ? "status" : "alert"}
+                  className={`text-xs ${exported.ok ? "text-accent" : "text-danger"}`}
+                >
+                  {exported.text}
+                </p>
+              )}
+            </div>
+          </div>
+          <p className="flex flex-wrap items-center gap-2 text-sm">
+            {fill(t.versionNumber, { version: numbers.format(figures.version) })}
+            <VersionStatusPill t={t} status={figures.status} />
+          </p>
           {!figures.acknowledgementRequired && (
             <p className="text-sm text-muted">{k.notRequired}</p>
           )}
@@ -205,6 +308,21 @@ export function Acknowledgements({ lang, t }: PoliciesProps) {
               aria-label={k.filterLabel}
               className="flex flex-wrap gap-2 px-4 pt-3"
             >
+              <label className="flex min-h-9 w-full items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={withLeft}
+                  onChange={(e) => {
+                    setWithLeft(e.target.checked);
+                    setPage(1);
+                  }}
+                  className="size-4 accent-accent"
+                />
+                {k.includeLeft}
+              </label>
+              {withLeft && (
+                <p className="w-full text-xs text-muted">{k.leftHelp}</p>
+              )}
               {states.map((s) => (
                 <button
                   key={s}
@@ -237,6 +355,11 @@ export function Acknowledgements({ lang, t }: PoliciesProps) {
                         <span className="text-muted">
                           {" · "}
                           <bdi>{inLang(p.orgUnit.name)}</bdi>
+                        </span>
+                      )}
+                      {p.left && (
+                        <span className="ms-2 inline-block align-middle">
+                          <Pill tone="neutral">{k.left}</Pill>
                         </span>
                       )}
                     </span>

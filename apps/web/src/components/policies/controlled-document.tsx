@@ -117,17 +117,24 @@ export function ControlledDocument({
   const c = version.control;
   const textLang = shown ?? fallback;
   const standing = notInForce(document, version);
+  const status = version.languageStatus;
+  // The language whose text applies where two differ, as the API says.
+  const authoritative = status?.authoritative ?? fallback;
+  const stateOf = (key: string) =>
+    status?.sections.find((x) => x.key === key)?.locales[textLang];
+  const lagging =
+    textLang === authoritative ? 0 : (status?.byLocale[textLang]?.lagging ?? 0);
 
   // Every section written in some language, each in the language chosen
-  // when it is written there, else in the main language (or the first that
-  // has it), so that section 4 is section 4 in every language.
+  // when it is written there, else in the authoritative language (or the
+  // first that has it), so that section 4 is section 4 in every language.
   const written = (locale: string, key: string) =>
     !!version.content[locale]?.[key]?.trim();
   const sections = version.sections.flatMap((section) => {
     if (written(textLang, section.key)) {
       return [{ section, locale: textLang }];
     }
-    const other = [fallback, ...version.languages].find((l) =>
+    const other = [authoritative, ...version.languages].find((l) =>
       written(l, section.key),
     );
     return other ? [{ section, locale: other }] : [];
@@ -148,6 +155,9 @@ export function ControlledDocument({
     [d.owner, <bdi key="o">{name(c.owner)}</bdi>],
     [d.effectiveOn, day(c.effectiveOn) ?? d.notYet],
   ];
+  if (version.languages.length > 1) {
+    rows.push([d.authoritative, languageName(authoritative)]);
+  }
   if (ended) {
     rows.push([d.notInForceSince, dayOf.format(new Date(ended))]);
   }
@@ -272,6 +282,19 @@ export function ControlledDocument({
         </p>
       )}
 
+      {lagging > 0 && (
+        <p
+          role="note"
+          className="rounded-md border border-warn bg-warn-soft px-3 py-2 text-sm text-warn"
+        >
+          {fill(d.laggingSummary, {
+            count: numberFormat(lang).format(lagging),
+            language: languageName(textLang),
+            authoritative: languageName(authoritative),
+          })}
+        </p>
+      )}
+
       {shown === null || sections.length === 0 ? (
         <p className="text-sm text-muted">{d.noText}</p>
       ) : (
@@ -288,7 +311,28 @@ export function ControlledDocument({
                 {`${i + 1}. `}
                 {pick(section.name, textLang, fallback)}
               </h3>
-              {locale === textLang ? (
+              {locale === textLang && stateOf(section.key) === "lagging" ? (
+                <>
+                  <p
+                    lang={lang}
+                    dir={direction(lang)}
+                    className="rounded-md border border-warn bg-warn-soft px-3 py-1.5 text-xs text-warn"
+                  >
+                    {fill(d.sectionLagging, {
+                      language: languageName(textLang),
+                      authoritative: languageName(authoritative),
+                    })}
+                  </p>
+                  <Markup text={version.content[textLang][section.key]} />
+                  <AuthoritativeText
+                    lang={lang}
+                    t={t}
+                    locale={authoritative}
+                    name={languageName(authoritative)}
+                    text={version.content[authoritative]?.[section.key] ?? ""}
+                  />
+                </>
+              ) : locale === textLang ? (
                 <Markup text={version.content[textLang][section.key]} />
               ) : (
                 <>
@@ -321,6 +365,52 @@ export function ControlledDocument({
         mark={standing ? t.notInForce[standing] : null}
       />
     </article>
+  );
+}
+
+/**
+ * The authoritative text of a section whose translation lags: a click away
+ * on screen, printed in full, so a paper copy carries the text that
+ * applies.
+ */
+function AuthoritativeText({
+  lang,
+  t,
+  locale,
+  name,
+  text,
+}: {
+  lang: string;
+  t: PoliciesText;
+  locale: string;
+  name: string;
+  text: string;
+}) {
+  if (!text.trim()) return null;
+  const body = (
+    <div lang={locale} dir={direction(locale)} className="mt-2">
+      <Markup text={text} />
+    </div>
+  );
+  return (
+    <>
+      <details
+        lang={lang}
+        dir={direction(lang)}
+        className="rounded-md border border-line px-3 py-2 print:hidden"
+      >
+        <summary className="cursor-pointer text-sm text-accent">
+          {fill(t.document.showAuthoritative, { language: name })}
+        </summary>
+        {body}
+      </details>
+      <div className="hidden rounded-md border border-line px-3 py-2 print:block">
+        <p lang={lang} dir={direction(lang)} className="text-xs font-medium">
+          {fill(t.document.authoritativeText, { language: name })}
+        </p>
+        {body}
+      </div>
+    </>
   );
 }
 
