@@ -267,11 +267,12 @@ export class AuthService {
         );
       if (!row || row.user.status !== 'active') return null;
       // A cancelled subscription ends access as a suspended client does,
-      // and a session from before it was cancelled stays ended when it is
-      // made active again, whether or not its revocation was written.
+      // and a session from before the client was suspended or its
+      // subscription cancelled stays ended when either is made active
+      // again, whether or not its revocation was written.
       const entitlements = await this.entitlements.of(tx, tenant.id);
       if (entitlements?.status === 'cancelled') return null;
-      if (issuedBeforeReset(entitlements, row.createdAt)) return null;
+      if (issuedBeforeReset(row.createdAt, tenant, entitlements)) return null;
       const stored = entitlements?.status ?? 'active';
 
       const { user } = row;
@@ -334,8 +335,8 @@ export class AuthService {
 
   /**
    * A one-time link that can still be used: not used, not expired, not for
-   * a disabled account, and not issued before the subscription last went to
-   * or from cancelled.
+   * a disabled account, and not issued before the client last went to or
+   * from suspended or its subscription to or from cancelled.
    */
   private async findInvite(tx: Transaction, tenantId: string, token: string) {
     const [row] = await tx
@@ -350,8 +351,16 @@ export class AuthService {
         ),
       );
     if (!row || row.user.status === 'disabled') return null;
+    // Read afresh, in this transaction: a link checked before a slow
+    // password hash is checked again after it.
+    const [client] = await tx
+      .select({ accessResetAt: tenants.accessResetAt })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId));
     const entitlements = await this.entitlements.of(tx, tenantId);
-    if (issuedBeforeReset(entitlements, row.invite.createdAt)) return null;
+    if (issuedBeforeReset(row.invite.createdAt, client ?? null, entitlements)) {
+      return null;
+    }
     return row;
   }
 

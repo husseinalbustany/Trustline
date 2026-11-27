@@ -383,7 +383,6 @@ describe('what a client may write', () => {
       accreditationStandard: 'JCI',
       locales: ['en', 'ar', 'fr'],
       defaultLocale: 'en',
-      plan: 'professional',
       signInMethod: 'password',
       dataRegion: null,
     };

@@ -341,8 +341,10 @@ silent. Each choice is marked **Chosen**.
   before the start. Dates do nothing by themselves: no status changes when
   a trial ends or a renewal passes. Trustline staff change the status
   (stage 1 of "Billing"), so a lapse never happens silently.
-- The old `tenants.plan` column and its enum stay, read by nothing, until
-  the portal stops showing and sending them; then a migration drops them.
+- The old `tenants.plan` column and its enum are dropped (migration 0036),
+  now that the portal neither shows nor sends them. `plan` is no longer a
+  field of the client routes: sent, it is refused with 400 as any unknown
+  field is.
 
 ### Status
 
@@ -401,6 +403,14 @@ silent. Each choice is marked **Chosen**.
   Trustline): the client's status is checked first. A suspended client is
   closed whatever its subscription says; an active client is as its
   subscription's status says.
+  - **The client's own suspension ends access the same way.** Suspending a
+    client (`PATCH /platform/tenants/:id` with `status: "suspended"`) ends
+    every session and open link in the same change, and the time a client
+    last went to or from suspended is kept (`tenants.access_reset_at`). A
+    session or link issued before either reset, the client's or its
+    subscription's, is refused whenever it is used, so reactivating a
+    client brings none back. A change that leaves the status as it is
+    resets nothing.
 
 ### Limits
 

@@ -148,7 +148,10 @@ describe('what the database itself enforces for the incident safeguards', () => 
         sql`update tenants set status = 'suspended'`,
         sql`update tenants set slug = 'taken-over'`,
         sql`update tenants set name = '{"en": "Renamed"}'`,
-        sql`update tenants set plan = 'enterprise', public_reporting = true`,
+        sql`update tenants set data_region = 'elsewhere', public_reporting = true`,
+        // Clearing it would bring back the sessions and links a suspension
+        // ended.
+        sql`update tenants set access_reset_at = null`,
         sql`update tenants set sign_in_method = 'sso'`,
         sql`delete from tenants`,
         sql`insert into tenants (slug, name, accreditation_standard) values ('made-up', '{"en": "Made up"}', 'JCI')`,
@@ -167,7 +170,7 @@ describe('what the database itself enforces for the incident safeguards', () => 
       // A change that changes nothing, to prove the right without a trace.
       const [same] = await platform.db
         .update(tenants)
-        .set({ plan: sql`${tenants.plan}` })
+        .set({ accessResetAt: sql`${tenants.accessResetAt}` })
         .where(eq(tenants.id, jci))
         .returning({ id: tenants.id });
       expect(same.id).toBe(jci);

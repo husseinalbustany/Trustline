@@ -58,15 +58,6 @@ export const orgUnitType = pgEnum('org_unit_type', [
 
 export const tenantStatus = pgEnum('tenant_status', ['active', 'suspended']);
 
-// Replaced by `subscriptions`: nothing reads it any more. Kept, with its
-// column, while the admin portal's screens still show and send it; dropped
-// in a migration once they no longer do.
-export const tenantPlan = pgEnum('tenant_plan', [
-  'starter',
-  'professional',
-  'enterprise',
-]);
-
 export const signInMethod = pgEnum('sign_in_method', [
   'password',
   'sso',
@@ -91,9 +82,10 @@ export const tenants = pgTable(
     // are decided.
     dataRegion: text(),
     status: tenantStatus().notNull().default('active'),
-    // Deprecated: see `tenantPlan`. What a client may use is in its
-    // subscription.
-    plan: tenantPlan().notNull().default('starter'),
+    // When the client last went to or from suspended, by the database's
+    // clock: every session and one-time link issued before it is void, so
+    // reactivating a client brings none of them back. Null if it never did.
+    accessResetAt: timestamp({ withTimezone: true }),
     signInMethod: signInMethod().notNull().default('password'),
     // Whether an incident can be reported without signing in, through the
     // hospital's link or QR code. Off until the hospital switches it on: it

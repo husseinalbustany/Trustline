@@ -253,6 +253,20 @@
       "when": 1795788077907,
       "tag": "0035_platform_audit_columns_and_access_reset_grant",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1795789749328,
+      "tag": "0036_drop_client_plan",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1795789755312,
+      "tag": "0037_client_access_reset",
+      "breakpoints": true
     }
   ]
 }

@@ -128,7 +128,6 @@ describe('incident safeguards', () => {
         accreditationStandard: 'JCI',
         locales: ['en'],
         defaultLocale: 'en',
-        plan: 'professional',
         signInMethod: 'password',
         dataRegion: null,
       })

@@ -12,7 +12,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { and, asc, desc, eq, isNull, ne } from 'drizzle-orm';
+import { and, asc, desc, eq, ne, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Database } from '../database/client.js';
 import { PLATFORM_DATABASE } from '../database/database.constants.js';
@@ -30,7 +30,7 @@ import { fitsLanguages, localeSchema, localizedText } from '../i18n/locales.js';
 import { line } from '../i18n/text.js';
 import { canonicalTimeZone } from '../i18n/time-zones.js';
 import { pgErrorCode } from '../database/errors.js';
-import { roleAssignments, roles, sessions, users } from '../database/schema.js';
+import { roleAssignments, roles, users } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service.js';
@@ -46,10 +46,6 @@ const settings = {
     .transform((list) => [...new Set(list)]),
   accreditationStandard: z.enum(['JCI', 'CBAHI']),
   defaultLocale: localeSchema,
-  // Deprecated: replaced by the subscription, and read by nothing. Still
-  // taken, and stored in the old column, while the portal's screens send
-  // it. A client's plan is `planId` here and its subscription's from now.
-  plan: z.enum(['starter', 'professional', 'enterprise']).optional(),
   signInMethod: z.enum(['password', 'sso', 'both']),
   // One line, free of control characters, or nothing.
   dataRegion: line(0, 100)
@@ -82,6 +78,25 @@ const updateSchema = z
   .partial();
 
 const idSchema = z.uuid();
+
+/**
+ * What the portal is shown of a client: its settings and status, by name.
+ * Not when its access was last reset, which only the API uses.
+ */
+const client = {
+  id: tenants.id,
+  slug: tenants.slug,
+  name: tenants.name,
+  locales: tenants.locales,
+  accreditationStandard: tenants.accreditationStandard,
+  defaultLocale: tenants.defaultLocale,
+  dataRegion: tenants.dataRegion,
+  status: tenants.status,
+  signInMethod: tenants.signInMethod,
+  publicReporting: tenants.publicReporting,
+  timeZone: tenants.timeZone,
+  createdAt: tenants.createdAt,
+};
 
 const administratorSchema = z.strictObject({
   name: localizedText(200),
@@ -121,7 +136,7 @@ export class PlatformTenantsController {
   async list() {
     const rows = await this.db
       .select({
-        tenant: tenants,
+        tenant: client,
         status: subscriptions.status,
         planId: plans.id,
         planCode: plans.code,
@@ -147,7 +162,10 @@ export class PlatformTenantsController {
       // The client, its subscription and its audit entry are saved together
       // or not at all.
       const tenant = await this.db.transaction(async (tx) => {
-        const [created] = await tx.insert(tenants).values(values).returning();
+        const [created] = await tx
+          .insert(tenants)
+          .values(values)
+          .returning(client);
         const plan = await this.subscriptions.start(tx, created, planId);
         await this.auth.audit(
           req.platformAdmin.id,
@@ -177,7 +195,7 @@ export class PlatformTenantsController {
   async get(@Param('id') id: string) {
     const [row] = await this.db
       .select({
-        tenant: tenants,
+        tenant: client,
         status: subscriptions.status,
         planId: plans.id,
         planCode: plans.code,
@@ -219,47 +237,60 @@ export class PlatformTenantsController {
     }
     const values = this.withTimeZone(parsed.data);
     const tenantId = this.parseId(id);
-    const tenant = await this.db.transaction(async (tx) => {
-      const [before] = await tx
-        .select()
-        .from(tenants)
-        .where(eq(tenants.id, tenantId))
-        .for('update');
-      if (!before) throw new NotFoundException();
-      this.assertLanguages({ ...before, ...values });
-      const [after] = await tx
-        .update(tenants)
-        .set(values)
-        .where(eq(tenants.id, tenantId))
-        .returning();
-      // What changed, with the old and new value of each field.
-      const changes = Object.fromEntries(
-        (Object.keys(values) as (keyof typeof values)[])
-          .filter(
-            (key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]),
-          )
-          .map((key) => [key, { from: before[key], to: after[key] }]),
-      );
-      await this.auth.audit(
-        req.platformAdmin.id,
-        'client_updated',
-        tenantId,
-        { changes },
-        tx,
-      );
-      return after;
-    });
-
-    // Suspension ends every session, so reactivating does not revive them.
-    if (parsed.data.status === 'suspended') {
-      await this.tenantDb.withTenant(tenant.id, (tx) =>
-        tx
-          .update(sessions)
-          .set({ revokedAt: new Date() })
-          .where(isNull(sessions.revokedAt)),
-      );
-    }
-    return tenant;
+    // Suspending ends every session and every one-time link of the client,
+    // as the application role, which alone may write them. Its transaction
+    // is opened around the platform's and written before the platform's
+    // commits, so a change that fails revokes nothing and a revocation that
+    // fails changes nothing. Neither is what keeps them ended: a session or
+    // link issued before the client last went to or from suspended is
+    // refused whenever it is used (AuthService), so a client made active
+    // again brings none of them back.
+    return this.tenantDb.withTenant(tenantId, (appTx) =>
+      this.db.transaction(async (tx) => {
+        const [before] = await tx
+          .select()
+          .from(tenants)
+          .where(eq(tenants.id, tenantId))
+          .for('update');
+        if (!before) throw new NotFoundException();
+        this.assertLanguages({ ...before, ...values });
+        // Going to or from suspended voids every session and link issued
+        // until now: by the database's clock, as a session's own time is,
+        // and taken under the row's lock, after any change before this one
+        // was committed.
+        const resets =
+          values.status !== undefined &&
+          (before.status === 'suspended') !== (values.status === 'suspended');
+        const [after] = await tx
+          .update(tenants)
+          .set({
+            ...values,
+            ...(resets && { accessResetAt: sql`clock_timestamp()` }),
+          })
+          .where(eq(tenants.id, tenantId))
+          .returning(client);
+        // What changed, with the old and new value of each field.
+        const changes = Object.fromEntries(
+          (Object.keys(values) as (keyof typeof values)[])
+            .filter(
+              (key) =>
+                JSON.stringify(before[key]) !== JSON.stringify(after[key]),
+            )
+            .map((key) => [key, { from: before[key], to: after[key] }]),
+        );
+        await this.auth.audit(
+          req.platformAdmin.id,
+          'client_updated',
+          tenantId,
+          { changes },
+          tx,
+        );
+        if (after.status === 'suspended' && before.status !== 'suspended') {
+          await this.provisioning.endAllAccess(appTx);
+        }
+        return after;
+      }),
+    );
   }
 
   /**

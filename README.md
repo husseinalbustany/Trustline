@@ -86,7 +86,8 @@ first field is already filled.
   can change their own roles, edit a role they hold, or disable themselves;
   nobody can give a role that allows more than they may do, or act on a user
   who may do more than they may; a disabled user and a
-  suspended client are signed out at once.
+  suspended client are signed out at once, its open set-password links end,
+  and none of either comes back when it is made active again.
 - **Audit:** sign-ins and every account or role change go to `audit_log`,
   which the application can add to but not change.
 
@@ -447,8 +448,9 @@ work in any one or several of them.
 ## Settings that vary by tenant
 
 What a client may use (modules, limits) is its subscription, not a setting:
-see "Modules, plans and subscriptions". The old `plan` column of a client is
-read by nothing and goes once the admin portal stops sending it.
+see "Modules, plans and subscriptions". A client has no `plan` of its own
+any more (dropped in migration 0036): the portal names a plan with `planId`
+when it creates a client, and changes it on the subscription.
 
 - `accreditation_standard`: `JCI` or `CBAHI`.
 - `locales`: the languages the client works in, in its own order.

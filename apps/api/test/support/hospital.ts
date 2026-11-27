@@ -78,7 +78,6 @@ export async function testBench(tag: string, run: string) {
         accreditationStandard: 'JCI',
         locales: ['en'],
         defaultLocale: 'en',
-        plan: 'professional',
         signInMethod: 'password',
         dataRegion: null,
         ...settings,

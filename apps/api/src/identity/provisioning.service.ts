@@ -111,7 +111,7 @@ export class ProvisioningService {
 
   /**
    * Ends every session and one-time link of the client the transaction is
-   * scoped to: for a subscription being cancelled.
+   * scoped to: for a client being suspended, or its subscription cancelled.
    */
   async endAllAccess(tx: Transaction) {
     const now = new Date();

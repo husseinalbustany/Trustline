@@ -87,7 +87,6 @@ describe('incident reporting', () => {
         accreditationStandard: 'JCI',
         locales: ['en'],
         defaultLocale: 'en',
-        plan: 'professional',
         signInMethod: 'password',
         dataRegion: null,
       })

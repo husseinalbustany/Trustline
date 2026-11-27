@@ -158,14 +158,15 @@ export class EntitlementsService {
 
 /**
  * Whether a session or one-time link issued at `issuedAt` was issued before
- * the subscription last went to or from cancelled, and so is void.
+ * one of these resets, and so is void: the client's own (when it last went
+ * to or from suspended) and its subscription's (when it last went to or
+ * from cancelled).
  */
 export function issuedBeforeReset(
-  entitlements: Pick<Entitlements, 'accessResetAt'> | null,
   issuedAt: Date,
+  ...resets: ({ accessResetAt: Date | null } | null)[]
 ) {
-  const reset = entitlements?.accessResetAt;
-  return !!reset && issuedAt <= reset;
+  return resets.some((r) => !!r?.accessResetAt && issuedAt <= r.accessResetAt);
 }
 
 /** Whether these entitlements open this module. */

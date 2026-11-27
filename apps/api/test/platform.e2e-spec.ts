@@ -33,7 +33,6 @@ describe('admin portal API', () => {
     accreditationStandard: 'JCI',
     locales: ['en', 'ar'],
     defaultLocale: 'en',
-    plan: 'professional',
     signInMethod: 'both',
     dataRegion: null,
   };
@@ -116,6 +115,17 @@ describe('admin portal API', () => {
       .get(`/platform/tenants/${clientId}`)
       .set('Cookie', cookie)
       .expect(200);
+    const listed = (
+      await request(app.getHttpServer())
+        .get('/platform/tenants')
+        .set('Cookie', cookie)
+        .expect(200)
+    ).body.find((t: { id: string }) => t.id === clientId);
+    // The old plan is gone, and when access was last reset is the API's.
+    for (const answer of [res.body, detail.body, listed]) {
+      expect(answer).not.toHaveProperty('plan');
+      expect(answer).not.toHaveProperty('accessResetAt');
+    }
     expect(detail.body.activity).toMatchObject([
       { action: 'client_created', adminName: 'Test Admin' },
     ]);
@@ -132,7 +142,11 @@ describe('admin portal API', () => {
       .send({ ...client, slug: 'Not A Slug' })
       .expect(400);
     await http()
-      .send({ ...client, slug: `${slug}-2`, plan: 'free' })
+      .send({ ...client, slug: `${slug}-2`, signInMethod: 'free' })
+      .expect(400);
+    // The old plan field is unknown now, as any other.
+    await http()
+      .send({ ...client, slug: `${slug}-4`, plan: 'professional' })
       .expect(400);
     await http()
       .send({ ...client, slug: `${slug}-3`, id: clientId })
@@ -146,7 +160,10 @@ describe('admin portal API', () => {
         .set('Cookie', cookie);
     const res = await http().send({ status: 'suspended' }).expect(200);
     expect(res.body.status).toBe('suspended');
+    expect(res.body).not.toHaveProperty('plan');
+    expect(res.body).not.toHaveProperty('accessResetAt');
     await http().send({ slug: 'renamed' }).expect(400);
+    await http().send({ plan: 'enterprise' }).expect(400);
   });
 
   it('ends the session on sign-out', async () => {

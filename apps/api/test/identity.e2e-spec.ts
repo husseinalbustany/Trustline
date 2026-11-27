@@ -52,7 +52,6 @@ describe('hospital users, roles and sign-in', () => {
         accreditationStandard: 'JCI',
         locales: ['en', 'ar'],
         defaultLocale: 'en',
-        plan: 'professional',
         signInMethod: 'password',
         dataRegion: null,
       })
@@ -915,7 +914,6 @@ describe('hospital users, roles and sign-in', () => {
           locales: ['fr'],
           defaultLocale: 'fr',
           accreditationStandard: 'JCI',
-          plan: 'starter',
           signInMethod: 'password',
           dataRegion: null,
         })

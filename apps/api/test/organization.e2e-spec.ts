@@ -76,7 +76,6 @@ describe('organization structure', () => {
         accreditationStandard: 'JCI',
         locales,
         defaultLocale: 'en',
-        plan: 'professional',
         signInMethod: 'password',
         dataRegion: null,
       })

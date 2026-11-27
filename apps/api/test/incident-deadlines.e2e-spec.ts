@@ -239,7 +239,6 @@ describe('incident deadlines', () => {
           accreditationStandard: 'JCI',
           locales: ['en'],
           defaultLocale: 'en',
-          plan: 'starter',
           signInMethod: 'password',
           dataRegion: null,
         })
@@ -1089,7 +1088,6 @@ describe('incident deadlines', () => {
           accreditationStandard: 'JCI',
           locales: ['en'],
           defaultLocale: 'en',
-          plan: 'starter',
           signInMethod: 'password',
           dataRegion: null,
           ...settings,

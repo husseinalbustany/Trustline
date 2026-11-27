@@ -78,7 +78,8 @@ function routesOf(bench: TestBench): Route[] {
         const handler = controller.prototype[name];
         if (typeof handler !== 'function' || name === 'constructor') continue;
         const method = Reflect.getMetadata(METHOD_METADATA, handler) as
-          RequestMethod | undefined;
+          | RequestMethod
+          | undefined;
         if (method === undefined) continue;
         const path = Reflect.getMetadata(PATH_METADATA, handler) as string;
         const handlerGuards = (Reflect.getMetadata(GUARDS_METADATA, handler) ??
@@ -359,9 +360,9 @@ describe('modules and subscriptions', () => {
           limits.forget();
           const began = performance.now();
           const res = await http()
-            [route.method.toLowerCase() as 'get'](
-              route.path.replace(':slug', slug),
-            )
+            [
+              route.method.toLowerCase() as 'get'
+            ](route.path.replace(':slug', slug))
             .set('X-Forwarded-For', fromSomewhere())
             .send(body);
           return {
@@ -1021,6 +1022,124 @@ describe('modules and subscriptions', () => {
       await bench.login(h.slug, reporter.email).expect(200);
       await setSubscription(h, { status: 'active' }).expect(200);
     });
+
+    it('a client Trustline suspends: sessions and links end with the change, and none comes back when it is active again', async () => {
+      const c = await bench.createHospital('suspend');
+      const staff = await bench.createStaff(c, 'susstaff', {
+        role: 'reporter',
+        orgUnitId: null,
+      });
+      const client = () =>
+        http().patch(`/platform/tenants/${c.id}`).set('Cookie', p());
+      const resetOf = async () =>
+        (
+          await bench.owner.db
+            .select({ at: tenants.accessResetAt })
+            .from(tenants)
+            .where(eq(tenants.id, c.id))
+        )[0].at;
+      const open = async () =>
+        Number(
+          (
+            await bench.owner.db.execute<{ n: number }>(sql`
+              select (select count(*) from sessions
+                       where tenant_id = ${c.id} and revoked_at is null)
+                   + (select count(*) from user_tokens
+                       where tenant_id = ${c.id} and used_at is null) as n`)
+          ).rows[0].n,
+        );
+
+      // Trustline's staff only, and only a client that exists.
+      await http()
+        .patch(`/platform/tenants/${c.id}`)
+        .send({ status: 'suspended' })
+        .expect(401);
+      await http()
+        .patch(`/platform/tenants/${randomUUID()}`)
+        .set('Cookie', p())
+        .send({ status: 'suspended' })
+        .expect(404);
+      // A change refused changes nothing, and ends nothing.
+      await client()
+        .send({ status: 'suspended', defaultLocale: 'fr' })
+        .expect(400);
+      await client().send({ status: 'suspended', plan: 'starter' }).expect(400);
+      expect(await resetOf()).toBeNull();
+      await me(staff.cookie).expect(200);
+
+      // A session and an open reset link, from before it was suspended.
+      const link = (
+        await http()
+          .post(`/users/${staff.id}/invite`)
+          .set('Cookie', c.cookie)
+          .expect(201)
+      ).body.token as string;
+      const suspended = await client()
+        .send({ status: 'suspended' })
+        .expect(200);
+      expect(suspended.body.status).toBe('suspended');
+      // Both ended with the change, and the time of it kept.
+      expect(await open()).toBe(0);
+      const first = await resetOf();
+      expect(first).toBeInstanceOf(Date);
+      await me(c.cookie).expect(401);
+      await me(staff.cookie).expect(401);
+      await bench.login(c.slug, staff.email).expect(401);
+      // Recorded, with who did it, in the same transaction.
+      const [entry] = await bench.owner.db
+        .select({
+          adminId: platformAuditLog.adminId,
+          details: platformAuditLog.details,
+        })
+        .from(platformAuditLog)
+        .where(
+          and(
+            eq(platformAuditLog.targetTenantId, c.id),
+            eq(platformAuditLog.action, 'client_updated'),
+          ),
+        );
+      expect(entry).toMatchObject({
+        adminId: expect.any(String),
+        details: { changes: { status: { from: 'active', to: 'suspended' } } },
+      });
+
+      // Were their ending never written (as if that statement had failed,
+      // or a sign-in under way had written its session after it), they stay
+      // ended all the same.
+      for (const cookie of [c.cookie, staff.cookie]) {
+        await bench.owner.db.execute(sql`
+          update sessions set revoked_at = null
+          where token_hash = ${hashToken(cookie.split('=')[1])}`);
+      }
+      await bench.owner.db.execute(sql`
+        update user_tokens set used_at = null
+        where token_hash = ${hashToken(link)}`);
+
+      // Active again: a new reset, signing in works, the old sessions and
+      // links stay ended.
+      await client().send({ status: 'active' }).expect(200);
+      const second = await resetOf();
+      expect(second!.getTime()).toBeGreaterThan(first!.getTime());
+      await me(c.cookie).expect(401);
+      await me(staff.cookie).expect(401);
+      await http()
+        .post('/auth/invite/check')
+        .send({ org: c.slug, token: link })
+        .expect(404);
+      await http()
+        .post('/auth/invite/accept')
+        .send({ org: c.slug, token: link, password: `another-pass-${run}` })
+        .expect(404);
+      const fresh = bench.cookieOf(
+        await bench.login(c.slug, staff.email).expect(200),
+      );
+      await me(fresh).expect(200);
+
+      // A change that leaves the status as it is resets nothing.
+      await client().send({ status: 'active', dataRegion: 'Test' }).expect(200);
+      expect(await resetOf()).toEqual(second);
+      await me(fresh).expect(200);
+    }, 30_000);
 
     it('a trial has an end, and no date comes before the start', async () => {
       const res = await setSubscription(h, { status: 'trial' }).expect(400);

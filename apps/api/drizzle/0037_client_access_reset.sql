@@ -1,0 +1,1 @@
+ALTER TABLE "tenants" ADD COLUMN "access_reset_at" timestamp with time zone;
