@@ -16,6 +16,11 @@ import {
   users,
 } from './schema.js';
 import { TenantDb } from './tenant-db.service.js';
+import {
+  among,
+  applyToOwnRows,
+  startsWith,
+} from '../../test/support/migration.js';
 
 // Marks what this file creates, so it can be removed without touching
 // anything else the demo tenants hold.
@@ -497,9 +502,24 @@ describe('what the database itself enforces for deadlines and notifications', ()
             })
             .where(like(incidents.reference, `${TEST_REFERENCE}m-%`));
 
-          // Applied twice: the second time must change nothing.
-          for (const statement of [...statements, ...statements]) {
-            await tx.execute(sql.raw(statement));
+          // On these incidents and this hospital only: see applyToOwnRows.
+          // While it runs, someone else holds an incident of the same
+          // hospital that the migration, run on every row, would update: it
+          // must neither wait for it nor touch it.
+          const holder = await owner.pool.connect();
+          try {
+            await holder.query('begin');
+            await holder.query(
+              'select 1 from incidents where id = $1 for update',
+              [made[jci].incidentId],
+            );
+            await applyToOwnRows(tx, statements, {
+              incidents: startsWith('reference', `${TEST_REFERENCE}m-`),
+              tenants: among('id', [jci]),
+            });
+          } finally {
+            await holder.query('rollback');
+            holder.release();
           }
 
           rules = (
@@ -683,14 +703,23 @@ describe('what the database itself enforces for deadlines and notifications', ()
               visibility: 'internal',
             },
           ]);
+          // The two demo hospitals as they were before 0025, and no other.
           await tx
             .delete(auditLog)
-            .where(eq(auditLog.action, 'built_in_roles_changed_by_system'));
+            .where(
+              and(
+                eq(auditLog.action, 'built_in_roles_changed_by_system'),
+                inArray(auditLog.tenantId, [jci, cbahi]),
+              ),
+            );
 
-          // Applied twice: the second time must change nothing.
-          for (const statement of [...statements, ...statements]) {
-            await tx.execute(sql.raw(statement));
-          }
+          // On these incidents, their comments and the two demo hospitals
+          // only: see applyToOwnRows.
+          await applyToOwnRows(tx, statements, {
+            incidents: startsWith('reference', `${TEST_REFERENCE}s-`),
+            incident_comments: among('incident_id', [named]),
+            tenants: among('id', [jci, cbahi]),
+          });
 
           for (const row of await tx
             .select({
@@ -861,10 +890,15 @@ describe('what the database itself enforces for deadlines and notifications', ()
             }),
           ]);
 
-          // Applied twice: the second time must change nothing.
-          for (const statement of [...statements, ...statements]) {
-            await tx.execute(sql.raw(statement));
-          }
+          // On these comments only: see applyToOwnRows.
+          await applyToOwnRows(tx, statements, {
+            incidents: startsWith('reference', `${TEST_REFERENCE}h-`),
+            incident_comments: among('incident_id', [
+              named,
+              elsewhere,
+              anonymous.id,
+            ]),
+          });
 
           comments = Object.fromEntries(
             (

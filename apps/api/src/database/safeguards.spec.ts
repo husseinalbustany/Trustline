@@ -18,6 +18,7 @@ import {
   tenants,
 } from './schema.js';
 import { TenantDb } from './tenant-db.service.js';
+import { among, applyToOwnRows } from '../../test/support/migration.js';
 
 // Marks what this file creates, so it can be removed without touching
 // anything else the demo tenants hold.
@@ -513,10 +514,10 @@ describe('what the database itself enforces for the incident safeguards', () => 
           expect(before.flatMap((r) => r.permissions)).not.toEqual(
             expect.arrayContaining(NEW),
           );
-          // Applied twice: the second time must change nothing.
-          for (const statement of [...statements, ...statements]) {
-            await tx.execute(sql.raw(statement));
-          }
+          // On this hospital's roles only: see applyToOwnRows.
+          await applyToOwnRows(tx, statements, {
+            roles: among('tenant_id', [jci]),
+          });
           const after = await tx
             .select({ code: roles.code, permissions: roles.permissions })
             .from(roles)
