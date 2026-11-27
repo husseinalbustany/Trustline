@@ -892,8 +892,8 @@
       "save": "Save subscription",
       "saved": "Subscription saved.",
       "confirmSave": "Yes, save",
-      "confirmSuspend": "Suspend {name}'s subscription? Its staff can then only read, report and handle incidents, and take away access; everything else is refused until the status changes. Choose “Yes, save” to confirm.",
-      "confirmCancel": "Cancel {name}'s subscription? Nobody there can sign in from now on, everyone is signed out, and the public reporting link stops. Nothing is deleted, but sessions stay ended even if it is made active again. Choose “Yes, save” to confirm.",
+      "confirmSuspend": "Suspend the subscription of {name}? Its staff can then only read, report and handle incidents, and take away access; everything else is refused until the status changes. Choose “Yes, save” to confirm.",
+      "confirmCancel": "Cancel the subscription of {name}? Nobody there can sign in from now on, everyone is signed out, and the public reporting link stops. Nothing is deleted, but sessions stay ended even if it is made active again. Choose “Yes, save” to confirm.",
       "errors": {
         "unknown_plan": "This plan no longer exists. Reload the page and choose another.",
         "plan_retired": "This plan has been retired, so the client cannot be moved to it. Choose another.",

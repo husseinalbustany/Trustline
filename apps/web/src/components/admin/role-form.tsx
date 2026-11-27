@@ -101,7 +101,11 @@ export function RoleForm({
     e.preventDefault();
     const form = e.currentTarget;
     const { code, ...fields } = readForm(form);
-    const body = { ...fields, permissions: granted };
+    // Read-only: only taking permissions away is accepted, and only on its
+    // own, so the name and description are not sent.
+    const body = readOnly
+      ? { permissions: granted }
+      : { ...fields, permissions: granted };
     void run(async () => {
       if (mode === "new") {
         await api("/roles", { method: "POST", body: { code, ...body } });
