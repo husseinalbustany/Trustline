@@ -24,6 +24,7 @@ import {
 import { TenantDb } from '../src/database/tenant-db.service.js';
 import { requireEnv } from '../src/env.js';
 import type { AuthService } from '../src/identity/auth.service.js';
+import { hashToken } from '../src/identity/provisioning.service.js';
 import { SessionGuard } from '../src/identity/session.guard.js';
 import { DeadlineCheck } from '../src/incidents/deadline-check.service.js';
 import { IncidentsModule } from '../src/incidents/incidents.module.js';
@@ -560,6 +561,11 @@ describe('modules and subscriptions', () => {
     let h: Hospital;
     let unit: string;
     let reporter: Staff;
+    let quality: Staff;
+    // For taking access away while suspended.
+    let leaver: Staff;
+    let twoRoles: Staff;
+    let newcomer: Staff;
 
     beforeAll(async () => {
       h = await bench.createHospital('status');
@@ -569,7 +575,38 @@ describe('modules and subscriptions', () => {
         role: 'reporter',
         orgUnitId: null,
       });
-    }, 30_000);
+      quality = await bench.createStaff(h, 'stquality', {
+        role: 'quality_officer',
+        orgUnitId: null,
+      });
+      leaver = await bench.createStaff(h, 'stleaver', {
+        role: 'reporter',
+        orgUnitId: null,
+      });
+      await bench.createRole(h, 'wide_role', [
+        'incidents.report',
+        'incidents.view',
+        'reports.view',
+      ]);
+      await bench.createRole(h, 'spare_role', ['reports.view']);
+      twoRoles = await bench.createStaff(h, 'sttworoles', {
+        role: 'reporter',
+        orgUnitId: null,
+      });
+      await http()
+        .put(`/users/${twoRoles.id}/roles`)
+        .set('Cookie', h.cookie)
+        .send({
+          roles: [
+            { roleId: h.roles.reporter, orgUnitId: null },
+            { roleId: h.roles.wide_role, orgUnitId: unit },
+          ],
+        })
+        .expect(200);
+      newcomer = await bench.createStaff(h, 'stnewcomer', null, {
+        signIn: false,
+      });
+    }, 60_000);
 
     it('past due: everything works, and only administrators are told', async () => {
       await setSubscription(h, { status: 'past_due' }).expect(200);
@@ -579,10 +616,11 @@ describe('modules and subscriptions', () => {
           notice: 'past_due',
         },
       );
+      // Not theirs to know: to them the subscription is active.
       expect(
         (await me(reporter.cookie).expect(200)).body.tenant.subscription,
       ).toEqual({
-        status: 'past_due',
+        status: 'active',
         notice: null,
       });
       await http()
@@ -597,7 +635,7 @@ describe('modules and subscriptions', () => {
         .expect(201);
     });
 
-    it('suspended: reading and reporting stay open, every other write is refused', async () => {
+    it('suspended: reading and incidents stay open, every other write is refused', async () => {
       const incident = (
         await http()
           .post('/incidents')
@@ -646,17 +684,9 @@ describe('modules and subscriptions', () => {
           .set('Cookie', h.cookie)
           .send({ code: 'x', name: { en: 'x' }, permissions: [] }),
         http()
-          .put('/settings/reporting')
+          .patch(`/org-units/${unit}`)
           .set('Cookie', h.cookie)
-          .send({ publicReporting: false }),
-        http()
-          .post(`/incidents/${incident}/comments`)
-          .set('Cookie', reporter.cookie)
-          .send({ body: 'More', visibility: 'everyone' }),
-        http()
-          .post(`/incidents/${incident}/triage`)
-          .set('Cookie', h.cookie)
-          .send({}),
+          .send({ name: { en: 'Renamed' } }),
       ];
       for (const write of writes) {
         const res = await write;
@@ -704,8 +734,230 @@ describe('modules and subscriptions', () => {
       await bench.login(h.slug, reporter.email).expect(200);
     }, 30_000);
 
+    it('suspended: incident work goes on, from reporting to sign-off, with its settings', async () => {
+      const id = (
+        await http()
+          .post('/incidents')
+          .set('Cookie', reporter.cookie)
+          .send(reportBody(h, unit, { harmLevel: 'severe', anonymous: false }))
+          .expect(201)
+      ).body.id as string;
+      await http()
+        .post(`/incidents/${id}/comments`)
+        .set('Cookie', reporter.cookie)
+        .send({ body: 'More', visibility: 'everyone' })
+        .expect(201);
+      await http()
+        .post(`/incidents/${id}/triage`)
+        .set('Cookie', h.cookie)
+        .send({ harmLevel: 'severe', isSentinel: true, ownerUnitId: unit })
+        .expect(200);
+      const move = (cookie: string, body: Record<string, unknown>) =>
+        http()
+          .post(`/incidents/${id}/status`)
+          .set('Cookie', cookie)
+          .send(body)
+          .expect(200);
+      await move(h.cookie, { to: 'in_progress' });
+      await move(h.cookie, { to: 'awaiting_sign_off', note: 'Done, agreed.' });
+      const { revision } = (
+        await http()
+          .get(`/incidents/${id}`)
+          .set('Cookie', quality.cookie)
+          .expect(200)
+      ).body as { revision: number };
+      const closed = await move(quality.cookie, {
+        to: 'closed',
+        note: 'Signed off.',
+        revision,
+      });
+      expect(closed.body.status).toBe('closed');
+
+      // The settings of reporting.
+      await http()
+        .put('/settings/reporting')
+        .set('Cookie', h.cookie)
+        .send({ publicReporting: false })
+        .expect(200);
+      await switchPublicReporting(h);
+      const rules = (
+        await http()
+          .get('/settings/response-rules')
+          .set('Cookie', h.cookie)
+          .expect(200)
+      ).body.rules as Record<string, unknown>[];
+      await http()
+        .put('/settings/response-rules')
+        .set('Cookie', h.cookie)
+        .send({ rules })
+        .expect(200);
+    }, 30_000);
+
+    it('suspended: a sign-in link can still be issued, so that staff can always get in to report', async () => {
+      const link = await http()
+        .post(`/users/${newcomer.id}/invite`)
+        .set('Cookie', h.cookie)
+        .expect(201);
+      await http()
+        .post('/auth/invite/accept')
+        .send({
+          org: h.slug,
+          token: link.body.token,
+          password: `hospital-pass-${run}`,
+        })
+        .expect(204);
+      const cookie = bench.cookieOf(
+        await bench.login(h.slug, newcomer.email).expect(200),
+      );
+      expect((await me(cookie).expect(200)).body.permissions).toEqual([]);
+      // A reset for someone who has a password, audited.
+      await http()
+        .post(`/users/${reporter.id}/invite`)
+        .set('Cookie', h.cookie)
+        .expect(201);
+      const [entry] = await bench.owner.db
+        .select({ changes: auditLog.changes })
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.tenantId, h.id),
+            eq(auditLog.action, 'sign_in_link_created'),
+            eq(auditLog.entityId, reporter.id),
+          ),
+        );
+      expect(entry.changes).toEqual({ purpose: 'password_reset' });
+    });
+
+    it('suspended: access can still be taken away, and only taken away', async () => {
+      const refused = { code: 'subscription_suspended' };
+      const expectRefused = async (write: Test) => {
+        const res = await write;
+        expect(res.status).toBe(403);
+        expect(res.body).toEqual(refused);
+      };
+      const patchUser = (id: string, body: Record<string, unknown>) =>
+        http().patch(`/users/${id}`).set('Cookie', h.cookie).send(body);
+      const putRoles = (id: string, roles: Record<string, unknown>[]) =>
+        http()
+          .put(`/users/${id}/roles`)
+          .set('Cookie', h.cookie)
+          .send({ roles });
+      const patchRole = (id: string, body: Record<string, unknown>) =>
+        http().patch(`/roles/${id}`).set('Cookie', h.cookie).send(body);
+      const wide = h.roles.wide_role;
+
+      // Anything but disabling someone.
+      await expectRefused(
+        patchUser(leaver.id, { status: 'disabled', jobTitle: 'Gone' }),
+      );
+      await expectRefused(patchUser(leaver.id, { status: 'active' }));
+      // Anything but a list among the grants held now: a role added, or a
+      // grant moved to another place.
+      await expectRefused(
+        putRoles(twoRoles.id, [
+          { roleId: h.roles.reporter, orgUnitId: null },
+          { roleId: h.roles.quality_officer, orgUnitId: null },
+        ]),
+      );
+      await expectRefused(
+        putRoles(twoRoles.id, [{ roleId: wide, orgUnitId: null }]),
+      );
+      // Anything but taking permissions from a role.
+      await expectRefused(patchRole(wide, { name: { en: 'Renamed' } }));
+      await expectRefused(
+        patchRole(wide, {
+          permissions: ['incidents.report', 'incidents.view', 'users.manage'],
+        }),
+      );
+      await expectRefused(
+        patchRole(wide, {
+          permissions: ['incidents.report'],
+          name: { en: 'Renamed' },
+        }),
+      );
+      // Another hospital's user is not found, as at any time.
+      await patchUser(on.adminId, { status: 'disabled' }).expect(404);
+
+      // Disabling a leaver ends their session at once.
+      await me(leaver.cookie).expect(200);
+      const disabled = await patchUser(leaver.id, {
+        status: 'disabled',
+      }).expect(200);
+      expect(disabled.body.status).toBe('disabled');
+      await me(leaver.cookie).expect(401);
+      await bench.login(h.slug, leaver.email).expect(401);
+
+      // A role taken away: what they may do shrinks on the next request.
+      expect(
+        (await me(twoRoles.cookie).expect(200)).body.permissions,
+      ).toContain('incidents.view');
+      const fewer = await putRoles(twoRoles.id, [
+        { roleId: h.roles.reporter, orgUnitId: null },
+      ]).expect(200);
+      expect(fewer.body.roles.map((r: { roleId: string }) => r.roleId)).toEqual(
+        [h.roles.reporter],
+      );
+      expect(
+        (await me(twoRoles.cookie).expect(200)).body.permissions,
+      ).not.toContain('incidents.view');
+      // Nor can a role taken away be given back while suspended.
+      await expectRefused(
+        putRoles(twoRoles.id, [
+          { roleId: h.roles.reporter, orgUnitId: null },
+          { roleId: wide, orgUnitId: unit },
+        ]),
+      );
+
+      // A role made to allow less, and a role deleted.
+      const narrowed = await patchRole(wide, {
+        permissions: ['incidents.report'],
+      }).expect(200);
+      expect(narrowed.body.permissions).toEqual(['incidents.report']);
+      await expectRefused(
+        patchRole(wide, { permissions: ['incidents.report', 'reports.view'] }),
+      );
+      await http()
+        .delete(`/roles/${h.roles.spare_role}`)
+        .set('Cookie', h.cookie)
+        .expect(204);
+
+      // Each one audited, as at any time.
+      const actions = (
+        await bench.owner.db
+          .select({ action: auditLog.action, entityId: auditLog.entityId })
+          .from(auditLog)
+          .where(eq(auditLog.tenantId, h.id))
+      ).map((e) => `${e.action}:${e.entityId}`);
+      expect(actions).toEqual(
+        expect.arrayContaining([
+          `user_updated:${leaver.id}`,
+          `user_roles_changed:${twoRoles.id}`,
+          `role_updated:${wide}`,
+          `role_deleted:${h.roles.spare_role}`,
+        ]),
+      );
+    }, 30_000);
+
     it('cancelled: nobody signs in, sessions end, the public routes are gone', async () => {
+      await setSubscription(h, { status: 'active' }).expect(200);
+      // A session and an open reset link, from before it was cancelled.
+      const kept = bench.cookieOf(
+        await bench.login(h.slug, quality.email).expect(200),
+      );
+      const link = (
+        await http()
+          .post(`/users/${quality.id}/invite`)
+          .set('Cookie', h.cookie)
+          .expect(201)
+      ).body.token as string;
       await setSubscription(h, { status: 'cancelled' }).expect(200);
+      // Both ended with the change.
+      const open = await bench.owner.db.execute<{ n: number }>(sql`
+        select (select count(*) from sessions
+                 where tenant_id = ${h.id} and revoked_at is null)
+             + (select count(*) from user_tokens
+                 where tenant_id = ${h.id} and used_at is null) as n`);
+      expect(Number(open.rows[0].n)).toBe(0);
       await me(h.cookie).expect(401);
       await bench.login(h.slug, reporter.email).expect(401);
       limits.forget();
@@ -724,9 +976,29 @@ describe('modules and subscriptions', () => {
         failed: 0,
       });
 
-      // Active again: signing in works, the old sessions stay ended.
+      // Were their ending never written (as if that statement had failed,
+      // or a sign-in under way had written its session after it), they stay
+      // ended all the same.
+      await bench.owner.db.execute(sql`
+        update sessions set revoked_at = null
+        where token_hash = ${hashToken(kept.split('=')[1])}`);
+      await bench.owner.db.execute(sql`
+        update user_tokens set used_at = null
+        where token_hash = ${hashToken(link)}`);
+
+      // Active again: signing in works, the old sessions and links stay
+      // ended.
       await setSubscription(h, { status: 'active' }).expect(200);
       await me(h.cookie).expect(401);
+      await me(kept).expect(401);
+      await http()
+        .post('/auth/invite/check')
+        .send({ org: h.slug, token: link })
+        .expect(404);
+      await http()
+        .post('/auth/invite/accept')
+        .send({ org: h.slug, token: link, password: `another-pass-${run}` })
+        .expect(404);
       const fresh = bench.cookieOf(
         await bench.login(h.slug, reporter.email).expect(200),
       );
@@ -761,6 +1033,23 @@ describe('modules and subscriptions', () => {
       expect(ok.body).toMatchObject({
         status: 'trial',
         trialEndsOn: '2026-12-31',
+      });
+      // A trial is for the client's administrators to know of.
+      const admin = bench.cookieOf(
+        await bench
+          .login(h.slug, `admin-ms-status-${run}@test.invalid`)
+          .expect(200),
+      );
+      expect((await me(admin).expect(200)).body.tenant.subscription).toEqual({
+        status: 'trial',
+        notice: null,
+      });
+      const staff = bench.cookieOf(
+        await bench.login(h.slug, reporter.email).expect(200),
+      );
+      expect((await me(staff).expect(200)).body.tenant.subscription).toEqual({
+        status: 'active',
+        notice: null,
       });
       expect(
         (await setSubscription(h, { renewsOn: '2026-10-01' }).expect(400)).body,
@@ -1281,7 +1570,29 @@ describe('modules and subscriptions', () => {
       ).rejects.toMatchObject(denied);
     });
 
-    it("lets the admin portal add to a client's audit log, never read it", async () => {
+    it("lets the admin portal add to a client's audit log only what it changed of the subscription, by nobody, at the database's time", async () => {
+      const denied = { cause: { code: '42501' } };
+      const forged = [
+        // As one of the client's staff.
+        sql`insert into audit_log (tenant_id, actor_id, action)
+            values (${on.id}, ${on.adminId}, 'subscription_changed')`,
+        // Backdated.
+        sql`insert into audit_log (tenant_id, action, occurred_at)
+            values (${on.id}, 'subscription_changed', '2020-01-01')`,
+        // With an id of its choosing, or an address.
+        sql`insert into audit_log (id, tenant_id, action)
+            values (${randomUUID()}, ${on.id}, 'subscription_changed')`,
+        sql`insert into audit_log (tenant_id, action, ip_address)
+            values (${on.id}, 'subscription_changed', '192.0.2.1')`,
+        // Anything but a change of subscription.
+        sql`insert into audit_log (tenant_id, action, entity_type, entity_id, changes)
+            values (${on.id}, 'incident_signed_off', 'incident', ${randomUUID()}, '{}')`,
+      ];
+      for (const statement of forged) {
+        await expect(platform.db.execute(statement)).rejects.toMatchObject(
+          denied,
+        );
+      }
       await expect(
         platform.db.select().from(auditLog).limit(1),
       ).rejects.toMatchObject({

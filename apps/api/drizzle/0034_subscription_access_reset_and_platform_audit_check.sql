@@ -1,0 +1,2 @@
+ALTER TABLE "subscriptions" ADD COLUMN "access_reset_at" timestamp with time zone;--> statement-breakpoint
+ALTER POLICY "audit_log_platform_insert" ON "audit_log" TO trustline_platform WITH CHECK (actor_id IS NULL AND ip_address IS NULL AND action = 'subscription_changed');

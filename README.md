@@ -243,11 +243,15 @@ has. Only incidents is built. The list is a constant in
   `modules-and-subscriptions.e2e-spec.ts` fails for a controller that does
   not declare one.
 - **Status:** `trial` and `active` work normally; `past_due` too, with a
-  notice for the client's administrators; `suspended` is read-only, except
-  that reporting an incident (signed in or not) stays open (403
-  `subscription_suspended` for any other write); `cancelled` is like a
-  client Trustline has suspended: nobody signs in. A client Trustline has
-  suspended stays closed whatever its subscription says.
+  notice for the client's administrators (to anyone else `/auth/me` says
+  `active` for `trial` and `past_due`). `suspended` is read-only (403
+  `subscription_suspended`), except: all of the incidents module (signed in
+  or not), issuing a sign-in link, taking access away (disabling a user,
+  taking roles or permissions away, deleting a role), signing out and
+  reading one's notifications. `cancelled` is like a client Trustline has
+  suspended: nobody signs in, and no session or link from before comes back
+  if it is made active again. A client Trustline has suspended stays closed
+  whatever its subscription says.
 - **Limits** on named users (invited or active; a disabled account frees its
   place) and sites (facilities switched on) are checked in the transaction
   that adds one, so two requests cannot both take the last place: 409

@@ -10,11 +10,9 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Database } from '../database/client.js';
 import { PLATFORM_DATABASE } from '../database/database.constants.js';
-import { sessions } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
 import { OrgUnitsService } from '../organization/org-units.service.js';
@@ -64,38 +62,40 @@ export class PlatformSubscriptionsController {
     if (!parsed.success || Object.keys(parsed.data).length === 0) {
       throw new BadRequestException();
     }
-    const { before, after, changes } = await this.db.transaction(async (tx) => {
-      const result = await this.subscriptions.change(
-        tx,
-        tenantId,
-        parsed.data,
-        req.platformAdmin,
-      );
-      if (Object.keys(result.changes).length > 0) {
-        await this.auth.audit(
-          req.platformAdmin.id,
-          'subscription_updated',
-          tenantId,
-          { changes: result.changes },
+    // Cancelling ends every session and every one-time link of the client,
+    // as the application role, which alone may write them. Its transaction
+    // is opened around the platform's and written before the platform's
+    // commits, so a change that fails revokes nothing and a revocation that
+    // fails changes nothing. Neither is what keeps them ended: a session or
+    // link issued before the subscription last went to or from cancelled is
+    // refused whenever it is used (AuthService), so a subscription made
+    // active again brings none of them back.
+    const after = await this.tenantDb.withTenant(tenantId, (appTx) =>
+      this.db.transaction(async (tx) => {
+        const result = await this.subscriptions.change(
           tx,
+          tenantId,
+          parsed.data,
+          req.platformAdmin,
         );
-      }
-      return result;
-    });
-    // Cancelling ends every session, as suspending a client does, so that
-    // a subscription made active again does not revive them.
-    if (
-      changes.status &&
-      after.status === 'cancelled' &&
-      before.status !== 'cancelled'
-    ) {
-      await this.tenantDb.withTenant(tenantId, (tx) =>
-        tx
-          .update(sessions)
-          .set({ revokedAt: new Date() })
-          .where(isNull(sessions.revokedAt)),
-      );
-    }
+        if (Object.keys(result.changes).length > 0) {
+          await this.auth.audit(
+            req.platformAdmin.id,
+            'subscription_updated',
+            tenantId,
+            { changes: result.changes },
+            tx,
+          );
+        }
+        if (
+          result.after.status === 'cancelled' &&
+          result.before.status !== 'cancelled'
+        ) {
+          await this.provisioning.endAllAccess(appTx);
+        }
+        return result.after;
+      }),
+    );
     return { ...after, usage: await this.usage(tenantId) };
   }
 

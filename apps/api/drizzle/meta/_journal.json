@@ -239,6 +239,20 @@
       "when": 1795786110291,
       "tag": "0033_subscriptions_grants_and_existing_clients",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1795788071872,
+      "tag": "0034_subscription_access_reset_and_platform_audit_check",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1795788077907,
+      "tag": "0035_platform_audit_columns_and_access_reset_grant",
+      "breakpoints": true
     }
   ]
 }

@@ -18,9 +18,12 @@ export const ForModule = (module: ModuleKey) => SetMetadata(MODULE_KEY, module);
 
 /**
  * Lets a route that writes go on working while the client's subscription is
- * suspended, which otherwise leaves only reading. For reporting an
- * incident, and for what is not a change to the client's records (signing
- * out, marking one's own notifications read).
+ * suspended, which otherwise leaves only reading (the routes of the
+ * incidents module apart: SessionGuard leaves them all open). For what is
+ * not a change to the client's records (signing out, marking one's own
+ * notifications read), for issuing a sign-in link (so that staff can always
+ * get in to report), and for taking access away: a route that also takes
+ * more than that refuses the rest itself, with `whileSuspended()`.
  */
 export const OpenWhileSuspended = () =>
   SetMetadata(OPEN_WHILE_SUSPENDED_KEY, true);

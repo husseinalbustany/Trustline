@@ -19,6 +19,7 @@ import { hashPassword, verifyPassword } from '../security/passwords.js';
 import {
   allows,
   EntitlementsService,
+  issuedBeforeReset,
 } from '../subscriptions/entitlements.service.js';
 import type {
   ModuleCode,
@@ -55,9 +56,12 @@ export type AuthContext = {
      */
     modules: ModuleCode[];
     /**
-     * The state of the subscription, and what this user is to be told of
-     * it: `past_due` to those who manage the settings of the whole
-     * organization, `suspended` to everyone. Nothing commercial.
+     * The state of the subscription as this user is to be told of it, and
+     * the notice to show them. To those who manage the settings of the
+     * whole organization, the status as it is, with a `past_due` notice.
+     * To anyone else, `suspended` as it is (it changes what works), and
+     * any other status as `active`: a trial or an overdue payment is not
+     * theirs to know. Nothing commercial in either.
      */
     subscription: {
       status: Exclude<SubscriptionStatus, 'cancelled'>;
@@ -251,7 +255,7 @@ export class AuthService {
 
     return this.tenantDb.withTenant(tenant.id, async (tx) => {
       const [row] = await tx
-        .select({ user: users })
+        .select({ user: users, createdAt: sessions.createdAt })
         .from(sessions)
         .innerJoin(users, eq(users.id, sessions.userId))
         .where(
@@ -262,14 +266,21 @@ export class AuthService {
           ),
         );
       if (!row || row.user.status !== 'active') return null;
-      // A cancelled subscription ends access as a suspended client does.
+      // A cancelled subscription ends access as a suspended client does,
+      // and a session from before it was cancelled stays ended when it is
+      // made active again, whether or not its revocation was written.
       const entitlements = await this.entitlements.of(tx, tenant.id);
       if (entitlements?.status === 'cancelled') return null;
-      const status = entitlements?.status ?? 'active';
+      if (issuedBeforeReset(entitlements, row.createdAt)) return null;
+      const stored = entitlements?.status ?? 'active';
 
       const { user } = row;
       const access = await this.accessOf(tx, user.id);
       const administers = covers(access, 'settings.manage', null);
+      // What is commercial (a trial, a payment overdue) only to the
+      // client's administrators; to anyone else it is active. A suspension
+      // changes what works, so everyone is told of it.
+      const status = administers || stored === 'suspended' ? stored : 'active';
       return {
         token,
         tenant: {
@@ -321,7 +332,12 @@ export class AuthService {
     });
   }
 
-  private async findInvite(tx: Transaction, token: string) {
+  /**
+   * A one-time link that can still be used: not used, not expired, not for
+   * a disabled account, and not issued before the subscription last went to
+   * or from cancelled.
+   */
+  private async findInvite(tx: Transaction, tenantId: string, token: string) {
     const [row] = await tx
       .select({ invite: userTokens, user: users })
       .from(userTokens)
@@ -333,7 +349,10 @@ export class AuthService {
           gt(userTokens.expiresAt, new Date()),
         ),
       );
-    return row && row.user.status !== 'disabled' ? row : null;
+    if (!row || row.user.status === 'disabled') return null;
+    const entitlements = await this.entitlements.of(tx, tenantId);
+    if (issuedBeforeReset(entitlements, row.invite.createdAt)) return null;
+    return row;
   }
 
   /** Who a set-password link is for, or null if it cannot be used. */
@@ -341,7 +360,7 @@ export class AuthService {
     const tenant = await this.findTenant(org, true, 'core');
     if (!tenant) return null;
     return this.tenantDb.withTenant(tenant.id, async (tx) => {
-      const row = await this.findInvite(tx, token);
+      const row = await this.findInvite(tx, tenant.id, token);
       if (!row) return null;
       return {
         name: row.user.name,
@@ -360,13 +379,13 @@ export class AuthService {
     const usable =
       tenant &&
       (await this.tenantDb.withTenant(tenant.id, (tx) =>
-        this.findInvite(tx, token),
+        this.findInvite(tx, tenant.id, token),
       ));
     if (!tenant || !usable) return false;
 
     const passwordHash = await hashPassword(password);
     return this.tenantDb.withTenant(tenant.id, async (tx) => {
-      const row = await this.findInvite(tx, token);
+      const row = await this.findInvite(tx, tenant.id, token);
       if (!row) return false;
       // Claim the link in one statement: of two requests at once, one wins.
       const claimed = await tx

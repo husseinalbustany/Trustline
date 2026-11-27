@@ -35,9 +35,13 @@ import { covers } from './scope.js';
 import {
   requirePermission,
   SessionGuard,
+  whileSuspended,
   type AuthedRequest,
 } from './session.guard.js';
-import { ForModule } from '../subscriptions/module.decorator.js';
+import {
+  ForModule,
+  OpenWhileSuspended,
+} from '../subscriptions/module.decorator.js';
 
 const profile = {
   name: localizedText(200),
@@ -241,13 +245,7 @@ export class UsersController {
     userId: string,
     grants: RoleGrant[],
   ) {
-    const held = await tx
-      .select({
-        roleId: roleAssignments.roleId,
-        orgUnitId: roleAssignments.orgUnitId,
-      })
-      .from(roleAssignments)
-      .where(eq(roleAssignments.userId, userId));
+    const held = await this.heldGrants(tx, userId);
     const added = grants.filter(
       (g) =>
         !held.some((h) => h.roleId === g.roleId && h.orgUnitId === g.orgUnitId),
@@ -256,6 +254,17 @@ export class UsersController {
       tx,
       added.map((g) => g.orgUnitId),
     );
+  }
+
+  /** The roles a user holds, and where. */
+  private heldGrants(tx: Transaction, userId: string) {
+    return tx
+      .select({
+        roleId: roleAssignments.roleId,
+        orgUnitId: roleAssignments.orgUnitId,
+      })
+      .from(roleAssignments)
+      .where(eq(roleAssignments.userId, userId));
   }
 
   /** Turns a database refusal into the right client error. */
@@ -330,8 +339,14 @@ export class UsersController {
     return user;
   }
 
+  /**
+   * Open while the subscription is suspended for disabling someone, and
+   * only that (`{ status: "disabled" }` and nothing else): a hospital can
+   * always cut a leaver's access.
+   */
   @Patch(':id')
-  update(
+  @OpenWhileSuspended()
+  async update(
     @Param('id') id: string,
     @Body() body: unknown,
     @Req() req: AuthedRequest,
@@ -342,6 +357,10 @@ export class UsersController {
     if (!parsed.success || Object.keys(parsed.data).length === 0) {
       throw new BadRequestException();
     }
+    await whileSuspended(req, () => {
+      const sent = Object.keys(body as object);
+      return sent.length === 1 && parsed.data.status === 'disabled';
+    });
     const { status, ...fields } = parsed.data;
     const { tenant, user: actor } = req.auth;
     if (fields.name && !fitsLanguages(fields.name, tenant)) {
@@ -351,7 +370,7 @@ export class UsersController {
       throw new ConflictException({ code: 'cannot_change_self' });
     }
 
-    return this.guarded(() =>
+    return await this.guarded(() =>
       this.tenantDb.withTenant(tenant.id, async (tx) => {
         // Locked, so what is recorded as changed is what did change.
         const [existing] = await tx
@@ -439,7 +458,12 @@ export class UsersController {
     );
   }
 
+  /**
+   * Open while the subscription is suspended for taking roles away, and
+   * only that: the new list must be among the grants the user holds now.
+   */
   @Put(':id/roles')
+  @OpenWhileSuspended()
   setRoles(
     @Param('id') id: string,
     @Body() body: unknown,
@@ -457,12 +481,23 @@ export class UsersController {
 
     return this.guarded(() =>
       this.tenantDb.withTenant(tenant.id, async (tx) => {
+        // Locked, so two changes at once are made one after the other, and
+        // what is compared below is what the user holds now.
         const [existing] = await tx
           .select({ id: users.id, orgUnitId: users.orgUnitId })
           .from(users)
-          .where(eq(users.id, userId));
+          .where(eq(users.id, userId))
+          .for('update');
         if (!existing) throw new NotFoundException();
         await this.assertCanManage(tx, req, existing);
+        await whileSuspended(req, async () => {
+          const held = await this.heldGrants(tx, userId);
+          return parsed.data.roles.every((g) =>
+            held.some(
+              (h) => h.roleId === g.roleId && h.orgUnitId === g.orgUnitId,
+            ),
+          );
+        });
         await this.assertCanGrant(tx, req, parsed.data.roles);
         await this.assertGrantUnits(tx, userId, parsed.data.roles);
         await this.provisioning.setRoles(
@@ -487,8 +522,13 @@ export class UsersController {
     );
   }
 
-  /** A new one-time link to set a password, for a first sign-in or a reset. */
+  /**
+   * A new one-time link to set a password, for a first sign-in or a reset.
+   * Open while the subscription is suspended, so that staff can always get
+   * in to report: it changes nothing but the link, and is audited.
+   */
   @Post(':id/invite')
+  @OpenWhileSuspended()
   invite(@Param('id') id: string, @Req() req: AuthedRequest) {
     requirePermission(req, 'users.manage');
     const userId = this.parseId(id);

@@ -121,9 +121,16 @@ blocked by a billing matter:
 ### When a subscription lapses
 
 - **Past due:** everything works; administrators see a notice.
-- **Suspended (after a grace period):** read-only. Staff can read documents
-  and their own records; incident reporting stays open; nothing else can be
-  created or changed.
+- **Suspended (after a grace period):** a billing matter never blocks safety
+  work, nor keeps a hospital from cutting someone's access. So:
+  - **Incidents stay open, all of them:** reporting, triage, status changes,
+    comments, sign-off, and the settings of reporting and response rules.
+  - **Getting staff in stays open:** an invitation or a reset link can still
+    be issued, so that anyone can get in to report.
+  - **Taking access away stays open:** disabling a user, taking roles from
+    a user, taking permissions from a role, deleting a role.
+  - **Everything else is read-only:** nothing else can be created or
+    changed.
 - **Cancelled:** access ends on the agreed date; the client can export its
   data first; deletion follows the contract's retention period.
 
@@ -318,6 +325,11 @@ silent. Each choice is marked **Chosen**.
   client's own (`subscription_changed`: plan, status, modules switched on and
   off, limits; never the note or dates), in the same transaction. An edit of
   a plan writes the same entry for each client it changes something for.
+- That entry is all the platform role can write in a client's audit log.
+  It may set only the tenant, action, entity and changes, so the id and the
+  time are always the database's; the row-level policy takes only
+  `subscription_changed`, with no actor and no address. It cannot read the
+  log, pass an entry off as one of the client's staff, or backdate one.
 - Effective entitlements are plan plus add-ons plus overrides, with the
   dependencies above enforced when saved and again when read.
 - Every client that existed was given an active subscription on
@@ -338,19 +350,53 @@ silent. Each choice is marked **Chosen**.
 - `past_due`: everything works. `/auth/me` gives `notice: "past_due"` to
   those who hold `settings.manage` for the whole organization (the client's
   administrators), and no notice to anyone else.
-- `suspended`: read-only. Every signed-in write is refused with 403
-  `subscription_suspended`, except reporting an incident, signing out and
-  marking one's own notifications read. The routes without sign-in (public
-  reporting and following up a report with its code, comments included)
-  stay open: an anonymous reporter cannot be told of a billing matter.
-  Everyone is told `notice: "suspended"`. The deadline check goes on.
-  **Chosen:** a new write route is closed by default while suspended; a
-  route is opened only by marking it `@OpenWhileSuspended()`.
+- **What `/auth/me` says of the status:** the status as it is to those who
+  hold `settings.manage` for the whole organization. To anyone else,
+  `suspended` as it is (it changes what works), and `trial` and `past_due`
+  as `active`: what is commercial is not every member of staff's to know.
+- `suspended`: read-only, except what is listed here. Every other signed-in
+  write is refused with 403 `subscription_suspended`. Open:
+  - **Every route of the incidents module:** reporting, triage, status
+    changes, comments, sign-off, `PUT /settings/reporting` and
+    `PUT /settings/response-rules`. A billing matter never blocks safety
+    work, and the deadline check goes on, so what it raises can be dealt
+    with.
+  - **`POST /users/:id/invite`:** an invitation or a reset link, so that
+    staff can always get in to report. It changes nothing but the link, and
+    is audited.
+  - **Taking access away, and only that:**
+    - `PATCH /users/:id` with exactly `{ "status": "disabled" }`;
+    - `PUT /users/:id/roles` with a list among the grants the user holds
+      now (same role, same place);
+    - `PATCH /roles/:id` with `permissions` alone, among those the role has
+      now;
+    - `DELETE /roles/:id`.
+
+    The same request with anything more (another field, a role added, a
+    grant moved to another place, a permission added) is refused with 403
+    `subscription_suspended`. Every other check of these routes applies as
+    at any time.
+  - **What is not a change to the client's records:** signing out and
+    marking one's own notifications read.
+  - **The routes without sign-in** (public reporting and following up a
+    report with its code, comments included): an anonymous reporter cannot
+    be told of a billing matter.
+
+  Everyone is told `notice: "suspended"`. **Chosen:** a new write route
+  outside the incidents module is closed by default while suspended; it is
+  opened only by marking it `@OpenWhileSuspended()`, and one that takes
+  more than a reduction of access refuses the rest itself.
 - `cancelled`: like a client Trustline has suspended: nobody signs in, every
-  session ends at once (and stays ended if the subscription is made active
-  again), the public routes answer as for a client that does not exist, the
-  deadline check leaves it alone, and the portal cannot create its first
+  session and every open invitation or reset link ends with the change, the
+  public routes answer as for a client that does not exist, the deadline
+  check leaves it alone, and the portal cannot create its first
   administrator (409 `subscription_cancelled`). Nothing is deleted.
+  - **Made active again, nothing issued before comes back.** The time a
+    subscription last went to or from cancelled is kept
+    (`access_reset_at`), and a session or link issued before it is refused
+    whenever it is used. So none comes back, even one whose ending was never
+    written, or one written by a sign-in under way at the moment of
+    cancelling. Staff sign in again, and are sent new links.
 - **How it combines with the client's own status** (active or suspended by
   Trustline): the client's status is checked first. A suspended client is
   closed whatever its subscription says; an active client is as its

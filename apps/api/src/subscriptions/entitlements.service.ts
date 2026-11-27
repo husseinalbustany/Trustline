@@ -23,6 +23,11 @@ export type Entitlements = {
   startsOn: string;
   renewsOn: string | null;
   trialEndsOn: string | null;
+  /**
+   * When the subscription last went to or from cancelled: every session and
+   * one-time link issued before it is void. Null if it never did.
+   */
+  accessResetAt: Date | null;
   /** The plan's modules and the add-ons, as stored. */
   planModules: ModuleCode[];
   addOnModules: ModuleCode[];
@@ -80,6 +85,7 @@ export class EntitlementsService {
         startsOn: subscriptions.startsOn,
         renewsOn: subscriptions.renewsOn,
         trialEndsOn: subscriptions.trialEndsOn,
+        accessResetAt: subscriptions.accessResetAt,
         addOnModules: subscriptions.addOnModules,
         limitOverrides: subscriptions.limitOverrides,
         planId: plans.id,
@@ -99,6 +105,7 @@ export class EntitlementsService {
       startsOn: row.startsOn,
       renewsOn: row.renewsOn,
       trialEndsOn: row.trialEndsOn,
+      accessResetAt: row.accessResetAt,
       ...effectiveEntitlements(row, row),
     };
   }
@@ -147,6 +154,18 @@ export class EntitlementsService {
       throw new ConflictException({ code: 'limit_reached', limit, max });
     }
   }
+}
+
+/**
+ * Whether a session or one-time link issued at `issuedAt` was issued before
+ * the subscription last went to or from cancelled, and so is void.
+ */
+export function issuedBeforeReset(
+  entitlements: Pick<Entitlements, 'accessResetAt'> | null,
+  issuedAt: Date,
+) {
+  const reset = entitlements?.accessResetAt;
+  return !!reset && issuedAt <= reset;
 }
 
 /** Whether these entitlements open this module. */

@@ -38,8 +38,11 @@ const READS = new Set(['GET', 'HEAD', 'OPTIONS']);
  *   Nest's own words for that. A route whose controller declares no module
  *   is refused, so a new one cannot be served by forgetting.
  * - While the subscription is suspended, a route that writes is refused
- *   with 403 `subscription_suspended`, unless it is marked
- *   `@OpenWhileSuspended()`.
+ *   with 403 `subscription_suspended`, unless it is of the incidents module
+ *   (a billing matter never blocks safety work: reporting, handling and
+ *   closing incidents, and the settings of reporting, all stay open) or is
+ *   marked `@OpenWhileSuspended()`. A route marked so that takes more than
+ *   a reduction of access refuses the rest itself: see `whileSuspended()`.
  *
  * Both come after the session, so without one the answer is 401 as before.
  */
@@ -76,15 +79,40 @@ export class SessionGuard implements CanActivate {
     if (
       subscription.status === 'suspended' &&
       !READS.has(req.method) &&
+      !OPEN_MODULES_WHILE_SUSPENDED.has(module) &&
       !this.reflector.getAllAndOverride<boolean>(
         OPEN_WHILE_SUSPENDED_KEY,
         targets,
       )
     ) {
-      throw new ForbiddenException({ code: 'subscription_suspended' });
+      throw suspendedRefusal();
     }
     return true;
   }
+}
+
+/**
+ * The modules whose every route stays open while the subscription is
+ * suspended. Incidents: a billing matter never blocks safety work.
+ */
+const OPEN_MODULES_WHILE_SUSPENDED = new Set<ModuleKey>(['incidents']);
+
+const suspendedRefusal = () =>
+  new ForbiddenException({ code: 'subscription_suspended' });
+
+/**
+ * For a route marked `@OpenWhileSuspended()` because part of what it takes
+ * must go on working while the subscription is suspended (taking access
+ * away): refuses with 403 `subscription_suspended`, while suspended, unless
+ * `allowed()` says this request is such a part. Call it after the
+ * permission check and the validation, and before writing anything.
+ */
+export async function whileSuspended(
+  req: AuthedRequest,
+  allowed: () => boolean | Promise<boolean>,
+) {
+  if (req.auth.tenant.subscription.status !== 'suspended') return;
+  if (!(await allowed())) throw suspendedRefusal();
 }
 
 /**

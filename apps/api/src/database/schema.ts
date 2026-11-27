@@ -361,12 +361,15 @@ export const auditLog = pgTable(
     tenantIsolation(),
     // The admin portal adds an entry when it changes what a client may use,
     // in the same transaction as the change. It can neither read this log
-    // nor change it: it holds INSERT alone.
+    // nor change it: it holds INSERT alone, on the tenant, action, entity
+    // and changes only (migration 0035), so the id and the time are always
+    // the database's own. And only that entry, as nobody of the client's:
+    // it cannot write a backdated or forged entry of anything else.
     pgPolicy('audit_log_platform_insert', {
       as: 'permissive',
       for: 'insert',
       to: platformRole,
-      withCheck: sql`true`,
+      withCheck: sql`actor_id IS NULL AND ip_address IS NULL AND action = 'subscription_changed'`,
     }),
   ],
 );
@@ -972,6 +975,12 @@ export const subscriptions = pgTable(
       .default(sql`'{}'::jsonb`),
     // Trustline's own note. The application role cannot read it.
     note: text(),
+    // Every session and one-time link issued before this moment is void.
+    // Set, by the database's clock, whenever the subscription is cancelled
+    // and whenever it leaves cancelled, so that making it active again
+    // brings back none of what was issued before it was cancelled, nor
+    // anything issued by a request that was under way when it was.
+    accessResetAt: timestamp({ withTimezone: true }),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },

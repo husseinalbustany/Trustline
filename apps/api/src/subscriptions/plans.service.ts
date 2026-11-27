@@ -163,12 +163,8 @@ export class PlansService {
         },
       );
       if (!seen) continue;
-      await this.provisioning.audit(
+      await this.provisioning.auditSubscriptionChange(
         tx,
-        subscription.tenantId,
-        null,
-        'subscription_changed',
-        'subscription',
         subscription.tenantId,
         {
           ...seen,

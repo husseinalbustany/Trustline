@@ -32,9 +32,13 @@ import {
   requireEverywhere,
   requirePermission,
   SessionGuard,
+  whileSuspended,
   type AuthedRequest,
 } from './session.guard.js';
-import { ForModule } from '../subscriptions/module.decorator.js';
+import {
+  ForModule,
+  OpenWhileSuspended,
+} from '../subscriptions/module.decorator.js';
 
 const fields = {
   name: localizedText(100),
@@ -150,7 +154,13 @@ export class RolesController {
     }
   }
 
+  /**
+   * Open while the subscription is suspended for taking permissions away
+   * from a role, and only that: `{ permissions }` alone, among those the
+   * role has now.
+   */
   @Patch(':id')
+  @OpenWhileSuspended()
   update(
     @Param('id') id: string,
     @Body() body: unknown,
@@ -166,6 +176,14 @@ export class RolesController {
     const { tenant, user: actor } = req.auth;
     return this.tenantDb.withTenant(tenant.id, async (tx) => {
       const role = await this.editable(tx, id, actor.id);
+      await whileSuspended(req, () => {
+        const { permissions } = parsed.data;
+        return (
+          Object.keys(body as object).length === 1 &&
+          permissions !== undefined &&
+          permissions.every((p) => role.permissions.includes(p))
+        );
+      });
       const [updated] = await tx
         .update(roles)
         .set(parsed.data)
@@ -188,8 +206,10 @@ export class RolesController {
     });
   }
 
+  /** Open while the subscription is suspended: it only takes away. */
   @Delete(':id')
   @HttpCode(204)
+  @OpenWhileSuspended()
   async remove(@Param('id') id: string, @Req() req: AuthedRequest) {
     requireEverywhere(req, 'roles.manage');
     const { tenant, user: actor } = req.auth;
@@ -230,10 +250,13 @@ export class RolesController {
   ) {
     const parsed = z.uuid().safeParse(id);
     if (!parsed.success) throw new NotFoundException();
+    // Locked, so two changes at once are made one after the other, each
+    // seeing what the other made.
     const [role] = await tx
       .select()
       .from(roles)
-      .where(eq(roles.id, parsed.data));
+      .where(eq(roles.id, parsed.data))
+      .for('no key update');
     if (!role) throw new NotFoundException();
     if (role.isSystem) throw new ConflictException({ code: 'system_role' });
     const [own] = await tx

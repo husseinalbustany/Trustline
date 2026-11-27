@@ -29,10 +29,7 @@ import { shiftDay, startOfDay } from '../i18n/time-zones.js';
 import { IncidentsService } from './incidents.service.js';
 import { MOVE_KINDS } from './status.js';
 import { parseReport, reportSchema } from './report-input.js';
-import {
-  ForModule,
-  OpenWhileSuspended,
-} from '../subscriptions/module.decorator.js';
+import { ForModule } from '../subscriptions/module.decorator.js';
 
 const flag = z.enum(['true', 'false']).transform((v) => v === 'true');
 
@@ -124,15 +121,18 @@ export class IncidentCategoriesController {
   }
 }
 
+/**
+ * Every route here stays open while the subscription is suspended, as all
+ * of the incidents module does (SessionGuard): reporting, triage, status
+ * changes, comments and sign-off never wait on a billing matter.
+ */
 @Controller('incidents')
 @UseGuards(SessionGuard)
 @ForModule('incidents')
 export class IncidentsController {
   constructor(private readonly incidents: IncidentsService) {}
 
-  /** Open while the subscription is suspended: reporting never closes. */
   @Post()
-  @OpenWhileSuspended()
   report(@Body() body: unknown, @Req() req: AuthedRequest) {
     requirePermission(req, 'incidents.report');
     return this.incidents.report(req.auth, parseReport(reportSchema, body));

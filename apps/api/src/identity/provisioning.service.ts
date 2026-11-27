@@ -8,6 +8,7 @@ import {
   incidentResponseRules,
   roleAssignments,
   roles,
+  sessions,
   users,
   userTokens,
 } from '../database/schema.js';
@@ -106,6 +107,22 @@ export class ProvisioningService {
       .update(userTokens)
       .set({ usedAt: new Date() })
       .where(and(eq(userTokens.userId, userId), isNull(userTokens.usedAt)));
+  }
+
+  /**
+   * Ends every session and one-time link of the client the transaction is
+   * scoped to: for a subscription being cancelled.
+   */
+  async endAllAccess(tx: Transaction) {
+    const now = new Date();
+    await tx
+      .update(sessions)
+      .set({ revokedAt: now })
+      .where(isNull(sessions.revokedAt));
+    await tx
+      .update(userTokens)
+      .set({ usedAt: now })
+      .where(isNull(userTokens.usedAt));
   }
 
   /** Creates the built-in roles, or brings them in line with the code. */
@@ -242,5 +259,24 @@ export class ProvisioningService {
       changes,
       ipAddress,
     });
+  }
+
+  /**
+   * The one entry the admin portal writes in a client's own audit log: what
+   * it changed of the client's subscription (`subscription_changed`), by
+   * nobody of the client's. Only for a transaction of the platform role,
+   * which may set no other column (migration 0035): the id, the time, the
+   * actor and the address are the database's defaults. Not through
+   * `insert()`, which names every column of the table.
+   */
+  async auditSubscriptionChange(
+    tx: Transaction,
+    tenantId: string,
+    changes: Record<string, unknown>,
+  ) {
+    await tx.execute(sql`
+      insert into ${auditLog} (tenant_id, action, entity_type, entity_id, changes)
+      values (${tenantId}, 'subscription_changed', 'subscription', ${tenantId}, ${JSON.stringify(changes)}::jsonb)
+    `);
   }
 }

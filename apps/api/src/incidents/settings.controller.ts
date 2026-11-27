@@ -48,7 +48,9 @@ const responseRulesSchema = z.strictObject({
 /**
  * What a hospital decides about its own incident reporting. Each setting is
  * for the hospital as a whole, so it needs `settings.manage` for the whole
- * organization: holding it for one department is not enough.
+ * organization: holding it for one department is not enough. They stay
+ * open while the subscription is suspended, as all of the incidents module
+ * does (SessionGuard).
  */
 @Controller('settings')
 @UseGuards(SessionGuard)

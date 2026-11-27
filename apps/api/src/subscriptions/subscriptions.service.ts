@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import type { Database, Transaction } from '../database/client.js';
 import { PLATFORM_DATABASE } from '../database/database.constants.js';
 import { plans, subscriptions } from '../database/schema.js';
@@ -187,9 +187,19 @@ export class SubscriptionsService {
     if (Object.keys(changes).length === 0)
       return { before, after: before, changes };
 
+    // Going to or from cancelled voids every session and one-time link
+    // issued until now (see `accessResetAt`): by the database's clock, as a
+    // session's own time is, and taken under the row's lock, after any
+    // change to cancelled before this one was committed.
+    const resets =
+      (current.status === 'cancelled') !== (next.status === 'cancelled');
     await tx
       .update(subscriptions)
-      .set({ ...input, updatedAt: new Date() })
+      .set({
+        ...input,
+        ...(resets && { accessResetAt: sql`clock_timestamp()` }),
+        updatedAt: new Date(),
+      })
       .where(eq(subscriptions.tenantId, tenantId));
     const after = await this.read(tenantId, tx);
 
@@ -202,19 +212,11 @@ export class SubscriptionsService {
       { planCode: after.plan.code, status: after.status, ...after.effective },
     );
     if (seen) {
-      await this.provisioning.audit(
-        tx,
-        tenantId,
-        null,
-        'subscription_changed',
-        'subscription',
-        tenantId,
-        {
-          ...seen,
-          platformAdminId: admin.id,
-          platformAdminEmail: admin.email,
-        },
-      );
+      await this.provisioning.auditSubscriptionChange(tx, tenantId, {
+        ...seen,
+        platformAdminId: admin.id,
+        platformAdminEmail: admin.email,
+      });
     }
     return { before, after, changes };
   }
