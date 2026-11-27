@@ -232,12 +232,19 @@ export function IncidentTimeline(props: ViewProps) {
           [],
         ];
       case "reopened": {
-        // Reopening starts a new closing deadline, told to those handling
-        // the incident.
+        // Reopening starts a new closing deadline (and, for a report set
+        // aside before triage, a new triage deadline), told to those
+        // handling the incident.
+        const triageDue = momentFrom(event.details?.triageDueAt?.to);
         const due = momentFrom(event.details?.closeDueAt?.to);
         return [
           e.reopened,
-          due ? [{ label: c.closeDueAt, to: dates.format(due) }] : [],
+          [
+            ...(triageDue
+              ? [{ label: c.triageDueAt, to: dates.format(triageDue) }]
+              : []),
+            ...(due ? [{ label: c.closeDueAt, to: dates.format(due) }] : []),
+          ],
         ];
       }
       case "reported":

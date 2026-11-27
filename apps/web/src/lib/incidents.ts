@@ -182,6 +182,7 @@ export type IncidentEvent = {
         kind: "reopened";
         details: {
           note: string | null;
+          triageDueAt?: { from: string | null; to: string | null };
           closeDueAt?: { from: string | null; to: string | null };
         } | null;
       }
