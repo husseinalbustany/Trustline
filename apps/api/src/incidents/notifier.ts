@@ -8,9 +8,37 @@ import {
 } from '../database/schema.js';
 import { AccessService } from '../identity/access.service.js';
 import type { Permission } from '../identity/permissions.js';
+import type { ModuleCode, ModuleKey } from '../subscriptions/modules.js';
 import { isSerious, type HarmLevel } from './status.js';
 
 export type NotificationKind = (typeof notifications.kind.enumValues)[number];
+
+/**
+ * The module each kind of notification belongs to. A client without the
+ * module is never sent one (its routes and checks do not run), and is not
+ * shown the ones it was sent before: they are back when the module is. A
+ * new kind must say here where it belongs.
+ */
+export const NOTIFICATION_MODULE: Record<NotificationKind, ModuleKey> = {
+  incident_reported: 'incidents',
+  incident_assigned: 'incidents',
+  incident_handed_over: 'incidents',
+  comment_added: 'incidents',
+  status_changed: 'incidents',
+  sign_off_requested: 'incidents',
+  sign_off_decided: 'incidents',
+  due_soon: 'incidents',
+  overdue: 'incidents',
+  sentinel_flagged: 'incidents',
+  public_form_paused: 'incidents',
+};
+
+/** The kinds a client with these modules is shown. */
+export const kindsInUse = (modules: readonly ModuleCode[]) =>
+  (Object.keys(NOTIFICATION_MODULE) as NotificationKind[]).filter((kind) => {
+    const module = NOTIFICATION_MODULE[kind];
+    return module === 'core' || modules.includes(module);
+  });
 
 /**
  * How many values one statement is sent with at most. The driver numbers a

@@ -52,10 +52,14 @@ sign-in, separate from the hospitals' users.
 - **Sign-in** uses a session cookie that scripts cannot read. Five wrong
   passwords lock the account for 15 minutes. Sessions last 8 hours.
 - **Database access** goes through a third role, `trustline_platform`
-  (`PLATFORM_DATABASE_URL`). It can manage client records but has no access to
-  hospital data, and it can add to the audit log but not change it.
+  (`PLATFORM_DATABASE_URL`). It can manage client records, plans and
+  subscriptions but cannot read hospital data, and it can add to the audit
+  logs (its own, and a client's when it changes what the client may use) but
+  not change them.
 - **Every change** is recorded in `platform_audit_log` and shown on the
   client's page.
+- **Plans and subscriptions** are managed here too: see "Modules, plans and
+  subscriptions" below.
 
 Not built yet: a second sign-in factor for admins.
 
@@ -128,7 +132,8 @@ factor, and self-service "forgot password" by email.
   `settings.manage` for the whole organization switches it on. While it is
   on, anyone with the hospital's link can report, always anonymously. The two
   report routes are under `/api/v1/public` and answer 404 for a hospital that
-  does not exist, is suspended, or has it off. A public report is answered
+  does not exist, is suspended, has it off, or whose subscription is
+  cancelled or does not include incidents. A public report is answered
   with a follow-up code and nothing else: not the incident's number, which
   would tell the sender how many incidents the hospital has had.
 - **Follow-up code:** every anonymous report, made signed in or not, is
@@ -205,6 +210,57 @@ The rules are in `docs/specs/incident-reporting.md` and
 
 Not built yet: sending notifications by email, working-hours calendars for
 deadlines, attachments, investigations and actions.
+
+## Modules, plans and subscriptions
+
+The product is sold in modules: `incidents`, `investigations`, `actions`,
+`policies`, `risks`, `training` and `ai_assistant`, besides core (sign-in,
+users, roles, structure, notifications, audit, settings), which every client
+has. Only incidents is built. The list is a constant in
+`apps/api/src/subscriptions/modules.ts`, with what each needs
+(investigations needs incidents; the AI assistant needs another module).
+
+- **Plans** are data: Trustline staff create and edit them in the admin
+  portal (`/api/v1/platform/plans`): name and description in every
+  language, modules, limits (users, sites, storage, AI credits a month; none
+  meaning no limit), extras, prices, order. A plan is retired, never deleted.
+  The seed adds four illustrative ones (Documents, Learning, Safety,
+  Complete).
+- **A subscription** is one per client: its plan, status, dates, add-on
+  modules, limit overrides and a note for Trustline only. Staff change it on
+  the client's page (`/api/v1/platform/tenants/:id/subscription`); the
+  change is audited in the platform's log and, for what the client sees
+  (plan, status, modules, limits), in the client's own. Every client that
+  existed before plans is on `everything` (every module, no limit), so
+  nothing changed for anyone.
+- **A module that is off** answers as if it did not exist: its routes are
+  404 like an unknown address, its public routes 404 like an unknown
+  hospital, its notifications are neither sent nor shown, its background
+  checks skip the client, and `/auth/me` lists neither the module nor its
+  permissions. Nothing is deleted, roles keep their permissions, and
+  switching it back on restores everything. Every controller declares its
+  module with `@ForModule()`; the session guard enforces it, and
+  `modules-and-subscriptions.e2e-spec.ts` fails for a controller that does
+  not declare one.
+- **Status:** `trial` and `active` work normally; `past_due` too, with a
+  notice for the client's administrators; `suspended` is read-only, except
+  that reporting an incident (signed in or not) stays open (403
+  `subscription_suspended` for any other write); `cancelled` is like a
+  client Trustline has suspended: nobody signs in. A client Trustline has
+  suspended stays closed whatever its subscription says.
+- **Limits** on named users (invited or active; a disabled account frees its
+  place) and sites (facilities switched on) are checked in the transaction
+  that adds one, so two requests cannot both take the last place: 409
+  `limit_reached`. Nobody already there is affected. Storage and AI credits
+  are stored, not yet enforced.
+- **The client sees** its modules and subscription status in `/auth/me`,
+  and its plan, modules, limits with usage, status and dates under
+  `GET /api/v1/settings/subscription`. Never a price.
+
+The rules and what was decided are in `docs/specs/modules-and-subscriptions.md`.
+
+Not built yet: the portal's and the client's screens for this, AI metering,
+and self-service or online payment.
 
 ## API
 
@@ -324,7 +380,9 @@ portal, create an admin as described above.
 
 `pnpm db:seed` creates three fictional hospitals, each with a facility,
 departments and units: `demo-jci` (JCI, English and Arabic), `demo-cbahi`
-(CBAHI, Arabic first) and `demo-fr` (French first, with Arabic and English).
+(CBAHI, Arabic first) and `demo-fr` (French first, with Arabic and English),
+and four illustrative plans. A demo hospital without a subscription is put
+on the Complete plan.
 
 ## Checks
 
@@ -336,8 +394,8 @@ pnpm build
 ```
 
 `pnpm test` needs the database running. It migrates and seeds it first. The
-API's tests create hospitals of their own under a prefix of the run and
-remove them afterwards; they may share the database with other hospitals,
+API's tests create hospitals (and plans) of their own under a prefix of the
+run and remove them afterwards; they may share the database with other hospitals,
 and act on none they did not make, apart from the demo hospitals of the
 seed, which the database-level specs use (rows they add there are marked
 `ZZ` and removed).
@@ -383,6 +441,10 @@ work in any one or several of them.
   built-in roles in `apps/api/src/identity/permissions.ts`. No table changes.
 
 ## Settings that vary by tenant
+
+What a client may use (modules, limits) is its subscription, not a setting:
+see "Modules, plans and subscriptions". The old `plan` column of a client is
+read by nothing and goes once the admin portal stops sending it.
 
 - `accreditation_standard`: `JCI` or `CBAHI`.
 - `locales`: the languages the client works in, in its own order.

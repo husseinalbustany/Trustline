@@ -1,6 +1,7 @@
 import { and, eq, inArray, like, sql } from 'drizzle-orm';
 import { requireEnv } from '../env.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
+import { EntitlementsService } from '../subscriptions/entitlements.service.js';
 import { DEFAULT_INCIDENT_CATEGORIES } from '../incidents/categories.js';
 import { nextReference } from '../incidents/reference.js';
 import { createDatabase, type Transaction } from './client.js';
@@ -117,7 +118,7 @@ describe('incident tables', () => {
   });
 
   it('adds missing default categories without changing existing ones', async () => {
-    const provisioning = new ProvisioningService();
+    const provisioning = new ProvisioningService(new EntitlementsService());
     // Rolled back at the end, so the demo tenant keeps its own rows.
     const rollback = new Error('rollback');
     let result: { count: number; renamed: unknown } | undefined;

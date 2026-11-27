@@ -225,6 +225,20 @@
       "when": 1795784125929,
       "tag": "0031_reopened_reports_triage_again",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1795786105315,
+      "tag": "0032_modules_and_subscriptions",
+      "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1795786110291,
+      "tag": "0033_subscriptions_grants_and_existing_clients",
+      "breakpoints": true
     }
   ]
 }

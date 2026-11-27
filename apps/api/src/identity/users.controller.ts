@@ -37,6 +37,7 @@ import {
   SessionGuard,
   type AuthedRequest,
 } from './session.guard.js';
+import { ForModule } from '../subscriptions/module.decorator.js';
 
 const profile = {
   name: localizedText(200),
@@ -119,6 +120,7 @@ const PLAIN_FIELDS = [
 
 @Controller('users')
 @UseGuards(SessionGuard)
+@ForModule('core')
 export class UsersController {
   constructor(
     private readonly tenantDb: TenantDb,
@@ -383,6 +385,12 @@ export class UsersController {
         if (changed.length === 0) {
           const [same] = await this.withRoles(tx, userId);
           return same;
+        }
+
+        // A disabled account holds no place under the `users` limit, so
+        // enabling it again takes one.
+        if (existing.status === 'disabled' && nextStatus) {
+          await this.provisioning.makeRoomForUser(tx, tenant.id);
         }
 
         // Someone may stay in a unit that was switched off since, but

@@ -8,11 +8,14 @@ import {
   DEFAULT_RESPONSE_RULES,
   HARM_LEVELS,
 } from '../incidents/response-rules.js';
+import { MODULES, type Extras, type Limits } from '../subscriptions/modules.js';
 import {
   incidentCategories,
   incidentResponseRules,
   orgUnits,
+  plans,
   roles,
+  subscriptions,
   tenants,
 } from './schema.js';
 
@@ -127,10 +130,127 @@ const demoTenants: {
   },
 ];
 
-/** Inserts the demo tenants as the owner role. Safe to run repeatedly. */
+const NO_EXTRAS: Extras = {
+  sso: false,
+  publicReporting: false,
+  clinicalAiSuggestions: false,
+};
+
+/** What every illustrative plan says of itself, after what it holds. */
+const ILLUSTRATIVE = {
+  en: 'Illustrative: the business sets the real plans, contents and limits.',
+  ar: 'للتوضيح فقط: تحدد الإدارة الخطط الفعلية ومحتواها وحدودها.',
+  fr: 'À titre d’exemple : les vraies offres, leur contenu et leurs limites sont fixés par l’entreprise.',
+};
+
+const illustrated = (en: string, ar: string, fr: string) => ({
+  en: `${en} ${ILLUSTRATIVE.en}`,
+  ar: `${ar} ${ILLUSTRATIVE.ar}`,
+  fr: `${fr} ${ILLUSTRATIVE.fr}`,
+});
+
+/**
+ * The four plans of the spec's example (docs/specs/modules-and-subscriptions.md),
+ * to show the shape. Not offers: names, contents and limits are for the
+ * business to set, and none has a price.
+ */
+const demoPlans: {
+  code: string;
+  name: Record<Locale, string>;
+  description: Record<Locale, string>;
+  modules: string[];
+  limits: Limits;
+  extras: Extras;
+  position: number;
+}[] = [
+  {
+    code: 'documents',
+    name: { en: 'Documents', ar: 'الوثائق', fr: 'Documents' },
+    description: illustrated(
+      'Policies and procedures.',
+      'السياسات والإجراءات.',
+      'Politiques et procédures.',
+    ),
+    modules: ['policies'],
+    limits: { users: 100, sites: 1, storageMb: 5_000, aiCreditsPerMonth: 0 },
+    extras: NO_EXTRAS,
+    position: 10,
+  },
+  {
+    code: 'learning',
+    name: { en: 'Learning', ar: 'التعلّم', fr: 'Formation' },
+    description: illustrated(
+      'Training and awareness.',
+      'التدريب والتوعية.',
+      'Formation et sensibilisation.',
+    ),
+    modules: ['training'],
+    limits: { users: 200, sites: 1, storageMb: 10_000, aiCreditsPerMonth: 0 },
+    extras: NO_EXTRAS,
+    position: 20,
+  },
+  {
+    code: 'safety',
+    name: { en: 'Safety', ar: 'السلامة', fr: 'Sécurité' },
+    description: illustrated(
+      'Incidents and the actions that follow them.',
+      'الحوادث والإجراءات التي تليها.',
+      'Les incidents et les actions qui en découlent.',
+    ),
+    modules: ['incidents', 'actions'],
+    limits: { users: 250, sites: 3, storageMb: 10_000, aiCreditsPerMonth: 0 },
+    extras: { ...NO_EXTRAS, publicReporting: true },
+    position: 30,
+  },
+  {
+    code: 'complete',
+    name: { en: 'Complete', ar: 'الشاملة', fr: 'Complète' },
+    description: illustrated(
+      'Every module, with an AI allowance.',
+      'كل الوحدات مع رصيد للذكاء الاصطناعي.',
+      'Tous les modules, avec un crédit d’IA.',
+    ),
+    modules: [...MODULES],
+    limits: {
+      users: null,
+      sites: null,
+      storageMb: 50_000,
+      aiCreditsPerMonth: 500,
+    },
+    extras: { ...NO_EXTRAS, sso: true, publicReporting: true },
+    position: 40,
+  },
+];
+
+/**
+ * Inserts the demo tenants and the illustrative plans as the owner role.
+ * Safe to run repeatedly.
+ */
 export async function seed() {
   const { pool, db } = createDatabase(requireEnv('DATABASE_URL'));
   try {
+    for (const plan of demoPlans) {
+      // Re-seeding brings them in line with the code: they are examples.
+      await db
+        .insert(plans)
+        .values(plan)
+        .onConflictDoUpdate({
+          target: plans.code,
+          set: {
+            name: sql`excluded.name`,
+            description: sql`excluded.description`,
+            modules: sql`excluded.modules`,
+            limits: sql`excluded.limits`,
+            extras: sql`excluded.extras`,
+            position: sql`excluded.position`,
+          },
+        });
+    }
+    const [complete] = await db
+      .select({ id: plans.id })
+      .from(plans)
+      .where(eq(plans.code, 'complete'));
+
     for (const { structure, ...tenant } of demoTenants) {
       await db.transaction(async (tx) => {
         await tx
@@ -144,6 +264,18 @@ export async function seed() {
           .select({ id: tenants.id })
           .from(tenants)
           .where(eq(tenants.slug, tenant.slug));
+
+        // On the plan with every module. A demo hospital that already has a
+        // subscription keeps it, whatever it was changed to.
+        await tx
+          .insert(subscriptions)
+          .values({
+            tenantId,
+            planId: complete.id,
+            status: 'active',
+            startsOn: new Date().toISOString().slice(0, 10),
+          })
+          .onConflictDoNothing({ target: subscriptions.tenantId });
 
         const insertUnit = async (node: UnitSeed, parentId: string | null) => {
           const { children = [], name, ...values } = node;
@@ -219,5 +351,5 @@ export async function seed() {
 
 if (import.meta.main) {
   await seed();
-  console.log('Demo tenants seeded.');
+  console.log('Demo tenants and illustrative plans seeded.');
 }

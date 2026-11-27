@@ -24,6 +24,7 @@ import {
   type Localized,
 } from '../i18n/locales.js';
 import { OrgUnitsService } from './org-units.service.js';
+import { ForModule } from '../subscriptions/module.decorator.js';
 
 const listSchema = z.strictObject({
   includeInactive: z
@@ -54,6 +55,7 @@ const updateSchema = z
 
 @Controller('org-units')
 @UseGuards(SessionGuard)
+@ForModule('core')
 export class OrgUnitsController {
   constructor(private readonly orgUnits: OrgUnitsService) {}
 

@@ -1,8 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { and, count, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { incidents, notifications } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
 import type { AuthContext } from '../identity/auth.service.js';
+import { kindsInUse } from './notifier.js';
 import { visibleTo } from './visibility.js';
 
 /**
@@ -14,10 +15,16 @@ import { visibleTo } from './visibility.js';
 export class NotificationsService {
   constructor(private readonly tenantDb: TenantDb) {}
 
-  /** Whose they are: the caller's, and with `unread`, those not yet read. */
+  /**
+   * Whose they are: the caller's, and with `unread`, those not yet read. Of
+   * the kinds of the modules the client has: the others are kept, and are
+   * neither shown, counted nor marked while the module is off.
+   */
   private mine(auth: AuthContext, unread = false) {
+    const kinds = kindsInUse(auth.tenant.modules);
     return and(
       eq(notifications.userId, auth.user.id),
+      kinds.length > 0 ? inArray(notifications.kind, kinds) : sql`false`,
       unread ? isNull(notifications.readAt) : undefined,
     );
   }

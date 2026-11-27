@@ -16,8 +16,17 @@ import {
 import { TenantDb } from '../database/tenant-db.service.js';
 import type { Localized } from '../i18n/locales.js';
 import { hashPassword, verifyPassword } from '../security/passwords.js';
+import {
+  allows,
+  EntitlementsService,
+} from '../subscriptions/entitlements.service.js';
+import type {
+  ModuleCode,
+  ModuleKey,
+  SubscriptionStatus,
+} from '../subscriptions/modules.js';
 import { hashToken, ProvisioningService } from './provisioning.service.js';
-import { buildScope, type Scope } from './scope.js';
+import { buildScope, covers, type Scope } from './scope.js';
 
 export const MAX_FAILED_ATTEMPTS = 5;
 const LOCK_MINUTES = 15;
@@ -40,6 +49,20 @@ export type AuthContext = {
      * times in it, so everyone in a hospital reads the same day.
      */
     timeZone: string;
+    /**
+     * The modules the client's subscription has on now. Core is not listed:
+     * every client has it.
+     */
+    modules: ModuleCode[];
+    /**
+     * The state of the subscription, and what this user is to be told of
+     * it: `past_due` to those who manage the settings of the whole
+     * organization, `suspended` to everyone. Nothing commercial.
+     */
+    subscription: {
+      status: Exclude<SubscriptionStatus, 'cancelled'>;
+      notice: null | 'past_due' | 'suspended';
+    };
   };
   user: {
     id: string;
@@ -65,6 +88,7 @@ export class AuthService {
     @Inject(DATABASE) private readonly db: Database,
     private readonly tenantDb: TenantDb,
     private readonly provisioning: ProvisioningService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   private async burnTime(password: string) {
@@ -74,17 +98,25 @@ export class AuthService {
 
   /**
    * A client by its identifier, for a request that has no session yet: null
-   * unless it exists and is active, and, when the request is about a
-   * password, allows password sign-in. Sign-in and the public reporting
-   * routes both find the hospital this way, and only this way.
+   * unless it exists and is active, its subscription is not cancelled and
+   * has `module`, and, when the request is about a password, it allows
+   * password sign-in. Sign-in and the public reporting routes both find the
+   * hospital this way, and only this way, each naming the module it is for
+   * (`'core'` for signing in), so a client without the module is answered
+   * like one that does not exist.
    */
-  async findTenant(slug: string, forPassword: boolean) {
+  async findTenant(slug: string, forPassword: boolean, module: ModuleKey) {
     const [tenant] = await this.db
       .select()
       .from(tenants)
       .where(eq(tenants.slug, slug.trim().toLowerCase()));
     if (!tenant || tenant.status !== 'active') return null;
     if (forPassword && tenant.signInMethod === 'sso') return null;
+    const entitlements = await this.tenantDb.withTenant(tenant.id, (tx) =>
+      this.entitlements.of(tx, tenant.id),
+    );
+    if (entitlements?.status === 'cancelled') return null;
+    if (!allows(entitlements, module)) return null;
     return tenant;
   }
 
@@ -118,7 +150,7 @@ export class AuthService {
     client: 'web' | 'mobile';
     ip: string | null;
   }): Promise<string | null> {
-    const tenant = await this.findTenant(input.org, true);
+    const tenant = await this.findTenant(input.org, true, 'core');
     if (!tenant) {
       await this.burnTime(input.password);
       return null;
@@ -230,8 +262,14 @@ export class AuthService {
           ),
         );
       if (!row || row.user.status !== 'active') return null;
+      // A cancelled subscription ends access as a suspended client does.
+      const entitlements = await this.entitlements.of(tx, tenant.id);
+      if (entitlements?.status === 'cancelled') return null;
+      const status = entitlements?.status ?? 'active';
 
       const { user } = row;
+      const access = await this.accessOf(tx, user.id);
+      const administers = covers(access, 'settings.manage', null);
       return {
         token,
         tenant: {
@@ -243,6 +281,17 @@ export class AuthService {
           accreditationStandard: tenant.accreditationStandard,
           publicReporting: tenant.publicReporting,
           timeZone: tenant.timeZone,
+          // No subscription (there should be none without): core only.
+          modules: entitlements?.modules ?? [],
+          subscription: {
+            status,
+            notice:
+              status === 'suspended'
+                ? 'suspended'
+                : status === 'past_due' && administers
+                  ? 'past_due'
+                  : null,
+          },
         },
         user: {
           id: user.id,
@@ -250,7 +299,7 @@ export class AuthService {
           email: user.email,
           orgUnitId: user.orgUnitId,
         },
-        ...(await this.accessOf(tx, user.id)),
+        ...access,
       };
     });
   }
@@ -289,7 +338,7 @@ export class AuthService {
 
   /** Who a set-password link is for, or null if it cannot be used. */
   async checkInvite(org: string, token: string) {
-    const tenant = await this.findTenant(org, true);
+    const tenant = await this.findTenant(org, true, 'core');
     if (!tenant) return null;
     return this.tenantDb.withTenant(tenant.id, async (tx) => {
       const row = await this.findInvite(tx, token);
@@ -305,7 +354,7 @@ export class AuthService {
 
   /** Sets the password from a one-time link. False if the link is not valid. */
   async acceptInvite(org: string, token: string, password: string) {
-    const tenant = await this.findTenant(org, true);
+    const tenant = await this.findTenant(org, true, 'core');
     // Check the link before the slow hash, so a bad one costs nothing, and
     // take the same time whether or not the organization exists.
     const usable =

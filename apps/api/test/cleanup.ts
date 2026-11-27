@@ -9,12 +9,14 @@ import {
   incidents,
   notifications,
   orgUnits,
+  plans,
   platformAdmins,
   platformAuditLog,
   referenceCounters,
   roleAssignments,
   roles,
   sessions,
+  subscriptions,
   tenants,
   users,
   userTokens,
@@ -32,6 +34,7 @@ const MIN_PREFIX = 8;
  *
  * - clients whose identifier starts with `slugPrefix`, letter for letter
  *   (never a pattern: an `_` or `%` in it stands for itself);
+ * - plans whose code starts with it, the same way;
  * - the one platform admin with exactly this email.
  *
  * A prefix too short to be a run's own is refused: an empty one would name
@@ -62,6 +65,7 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
     // Children before what they point to: notifications, the timeline and
     // comments before incidents, incidents before categories, users and org units.
     for (const table of [
+      subscriptions,
       notifications,
       incidentResponseRules,
       incidentEvents,
@@ -80,6 +84,9 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
       await db.delete(table).where(inArray(table.tenantId, ids));
     }
     await db.delete(tenants).where(ours);
+    await db
+      .delete(plans)
+      .where(sql`starts_with(${plans.code}, ${slugPrefix})`);
     await db.delete(platformAdmins).where(eq(platformAdmins.email, adminEmail));
   } finally {
     await pool.end();

@@ -1,8 +1,18 @@
-# Modules, subscription plans and AI limits: preparation
+# Modules, subscription plans and AI limits
 
-Status: preparation only. Nothing here is built. It says how Trustline
-becomes a product a client can buy in parts, on a plan, with a limit on AI
-use, and what has to be decided before building.
+Status: steps 1 to 3 of "Order of work" are built in the database and the
+API: module switches with one entitlement check, plans and per-client
+subscriptions managed by Trustline staff, and the limits on users and sites.
+The admin portal's and the client's screens for them are not built yet.
+Steps 4 (AI metering) and 5 (self-service and payment) are not started. The
+"Decisions needed" at the end are still open: everything they decide is data
+(plans, their modules, limits, extras and prices) or a status set by
+Trustline staff, so none of them needs code to change. What was decided while
+building, where this document was silent, is in "Built: steps 1 to 3".
+
+It says how Trustline becomes a product a client can buy in parts, on a
+plan, with a limit on AI use, and what has to be decided before building the
+rest.
 
 Trustline's clients are any organization, not only hospitals.
 
@@ -13,13 +23,13 @@ Trustline's clients are any organization, not only hospitals.
 2. **Subscriptions with several plans.**
 3. **A limit on how much AI each client may use.**
 
-## What exists today
+## What existed before
 
-- Each client has a `plan` (starter, professional, enterprise), set in the
-  admin portal. Nothing reads it: every client gets everything that is built.
-- The data design has a `tenant_modules` table (which modules a client has
-  switched on). It is not built.
-- No billing, no usage metering, no AI.
+- Each client had a `plan` (starter, professional, enterprise), set in the
+  admin portal. Nothing read it: every client got everything that was built.
+  It is now replaced by the subscription (see "Built: steps 1 to 3"); the
+  column stays until the portal's screens stop showing and sending it.
+- No billing, no usage metering, no AI. Still true.
 
 ## The modules
 
@@ -183,6 +193,10 @@ and every change to a subscription is audited with who made it.
 
 ## Data to add (outline, not a schema)
 
+What was built is in "Built: steps 1 to 3": `plans` and `subscriptions`,
+with add-ons and overrides on the subscription and their history in the
+audit logs. The rest of this outline is for steps 4 and 5.
+
 Platform tables (Trustline's own, not tenant data):
 
 - `plans`: name per language, modules, limits, AI allowance, extras, term,
@@ -217,11 +231,165 @@ Tenant tables (under row-level security like everything else):
   built today, so nothing changes for them on the day this is deployed.
 - The existing `plan` column on clients is replaced by the subscription.
 
+## Built: steps 1 to 3
+
+What the API does now, and what was chosen where the sections above were
+silent. Each choice is marked **Chosen**.
+
+### Modules and the entitlement check
+
+- The modules are a constant in the code (`apps/api/src/subscriptions/modules.ts`):
+  `incidents`, `investigations`, `actions`, `policies`, `risks`, `training`,
+  `ai_assistant`. Core is not on the list: every client has it. Only
+  `incidents` is built; the others exist so that plans and subscriptions can
+  name them.
+- What each needs: `investigations` needs `incidents`; `ai_assistant` needs
+  at least one other module. **Chosen:** "the module it assists" is read as
+  "any other module", since the assistant serves several. A subscription
+  whose plan and add-ons break this is refused (400
+  `module_dependency_missing`, with `module` and `requiresAnyOf`); so is a
+  plan, and an edit of a plan that would leave a client's add-on without
+  what it needs (the same code, with the client's `tenantId`).
+- One service, `EntitlementsService`, answers "may this client use module
+  X?" and "what is this client's limit for Y?" from the subscription, read
+  afresh on every request (never cached), so a switch takes effect at once
+  in every API process.
+- **Where the check sits.** Every controller declares its module with
+  `@ForModule(...)` (`'core'` for what every client has). The session guard
+  reads it on every signed-in route: a route of a module the client does not
+  have answers exactly as a route that does not exist (404, Nest's own
+  `Cannot GET /...` body), after the session (without one: 401, as before,
+  since whose client it is cannot be known). A signed-in route whose
+  controller declares nothing is refused (500), and a test fails for it. The
+  routes without sign-in find the client through `AuthService.findTenant`,
+  which must be told which module it is for: a client without it is
+  answered like one that does not exist, with the same 404 on the same
+  50 ms step. `modules-and-subscriptions.e2e-spec.ts` walks every route of
+  every incidents controller, so a new one is checked without being named.
+- **Timing.** The answer has the shape of an unknown route; a signed-in one
+  also takes the time of reading the session, which an unknown route does
+  not. It tells the caller nothing they are not told by `/auth/me`.
+- **Notifications are core**, not incidents: every module will notify. Each
+  kind of notification belongs to a module; a client without the module is
+  sent none (its routes and its deadline check do not run) and is not shown,
+  counted or able to mark the ones it had. They are back with the module.
+- **Permissions stay on roles.** `/auth/me` lists only the permissions of
+  modules the client has; the roles keep the others, and nothing about them
+  changes. Each permission's module is in `identity/permissions.ts`.
+  `reports.view` is core: reports draw on whatever is on.
+- Switching a module off deletes nothing. Switching it back restores
+  everything, including deadline notifications that fell due meanwhile,
+  which are announced once.
+
+### Plans
+
+- Trustline's own data (`plans`): code, name and description in every
+  language the product has (**Chosen:** all of them, since any client may be
+  shown a plan; refused otherwise with `language_mismatch`), modules, limits
+  (`users`, `sites`, `storageMb`, `aiCreditsPerMonth`; null is no limit),
+  extras (`sso`, `publicReporting`, `clinicalAiSuggestions`), prices, active
+  or retired, display order.
+- **Chosen: prices** are stored as a list of `{ currency, amountMinor, term,
+  basis }` (ISO currency, amount in the smallest unit, monthly or yearly,
+  flat or per user or per site), so decisions 3 and 8 are data. Nothing
+  charges them; clients and the application role cannot read them.
+- **Chosen: extras are stored, not enforced.** Single sign-on and AI are not
+  built; whether reporting without sign-in is a paid extra is decision 3, so
+  it stays the hospital's own switch for now.
+- A plan is retired, never deleted: there is no route that deletes one, and
+  the platform role cannot. A retired plan keeps its clients and can be
+  given to no other.
+- The seed adds four illustrative plans (Documents, Learning, Safety,
+  Complete), marked as such in their description. The migration adds
+  `everything` (every module, no limit), the plan every existing client is
+  moved to.
+
+### Subscriptions
+
+- One per client (`subscriptions`, tenant data under row-level security):
+  plan, status, start, renewal and trial-end dates (days), add-on modules,
+  limit overrides (a key present replaces the plan's value, null meaning no
+  limit) and Trustline's note. Written only by the platform role; read by the
+  application role, every column but the note.
+- **Chosen:** add-ons and overrides are kept on the subscription itself, not
+  in separate dated rows (`subscription_items`, `tenant_modules` in the
+  outline below). The date and author of every change are in the audit
+  logs: the platform's (every field, with old and new values) and the
+  client's own (`subscription_changed`: plan, status, modules switched on and
+  off, limits; never the note or dates), in the same transaction. An edit of
+  a plan writes the same entry for each client it changes something for.
+- Effective entitlements are plan plus add-ons plus overrides, with the
+  dependencies above enforced when saved and again when read.
+- Every client that existed was given an active subscription on
+  `everything`, started on the day it was created. A client created from
+  the portal without naming a plan is put on the same plan, so the portal's
+  current screens keep working; **chosen** as a bridge until the portal
+  sends `planId`.
+- **Chosen:** a trial needs an end date; no renewal or trial end may come
+  before the start. Dates do nothing by themselves: no status changes when
+  a trial ends or a renewal passes. Trustline staff change the status
+  (stage 1 of "Billing"), so a lapse never happens silently.
+- The old `tenants.plan` column and its enum stay, read by nothing, until
+  the portal stops showing and sending them; then a migration drops them.
+
+### Status
+
+- `trial`, `active`: everything the subscription includes works.
+- `past_due`: everything works. `/auth/me` gives `notice: "past_due"` to
+  those who hold `settings.manage` for the whole organization (the client's
+  administrators), and no notice to anyone else.
+- `suspended`: read-only. Every signed-in write is refused with 403
+  `subscription_suspended`, except reporting an incident, signing out and
+  marking one's own notifications read. The routes without sign-in (public
+  reporting and following up a report with its code, comments included)
+  stay open: an anonymous reporter cannot be told of a billing matter.
+  Everyone is told `notice: "suspended"`. The deadline check goes on.
+  **Chosen:** a new write route is closed by default while suspended; a
+  route is opened only by marking it `@OpenWhileSuspended()`.
+- `cancelled`: like a client Trustline has suspended: nobody signs in, every
+  session ends at once (and stays ended if the subscription is made active
+  again), the public routes answer as for a client that does not exist, the
+  deadline check leaves it alone, and the portal cannot create its first
+  administrator (409 `subscription_cancelled`). Nothing is deleted.
+- **How it combines with the client's own status** (active or suspended by
+  Trustline): the client's status is checked first. A suspended client is
+  closed whatever its subscription says; an active client is as its
+  subscription's status says.
+
+### Limits
+
+- Checked where the quantity grows, in the same transaction, under a lock
+  of the client and the limit, so two requests cannot both take the last
+  place. At the limit: 409 `{ code: "limit_reached", limit, max }`.
+- **Named users** are users invited or active. **Chosen:** a disabled
+  account holds no place: it cannot sign in, and disabling someone who has
+  left must free their place. So enabling a disabled account again takes a
+  place, and is refused at the limit. Adding a user from the portal (the
+  first administrator) counts the same way.
+- **Sites** are facilities that are switched on. Creating a facility, or
+  switching one back on, takes a place; departments and units do not.
+- A limit lowered below what there is affects nobody already there: only
+  what would add one more is refused.
+- `storageMb` and `aiCreditsPerMonth` are stored, and shown, but not
+  enforced: nothing uses them yet.
+
+### What a client sees
+
+- `GET /auth/me`: `tenant.modules` (the modules on) and
+  `tenant.subscription` (`status`, `notice`). Nothing commercial.
+- `GET /settings/subscription`, for `settings.manage` over the whole
+  organization: the plan's code and name, each module on or off and whether
+  it comes from the plan or an add-on, each limit with what is used of it,
+  the status and the dates. No price, no note.
+
 ## Order of work
 
 1. Module switches and the entitlement check (makes "policies only" real).
+   Built in the API.
 2. Plans and subscriptions in the admin portal, managed by Trustline staff.
-3. Limits and the notices at each limit.
+   Built in the API; the portal's screens are not.
+3. Limits and the notices at each limit. Built in the API for users and
+   sites; the screens are not.
 4. AI metering and allowance, built together with the AI assistant.
 5. Self-service changes and online payment.
 

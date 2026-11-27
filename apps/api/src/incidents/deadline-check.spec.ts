@@ -7,6 +7,7 @@ import {
   DeadlineCheck,
 } from './deadline-check.service.js';
 import type { ProvisioningService } from '../identity/provisioning.service.js';
+import type { EntitlementsService } from '../subscriptions/entitlements.service.js';
 import type { Notifier } from './notifier.js';
 import type { ResponseRulesService } from './response-rules.service.js';
 
@@ -46,6 +47,7 @@ function checkOver(
     {} as ResponseRulesService,
     {} as Notifier,
     {} as ProvisioningService,
+    {} as EntitlementsService,
   );
   const checked: string[] = [];
   vi.spyOn(

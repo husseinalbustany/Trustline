@@ -17,6 +17,10 @@ import { AuthService } from '../identity/auth.service.js';
 import { IncidentsService } from './incidents.service.js';
 import { PublicLimits, tooManyRequests } from './public-limits.js';
 import { parseReport, publicReportSchema } from './report-input.js';
+import {
+  declaredModule,
+  ForModule,
+} from '../subscriptions/module.decorator.js';
 
 // Loose on purpose. A code that could never be right is not refused as
 // invalid: it gets the same 404 as any other wrong one. Only what is not
@@ -74,10 +78,13 @@ export const heldFor = (elapsedMs: number, stepMs = REFUSAL_STEP_MS) =>
  * once, in memory, to count their attempts.
  *
  * Whoever is refused because there is nothing to show them (no such
- * hospital, a suspended one, a form that is off, a wrong code) gets the same
- * 404 on the same step of time: see `refusedAlike()`.
+ * hospital, a suspended one, one whose subscription is cancelled or does not
+ * include incidents, a form that is off, a wrong code) gets the same 404 on
+ * the same step of time: see `refusedAlike()`. A suspended subscription
+ * leaves all of these open: reporting is never closed by a billing matter.
  */
 @Controller('public')
+@ForModule('incidents')
 export class PublicReportingController {
   constructor(
     private readonly incidents: IncidentsService,
@@ -93,7 +100,14 @@ export class PublicReportingController {
    * like any other hospital that does not exist, after the same work.
    */
   private active(slug: string) {
-    return this.auth.findTenant(SLUG.test(slug) ? slug : NO_SLUG, false);
+    return this.auth.findTenant(
+      SLUG.test(slug) ? slug : NO_SLUG,
+      false,
+      // The module this controller declares, so that a hospital without it
+      // is answered like one that does not exist: the same 404, on the same
+      // step of time.
+      declaredModule(PublicReportingController)!,
+    );
   }
 
   /**

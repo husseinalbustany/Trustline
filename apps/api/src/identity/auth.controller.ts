@@ -21,6 +21,11 @@ import {
   SESSION_HOURS,
 } from './auth.service.js';
 import {
+  ForModule,
+  OpenWhileSuspended,
+} from '../subscriptions/module.decorator.js';
+import { permissionInUse } from './permissions.js';
+import {
   SESSION_COOKIE,
   SessionGuard,
   type AuthedRequest,
@@ -48,6 +53,7 @@ const acceptSchema = inviteSchema.extend({
 });
 
 @Controller('auth')
+@ForModule('core')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
@@ -75,14 +81,29 @@ export class AuthController {
 
   @Get('me')
   @UseGuards(SessionGuard)
+  /**
+   * Who is signed in, for the screens: the client with the modules it has
+   * and the state of its subscription, and the user's permissions. Only the
+   * permissions of modules the client has, so that the menu holds nothing
+   * of a module that is off; the roles keep the others.
+   */
   me(@Req() req: AuthedRequest) {
     const { tenant, user, permissions, scope } = req.auth;
-    return { tenant, user, permissions, scope };
+    const inUse = (p: string) => permissionInUse(p, tenant.modules);
+    return {
+      tenant,
+      user,
+      permissions: permissions.filter(inUse),
+      scope: Object.fromEntries(
+        Object.entries(scope).filter(([p]) => inUse(p)),
+      ),
+    };
   }
 
   @Post('logout')
   @HttpCode(204)
   @UseGuards(SessionGuard)
+  @OpenWhileSuspended()
   async logout(
     @Req() req: AuthedRequest,
     @Res({ passthrough: true }) res: Response,

@@ -13,6 +13,10 @@ import {
 import { z } from 'zod';
 import { SessionGuard, type AuthedRequest } from '../identity/session.guard.js';
 import { NotificationsService } from './notifications.service.js';
+import {
+  ForModule,
+  OpenWhileSuspended,
+} from '../subscriptions/module.decorator.js';
 
 const flag = z.enum(['true', 'false']).transform((v) => v === 'true');
 
@@ -35,9 +39,14 @@ const listSchema = z.preprocess(
  * The notifications of the person signed in. No permission opens or closes
  * these routes: everyone has their own, and nobody has anyone else's. The
  * service limits every query to the caller.
+ *
+ * Core, not incidents: every module will notify. What a module that is off
+ * notified of is left out of every answer here (see NotificationsService),
+ * and is back when the module is.
  */
 @Controller('notifications')
 @UseGuards(SessionGuard)
+@ForModule('core')
 export class NotificationsController {
   constructor(private readonly notifications: NotificationsService) {}
 
@@ -54,14 +63,18 @@ export class NotificationsController {
     return this.notifications.unread(req.auth);
   }
 
+  // Marking one's own as read changes nothing of the client's records, so
+  // it stays open while the subscription is suspended.
   @Post('read-all')
   @HttpCode(200)
+  @OpenWhileSuspended()
   readAll(@Req() req: AuthedRequest) {
     return this.notifications.markAllRead(req.auth);
   }
 
   @Post(':id/read')
   @HttpCode(200)
+  @OpenWhileSuspended()
   read(@Param('id') id: string, @Req() req: AuthedRequest) {
     const parsed = z.uuid().safeParse(id);
     if (!parsed.success) throw new NotFoundException();

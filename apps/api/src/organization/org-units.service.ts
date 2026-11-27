@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, count, eq, inArray } from 'drizzle-orm';
 import type { Transaction } from '../database/client.js';
 import { pgErrorCode } from '../database/errors.js';
 import { orgUnits } from '../database/schema.js';
@@ -12,6 +12,7 @@ import { TenantDb } from '../database/tenant-db.service.js';
 import type { AuthContext } from '../identity/auth.service.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
 import { sameText, type Localized } from '../i18n/locales.js';
+import { EntitlementsService } from '../subscriptions/entitlements.service.js';
 
 export type OrgUnitType = (typeof orgUnits.type.enumValues)[number];
 
@@ -59,7 +60,31 @@ export class OrgUnitsService {
   constructor(
     private readonly tenantDb: TenantDb,
     private readonly provisioning: ProvisioningService,
+    private readonly entitlements: EntitlementsService,
   ) {}
+
+  /**
+   * The client's sites, as its `sites` limit counts them: its facilities
+   * that are switched on. `tx` is already scoped to the hospital.
+   */
+  async countSites(tx: Transaction) {
+    const [{ sites }] = await tx
+      .select({ sites: count() })
+      .from(orgUnits)
+      .where(and(eq(orgUnits.type, 'facility'), eq(orgUnits.active, true)));
+    return sites;
+  }
+
+  /**
+   * Refuses with 409 `limit_reached` when the client has as many sites as
+   * its subscription allows; in the transaction that adds one, before it
+   * does, so two at once cannot both take the last place.
+   */
+  private makeRoomForSite(tx: Transaction, tenantId: string) {
+    return this.entitlements.makeRoom(tx, tenantId, 'sites', (t) =>
+      this.countSites(t),
+    );
+  }
 
   /** The structure in code order. Units switched off only when asked for. */
   list(auth: AuthContext, includeInactive: boolean) {
@@ -146,6 +171,9 @@ export class OrgUnitsService {
     try {
       return await this.tenantDb.withTenant(tenant.id, async (tx) => {
         const parent = await this.allowedParent(tx, input.type, input.parentId);
+        if (input.type === 'facility') {
+          await this.makeRoomForSite(tx, tenant.id);
+        }
         // A new unit is on, so what it sits under must be on too.
         if (parent && !parent.active) {
           throw new ConflictException({ code: 'parent_inactive' });
@@ -202,6 +230,10 @@ export class OrgUnitsService {
       // While a unit is on, what it sits under is on too.
       if (active && parent && !parent.active) {
         throw new ConflictException({ code: 'parent_inactive' });
+      }
+      // A facility switched back on is a site again.
+      if (switched && active && unit.type === 'facility') {
+        await this.makeRoomForSite(tx, tenant.id);
       }
       // Switched off from the bottom up, never over something still on.
       if (switched && !active) {

@@ -34,6 +34,7 @@ import {
   SessionGuard,
   type AuthedRequest,
 } from './session.guard.js';
+import { ForModule } from '../subscriptions/module.decorator.js';
 
 const fields = {
   name: localizedText(100),
@@ -52,6 +53,7 @@ const updateSchema = z.strictObject(fields).partial();
 
 @Controller('roles')
 @UseGuards(SessionGuard)
+@ForModule('core')
 export class RolesController {
   constructor(
     private readonly tenantDb: TenantDb,

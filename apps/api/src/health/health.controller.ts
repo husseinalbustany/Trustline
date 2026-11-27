@@ -2,8 +2,10 @@ import { Controller, Get, Inject } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import type { Database } from '../database/client.js';
 import { DATABASE } from '../database/database.constants.js';
+import { ForModule } from '../subscriptions/module.decorator.js';
 
 @Controller('health')
+@ForModule('core')
 export class HealthController {
   constructor(@Inject(DATABASE) private readonly db: Database) {}
 

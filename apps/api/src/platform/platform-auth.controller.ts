@@ -20,6 +20,7 @@ import {
   type PlatformRequest,
 } from './platform-auth.guard.js';
 import { PlatformAuthService, SESSION_HOURS } from './platform-auth.service.js';
+import { ForModule } from '../subscriptions/module.decorator.js';
 
 const loginSchema = z.object({
   // Refused as malformed when it carries a control character, before it is
@@ -29,6 +30,7 @@ const loginSchema = z.object({
 });
 
 @Controller('platform/auth')
+@ForModule('core')
 export class PlatformAuthController {
   constructor(private readonly auth: PlatformAuthService) {}
 

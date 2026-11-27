@@ -22,6 +22,7 @@ import {
   type ResponseRules,
 } from './response-rules.js';
 import { ResponseRulesService } from './response-rules.service.js';
+import { ForModule } from '../subscriptions/module.decorator.js';
 
 const reportingSchema = z.strictObject({ publicReporting: z.boolean() });
 
@@ -51,6 +52,7 @@ const responseRulesSchema = z.strictObject({
  */
 @Controller('settings')
 @UseGuards(SessionGuard)
+@ForModule('incidents')
 export class IncidentSettingsController {
   constructor(
     private readonly settings: TenantSettingsService,

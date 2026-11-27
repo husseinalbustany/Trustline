@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, count, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import type { Transaction } from '../database/client.js';
 import {
   auditLog,
@@ -17,6 +17,7 @@ import {
   DEFAULT_RESPONSE_RULES,
   HARM_LEVELS,
 } from '../incidents/response-rules.js';
+import { EntitlementsService } from '../subscriptions/entitlements.service.js';
 import { SYSTEM_ROLES } from './permissions.js';
 
 export const INVITE_HOURS = 72;
@@ -41,6 +42,34 @@ export type NewUser = {
  */
 @Injectable()
 export class ProvisioningService {
+  constructor(private readonly entitlements: EntitlementsService) {}
+
+  /**
+   * The client's named users, as its `users` limit counts them: everyone
+   * invited or active. A disabled account cannot sign in and holds no
+   * place, so disabling someone who left frees theirs; enabling them again
+   * takes one (see `makeRoomForUser`).
+   */
+  async countNamedUsers(tx: Transaction) {
+    const [{ named }] = await tx
+      .select({ named: count() })
+      .from(users)
+      .where(ne(users.status, 'disabled'));
+    return named;
+  }
+
+  /**
+   * Refuses with 409 `limit_reached` when the client has as many named
+   * users as its subscription allows. In the transaction that adds one,
+   * before adding it: two at once take turns, so they cannot both take the
+   * last place.
+   */
+  makeRoomForUser(tx: Transaction, tenantId: string) {
+    return this.entitlements.makeRoom(tx, tenantId, 'users', (t) =>
+      this.countNamedUsers(t),
+    );
+  }
+
   /**
    * What each of these roles allows, by role id, or null if one of them does
    * not exist in this hospital.
@@ -139,6 +168,7 @@ export class ProvisioningService {
     grants: RoleGrant[],
     actorId: string | null,
   ) {
+    await this.makeRoomForUser(tx, tenantId);
     const [user] = await tx
       .insert(users)
       .values({ ...input, email: input.email.trim().toLowerCase(), tenantId })

@@ -5,8 +5,16 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { readCookie } from '../security/cookies.js';
+import { allows } from '../subscriptions/entitlements.service.js';
+import {
+  MODULE_KEY,
+  noSuchRoute,
+  OPEN_WHILE_SUSPENDED_KEY,
+} from '../subscriptions/module.decorator.js';
+import type { ModuleKey } from '../subscriptions/modules.js';
 import { AuthService, type AuthContext } from './auth.service.js';
 import type { Permission } from './permissions.js';
 import { covers } from './scope.js';
@@ -15,21 +23,66 @@ export const SESSION_COOKIE = 'tl_session';
 
 export type AuthedRequest = Request & { auth: AuthContext };
 
+/** Methods that only read. Every other one is a write. */
+const READS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
 /**
  * Lets a request through only with a live hospital user session. The web app
  * sends it as a cookie, a mobile app as a bearer token.
+ *
+ * It is also where what the client's subscription allows is enforced, for
+ * every signed-in route at once, before the route's own code runs:
+ *
+ * - A route of a module the client does not have (`@ForModule()` on its
+ *   controller) answers exactly as a route that does not exist: 404, with
+ *   Nest's own words for that. A route whose controller declares no module
+ *   is refused, so a new one cannot be served by forgetting.
+ * - While the subscription is suspended, a route that writes is refused
+ *   with 403 `subscription_suspended`, unless it is marked
+ *   `@OpenWhileSuspended()`.
+ *
+ * Both come after the session, so without one the answer is 401 as before.
  */
 @Injectable()
 export class SessionGuard implements CanActivate {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly reflector: Reflector,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
+    const targets = [context.getHandler(), context.getClass()];
+    const module = this.reflector.getAllAndOverride<ModuleKey | undefined>(
+      MODULE_KEY,
+      targets,
+    );
+    if (!module) {
+      throw new Error(
+        `${context.getClass().name} declares no module: add @ForModule()`,
+      );
+    }
+
     const req = context.switchToHttp().getRequest<AuthedRequest>();
     const bearer = req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
     const token = bearer ?? readCookie(req, SESSION_COOKIE);
     const auth = token ? await this.auth.resolve(token) : null;
     if (!auth) throw new UnauthorizedException();
     req.auth = auth;
+
+    const { modules, subscription } = auth.tenant;
+    if (!allows({ modules, status: subscription.status }, module)) {
+      throw noSuchRoute(req);
+    }
+    if (
+      subscription.status === 'suspended' &&
+      !READS.has(req.method) &&
+      !this.reflector.getAllAndOverride<boolean>(
+        OPEN_WHILE_SUSPENDED_KEY,
+        targets,
+      )
+    ) {
+      throw new ForbiddenException({ code: 'subscription_suspended' });
+    }
     return true;
   }
 }

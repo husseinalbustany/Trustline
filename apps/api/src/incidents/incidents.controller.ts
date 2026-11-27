@@ -29,6 +29,10 @@ import { shiftDay, startOfDay } from '../i18n/time-zones.js';
 import { IncidentsService } from './incidents.service.js';
 import { MOVE_KINDS } from './status.js';
 import { parseReport, reportSchema } from './report-input.js';
+import {
+  ForModule,
+  OpenWhileSuspended,
+} from '../subscriptions/module.decorator.js';
 
 const flag = z.enum(['true', 'false']).transform((v) => v === 'true');
 
@@ -109,6 +113,7 @@ const commentSchema = z.strictObject({
 
 @Controller('incident-categories')
 @UseGuards(SessionGuard)
+@ForModule('incidents')
 export class IncidentCategoriesController {
   constructor(private readonly incidents: IncidentsService) {}
 
@@ -121,10 +126,13 @@ export class IncidentCategoriesController {
 
 @Controller('incidents')
 @UseGuards(SessionGuard)
+@ForModule('incidents')
 export class IncidentsController {
   constructor(private readonly incidents: IncidentsService) {}
 
+  /** Open while the subscription is suspended: reporting never closes. */
   @Post()
+  @OpenWhileSuspended()
   report(@Body() body: unknown, @Req() req: AuthedRequest) {
     requirePermission(req, 'incidents.report');
     return this.incidents.report(req.auth, parseReport(reportSchema, body));

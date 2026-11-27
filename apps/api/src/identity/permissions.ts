@@ -1,4 +1,5 @@
 import type { Locale } from '../i18n/locales.js';
+import type { ModuleCode, ModuleKey } from '../subscriptions/modules.js';
 
 /** Everything a role can allow. The web app shows a label for each. */
 export const PERMISSIONS = [
@@ -20,6 +21,43 @@ export const PERMISSIONS = [
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
+
+/**
+ * The module each permission belongs to. A role keeps a permission of a
+ * module the client does not have, so that switching the module back on
+ * restores everything; meanwhile the permission does nothing, and the
+ * session (`/auth/me`) does not list it. A new permission must say here
+ * where it belongs.
+ */
+export const PERMISSION_MODULE: Record<Permission, ModuleKey> = {
+  'incidents.report': 'incidents',
+  'incidents.view': 'incidents',
+  'incidents.triage': 'incidents',
+  'incidents.see_reporter': 'incidents',
+  'incidents.sign_off': 'incidents',
+  'actions.manage': 'actions',
+  'policies.view': 'policies',
+  'policies.manage': 'policies',
+  // Reports draw on whichever modules are on.
+  'reports.view': 'core',
+  'organization.manage': 'core',
+  'users.manage': 'core',
+  'roles.manage': 'core',
+  'settings.manage': 'core',
+};
+
+/** Whether a permission does anything for a client with these modules. */
+export const permissionInUse = (
+  permission: string,
+  modules: readonly ModuleCode[],
+) => {
+  const module = (PERMISSION_MODULE as Record<string, ModuleKey | undefined>)[
+    permission
+  ];
+  return (
+    module === 'core' || (module !== undefined && modules.includes(module))
+  );
+};
 
 /**
  * Roles every client starts with. They cannot be edited or deleted. Named

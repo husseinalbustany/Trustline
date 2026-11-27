@@ -17,6 +17,7 @@ import { DATABASE } from '../database/database.constants.js';
 import { incidents, tenants } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
+import { EntitlementsService } from '../subscriptions/entitlements.service.js';
 import { Notifier, type Announcement } from './notifier.js';
 import { closeDueAt, triageDueAt } from './response-rules.js';
 import { ResponseRulesService } from './response-rules.service.js';
@@ -181,6 +182,7 @@ export class DeadlineCheck implements OnModuleDestroy {
     private readonly rules: ResponseRulesService,
     private readonly notifier: Notifier,
     private readonly provisioning: ProvisioningService,
+    private readonly entitlements: EntitlementsService,
   ) {}
 
   /**
@@ -234,7 +236,8 @@ export class DeadlineCheck implements OnModuleDestroy {
   /**
    * One pass over every active hospital. A suspended hospital is left
    * alone: nobody there can sign in to read a notification. Its deadlines
-   * are announced, once, when it is active again.
+   * are announced, once, when it is active again. So is one without the
+   * incidents module, or whose subscription is cancelled (see `check()`).
    *
    * One hospital failing does not stop the others, and no failure passes
    * unsaid. What is logged is the hospital's id and the kind of failure,
@@ -333,6 +336,13 @@ export class DeadlineCheck implements OnModuleDestroy {
   }
 
   private async check(hospital: { id: string; timeZone: string }, now: Date) {
+    // A client without incidents, or whose subscription is cancelled, is
+    // left alone like a suspended one: nothing is announced or filled in.
+    // What came due meanwhile is announced, once, when it has them again.
+    const inUse = await this.inHospital(hospital.id, (tx) =>
+      this.entitlements.mayUse(tx, hospital.id, 'incidents'),
+    );
+    if (!inUse) return { notified: 0, filled: 0 };
     const filled = await this.fillMissingDeadlines(hospital);
     let notified = 0;
     for (const stage of STAGES) {

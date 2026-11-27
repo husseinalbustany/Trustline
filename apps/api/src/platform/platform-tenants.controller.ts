@@ -33,6 +33,9 @@ import { pgErrorCode } from '../database/errors.js';
 import { roleAssignments, roles, sessions, users } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service.js';
+import { plans, subscriptions } from '../database/schema.js';
+import { ForModule } from '../subscriptions/module.decorator.js';
 
 const settings = {
   name: localizedText(200),
@@ -43,7 +46,10 @@ const settings = {
     .transform((list) => [...new Set(list)]),
   accreditationStandard: z.enum(['JCI', 'CBAHI']),
   defaultLocale: localeSchema,
-  plan: z.enum(['starter', 'professional', 'enterprise']),
+  // Deprecated: replaced by the subscription, and read by nothing. Still
+  // taken, and stored in the old column, while the portal's screens send
+  // it. A client's plan is `planId` here and its subscription's from now.
+  plan: z.enum(['starter', 'professional', 'enterprise']).optional(),
   signInMethod: z.enum(['password', 'sso', 'both']),
   // One line, free of control characters, or nothing.
   dataRegion: line(0, 100)
@@ -62,6 +68,9 @@ const createSchema = z.strictObject({
   ...settings,
   // Left out, the client starts on UTC.
   timeZone: timeZone.optional(),
+  // The plan its subscription starts on, active from today. Left out, the
+  // plan every client had until plans existed (PLAN_WHEN_NONE_NAMED).
+  planId: z.uuid().optional(),
 });
 
 const updateSchema = z
@@ -81,19 +90,51 @@ const administratorSchema = z.strictObject({
 
 const isUniqueViolation = (e: unknown) => pgErrorCode(e) === '23505';
 
+/** A client's subscription as the list of clients shows it. */
+const summary = (s: {
+  status: string | null;
+  planId: string | null;
+  planCode: string | null;
+  planName: unknown;
+}) =>
+  s.status && s.planId
+    ? {
+        status: s.status,
+        plan: { id: s.planId, code: s.planCode, name: s.planName },
+      }
+    : null;
+
 @Controller('platform/tenants')
 @UseGuards(PlatformAuthGuard)
+@ForModule('core')
 export class PlatformTenantsController {
   constructor(
     @Inject(PLATFORM_DATABASE) private readonly db: Database,
     private readonly auth: PlatformAuthService,
     private readonly tenantDb: TenantDb,
     private readonly provisioning: ProvisioningService,
+    private readonly subscriptions: SubscriptionsService,
   ) {}
 
+  /** Each client with its subscription's status and plan. */
   @Get()
-  list() {
-    return this.db.select().from(tenants).orderBy(asc(tenants.slug));
+  async list() {
+    const rows = await this.db
+      .select({
+        tenant: tenants,
+        status: subscriptions.status,
+        planId: plans.id,
+        planCode: plans.code,
+        planName: plans.name,
+      })
+      .from(tenants)
+      .leftJoin(subscriptions, eq(subscriptions.tenantId, tenants.id))
+      .leftJoin(plans, eq(plans.id, subscriptions.planId))
+      .orderBy(asc(tenants.slug));
+    return rows.map(({ tenant, ...s }) => ({
+      ...tenant,
+      subscription: summary(s),
+    }));
   }
 
   @Post()
@@ -101,16 +142,18 @@ export class PlatformTenantsController {
     const parsed = createSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException();
     this.assertLanguages(parsed.data);
-    const values = this.withTimeZone(parsed.data);
+    const { planId, ...values } = this.withTimeZone(parsed.data);
     try {
-      // The client and its audit entry are saved together or not at all.
+      // The client, its subscription and its audit entry are saved together
+      // or not at all.
       const tenant = await this.db.transaction(async (tx) => {
         const [created] = await tx.insert(tenants).values(values).returning();
+        const plan = await this.subscriptions.start(tx, created, planId);
         await this.auth.audit(
           req.platformAdmin.id,
           'client_created',
           created.id,
-          { slug: created.slug },
+          { slug: created.slug, plan: plan.code },
           tx,
         );
         return created;
@@ -132,11 +175,20 @@ export class PlatformTenantsController {
 
   @Get(':id')
   async get(@Param('id') id: string) {
-    const [tenant] = await this.db
-      .select()
+    const [row] = await this.db
+      .select({
+        tenant: tenants,
+        status: subscriptions.status,
+        planId: plans.id,
+        planCode: plans.code,
+        planName: plans.name,
+      })
       .from(tenants)
+      .leftJoin(subscriptions, eq(subscriptions.tenantId, tenants.id))
+      .leftJoin(plans, eq(plans.id, subscriptions.planId))
       .where(eq(tenants.id, this.parseId(id)));
-    if (!tenant) throw new NotFoundException();
+    if (!row) throw new NotFoundException();
+    const { tenant, ...s } = row;
 
     const activity = await this.db
       .select({
@@ -152,7 +204,7 @@ export class PlatformTenantsController {
       .orderBy(desc(platformAuditLog.createdAt))
       .limit(20);
 
-    return { ...tenant, activity };
+    return { ...tenant, subscription: summary(s), activity };
   }
 
   @Patch(':id')
@@ -231,6 +283,11 @@ export class PlatformTenantsController {
     if (!tenant) throw new NotFoundException();
     if (tenant.status !== 'active') {
       throw new ConflictException({ code: 'client_suspended' });
+    }
+    // Nobody could sign in with it.
+    const subscription = await this.subscriptions.read(tenant.id);
+    if (subscription.status === 'cancelled') {
+      throw new ConflictException({ code: 'subscription_cancelled' });
     }
     // The link sets a password, which a single sign-on only client cannot use.
     if (tenant.signInMethod === 'sso') {

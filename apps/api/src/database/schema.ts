@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   check,
+  date,
   foreignKey,
   index,
   boolean,
@@ -17,6 +18,11 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import type { Localized } from '../i18n/locales.js';
+import {
+  SUBSCRIPTION_STATUSES,
+  type Extras,
+  type Limits,
+} from '../subscriptions/modules.js';
 
 // The role the API connects as. It owns nothing and cannot bypass row-level
 // security. migrate.ts creates it before the migrations run.
@@ -52,6 +58,9 @@ export const orgUnitType = pgEnum('org_unit_type', [
 
 export const tenantStatus = pgEnum('tenant_status', ['active', 'suspended']);
 
+// Replaced by `subscriptions`: nothing reads it any more. Kept, with its
+// column, while the admin portal's screens still show and send it; dropped
+// in a migration once they no longer do.
 export const tenantPlan = pgEnum('tenant_plan', [
   'starter',
   'professional',
@@ -82,6 +91,8 @@ export const tenants = pgTable(
     // are decided.
     dataRegion: text(),
     status: tenantStatus().notNull().default('active'),
+    // Deprecated: see `tenantPlan`. What a client may use is in its
+    // subscription.
     plan: tenantPlan().notNull().default('starter'),
     signInMethod: signInMethod().notNull().default('password'),
     // Whether an incident can be reported without signing in, through the
@@ -348,6 +359,15 @@ export const auditLog = pgTable(
   (t) => [
     index('audit_log_entity_idx').on(t.tenantId, t.entityType, t.entityId),
     tenantIsolation(),
+    // The admin portal adds an entry when it changes what a client may use,
+    // in the same transaction as the change. It can neither read this log
+    // nor change it: it holds INSERT alone.
+    pgPolicy('audit_log_platform_insert', {
+      as: 'permissive',
+      for: 'insert',
+      to: platformRole,
+      withCheck: sql`true`,
+    }),
   ],
 );
 
@@ -873,4 +893,97 @@ export const platformAuditLog = pgTable(
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('platform_audit_log_tenant_idx').on(t.targetTenantId)],
+);
+
+/** One price of a plan. Not shown to clients; nothing charges it yet. */
+export type PlanPrice = {
+  /** ISO 4217, e.g. "SAR". */
+  currency: string;
+  /** In the currency's smallest unit, so that no amount is a fraction. */
+  amountMinor: number;
+  term: 'monthly' | 'yearly';
+  basis: 'flat' | 'per_user' | 'per_site';
+};
+
+// A plan Trustline offers: a named bundle of modules, limits and extras.
+// Trustline's own data, not a client's: the admin portal writes it, and the
+// application role may read only what entitlements are made of (see the
+// grants migration), never prices. Retired, never deleted.
+export const plans = pgTable('plans', {
+  id: uuid().primaryKey().defaultRandom(),
+  // Lowercase, fixed once created.
+  code: text().notNull().unique(),
+  // In every language the product has: any client may be shown it.
+  name: jsonb().$type<Localized>().notNull(),
+  description: jsonb().$type<Localized>(),
+  // Codes from MODULES in subscriptions/modules.ts. Core is never listed.
+  modules: text()
+    .array()
+    .notNull()
+    .default(sql`'{}'::text[]`),
+  // Every key of LIMITS, null meaning no limit.
+  limits: jsonb().$type<Limits>().notNull(),
+  // Every key of EXTRAS.
+  extras: jsonb().$type<Extras>().notNull(),
+  prices: jsonb()
+    .$type<PlanPrice[]>()
+    .notNull()
+    .default(sql`'[]'::jsonb`),
+  // A retired plan keeps its clients and can be given to no other.
+  active: boolean().notNull().default(true),
+  // Order in the admin portal, smallest first.
+  position: integer().notNull().default(0),
+  createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+});
+
+export const subscriptionStatus = pgEnum(
+  'subscription_status',
+  SUBSCRIPTION_STATUSES,
+);
+
+// What a client is entitled to: its plan, and what was agreed for it on top.
+// One per client. Tenant data under row-level security, which the
+// application reads (never the note) and only the admin portal writes.
+export const subscriptions = pgTable(
+  'subscriptions',
+  {
+    tenantId: uuid()
+      .primaryKey()
+      .references(() => tenants.id),
+    planId: uuid()
+      .notNull()
+      .references(() => plans.id),
+    status: subscriptionStatus().notNull().default('active'),
+    // Days, not moments: what a contract says.
+    startsOn: date({ mode: 'string' }).notNull(),
+    renewsOn: date({ mode: 'string' }),
+    trialEndsOn: date({ mode: 'string' }),
+    // Modules on top of the plan's.
+    addOnModules: text()
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    // Limits that differ from the plan's: a key present replaces the plan's
+    // value (null: no limit), a key absent leaves it.
+    limitOverrides: jsonb()
+      .$type<Partial<Limits>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    // Trustline's own note. The application role cannot read it.
+    note: text(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('subscriptions_plan_idx').on(t.planId),
+    tenantIsolation(),
+    pgPolicy('subscriptions_platform', {
+      as: 'permissive',
+      for: 'all',
+      to: platformRole,
+      using: sql`true`,
+      withCheck: sql`true`,
+    }),
+  ],
 );
