@@ -12,6 +12,7 @@ import type { OrgUnit } from "@/lib/identity";
 import {
   harmLevels,
   wordFor,
+  type HarmLevel,
   type AssignableUser,
   type Incident,
   type IncidentCategory,
@@ -19,7 +20,12 @@ import {
 } from "@/lib/incidents";
 import { pick, readForm, type Localized } from "@/lib/localized";
 import { unitOptions } from "@/lib/org-units";
-import { explain, textareaClass, type IncidentsProps } from "./types";
+import {
+  explain,
+  textareaClass,
+  whoReads,
+  type IncidentsProps,
+} from "./types";
 
 /**
  * What a triage or a status change answered. A "saved" note belongs to the
@@ -155,6 +161,7 @@ function TriageForm({
   const session = useSession();
   const router = useRouter();
   const [ownerUnitId, setOwnerUnitId] = useState(incident.ownerUnit?.id ?? "");
+  const [harmLevel, setHarmLevel] = useState<HarmLevel>(incident.harmLevel);
   const [busy, setBusy] = useState(false);
   const inLang = (text: Localized) =>
     pick(text, lang, session.tenant.defaultLocale);
@@ -199,12 +206,14 @@ function TriageForm({
   // A near miss or a hazard harmed nobody, so it has no harm level to set and
   // cannot be a sentinel event; the API refuses anything else.
   const noHarm = incident.type !== "incident";
+  // Severe harm or a death: whether it is a sentinel event is asked, and
+  // answered yes or no, rather than left to a box nobody ticked. A "yes"
+  // already stored is the answer it starts from; a "no" is asked again.
+  const askSentinel = harmLevel === "severe" || harmLevel === "death";
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const { harmLevel, isSentinel, categoryId, assignedTo } = readForm(
-      e.currentTarget,
-    );
+    const { isSentinel, categoryId, assignedTo } = readForm(e.currentTarget);
     setBusy(true);
     say(null);
     try {
@@ -214,7 +223,9 @@ function TriageForm({
           method: "POST",
           body: {
             harmLevel: noHarm ? "none" : harmLevel,
-            isSentinel: noHarm ? false : isSentinel === "on",
+            isSentinel: noHarm
+              ? false
+              : isSentinel === (askSentinel ? "yes" : "on"),
             categoryId,
             ownerUnitId,
             assignedTo: assignedTo || null,
@@ -250,11 +261,12 @@ function TriageForm({
         <p className="text-sm text-muted">{g.help}</p>
         {!noHarm && (
           <>
-            <Field label={g.harmLevel}>
+            {/* What the chosen level means, as the report form says it. */}
+            <Field label={g.harmLevel} help={t.harmHelp[harmLevel]}>
               <select
-                name="harmLevel"
                 required
-                defaultValue={incident.harmLevel}
+                value={harmLevel}
+                onChange={(e) => setHarmLevel(e.target.value as HarmLevel)}
                 className={inputClass}
               >
                 {harmLevels.map((level) => (
@@ -264,15 +276,40 @@ function TriageForm({
                 ))}
               </select>
             </Field>
-            <label className="flex items-center gap-3 text-sm font-medium">
-              <input
-                type="checkbox"
-                name="isSentinel"
-                defaultChecked={incident.isSentinel}
-                className="size-4 accent-accent"
-              />
-              {g.sentinel}
-            </label>
+            {askSentinel ? (
+              <fieldset className="rounded-lg border border-line p-3 text-sm">
+                <legend className="px-1 font-medium">{g.sentinelAsk}</legend>
+                <p className="text-muted">{g.sentinelAskHelp}</p>
+                <div className="mt-2 flex flex-wrap gap-x-6 gap-y-2">
+                  {(["yes", "no"] as const).map((answer) => (
+                    <label
+                      key={answer}
+                      className="flex min-h-9 items-center gap-2"
+                    >
+                      <input
+                        type="radio"
+                        name="isSentinel"
+                        value={answer}
+                        required
+                        defaultChecked={answer === "yes" && incident.isSentinel}
+                        className="size-4 accent-accent"
+                      />
+                      {t[answer]}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            ) : (
+              <label className="flex items-center gap-3 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  name="isSentinel"
+                  defaultChecked={incident.isSentinel}
+                  className="size-4 accent-accent"
+                />
+                {g.sentinel}
+              </label>
+            )}
           </>
         )}
         <Field label={g.category}>
@@ -376,10 +413,13 @@ function StatusActions({ t, incident, onChange, onStale, message, say }: Part) {
   // Why a closure was sent back, or its request withdrawn, is for the
   // people handling the incident; every other note is on the reporter's
   // timeline. (The API withholds them; this only says so beforehand.)
+  const internalNote = (m: StatusMove) =>
+    m.kind === "send_back" || m.kind === "withdraw";
   const noteHelp = (m: StatusMove) =>
-    m.kind === "send_back" || m.kind === "withdraw"
-      ? a.noteHelpInternal
-      : a.noteHelp;
+    internalNote(m) ? a.noteHelpInternal : a.noteHelp;
+  // A closure summary or a reason for not taking it forward may be read by
+  // whoever holds the follow-up code of an anonymous report.
+  const reader = whoReads(t, incident);
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -453,7 +493,14 @@ function StatusActions({ t, incident, onChange, onStale, message, say }: Part) {
                 <p className="mt-1 text-sm text-muted">{a.revisionHelp}</p>
               )}
             </div>
-            <Field label={noteLabel(move)} help={noteHelp(move)}>
+            <Field
+              label={noteLabel(move)}
+              help={
+                reader && !internalNote(move)
+                  ? `${noteHelp(move)} ${reader}`
+                  : noteHelp(move)
+              }
+            >
               <textarea
                 name="note"
                 rows={3}

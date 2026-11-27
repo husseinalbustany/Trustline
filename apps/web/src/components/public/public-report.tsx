@@ -1,11 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useLayoutEffect, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { FollowUpCode } from "@/components/incidents/follow-up-code";
 import {
   ReportFields,
   useReportClock,
+  type HarmChoice,
   type ReportBody,
 } from "@/components/incidents/report-fields";
 import type { IncidentsText } from "@/components/incidents/types";
@@ -17,7 +24,12 @@ import { clockTimeIn, fill } from "@/lib/format";
 import { followUpUrl } from "@/lib/identity";
 import type { PublicReporting, ReportSent } from "@/lib/incidents";
 import { pick } from "@/lib/localized";
-import { deviceTime, zoneLabel } from "@/lib/time-zone";
+import {
+  deviceTime,
+  wallClock,
+  zoneLabel,
+  type TimeZone,
+} from "@/lib/time-zone";
 import { PublicFrame } from "./public-frame";
 
 /**
@@ -28,6 +40,15 @@ import { PublicFrame } from "./public-frame";
  * page kept mounted behind another one is re-rendered with that one's
  * address.
  */
+/**
+ * "Try again in a second": another report to the same hospital was being
+ * stored when this one arrived. Any other 429 asks for longer.
+ */
+const busyNow = (err: unknown) => {
+  const wait = retryAfterOf(err);
+  return statusOf(err) === 429 && wait !== undefined && wait <= 1;
+};
+
 export function PublicReport({
   lang,
   appName,
@@ -53,11 +74,20 @@ export function PublicReport({
   // The follow-up code of the report just sent: kept here and nowhere else,
   // and only until this page is left.
   const [code, setCode] = useState<string | null>(null);
-  // The form is told nothing of the hospital's clock, and its reader is not
-  // staff: "when it happened" is typed on the clock of their own device,
-  // and the form says so.
-  const clock = useReportClock(deviceTime);
+  // "When it happened" is typed and sent on the hospital's clock, as on the
+  // staff form, whatever zone the sender's phone is set to. The form says
+  // which clock that is only when the phone's differs: a visitor otherwise
+  // just reads the time on their phone.
+  const zone: TimeZone = form?.timeZone ?? deviceTime;
+  const [sameClock, setSameClock] = useState(true);
+  const clock = useReportClock(zone);
   const { shown, start } = clock;
+  // Called when the form arrives, without asking for it again each time the
+  // clock it is shown on changes: every GET counts against a limit.
+  const shownOn = useRef(shown);
+  useLayoutEffect(() => {
+    shownOn.current = shown;
+  });
   const followUpPath = `/${lang}/follow-up/${slug}`;
 
   useEffect(() => {
@@ -67,9 +97,14 @@ export function PublicReport({
     })
       .then((loaded) => {
         if (!current) return;
+        const now = new Date();
+        const hospitalZone = loaded.timeZone ?? deviceTime;
         setForm(loaded);
+        setSameClock(
+          wallClock(now, hospitalZone) === wallClock(now, deviceTime),
+        );
         setProblem(null);
-        shown();
+        shownOn.current({ timeZone: hospitalZone });
       })
       .catch((err) => {
         if (!current) return;
@@ -89,17 +124,30 @@ export function PublicReport({
     return () => {
       current = false;
     };
-  }, [slug, shown]);
+  }, [slug]);
 
   // Visited pages stay mounted. The code is shown once: it is gone as soon
   // as this page is left, whichever way.
   useLayoutEffect(() => () => setCode(null), []);
 
   async function send(body: ReportBody) {
-    const sent = await api<ReportSent>(
-      `/public/reporting/${encodeURIComponent(slug)}`,
-      { method: "POST", body, withoutSession: true },
-    );
+    const post = () =>
+      api<ReportSent>(`/public/reporting/${encodeURIComponent(slug)}`, {
+        method: "POST",
+        body,
+        withoutSession: true,
+      });
+    let sent: ReportSent;
+    try {
+      sent = await post();
+    } catch (err) {
+      // Another report to this hospital was being stored at that moment.
+      // Sent again once, a second later, with the same answers; the button
+      // stays busy meanwhile. Refused again, the reader is told (below).
+      if (!busyNow(err)) throw err;
+      await new Promise((done) => setTimeout(done, 1000));
+      sent = await post();
+    }
     setCode(sent.followUpCode ?? "");
   }
 
@@ -108,6 +156,8 @@ export function PublicReport({
   // "reload the page" would throw away what this reader has written.
   const refusal = (err: unknown) => {
     const status = statusOf(err);
+    // Still busy after the second try: nothing is wrong with the report.
+    if (busyNow(err)) return `${p.busy}\n${p.urgent}`;
     if (status === 429) {
       const wait = retryAfterOf(err);
       const tooMany = wait
@@ -204,6 +254,12 @@ export function PublicReport({
     );
   }
 
+  // A plain question for someone who is not staff, sent as three of the
+  // five levels; whoever triages it sets the level.
+  const harmChoices: HarmChoice[] = (
+    ["none", "moderate", "severe"] as const
+  ).map((level) => ({ level, label: p.harm[level] }));
+
   // The unit a ward's link names, when the hospital still has it.
   const startUnit = form.orgUnits.find((u) => u.id === unit)?.id ?? "";
 
@@ -226,11 +282,16 @@ export function PublicReport({
         defaultLocale={form.defaultLocale}
         startUnit={startUnit}
         clock={clock}
-        timeNote={fill(p.deviceTime, { zone: zoneLabel(lang, deviceTime) })}
+        timeNote={
+          sameClock
+            ? p.deviceTime
+            : fill(t.form.hospitalTime, { zone: zoneLabel(lang, zone) })
+        }
         anonymousChoice={false}
         privacy={() => p.privacy}
         roomy
         labels={p.form}
+        harmChoices={harmChoices}
         unitTree={false}
         send={send}
         explain={refusal}

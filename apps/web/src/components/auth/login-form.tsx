@@ -64,7 +64,16 @@ export function LoginForm({
       loadPage(`/${lang}/dashboard`);
       return;
     } catch (err) {
-      setError(statusOf(err) === 401 ? t.login.failed : t.login.error);
+      const status = statusOf(err);
+      // 400: something in the organization ID or the email that cannot be
+      // in one, such as a control character pasted with it.
+      setError(
+        status === 401
+          ? t.login.failed
+          : status === 400
+            ? t.login.invalid
+            : t.login.error,
+      );
     }
     setBusy(false);
   }

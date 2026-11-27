@@ -15,6 +15,7 @@ import {
 } from "@/components/incidents/incident-view";
 import { IncidentPills } from "@/components/incidents/pills";
 import {
+  forReporter,
   textareaClass,
   type IncidentsText,
 } from "@/components/incidents/types";
@@ -91,8 +92,9 @@ export function FollowUp({
   // reader was writing: the page still shows it as it was when opened.
   const [endedSince, setEndedSince] = useState(false);
   // Whether this hospital takes reports without sign-in, asked only once a
-  // report is seen to have ended: a link to the form is offered if it does.
-  const [formOpen, setFormOpen] = useState(false);
+  // report is seen to have ended: a link to the form is offered if it does,
+  // and staff are pointed to if it does not. Null until it is known.
+  const [formOpen, setFormOpen] = useState<boolean | null>(null);
   const path = `/public/follow-up/${encodeURIComponent(slug)}`;
   const clockTime = clockTimeIn(lang);
   // A limit on comments is counted over a day: the time may be tomorrow.
@@ -120,7 +122,7 @@ export function FollowUp({
     setOpen(null);
     setError(null);
     setEndedSince(false);
-    setFormOpen(false);
+    setFormOpen(null);
   }, []);
   // Visited pages stay mounted: the code and the report it opened do not
   // wait here for whoever comes to this page next.
@@ -274,9 +276,11 @@ export function FollowUp({
     );
   }
 
+  // The reporter's plain words for where the report stands.
+  const words = forReporter(t);
   const view = {
     lang,
-    t,
+    t: words,
     incident: open.view,
     // Names the hospital wrote, in its own language when not in the reader's.
     fallback: hospital?.defaultLocale,
@@ -300,7 +304,7 @@ export function FollowUp({
             {u.viewTitle}
           </h1>
           <IncidentPills
-            t={t}
+            t={words}
             status={open.view.status}
             harmLevel={open.view.harmLevel}
             isSentinel={open.view.isSentinel}
@@ -313,7 +317,7 @@ export function FollowUp({
           {ended ? (
             // Nothing to type into: the report can be read, not added to.
             <div className="p-4 text-base">
-              <p>{u.ended}</p>
+              <p>{formOpen === false ? u.endedNoForm : u.ended}</p>
               {newReport}
             </div>
           ) : (
@@ -333,7 +337,9 @@ export function FollowUp({
                 // It ended while they were writing. The box stays, with
                 // what they wrote in it, to copy into a new report.
                 <div role="alert" className="text-base">
-                  <p className="text-danger">{u.endedSince}</p>
+                  <p className="text-danger">
+                    {formOpen === false ? u.endedSinceNoForm : u.endedSince}
+                  </p>
                   {newReport}
                 </div>
               ) : (

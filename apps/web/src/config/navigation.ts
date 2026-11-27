@@ -27,6 +27,12 @@ export type ModuleKey =
 
 export type NavItemKey = "dashboard" | ModuleKey;
 
+/** The areas not built yet, which show what they will cover. */
+export type PlaceholderKey = Exclude<
+  ModuleKey,
+  "incidents" | "organization" | "users" | "settings"
+>;
+
 export type NavGroupKey =
   | "overview"
   | "safety"

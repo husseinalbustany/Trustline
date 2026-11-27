@@ -231,14 +231,17 @@ export function AppShell({
                   >
                     <Bell className="size-4" aria-hidden />
                     {!!unread && (
+                      // The offset follows the page's direction; only the
+                      // figure inside is set left to right ("99+").
                       <span
                         aria-hidden
-                        dir="ltr"
                         className="absolute -end-1 -top-1 min-w-4 rounded-full bg-danger px-1 text-center text-[0.625rem] leading-4 font-semibold text-background tabular-nums"
                       >
-                        {unread > 99
-                          ? labels.unreadMany
-                          : numberFormat(lang).format(unread)}
+                        <span dir="ltr">
+                          {unread > 99
+                            ? labels.unreadMany
+                            : numberFormat(lang).format(unread)}
+                        </span>
                       </span>
                     )}
                   </Link>

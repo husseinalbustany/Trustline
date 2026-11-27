@@ -100,6 +100,24 @@
       "closed": "Closed",
       "rejected": "Not taken forward"
     },
+    "plain": {
+      "status": {
+        "new": "Received",
+        "triaged": "Being reviewed",
+        "in_progress": "Being handled",
+        "awaiting_sign_off": "Waiting for final review",
+        "closed": "Closed",
+        "rejected": "Not taken forward"
+      },
+      "ownerUnit": "Department dealing with it",
+      "ownerUnitChanged": "Department dealing with it:",
+      "events": {
+        "triaged": "Reviewed",
+        "sign_off_requested": "Sent for final review",
+        "signed_off": "Final review done and closed",
+        "withdrawn": "Final review no longer requested"
+      }
+    },
     "statusOther": "Other status",
     "harm": {
       "none": "No harm",
@@ -107,6 +125,13 @@
       "moderate": "Moderate harm",
       "severe": "Severe harm",
       "death": "Death"
+    },
+    "harmHelp": {
+      "none": "It reached someone, but caused no symptoms and needed no treatment.",
+      "mild": "Short-term harm that needed no more than extra observation or minor treatment.",
+      "moderate": "Harm that needed further treatment or a longer stay, but is not permanent.",
+      "severe": "Permanent harm, or harm that needed life-saving or major treatment.",
+      "death": "The incident caused the death or brought it forward."
     },
     "sentinel": "Sentinel event",
     "yes": "Yes",
@@ -129,7 +154,7 @@
         "newest": "Newest first",
         "oldest": "Oldest first",
         "harm": "Most harm first",
-        "due": "By deadline"
+        "due": "Earliest deadline first"
       },
       "filters": "More filters",
       "filtersCount": "More filters ({count})",
@@ -164,10 +189,12 @@
       "description": "What happened",
       "descriptionHelp": "Use your own words. Do not type patient names or record numbers.",
       "immediateAction": "What was done immediately (optional)",
+      "immediateActionHelp": "Do not type patient names or record numbers.",
       "harmLevel": "Harm level",
+      "seriousNote": "This report alerts nobody straight away: it is read when the quality team next looks at new reports. Follow your hospital's escalation procedure now, as you would without this form.",
       "anonymous": "Report anonymously",
       "whoSeesName": "If you leave this box unticked, your name is saved with the report. Only staff the hospital has authorised to see who reported, normally the quality team, can see it: everyone else who works on the report sees “The reporter” in its place.",
-      "anonymousWarning": "Your name is not saved with the report: nobody, not even the quality team, can see who sent it. It will not appear under “Reported by me”. After sending, you get a follow-up code, shown once: with it you can come back to read the replies and add a comment. The hospital knows about you only what you write here.",
+      "anonymousWarning": "Your name is not saved with the report: nobody, not even the quality team, can see who sent it. It will not appear under “Reported by me”, and you will not be notified of replies: come back with the code to read them. After sending, you get a follow-up code, shown once: with it you can come back to read the replies and add a comment. The hospital knows about you only what you write here.",
       "submit": "Send report",
       "cancel": "Cancel",
       "doneTitle": "Report sent",
@@ -275,9 +302,13 @@
       "bodyHelp": "Do not type patient names or record numbers.",
       "visibility": "Who can read it",
       "visibilityInternal": "Internal: staff handling the incident only, not the reporter",
-      "visibilityEveryone": "Everyone who can see this incident, including the reporter",
+      "visibilityEveryone": "The reporter can read this, as can everyone who can see this incident",
       "reporterHelp": "The staff handling this incident will read your comment. Do not type patient names or record numbers.",
       "submit": "Add comment"
+    },
+    "reader": {
+      "anonymous": "This report was sent anonymously: whoever holds its follow-up code reads what the reporter can read, and may not work at the hospital.",
+      "maybeAnonymous": "If this report was sent anonymously, whoever holds its follow-up code reads what the reporter can read, and may not work at the hospital."
     },
     "triage": {
       "title": "Triage",
@@ -285,6 +316,8 @@
       "help": "Confirm the harm level, then hand the incident to the department that will handle it.",
       "harmLevel": "Harm level",
       "sentinel": "This is a sentinel event",
+      "sentinelAsk": "Is this a sentinel event?",
+      "sentinelAskHelp": "Asked for every severe harm and every death. Closing a sentinel event takes a second person's sign-off.",
       "category": "Category",
       "ownerUnit": "Handling department",
       "assignee": "Assigned to",
@@ -327,7 +360,7 @@
       },
       "noteHelp": "The reporter can read this note. Do not type patient names or record numbers.",
       "noteHelpInternal": "The reporter cannot read this note. Do not type patient names or record numbers.",
-      "revisionHelp": "Your decision is recorded for the incident as this page shows it. If someone has changed it since, nothing is saved and the page shows the latest version for you to check.",
+      "revisionHelp": "Your decision is recorded for the incident as this page shows it. If someone has changed the incident since you opened this page, nothing is saved and the page shows the latest version for you to check.",
       "confirm": "Confirm",
       "cancel": "Cancel",
       "done": "Status changed."
@@ -345,7 +378,7 @@
       "outside_scope": "Your role does not cover the department of this incident. Ask someone who triages for that department.",
       "invalid_transition": "Someone else has changed this incident in the meantime. The page now shows its current status; check it and try again.",
       "stale_incident": "Someone else changed this incident while you had it open. The page now shows its latest version: check it and save again. If this keeps happening, reload the page.",
-      "serious_cannot_be_rejected": "An incident that caused severe harm or a death, or that is a sentinel event, must be taken forward. If the harm level or the sentinel mark is wrong, correct it in the triage first, then try again.",
+      "serious_cannot_be_rejected": "An incident that caused severe harm or a death, or that is a sentinel event, must be taken forward. If the harm level or the sentinel mark is wrong, correct it in the triage and save. An incident that is not serious can be marked “Do not take forward” even after it has been triaged.",
       "sign_off_required": "Closing this incident needs a second signature, so it cannot be closed in one step. The page now shows the steps open to you.",
       "same_person": "You asked for this incident to be closed, so you cannot sign it off or send it back yourself. A second person who may sign off has to do it.",
       "missing_sign_off": "Your role does not let you sign off a closure or send it back. Ask someone who may sign off, or your administrator.",
@@ -363,11 +396,16 @@
     "title": "Report an incident",
     "description": "Tell the hospital about something that went wrong, nearly went wrong, or could cause harm. It takes about two minutes.",
     "urgent": "This form is not watched around the clock. If someone is in danger now, tell a member of staff straight away.",
-    "deviceTime": "Enter it in the time shown on this device: {zone}.",
+    "deviceTime": "Use the time your phone or computer shows.",
     "form": {
       "category": "What it is about",
       "immediateAction": "What was done straight away (optional)",
       "harmLevel": "Was anyone harmed?"
+    },
+    "harm": {
+      "none": "Nobody was hurt",
+      "moderate": "Someone was hurt",
+      "severe": "Someone was seriously hurt or died"
     },
     "privacy": "You do not sign in, and you are not asked for your name. Nothing about you or your phone is saved with the report. After sending, you get a follow-up code to come back and read any reply from the hospital. The hospital knows about you only what you write here.",
     "unavailableTitle": "Reporting is not available on this link",
@@ -385,10 +423,11 @@
     "another": "Send another report",
     "tooMany": "Too many reports were sent in the last hour, so this one was not sent. Keep this page open: what you wrote is still here. You can try again after {time}.",
     "tooManyLater": "Too many reports were sent in the last hour, so this one was not sent. Keep this page open: what you wrote is still here. Try again later.",
+    "busy": "Your report was not sent: the hospital was receiving another report at the same moment. What you wrote is still here: send it again in a moment.",
     "errors": {
       "invalid": "Your report was not sent. Check each answer, then send it again.",
-      "occurred_in_future": "The time it happened is in the future. Correct it, then send your report again.",
-      "occurred_too_long_ago": "The date it happened is too far in the past. Check the date, especially the year, then send your report again.",
+      "occurred_in_future": "Your report was not sent: the time it happened is in the future. Correct it, then send it again. What you wrote is still here.",
+      "occurred_too_long_ago": "Your report was not sent: the date it happened is too far in the past. Check the date, especially the year, then send it again. What you wrote is still here.",
       "unknown_category": "Your report was not sent: the choice under “What it is about” is no longer available. Choose another one, then send it again. What you wrote is still here.",
       "unknown_org_unit": "Your report was not sent: the place chosen under “Where it happened” is no longer available. Choose another one, then send it again. What you wrote is still here.",
       "harm_not_applicable": "Your report was not sent. Under “What are you reporting?”, choose your answer again, then send it again. What you wrote is still here.",
@@ -406,7 +445,7 @@
     "wrong": "This code does not open a report. Check it against what you wrote down, then try again. A code never contains 0, 1, I, L or O.",
     "tooMany": "Too many attempts in the last hour. You can try again after {time}.",
     "tooManyLater": "Too many attempts in the last hour. Try again later.",
-    "commentTooMany": "Your comment was not sent: the limit on comments has been reached for now. Keep this page open: what you wrote is still here. You can try again after this time: {time}.",
+    "commentTooMany": "Your comment was not sent: the limit on comments has been reached for now. Keep this page open: what you wrote is still here. You can try again after {time}.",
     "commentTooManyLater": "Your comment was not sent: the limit on comments has been reached for now. Keep this page open: what you wrote is still here. Try again later.",
     "error": "Something went wrong. Check your connection and try again.",
     "notKept": "The code is not saved on this device. When you leave this page, you will need it again.",
@@ -414,7 +453,9 @@
     "viewTitle": "Your report",
     "viewHelp": "Here is your report, what has happened to it so far, and the replies written to you.",
     "ended": "This report is no longer being worked on, so comments can no longer be added to it. If you have something to add, send a new report.",
+    "endedNoForm": "This report is no longer being worked on, so comments can no longer be added to it. If you have something to add, send a new report or speak to a member of staff.",
     "endedSince": "Your comment was not sent: work on this report has just ended, and comments can no longer be added to it. What you wrote is still here. To pass it on, send a new report.",
+    "endedSinceNoForm": "Your comment was not sent: work on this report has just ended, and comments can no longer be added to it. What you wrote is still here. To pass it on, send a new report or speak to a member of staff.",
     "newReport": "Send a new report",
     "close": "Finish and hide this report",
     "closeHelp": "Use this when you have finished, above all on a shared computer or phone. You will need the code to open the report again."
@@ -454,9 +495,9 @@
         "other": "A decision has been made on the request to close {reference}."
       },
       "due_soon": {
-        "triage": "The deadline to triage {reference} is close.",
-        "closure": "The deadline to close {reference} is close.",
-        "other": "A deadline for {reference} is close."
+        "triage": "The deadline to triage {reference} is approaching.",
+        "closure": "The deadline to close {reference} is approaching.",
+        "other": "A deadline for {reference} is approaching."
       },
       "overdue": {
         "triage": "{reference} is overdue for triage.",
@@ -471,15 +512,6 @@
     "notBuilt": "This area is not available yet."
   },
   "modules": {
-    "incidents": {
-      "title": "Incidents",
-      "description": "Incidents, near misses and hazards, from report to closure.",
-      "scope": [
-        "Reporting by any employee, with an anonymous option and QR codes",
-        "Triage and routing to the responsible departments",
-        "Response deadlines with escalation, and feedback to the reporter"
-      ]
-    },
     "investigations": {
       "title": "Investigations",
       "description": "Investigation and root cause analysis for serious events.",
@@ -533,33 +565,6 @@
         "Standard reports with Excel and PDF export",
         "Scheduled reports by email"
       ]
-    },
-    "organization": {
-      "title": "Organization",
-      "description": "Facilities, departments and units.",
-      "scope": [
-        "The organization's structure, in each of its languages",
-        "Locations used for reporting and routing",
-        "Department owners and escalation contacts"
-      ]
-    },
-    "users": {
-      "title": "Users and roles",
-      "description": "Who can sign in and what they can do.",
-      "scope": [
-        "Accounts created by an administrator, or at first single sign-on",
-        "Roles and permissions per department and facility",
-        "Access reviews and the audit trail of changes"
-      ]
-    },
-    "settings": {
-      "title": "Settings",
-      "description": "How Trustline is configured for this organization.",
-      "scope": [
-        "Accreditation standard, languages and branding",
-        "Incident categories, forms and approval workflows",
-        "Sign-in by password or single sign-on, and notifications"
-      ]
     }
   },
   "platform": {
@@ -573,6 +578,7 @@
       "password": "Password",
       "submit": "Sign in",
       "failed": "The email or password is wrong, or the account is locked. Check them, or wait 15 minutes and try again.",
+      "invalid": "The email contains a character that cannot be part of it, perhaps from pasting. Type it again, then sign in.",
       "error": "Could not sign in. Try again."
     },
     "clients": {
@@ -604,7 +610,7 @@
         "label": "Time zone",
         "help": "The hospital's own clock. Every date, deadline and “last 30 days” its staff see follows it. Type part of a city or region to search, for example Riyadh.",
         "list": "Time zones",
-        "now": "Time there now: {time} ({zone})",
+        "now": "Time there now: {time} – {zone}",
         "none": "No time zone matches. Try the name of a large city in the same zone.",
         "unknown": "The server does not know this time zone. Choose another one from the list."
       },
@@ -677,6 +683,7 @@
       "password": "Password",
       "submit": "Sign in",
       "failed": "The organization, email or password is wrong, or the account is locked. Check them, or wait 15 minutes and try again.",
+      "invalid": "The organization ID or the email contains a character that cannot be part of it, perhaps from pasting. Type both again, then sign in.",
       "error": "Could not sign in. Try again.",
       "forgot": "Forgot your password? Ask your administrator for a reset link."
     },
@@ -911,12 +918,12 @@
       },
       "deadlines": {
         "title": "Deadlines for triage and closure",
-        "what": "These numbers set how long your hospital allows itself to triage a new report and to close an incident, by harm level. Anything past its time shows as overdue in the incidents list and on the dashboard, and the people responsible for it are notified.",
-        "applies": "A change applies to new reports only: deadlines already set do not move. Hours and days are calendar time, so nights, weekends and holidays count.",
+        "what": "These numbers set how long your hospital allows itself to triage a new report and to close an incident, by harm level. Both are counted from the moment the report is made. Anything past its time shows as overdue in the incidents list and on the dashboard, and the people responsible for it are notified.",
+        "applies": "A change applies to new reports, and to an incident whose harm level or sentinel flag is changed afterwards: its closure deadline is then worked out again from this table. Other deadlines already set do not move. Hours and days are calendar time, so nights, weekends and holidays count.",
         "sentinel": "A sentinel event follows the row for a death, whatever its harm level.",
         "level": "Harm level",
-        "hours": "Triage within (hours)",
-        "days": "Close within (days)",
+        "hours": "Time to triage (hours)",
+        "days": "Time to close (days)",
         "limits": "Hours: a whole number from 1 to 720. Days: a whole number from 1 to 365.",
         "save": "Save deadlines",
         "saved": "Deadlines saved.",

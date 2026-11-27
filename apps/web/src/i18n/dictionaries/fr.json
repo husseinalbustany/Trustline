@@ -20,7 +20,7 @@
   },
   "nav": {
     "groups": {
-      "overview": "Vue d'ensemble",
+      "overview": "Vue d’ensemble",
       "safety": "Sécurité",
       "governance": "Gouvernance",
       "insights": "Analyses",
@@ -43,13 +43,13 @@
   "dashboard": {
     "title": "Tableau de bord",
     "description": "Ce qui demande votre attention parmi les incidents, les actions correctives et les politiques.",
-    "noData": "Aucune donnée pour l'instant",
+    "noData": "Aucune donnée pour l’instant",
     "tiles": {
       "openIncidents": "Incidents ouverts",
       "awaitingTriage": "En attente de tri",
       "seriousOpen": "Incidents graves ouverts",
       "overdueIncidents": "Incidents en retard",
-      "triagedOnTime": "Triés dans les délais",
+      "triagedOnTime": "Tri dans les délais",
       "timeToReport": "Durée médiane de saisie",
       "overdueActions": "Actions correctives en retard",
       "policiesDue": "Politiques à réviser"
@@ -57,7 +57,7 @@
     "seriousHelp": "Préjudice grave, décès ou événement sentinelle",
     "overdueHelp": "Échéance de tri ou de clôture dépassée",
     "triagedOnTimeHelp": "Parmi les déclarations des 30 derniers jours déjà triées",
-    "timeToReportHelp": "De l'ouverture du formulaire à l'envoi, sur les 30 derniers jours",
+    "timeToReportHelp": "De l’ouverture du formulaire à l’envoi, sur les 30 derniers jours",
     "clock": {
       "minutes": "{time} min",
       "hours": "{time} h"
@@ -68,7 +68,7 @@
     "noTasks": "Aucun incident ouvert ne vous est attribué.",
     "viewTasks": "Voir ces incidents",
     "loadError": "Impossible de charger les incidents. Rechargez la page.",
-    "noIncidents": "Aucun incident à afficher pour l'instant.",
+    "noIncidents": "Aucun incident à afficher pour l’instant.",
     "viewAll": "Voir tous les incidents"
   },
   "reportIncident": {
@@ -80,7 +80,7 @@
     "description": "Incidents, presque-accidents et dangers, de la déclaration à la clôture.",
     "loading": "Chargement…",
     "loadError": "Impossible de charger les incidents. Rechargez la page.",
-    "notFound": "Cet incident n'existe pas, ou votre rôle ne vous permet pas de le consulter.",
+    "notFound": "Cet incident n’existe pas, ou votre rôle ne vous permet pas de le consulter.",
     "report": "Déclarer un incident",
     "type": {
       "incident": "Incident",
@@ -90,7 +90,7 @@
     "typeHelp": {
       "incident": "Un événement indésirable qui a touché un patient, un visiteur ou un membre du personnel.",
       "near_miss": "Un événement indésirable détecté avant de toucher qui que ce soit.",
-      "hazard": "Une situation qui pourrait causer un préjudice si rien n'est fait."
+      "hazard": "Une situation qui pourrait causer un préjudice si rien n’est fait."
     },
     "status": {
       "new": "Nouveau",
@@ -100,6 +100,24 @@
       "closed": "Clôturé",
       "rejected": "Classé sans suite"
     },
+    "plain": {
+      "status": {
+        "new": "Reçue",
+        "triaged": "En cours d’examen",
+        "in_progress": "En cours de traitement",
+        "awaiting_sign_off": "En attente de validation finale",
+        "closed": "Clôturée",
+        "rejected": "Classée sans suite"
+      },
+      "ownerUnit": "Service qui s’en occupe",
+      "ownerUnitChanged": "Service qui s’en occupe :",
+      "events": {
+        "triaged": "Examen",
+        "sign_off_requested": "Transmission pour validation finale",
+        "signed_off": "Validation finale et clôture",
+        "withdrawn": "Annulation de la demande de validation finale"
+      }
+    },
     "statusOther": "Autre statut",
     "harm": {
       "none": "Aucun préjudice",
@@ -107,6 +125,13 @@
       "moderate": "Préjudice modéré",
       "severe": "Préjudice grave",
       "death": "Décès"
+    },
+    "harmHelp": {
+      "none": "L’événement a touché quelqu’un, sans symptôme ni traitement nécessaire.",
+      "mild": "Préjudice de courte durée, qui n’a demandé qu’une surveillance accrue ou un traitement mineur.",
+      "moderate": "Préjudice qui a demandé un traitement supplémentaire ou un séjour prolongé, sans séquelle permanente.",
+      "severe": "Préjudice permanent, ou qui a demandé un traitement vital ou une intervention lourde.",
+      "death": "L’incident a causé le décès ou l’a précipité."
     },
     "sentinel": "Événement sentinelle",
     "yes": "Oui",
@@ -126,24 +151,24 @@
       "search": "Rechercher",
       "sortLabel": "Ordre",
       "sort": {
-        "newest": "Plus récents d'abord",
-        "oldest": "Plus anciens d'abord",
-        "harm": "Plus graves d'abord",
-        "due": "Par échéance"
+        "newest": "Plus récents d’abord",
+        "oldest": "Plus anciens d’abord",
+        "harm": "Plus graves d’abord",
+        "due": "Échéance la plus proche d’abord"
       },
       "filters": "Plus de filtres",
       "filtersCount": "Plus de filtres ({count})",
       "clear": "Effacer les filtres",
       "department": "Service",
-      "departmentHelp": "Lieu de l'événement ou service chargé du traitement.",
+      "departmentHelp": "Lieu de l’événement ou service chargé du traitement.",
       "from": "Déclaré à partir du",
-      "to": "Déclaré jusqu'au",
-      "hospitalDays": "Les jours sont comptés à l'heure de l'hôpital : {zone}.",
-      "empty": "Aucun incident à afficher. Dès qu'un incident est déclaré, il apparaît ici.",
+      "to": "Déclaré jusqu’au",
+      "hospitalDays": "Les jours sont comptés à l’heure de l’hôpital : {zone}.",
+      "empty": "Aucun incident à afficher. Dès qu’un incident est déclaré, il apparaît ici.",
       "emptyFiltered": "Aucun incident ne correspond à ces filtres. Modifiez-les, ou effacez-les pour voir tous les incidents.",
       "reported": "Déclaré le {date}",
       "reportedAgo": "Déclaré {ago}",
-      "reportedJustNow": "Déclaré à l'instant",
+      "reportedJustNow": "Déclaré à l’instant",
       "assignedToYou": "Vous est attribué",
       "pagination": "Pages",
       "page": "Page {page} sur {pages}",
@@ -153,25 +178,27 @@
     },
     "form": {
       "noPermission": "Votre rôle ne vous permet pas de déclarer des incidents. Adressez-vous à votre administrateur.",
-      "noUnits": "Aucun service n'a encore été créé pour votre établissement : une déclaration ne peut donc pas indiquer le lieu. Adressez-vous à votre administrateur.",
+      "noUnits": "Aucun service n’a encore été créé pour votre établissement : une déclaration ne peut donc pas indiquer le lieu. Adressez-vous à votre administrateur.",
       "type": "Que souhaitez-vous déclarer ?",
       "category": "Catégorie",
       "choose": "Choisir…",
-      "where": "Lieu de l'événement",
-      "occurredAt": "Date et heure de l'événement",
-      "occurredAtHelp": "Par défaut, la date et l'heure actuelles. Modifiez-les si l'événement s'est produit plus tôt ; elles ne peuvent pas être dans le futur.",
-      "hospitalTime": "Saisissez-les à l'heure de l'hôpital : {zone}.",
-      "description": "Que s'est-il passé ?",
-      "descriptionHelp": "Écrivez avec vos propres mots. N'indiquez ni nom de patient ni numéro de dossier.",
+      "where": "Lieu de l’événement",
+      "occurredAt": "Date et heure de l’événement",
+      "occurredAtHelp": "Par défaut, la date et l’heure actuelles. Modifiez-les si l’événement s’est produit plus tôt ; elles ne peuvent pas être dans le futur.",
+      "hospitalTime": "Saisissez-les à l’heure de l’hôpital : {zone}.",
+      "description": "Que s’est-il passé ?",
+      "descriptionHelp": "Écrivez avec vos propres mots. N’indiquez ni nom de patient ni numéro de dossier.",
       "immediateAction": "Mesures immédiates prises (facultatif)",
+      "immediateActionHelp": "N’indiquez ni nom de patient ni numéro de dossier.",
       "harmLevel": "Niveau de préjudice",
+      "seriousNote": "Cette déclaration n’alerte personne dans l’immédiat : elle sera lue lorsque l’équipe qualité consultera les nouvelles déclarations. Suivez dès maintenant la procédure d’alerte de votre hôpital, comme vous le feriez sans ce formulaire.",
       "anonymous": "Déclarer anonymement",
-      "whoSeesName": "Si vous ne cochez pas cette case, votre nom est enregistré avec la déclaration. Seul le personnel que l'hôpital a autorisé à voir qui a déclaré, en général l'équipe qualité, peut le voir : les autres personnes qui traitent la déclaration voient « Le déclarant » à la place.",
-      "anonymousWarning": "Votre nom n'est pas enregistré avec la déclaration : personne, pas même l'équipe qualité, ne peut savoir qui l'a envoyée. Elle n'apparaîtra pas dans « Déclarés par moi ». Après l'envoi, un code de suivi s'affiche une seule fois : il vous permet de revenir lire les réponses et d'ajouter un commentaire. L'hôpital ne sait de vous que ce que vous écrivez ici.",
+      "whoSeesName": "Si vous ne cochez pas cette case, votre nom est enregistré avec la déclaration. Seul le personnel que l’hôpital a autorisé à voir qui a déclaré, en général l’équipe qualité, peut le voir : les autres personnes qui traitent la déclaration voient « Le déclarant » à la place.",
+      "anonymousWarning": "Votre nom n’est pas enregistré avec la déclaration : personne, pas même l’équipe qualité, ne peut savoir qui l’a envoyée. Elle n’apparaîtra pas dans « Déclarés par moi », et vous ne serez pas averti des réponses : revenez avec le code pour les lire. Après l’envoi, un code de suivi s’affiche une seule fois : il vous permet de revenir lire les réponses et d’ajouter un commentaire. L’hôpital ne sait de vous que ce que vous écrivez ici.",
       "submit": "Envoyer la déclaration",
       "cancel": "Annuler",
       "doneTitle": "Déclaration envoyée",
-      "doneHelp": "Merci. L'équipe qualité va l'examiner. Sa référence est :",
+      "doneHelp": "Merci. L’équipe qualité va l’examiner. Sa référence est :",
       "view": "Consulter la déclaration",
       "another": "Faire une autre déclaration",
       "intro": "Les déclarations servent à améliorer la sécurité, pas à désigner un coupable.",
@@ -179,43 +206,43 @@
     },
     "code": {
       "title": "Votre code de suivi",
-      "help": "Ce code vous permet de revenir à votre déclaration, de lire les réponses et d'ajouter un commentaire.",
+      "help": "Ce code vous permet de revenir à votre déclaration, de lire les réponses et d’ajouter un commentaire.",
       "label": "Code de suivi",
       "copy": "Copier le code",
       "copied": "Copié",
-      "once": "Notez ce code ou copiez-le maintenant. Il ne s'affiche qu'une seule fois : personne ne pourra vous le montrer de nouveau ni vous en donner un autre.",
+      "once": "Notez ce code ou copiez-le maintenant. Il ne s’affiche qu’une seule fois : personne ne pourra vous le montrer de nouveau ni vous en donner un autre.",
       "keepSafe": "Toute personne qui détient ce code peut lire cette déclaration et les réponses, et écrire des commentaires en tant que déclarant. Ne le communiquez à personne.",
-      "later": "Pour revenir plus tard, conservez l'adresse de la page de suivi avec votre code :",
-      "copyAddress": "Copier l'adresse",
+      "later": "Pour revenir plus tard, conservez l’adresse de la page de suivi avec votre code :",
+      "copyAddress": "Copier l’adresse",
       "open": "Ouvrir la page de suivi",
-      "newTab": "(s'ouvre dans un nouvel onglet)"
+      "newTab": "(s’ouvre dans un nouvel onglet)"
     },
     "detail": {
       "back": "Retour aux incidents",
       "reporterView": "Vous consultez cet incident en tant que déclarant : vous voyez votre déclaration, son avancement et les commentaires qui vous sont destinés.",
       "report": "Déclaration",
-      "whatHappened": "Ce qui s'est passé",
+      "whatHappened": "Ce qui s’est passé",
       "immediateAction": "Mesures immédiates prises",
       "type": "Type",
       "category": "Catégorie",
-      "where": "Lieu de l'événement",
-      "occurredAt": "Date et heure de l'événement",
+      "where": "Lieu de l’événement",
+      "occurredAt": "Date et heure de l’événement",
       "reportedAt": "Déclaré le",
       "reportedBy": "Déclaré par",
       "anonymous": "Anonyme",
-      "reporterHidden": "Seul le personnel autorisé par l'hôpital, en général l'équipe qualité, voit cette information",
+      "reporterHidden": "Seul le personnel autorisé par l’hôpital, en général l’équipe qualité, voit cette information",
       "harmLevel": "Niveau de préjudice",
       "ownerUnit": "Service chargé du traitement",
       "ownerUnitNone": "Pas encore défini",
       "assignedTo": "Attribué à",
-      "assignedToNone": "Personne pour l'instant",
+      "assignedToNone": "Personne pour l’instant",
       "closureSummary": "Synthèse de clôture",
       "proposedSummary": "Synthèse de clôture proposée",
-      "awaiting": "Le {date}, {name} a demandé la clôture de cet incident. Il sera clôturé lorsqu'une deuxième personne aura validé cette clôture.",
-      "awaitingNoName": "La clôture de cet incident a été demandée. Il sera clôturé lorsqu'une deuxième personne aura validé cette clôture.",
+      "awaiting": "Le {date}, {name} a demandé la clôture de cet incident. Il sera clôturé lorsqu’une deuxième personne aura validé cette clôture.",
+      "awaitingNoName": "La clôture de cet incident a été demandée. Il sera clôturé lorsqu’une deuxième personne aura validé cette clôture.",
       "rejectionReason": "Motif du classement sans suite",
       "loadError": "Impossible de charger cet incident. Rechargez la page.",
-      "behind": "Cette page n'a pas pu être actualisée et n'affiche peut-être pas les dernières modifications. Rechargez la page."
+      "behind": "Cette page n’a pas pu être actualisée et n’affiche peut-être pas les dernières modifications. Rechargez la page."
     },
     "deadline": {
       "title": "Échéances",
@@ -224,8 +251,8 @@
         "closure": "Échéance de clôture"
       },
       "due": {
-        "triage": "À trier {when}",
-        "closure": "À clôturer {when}"
+        "triage": "Échéance de tri {when}",
+        "closure": "Échéance de clôture {when}"
       },
       "late": {
         "triage": "Échéance de tri dépassée {when}",
@@ -238,7 +265,7 @@
       "title": "Chronologie",
       "byline": "{name} · {date}",
       "theReporter": "Le déclarant",
-      "staff": "Personnel de l'hôpital",
+      "staff": "Personnel de l’hôpital",
       "unknownPerson": "Utilisateur inconnu",
       "note": "Note :",
       "changed": {
@@ -264,43 +291,49 @@
         "withdrawn": "Retrait de la demande de validation",
         "commented": "Commentaire ajouté",
         "commentedInternal": "Commentaire interne ajouté",
-        "other": "Mise à jour de l'incident"
+        "other": "Mise à jour de l’incident"
       }
     },
     "comments": {
       "title": "Commentaires",
-      "empty": "Aucun commentaire pour l'instant.",
+      "empty": "Aucun commentaire pour l’instant.",
       "internal": "Interne",
       "body": "Ajouter un commentaire",
-      "bodyHelp": "N'indiquez ni nom de patient ni numéro de dossier.",
+      "bodyHelp": "N’indiquez ni nom de patient ni numéro de dossier.",
       "visibility": "Qui peut le lire",
-      "visibilityInternal": "Interne : uniquement le personnel qui traite l'incident, pas le déclarant",
-      "visibilityEveryone": "Toutes les personnes qui voient cet incident, y compris le déclarant",
-      "reporterHelp": "Le personnel qui traite cet incident lira votre commentaire. N'indiquez ni nom de patient ni numéro de dossier.",
+      "visibilityInternal": "Interne : uniquement le personnel qui traite l’incident, pas le déclarant",
+      "visibilityEveryone": "Le déclarant peut le lire, comme toutes les personnes qui voient cet incident",
+      "reporterHelp": "Le personnel qui traite cet incident lira votre commentaire. N’indiquez ni nom de patient ni numéro de dossier.",
       "submit": "Ajouter le commentaire"
+    },
+    "reader": {
+      "anonymous": "Cette déclaration a été envoyée de manière anonyme : toute personne qui détient son code de suivi lit ce que le déclarant peut lire, et ne travaille peut-être pas à l’hôpital.",
+      "maybeAnonymous": "Si cette déclaration a été envoyée de manière anonyme, toute personne qui détient son code de suivi lit ce que le déclarant peut lire, et ne travaille peut-être pas à l’hôpital."
     },
     "triage": {
       "title": "Tri",
       "retitle": "Modifier le tri",
-      "help": "Confirmez le niveau de préjudice, puis transmettez l'incident au service chargé de le traiter.",
+      "help": "Confirmez le niveau de préjudice, puis transmettez l’incident au service chargé de le traiter.",
       "harmLevel": "Niveau de préjudice",
-      "sentinel": "Il s'agit d'un événement sentinelle",
+      "sentinel": "Il s’agit d’un événement sentinelle",
+      "sentinelAsk": "S’agit-il d’un événement sentinelle ?",
+      "sentinelAskHelp": "Question posée pour tout préjudice grave et tout décès. La clôture d’un événement sentinelle doit être validée par une deuxième personne.",
       "category": "Catégorie",
       "ownerUnit": "Service chargé du traitement",
       "assignee": "Attribué à",
-      "assigneeNone": "Personne pour l'instant",
-      "usersError": "Impossible de charger la liste du personnel. Rechargez la page pour choisir la personne à qui l'attribuer.",
-      "leavesScope": "Ce service est en dehors du périmètre de votre rôle. Après l'enregistrement, vous ne pourrez plus trier ni modifier cet incident.",
+      "assigneeNone": "Personne pour l’instant",
+      "usersError": "Impossible de charger la liste du personnel. Rechargez la page pour choisir la personne à qui l’attribuer.",
+      "leavesScope": "Ce service est en dehors du périmètre de votre rôle. Après l’enregistrement, vous ne pourrez plus trier ni modifier cet incident.",
       "submit": "Enregistrer le tri",
       "saved": "Tri enregistré.",
       "ownerInactiveOption": "{name} (service inactif)",
-      "ownerInactive": "Ce service a été désactivé. Choisissez le service désormais chargé de traiter l'incident, puis enregistrez."
+      "ownerInactive": "Ce service a été désactivé. Choisissez le service désormais chargé de traiter l’incident, puis enregistrez."
     },
     "actions": {
       "title": "Changer le statut",
       "kinds": {
         "start": "Commencer le traitement",
-        "close": "Clôturer l'incident",
+        "close": "Clôturer l’incident",
         "reject": "Classer sans suite",
         "reopen": "Rouvrir",
         "request_sign_off": "Demander la validation de la clôture",
@@ -320,41 +353,41 @@
         "required": "Note expliquant ce changement"
       },
       "help": {
-        "request_sign_off": "La clôture de cet incident doit être validée par une deuxième personne. Vous proposez la synthèse de clôture, puis une autre personne la valide. D'ici là, l'incident reste ouvert et son tri ne peut pas être modifié.",
-        "sign_off": "Vous confirmez la synthèse de clôture proposée, et l'incident est clôturé.",
-        "send_back": "L'incident repasse en cours de traitement. Indiquez ce qui manque encore.",
-        "withdraw": "La demande est retirée, et l'incident repasse en cours de traitement."
+        "request_sign_off": "La clôture de cet incident doit être validée par une deuxième personne. Vous proposez la synthèse de clôture, puis une autre personne la valide. D’ici là, l’incident reste ouvert et son tri ne peut pas être modifié.",
+        "sign_off": "Vous confirmez la synthèse de clôture proposée, et l’incident est clôturé.",
+        "send_back": "L’incident repasse en cours de traitement. Indiquez ce qui manque encore.",
+        "withdraw": "La demande est retirée, et l’incident repasse en cours de traitement."
       },
-      "noteHelp": "Le déclarant peut lire cette note. N'indiquez ni nom de patient ni numéro de dossier.",
-      "noteHelpInternal": "Le déclarant ne peut pas lire cette note. N'indiquez ni nom de patient ni numéro de dossier.",
-      "revisionHelp": "Votre décision porte sur l'incident tel que cette page l'affiche. Si quelqu'un l'a modifié entre-temps, rien n'est enregistré et la page affiche sa dernière version pour que vous la vérifiiez.",
+      "noteHelp": "Le déclarant peut lire cette note. N’indiquez ni nom de patient ni numéro de dossier.",
+      "noteHelpInternal": "Le déclarant ne peut pas lire cette note. N’indiquez ni nom de patient ni numéro de dossier.",
+      "revisionHelp": "Votre décision porte sur l’incident tel que cette page l’affiche. Si quelqu’un l’a modifié entre-temps, rien n’est enregistré et la page affiche sa dernière version pour que vous la vérifiiez.",
       "confirm": "Confirmer",
       "cancel": "Annuler",
       "done": "Statut modifié."
     },
     "errors": {
       "invalid": "Vérifiez les champs puis réessayez.",
-      "occurred_in_future": "La date de l'événement est dans le futur. Corrigez-la, puis envoyez de nouveau la déclaration.",
-      "occurred_too_long_ago": "La date de l'événement est trop ancienne. Vérifiez la date, en particulier l'année, puis envoyez de nouveau la déclaration.",
-      "unknown_category": "Cette catégorie n'est plus disponible. Rechargez la page et choisissez-en une autre.",
-      "unknown_org_unit": "Ce service n'est plus disponible : il a été désactivé ou supprimé. Rechargez la page et choisissez-en un autre.",
-      "unknown_assignee": "Cet incident ne peut plus être attribué à cette personne : son compte n'est pas actif. Choisissez quelqu'un d'autre.",
-      "harm_not_applicable": "Un presque-accident ou un danger n'a causé de préjudice à personne : il n'a pas de niveau de préjudice. Rechargez la page, puis réessayez.",
+      "occurred_in_future": "La date de l’événement est dans le futur. Corrigez-la, puis envoyez de nouveau la déclaration.",
+      "occurred_too_long_ago": "La date de l’événement est trop ancienne. Vérifiez la date, en particulier l’année, puis envoyez de nouveau la déclaration.",
+      "unknown_category": "Cette catégorie n’est plus disponible. Rechargez la page et choisissez-en une autre.",
+      "unknown_org_unit": "Ce service n’est plus disponible : il a été désactivé ou supprimé. Rechargez la page et choisissez-en un autre.",
+      "unknown_assignee": "Cet incident ne peut plus être attribué à cette personne : son compte n’est pas actif. Choisissez quelqu’un d’autre.",
+      "harm_not_applicable": "Un presque-accident ou un danger n’a causé de préjudice à personne : il n’a pas de niveau de préjudice. Rechargez la page, puis réessayez.",
       "sentinel_not_applicable": "Un presque-accident ou un danger ne peut pas être un événement sentinelle. Rechargez la page, puis réessayez.",
       "missing_permission": "Votre rôle ne le permet pas. Adressez-vous à votre administrateur.",
       "outside_scope": "Votre rôle ne couvre pas le service de cet incident. Adressez-vous à une personne chargée du tri pour ce service.",
-      "invalid_transition": "Quelqu'un d'autre a modifié cet incident entre-temps. La page affiche maintenant son statut actuel ; vérifiez-le puis réessayez.",
-      "stale_incident": "Quelqu'un d'autre a modifié cet incident pendant que vous l'aviez ouvert. La page affiche maintenant sa dernière version : vérifiez-la puis enregistrez de nouveau. Si cela se reproduit, rechargez la page.",
-      "serious_cannot_be_rejected": "Un incident ayant entraîné un préjudice grave ou un décès, ou signalé comme événement sentinelle, ne peut pas être classé sans suite. En cas d'erreur sur le niveau de préjudice ou sur la mention d'événement sentinelle, corrigez-la d'abord dans le tri, puis réessayez.",
+      "invalid_transition": "Quelqu’un d’autre a modifié cet incident entre-temps. La page affiche maintenant son statut actuel ; vérifiez-le puis réessayez.",
+      "stale_incident": "Quelqu’un d’autre a modifié cet incident pendant que vous l’aviez ouvert. La page affiche maintenant sa dernière version : vérifiez-la puis enregistrez de nouveau. Si cela se reproduit, rechargez la page.",
+      "serious_cannot_be_rejected": "Un incident ayant entraîné un préjudice grave ou un décès, ou signalé comme événement sentinelle, ne peut pas être classé sans suite. En cas d’erreur sur le niveau de préjudice ou sur la mention d’événement sentinelle, corrigez-la dans le tri et enregistrez. Un incident qui n’est pas grave peut être classé sans suite même après le tri.",
       "sign_off_required": "La clôture de cet incident doit être validée par une deuxième personne : il ne peut pas être clôturé en une seule étape. La page affiche maintenant les actions possibles.",
-      "same_person": "Vous avez demandé la clôture de cet incident : vous ne pouvez donc ni la valider ni renvoyer l'incident vous-même. Une autre personne habilitée à valider doit le faire.",
-      "missing_sign_off": "Votre rôle ne vous permet ni de valider une clôture ni de renvoyer l'incident. Adressez-vous à une personne habilitée à valider, ou à votre administrateur.",
-      "kind_required": "Ce changement n'a pas pu être effectué tel que demandé. La page affiche maintenant les actions possibles : choisissez-en une de nouveau.",
-      "revision_required": "Cette page n'était plus à jour : le changement n'a pas été effectué. Elle affiche maintenant l'incident tel qu'il est : vérifiez-le puis réessayez.",
+      "same_person": "Vous avez demandé la clôture de cet incident : vous ne pouvez donc ni la valider ni renvoyer l’incident vous-même. Une autre personne habilitée à valider doit le faire.",
+      "missing_sign_off": "Votre rôle ne vous permet ni de valider une clôture ni de renvoyer l’incident. Adressez-vous à une personne habilitée à valider, ou à votre administrateur.",
+      "kind_required": "Ce changement n’a pas pu être effectué tel que demandé. La page affiche maintenant les actions possibles : choisissez-en une de nouveau.",
+      "revision_required": "Cette page n’était plus à jour : le changement n’a pas été effectué. Elle affiche maintenant l’incident tel qu’il est : vérifiez-le puis réessayez.",
       "note_required": "Rédigez une note expliquant ce changement, puis confirmez à nouveau.",
-      "internal_not_allowed": "Vous ne pouvez pas ajouter de commentaire interne. Sous « Qui peut le lire », choisissez l'option qui inclut le déclarant, puis ajoutez de nouveau le commentaire.",
-      "signedOut": "Votre session a expiré : rien n'a été enregistré. Reconnectez-vous dans un autre onglet, puis revenez sur cette page et réessayez. Ce que vous avez saisi est toujours là.",
-      "notFound": "Cet incident n'existe pas, ou votre rôle ne vous permet pas de le consulter. Revenez à la liste.",
+      "internal_not_allowed": "Vous ne pouvez pas ajouter de commentaire interne. Sous « Qui peut le lire », choisissez l’option qui inclut le déclarant, puis ajoutez de nouveau le commentaire.",
+      "signedOut": "Votre session a expiré : rien n’a été enregistré. Reconnectez-vous dans un autre onglet, puis revenez sur cette page et réessayez. Ce que vous avez saisi est toujours là.",
+      "notFound": "Cet incident n’existe pas, ou votre rôle ne vous permet pas de le consulter. Revenez à la liste.",
       "generic": "Enregistrement impossible. Vérifiez votre connexion puis réessayez."
     },
     "inactiveUnit": "un service désormais inactif"
@@ -362,17 +395,22 @@
   "publicReport": {
     "title": "Déclarer un incident",
     "description": "Un incident, un incident évité de justesse ou une situation dangereuse. Cela prend environ deux minutes.",
-    "urgent": "Ce formulaire n'est pas suivi en continu. Si quelqu'un est en danger maintenant, prévenez tout de suite un membre du personnel.",
-    "deviceTime": "Saisissez-les à l'heure affichée sur cet appareil : {zone}.",
+    "urgent": "Ce formulaire n’est pas suivi en continu. Si quelqu’un est en danger maintenant, prévenez tout de suite un membre du personnel.",
+    "deviceTime": "Utilisez l’heure affichée sur votre téléphone ou votre ordinateur.",
     "form": {
-      "category": "De quoi s'agit-il ?",
+      "category": "De quoi s’agit-il ?",
       "immediateAction": "Ce qui a été fait tout de suite (facultatif)",
-      "harmLevel": "Quelqu'un a-t-il subi un préjudice ?"
+      "harmLevel": "Quelqu’un a-t-il subi un préjudice ?"
     },
-    "privacy": "Vous n'avez pas à vous connecter, et votre nom ne vous est pas demandé. Rien sur vous ni sur votre téléphone n'est enregistré avec la déclaration. Après l'envoi, un code de suivi vous permet de revenir lire toute réponse de l'hôpital. L'hôpital ne sait de vous que ce que vous écrivez ici.",
-    "unavailableTitle": "La déclaration n'est pas disponible avec ce lien",
-    "unavailable": "Ce lien n'est pas en service. Pour déclarer un incident, adressez-vous à un membre du personnel ou à l'équipe qualité de l'hôpital.",
-    "notSent": "Votre déclaration n'a pas été envoyée : ce lien vient d'être mis hors service. Adressez-vous à un membre du personnel ou à l'équipe qualité de l'hôpital.",
+    "harm": {
+      "none": "Personne n’a subi de préjudice",
+      "moderate": "Quelqu’un a subi un préjudice",
+      "severe": "Quelqu’un a subi un préjudice grave ou est décédé"
+    },
+    "privacy": "Vous n’avez pas à vous connecter, et votre nom ne vous est pas demandé. Rien sur vous ni sur votre téléphone n’est enregistré avec la déclaration. Après l’envoi, un code de suivi vous permet de revenir lire toute réponse de l’hôpital. L’hôpital ne sait de vous que ce que vous écrivez ici.",
+    "unavailableTitle": "La déclaration n’est pas disponible avec ce lien",
+    "unavailable": "Ce lien n’est pas en service. Pour déclarer un incident, adressez-vous à un membre du personnel ou à l’équipe qualité de l’hôpital.",
+    "notSent": "Votre déclaration n’a pas été envoyée : ce lien vient d’être mis hors service. Adressez-vous à un membre du personnel ou à l’équipe qualité de l’hôpital.",
     "loadErrorTitle": "Impossible de charger le formulaire",
     "loadError": "Vérifiez votre connexion Internet, puis rechargez la page.",
     "loadTooManyTitle": "Le formulaire ne peut pas être ouvert pour le moment",
@@ -381,47 +419,50 @@
     "haveCode": "Vous avez déjà envoyé une déclaration ?",
     "followUp": "Suivez-la avec votre code",
     "sentTitle": "Déclaration envoyée",
-    "sentHelp": "Merci. L'équipe qualité va l'examiner.",
+    "sentHelp": "Merci. L’équipe qualité va l’examiner.",
     "another": "Envoyer une autre déclaration",
-    "tooMany": "Trop de déclarations ont été envoyées au cours de la dernière heure : celle-ci n'a pas été envoyée. Gardez cette page ouverte : ce que vous avez écrit est toujours là. Vous pourrez réessayer après {time}.",
-    "tooManyLater": "Trop de déclarations ont été envoyées au cours de la dernière heure : celle-ci n'a pas été envoyée. Gardez cette page ouverte : ce que vous avez écrit est toujours là. Réessayez plus tard.",
+    "tooMany": "Trop de déclarations ont été envoyées au cours de la dernière heure : celle-ci n’a pas été envoyée. Gardez cette page ouverte : ce que vous avez écrit est toujours là. Vous pourrez réessayer après {time}.",
+    "tooManyLater": "Trop de déclarations ont été envoyées au cours de la dernière heure : celle-ci n’a pas été envoyée. Gardez cette page ouverte : ce que vous avez écrit est toujours là. Réessayez plus tard.",
+    "busy": "Votre déclaration n’a pas été envoyée : l’hôpital recevait une autre déclaration au même moment. Ce que vous avez écrit est toujours là : envoyez-la de nouveau dans un instant.",
     "errors": {
-      "invalid": "Votre déclaration n'a pas été envoyée. Vérifiez chaque réponse, puis envoyez-la de nouveau.",
-      "occurred_in_future": "La date de l'événement est dans le futur. Corrigez-la, puis envoyez de nouveau la déclaration.",
-      "occurred_too_long_ago": "La date de l'événement est trop ancienne. Vérifiez la date, en particulier l'année, puis envoyez de nouveau la déclaration.",
-      "unknown_category": "Votre déclaration n'a pas été envoyée : le choix fait sous « De quoi s'agit-il ? » n'est plus disponible. Choisissez-en un autre, puis envoyez-la de nouveau. Ce que vous avez écrit est toujours là.",
-      "unknown_org_unit": "Votre déclaration n'a pas été envoyée : le lieu choisi sous « Lieu de l'événement » n'est plus disponible. Choisissez-en un autre, puis envoyez-la de nouveau. Ce que vous avez écrit est toujours là.",
-      "harm_not_applicable": "Votre déclaration n'a pas été envoyée. Sous « Que souhaitez-vous déclarer ? », choisissez de nouveau votre réponse, puis envoyez-la de nouveau. Ce que vous avez écrit est toujours là.",
-      "generic": "Votre déclaration n'a pas été envoyée. Vérifiez votre connexion Internet, puis envoyez-la de nouveau. Ce que vous avez écrit est toujours là."
+      "invalid": "Votre déclaration n’a pas été envoyée. Vérifiez chaque réponse, puis envoyez-la de nouveau.",
+      "occurred_in_future": "Votre déclaration n’a pas été envoyée : la date de l’événement est dans le futur. Corrigez-la, puis envoyez-la de nouveau. Ce que vous avez écrit est toujours là.",
+      "occurred_too_long_ago": "Votre déclaration n’a pas été envoyée : la date de l’événement est trop ancienne. Vérifiez la date, en particulier l’année, puis envoyez-la de nouveau. Ce que vous avez écrit est toujours là.",
+      "unknown_category": "Votre déclaration n’a pas été envoyée : le choix fait sous « De quoi s’agit-il ? » n’est plus disponible. Choisissez-en un autre, puis envoyez-la de nouveau. Ce que vous avez écrit est toujours là.",
+      "unknown_org_unit": "Votre déclaration n’a pas été envoyée : le lieu choisi sous « Lieu de l’événement » n’est plus disponible. Choisissez-en un autre, puis envoyez-la de nouveau. Ce que vous avez écrit est toujours là.",
+      "harm_not_applicable": "Votre déclaration n’a pas été envoyée. Sous « Que souhaitez-vous déclarer ? », choisissez de nouveau votre réponse, puis envoyez-la de nouveau. Ce que vous avez écrit est toujours là.",
+      "generic": "Votre déclaration n’a pas été envoyée. Vérifiez votre connexion Internet, puis envoyez-la de nouveau. Ce que vous avez écrit est toujours là."
     },
     "poster": "Scannez ce code avec votre téléphone pour déclarer un incident, un incident évité de justesse ou une situation dangereuse. Sans compte, et sans donner votre nom."
   },
   "followUp": {
     "title": "Suivre une déclaration",
-    "intro": "Saisissez le code de suivi qui vous a été donné à l'envoi de votre déclaration.",
+    "intro": "Saisissez le code de suivi qui vous a été donné à l’envoi de votre déclaration.",
     "code": "Code de suivi",
     "codeHelp": "16 lettres et chiffres. Majuscules ou minuscules, avec ou sans les tirets.",
     "codeExample": "XXXX-XXXX-XXXX-XXXX",
     "submit": "Ouvrir la déclaration",
-    "wrong": "Ce code n'ouvre aucune déclaration. Comparez-le à ce que vous avez noté, puis réessayez. Un code ne contient jamais 0, 1, I, L ni O.",
+    "wrong": "Ce code n’ouvre aucune déclaration. Comparez-le à ce que vous avez noté, puis réessayez. Un code ne contient jamais 0, 1, I, L ni O.",
     "tooMany": "Trop de tentatives au cours de la dernière heure. Vous pourrez réessayer après {time}.",
     "tooManyLater": "Trop de tentatives au cours de la dernière heure. Réessayez plus tard.",
-    "commentTooMany": "Votre commentaire n'a pas été envoyé : la limite de commentaires est atteinte pour le moment. Gardez cette page ouverte : ce que vous avez écrit est toujours là. Vous pourrez réessayer après l'heure suivante : {time}.",
-    "commentTooManyLater": "Votre commentaire n'a pas été envoyé : la limite de commentaires est atteinte pour le moment. Gardez cette page ouverte : ce que vous avez écrit est toujours là. Réessayez plus tard.",
-    "error": "Une erreur s'est produite. Vérifiez votre connexion Internet, puis réessayez.",
-    "notKept": "Le code n'est pas enregistré sur cet appareil. En quittant cette page, vous en aurez de nouveau besoin.",
+    "commentTooMany": "Votre commentaire n’a pas été envoyé : la limite de commentaires est atteinte pour le moment. Gardez cette page ouverte : ce que vous avez écrit est toujours là. Vous pourrez réessayer à partir de {time}.",
+    "commentTooManyLater": "Votre commentaire n’a pas été envoyé : la limite de commentaires est atteinte pour le moment. Gardez cette page ouverte : ce que vous avez écrit est toujours là. Réessayez plus tard.",
+    "error": "Une erreur s’est produite. Vérifiez votre connexion Internet, puis réessayez.",
+    "notKept": "Le code n’est pas enregistré sur cet appareil. En quittant cette page, vous en aurez de nouveau besoin.",
     "lost": "Un code perdu ne peut être ni retrouvé ni remplacé. Votre déclaration, elle, a bien été reçue.",
     "viewTitle": "Votre déclaration",
-    "viewHelp": "Voici votre déclaration, ce qui a été fait jusqu'ici et les réponses qui vous sont destinées.",
-    "ended": "Cette déclaration n'est plus en cours de traitement : il n'est plus possible d'y ajouter de commentaire. Si vous avez quelque chose à ajouter, envoyez une nouvelle déclaration.",
-    "endedSince": "Votre commentaire n'a pas été envoyé : le traitement de cette déclaration vient de se terminer, et il n'est plus possible d'y ajouter de commentaire. Ce que vous avez écrit est toujours là. Pour le transmettre, envoyez une nouvelle déclaration.",
+    "viewHelp": "Voici votre déclaration, ce qui a été fait jusqu’ici et les réponses qui vous sont destinées.",
+    "ended": "Cette déclaration n’est plus en cours de traitement : il n’est plus possible d’y ajouter de commentaire. Si vous avez quelque chose à ajouter, envoyez une nouvelle déclaration.",
+    "endedNoForm": "Cette déclaration n’est plus en cours de traitement : il n’est plus possible d’y ajouter de commentaire. Si vous avez quelque chose à ajouter, envoyez une nouvelle déclaration ou adressez-vous à un membre du personnel.",
+    "endedSince": "Votre commentaire n’a pas été envoyé : le traitement de cette déclaration vient de se terminer, et il n’est plus possible d’y ajouter de commentaire. Ce que vous avez écrit est toujours là. Pour le transmettre, envoyez une nouvelle déclaration.",
+    "endedSinceNoForm": "Votre commentaire n’a pas été envoyé : le traitement de cette déclaration vient de se terminer, et il n’est plus possible d’y ajouter de commentaire. Ce que vous avez écrit est toujours là. Pour le transmettre, envoyez une nouvelle déclaration ou adressez-vous à un membre du personnel.",
     "newReport": "Envoyer une nouvelle déclaration",
     "close": "Quitter et masquer la déclaration",
     "closeHelp": "Utilisez ce bouton lorsque vous avez terminé, surtout sur un appareil partagé. Il vous faudra le code pour rouvrir la déclaration."
   },
   "notifications": {
     "title": "Notifications",
-    "description": "Ce qui s'est passé sur les incidents que vous avez déclarés ou que vous traitez. Une notification ne nomme personne : ouvrez l'incident pour en voir le détail.",
+    "description": "Ce qui s’est passé sur les incidents que vous avez déclarés ou que vous traitez. Une notification ne nomme personne : ouvrez l’incident pour en voir le détail.",
     "filterLabel": "Filtrer les notifications",
     "all": "Toutes",
     "unread": "Non lues",
@@ -431,62 +472,53 @@
     "loading": "Chargement…",
     "loadError": "Impossible de charger vos notifications. Rechargez la page.",
     "actionError": "Impossible de marquer la notification comme lue. Vérifiez votre connexion puis réessayez.",
-    "empty": "Vous n'avez encore aucune notification. Dès qu'il se passe quelque chose sur un incident que vous avez déclaré ou que vous traitez, cela apparaît ici.",
+    "empty": "Vous n’avez encore aucune notification. Dès qu’il se passe quelque chose sur un incident que vous avez déclaré ou que vous traitez, cela apparaît ici.",
     "emptyUnread": "Vous avez tout lu. Choisissez « Toutes » pour revoir les notifications précédentes.",
-    "unavailable": "Vous n'avez plus accès à cet incident.",
-    "justNow": "À l'instant",
+    "unavailable": "Vous n’avez plus accès à cet incident.",
+    "justNow": "À l’instant",
     "kinds": {
       "incident_reported": "Nouvelle déclaration en attente de tri : {reference}.",
-      "incident_assigned": "L'incident {reference} vous a été attribué.",
-      "incident_handed_over": "L'incident {reference} a été transmis à un service dont vous assurez le tri.",
-      "comment_added": "Nouveau commentaire sur l'incident {reference}.",
+      "incident_assigned": "L’incident {reference} vous a été attribué.",
+      "incident_handed_over": "L’incident {reference} a été transmis à un service dont vous assurez le tri.",
+      "comment_added": "Nouveau commentaire sur l’incident {reference}.",
       "status_changed": {
-        "closed": "L'incident {reference} a été clôturé.",
+        "closed": "L’incident {reference} a été clôturé.",
         "rejected": "La déclaration {reference} a été classée sans suite.",
-        "reopened": "L'incident {reference} a été rouvert.",
-        "other": "Le statut de l'incident {reference} a changé."
+        "reopened": "L’incident {reference} a été rouvert.",
+        "other": "Le statut de l’incident {reference} a changé."
       },
-      "sign_off_requested": "La clôture de l'incident {reference} attend la validation d'une deuxième personne.",
+      "sign_off_requested": "La clôture de l’incident {reference} attend la validation d’une deuxième personne.",
       "sign_off_decided": {
-        "signed_off": "La clôture de l'incident {reference} a été validée.",
-        "sent_back": "L'incident {reference} a été renvoyé pour complément : sa clôture n'a pas été validée.",
-        "withdrawn": "Votre demande de validation de la clôture de l'incident {reference} a été retirée par une autre personne.",
-        "other": "Une décision a été prise sur la demande de clôture de l'incident {reference}."
+        "signed_off": "La clôture de l’incident {reference} a été validée : il est clôturé.",
+        "sent_back": "L’incident {reference} a été renvoyé pour complément : sa clôture n’a pas été validée.",
+        "withdrawn": "Une autre personne a retiré votre demande de clôture de l’incident {reference}.",
+        "other": "Une décision a été prise sur la demande de clôture de l’incident {reference}."
       },
       "due_soon": {
-        "triage": "L'échéance de tri de la déclaration {reference} approche.",
-        "closure": "L'échéance de clôture de l'incident {reference} approche.",
-        "other": "Une échéance approche pour l'incident {reference}."
+        "triage": "L’échéance de tri de la déclaration {reference} approche.",
+        "closure": "L’échéance de clôture de l’incident {reference} approche.",
+        "other": "Une échéance approche pour l’incident {reference}."
       },
       "overdue": {
-        "triage": "L'échéance de tri de la déclaration {reference} est dépassée.",
-        "closure": "L'échéance de clôture de l'incident {reference} est dépassée.",
-        "other": "Une échéance est dépassée pour l'incident {reference}."
+        "triage": "L’échéance de tri de la déclaration {reference} est dépassée.",
+        "closure": "L’échéance de clôture de l’incident {reference} est dépassée.",
+        "other": "Une échéance est dépassée pour l’incident {reference}."
       },
-      "other": "Du nouveau concernant l'incident {reference}."
+      "other": "Du nouveau concernant l’incident {reference}."
     }
   },
   "modulePage": {
     "scopeTitle": "Ce que cette partie couvrira",
-    "notBuilt": "Cette partie n'est pas encore disponible."
+    "notBuilt": "Cette partie n’est pas encore disponible."
   },
   "modules": {
-    "incidents": {
-      "title": "Incidents",
-      "description": "Incidents, presque-accidents et dangers, de la déclaration à la clôture.",
-      "scope": [
-        "Déclaration ouverte à tout le personnel, avec option anonyme et codes QR",
-        "Tri et transmission aux services concernés",
-        "Délais de réponse avec escalade, et retour d'information au déclarant"
-      ]
-    },
     "investigations": {
       "title": "Enquêtes",
       "description": "Enquête et analyse des causes profondes pour les événements graves.",
       "scope": [
-        "Équipe d'enquête, chronologie, entretiens et preuves",
-        "Méthode des 5 pourquoi, diagramme d'Ishikawa et facteurs contributifs",
-        "Rapport d'analyse des causes profondes, avec approbation"
+        "Équipe d’enquête, chronologie, entretiens et preuves",
+        "Méthode des 5 pourquoi, diagramme d’Ishikawa et facteurs contributifs",
+        "Rapport d’analyse des causes profondes, avec approbation"
       ]
     },
     "actions": {
@@ -495,7 +527,7 @@
       "scope": [
         "Les actions issues des incidents, des enquêtes, des risques et des politiques au même endroit",
         "Responsables, échéances, preuves et escalade",
-        "Vérification de l'efficacité une fois l'action terminée"
+        "Vérification de l’efficacité une fois l’action terminée"
       ]
     },
     "policies": {
@@ -503,15 +535,15 @@
       "description": "Une seule bibliothèque de politiques et procédures en vigueur et approuvées.",
       "scope": [
         "Modèles, numérotation et historique des versions",
-        "Circuits d'approbation configurables avec signature électronique",
+        "Circuits d’approbation configurables avec signature électronique",
         "Rappels de révision périodique et prise de connaissance par le personnel"
       ]
     },
     "risks": {
       "title": "Risques",
-      "description": "Registres des risques de l'établissement et de chaque service.",
+      "description": "Registres des risques de l’établissement et de chaque service.",
       "scope": [
-        "Registres au niveau de l'établissement et des services",
+        "Registres au niveau de l’établissement et des services",
         "Matrice des risques 5×5 configurable et cartes de chaleur",
         "Mesures de maîtrise, revues, et incidents liés aux risques"
       ]
@@ -521,7 +553,7 @@
       "description": "La preuve que le personnel a été formé, avec sa signature.",
       "scope": [
         "Cours, sessions et campagnes de sensibilisation",
-        "Présence signée, quiz et attestations avec date d'expiration",
+        "Présence signée, quiz et attestations avec date d’expiration",
         "Formations requises par rôle, et conformité par service"
       ]
     },
@@ -533,53 +565,27 @@
         "Rapports standards avec export Excel et PDF",
         "Rapports programmés par e-mail"
       ]
-    },
-    "organization": {
-      "title": "Organisation",
-      "description": "Sites, services et unités.",
-      "scope": [
-        "La structure de l'établissement, dans chacune de ses langues",
-        "Les lieux utilisés pour la déclaration et la transmission",
-        "Responsables de service et contacts d'escalade"
-      ]
-    },
-    "users": {
-      "title": "Utilisateurs et rôles",
-      "description": "Qui peut se connecter et ce que chacun peut faire.",
-      "scope": [
-        "Comptes créés par un administrateur, ou à la première authentification unique (SSO)",
-        "Rôles et autorisations par service et par site",
-        "Revues des accès et journal d'audit des modifications"
-      ]
-    },
-    "settings": {
-      "title": "Paramètres",
-      "description": "La configuration de Trustline pour cet établissement.",
-      "scope": [
-        "Référentiel d'accréditation, langues et identité visuelle",
-        "Catégories d'incidents, formulaires et circuits d'approbation",
-        "Connexion par mot de passe ou authentification unique (SSO), et notifications"
-      ]
     }
   },
   "platform": {
     "title": "Plateforme Trustline",
     "signOut": "Se déconnecter",
     "loading": "Chargement…",
-    "notFound": "Ce client n'existe pas.",
+    "notFound": "Ce client n’existe pas.",
     "login": {
-      "title": "Connexion au portail d'administration",
+      "title": "Connexion au portail d’administration",
       "email": "E-mail",
       "password": "Mot de passe",
       "submit": "Se connecter",
-      "failed": "L'e-mail ou le mot de passe est incorrect, ou le compte est verrouillé. Vérifiez-les, ou patientez 15 minutes avant de réessayer.",
+      "failed": "L’e-mail ou le mot de passe est incorrect, ou le compte est verrouillé. Vérifiez-les, ou patientez 15 minutes avant de réessayer.",
+      "invalid": "L’e-mail contient un caractère qui ne peut pas en faire partie, peut-être à cause d’un copier-coller. Saisissez-le de nouveau, puis connectez-vous.",
       "error": "Connexion impossible. Réessayez."
     },
     "clients": {
       "title": "Clients",
       "description": "Tous les hôpitaux et établissements qui utilisent Trustline.",
       "add": "Ajouter un client",
-      "empty": "Aucun client pour l'instant. Ajoutez le premier.",
+      "empty": "Aucun client pour l’instant. Ajoutez le premier.",
       "loadError": "Impossible de charger les clients. Rechargez la page.",
       "columns": {
         "name": "Client",
@@ -591,21 +597,21 @@
     },
     "form": {
       "newTitle": "Ajouter un client",
-      "newDescription": "Créez la fiche d'un nouvel hôpital ou établissement.",
+      "newDescription": "Créez la fiche d’un nouvel hôpital ou établissement.",
       "slug": "Identifiant",
       "slugHelp": "Lettres minuscules, chiffres et tirets, de 3 à 40 caractères. Ne peut plus être modifié ensuite.",
-      "accreditationStandard": "Référentiel d'accréditation",
+      "accreditationStandard": "Référentiel d’accréditation",
       "defaultLocale": "Langue par défaut",
       "plan": "Offre",
       "signInMethod": "Mode de connexion",
       "dataRegion": "Région des données",
-      "dataRegionHelp": "Le lieu où les données de ce client doivent être hébergées. Laissez vide si ce n'est pas encore décidé.",
+      "dataRegionHelp": "Le lieu où les données de ce client doivent être hébergées. Laissez vide si ce n’est pas encore décidé.",
       "timeZone": {
         "label": "Fuseau horaire",
-        "help": "L'heure de l'hôpital. Chaque date, chaque échéance et les « 30 derniers jours » que voit son personnel la suivent. Pour chercher, saisissez une partie du nom d'une ville ou d'une région, par exemple Riyadh.",
+        "help": "L’heure de l’hôpital. Chaque date, chaque échéance et les « 30 derniers jours » que voit son personnel la suivent. Pour chercher, saisissez en anglais une partie du nom d’une ville ou d’une région, par exemple Riyadh.",
         "list": "Fuseaux horaires",
-        "now": "Heure sur place en ce moment : {time} ({zone})",
-        "none": "Aucun fuseau horaire ne correspond. Essayez le nom d'une grande ville du même fuseau.",
+        "now": "Heure sur place en ce moment : {time} – {zone}",
+        "none": "Aucun fuseau horaire ne correspond. Essayez le nom anglais d’une grande ville du même fuseau.",
         "unknown": "Le serveur ne connaît pas ce fuseau horaire. Choisissez-en un autre dans la liste."
       },
       "create": "Ajouter le client",
@@ -619,7 +625,7 @@
       "name": "Nom",
       "languageMismatch": "Saisissez le nom dans la langue par défaut.",
       "locales": "Langues",
-      "localesHelp": "Les langues de travail de ce client. Les noms sont saisis dans chacune d'elles."
+      "localesHelp": "Les langues de travail de ce client. Les noms sont saisis dans chacune d’elles."
     },
     "status": {
       "title": "Statut",
@@ -644,7 +650,7 @@
     },
     "activity": {
       "title": "Activité récente",
-      "empty": "Aucune activité pour l'instant",
+      "empty": "Aucune activité pour l’instant",
       "actions": {
         "client_created": "Client ajouté",
         "client_updated": "Client modifié",
@@ -652,31 +658,32 @@
       }
     },
     "inviteLink": {
-      "title": "Envoyez ce lien à l'utilisateur",
-      "help": "Il l'ouvre pour définir son mot de passe. Le lien fonctionne une seule fois et expire au bout de 72 heures. Il ne sera plus affiché : copiez-le maintenant.",
+      "title": "Envoyez ce lien à l’utilisateur",
+      "help": "Il l’ouvre pour définir son mot de passe. Le lien fonctionne une seule fois et expire au bout de 72 heures. Il ne sera plus affiché : copiez-le maintenant.",
       "copy": "Copier le lien",
       "copied": "Copié"
     },
     "administrator": {
-      "title": "Administrateur de l'hôpital",
+      "title": "Administrateur de l’hôpital",
       "help": "Créez le premier administrateur de ce client. Il ajoutera les autres utilisateurs.",
-      "create": "Créer l'administrateur",
+      "create": "Créer l’administrateur",
       "emailTaken": "Un utilisateur avec cet e-mail existe déjà chez ce client.",
-      "exists": "Ce client a déjà un administrateur. L'hôpital ajoute lui-même les suivants.",
-      "suspended": "Ce client est suspendu. Réactivez-le d'abord.",
-      "ssoOnly": "Ce client utilise uniquement l'authentification unique (SSO) : un lien de mot de passe ne peut pas servir."
+      "exists": "Ce client a déjà un administrateur. L’hôpital ajoute lui-même les suivants.",
+      "suspended": "Ce client est suspendu. Réactivez-le d’abord.",
+      "ssoOnly": "Ce client utilise uniquement l’authentification unique (SSO) : un lien de mot de passe ne peut pas servir."
     },
     "loadError": "Impossible de charger ce client. Rechargez la page."
   },
   "auth": {
     "login": {
       "title": "Connexion",
-      "org": "Identifiant de l'établissement",
-      "orgHelp": "L'identifiant fourni par votre hôpital.",
+      "org": "Identifiant de l’établissement",
+      "orgHelp": "L’identifiant fourni par votre hôpital.",
       "email": "E-mail",
       "password": "Mot de passe",
       "submit": "Se connecter",
-      "failed": "L'établissement, l'e-mail ou le mot de passe est incorrect, ou le compte est verrouillé. Vérifiez-les, ou patientez 15 minutes avant de réessayer.",
+      "failed": "L’établissement, l’e-mail ou le mot de passe est incorrect, ou le compte est verrouillé. Vérifiez-les, ou patientez 15 minutes avant de réessayer.",
+      "invalid": "L’identifiant de l’établissement ou l’e-mail contient un caractère qui ne peut pas en faire partie, peut-être à cause d’un copier-coller. Saisissez-les de nouveau, puis connectez-vous.",
       "error": "Connexion impossible. Réessayez.",
       "forgot": "Mot de passe oublié ? Demandez un lien de réinitialisation à votre administrateur."
     },
@@ -704,15 +711,15 @@
     "loadError": "Impossible de charger cette page. Rechargez-la.",
     "noAccess": "Votre rôle ne le permet pas. Adressez-vous à votre administrateur.",
     "inviteLink": {
-      "title": "Envoyez ce lien à l'utilisateur",
-      "help": "Il l'ouvre pour définir son mot de passe. Le lien fonctionne une seule fois et expire au bout de 72 heures. Il ne sera plus affiché : copiez-le maintenant.",
+      "title": "Envoyez ce lien à l’utilisateur",
+      "help": "Il l’ouvre pour définir son mot de passe. Le lien fonctionne une seule fois et expire au bout de 72 heures. Il ne sera plus affiché : copiez-le maintenant.",
       "copy": "Copier le lien",
       "copied": "Copié"
     },
     "users": {
       "title": "Utilisateurs",
       "add": "Ajouter un utilisateur",
-      "notFound": "Cet utilisateur n'existe pas.",
+      "notFound": "Cet utilisateur n’existe pas.",
       "columns": {
         "name": "Nom",
         "department": "Service",
@@ -729,7 +736,7 @@
         "newDescription": "Il reçoit un lien à usage unique pour définir lui-même son mot de passe.",
         "created": "Utilisateur ajouté. Envoyez-lui le lien ci-dessous.",
         "email": "E-mail",
-        "emailFixed": "L'e-mail sert à se connecter et ne peut pas être modifié.",
+        "emailFixed": "L’e-mail sert à se connecter et ne peut pas être modifié.",
         "department": "Service",
         "noDepartment": "Aucun",
         "jobTitle": "Fonction",
@@ -737,9 +744,9 @@
         "phone": "Téléphone",
         "roles": "Rôles",
         "scope": "Périmètre du rôle",
-        "wholeOrganization": "Tout l'établissement",
+        "wholeOrganization": "Tout l’établissement",
         "ownRoles": "Vous ne pouvez pas modifier vos propres rôles.",
-        "create": "Ajouter l'utilisateur",
+        "create": "Ajouter l’utilisateur",
         "save": "Enregistrer",
         "saved": "Modifications enregistrées.",
         "saveRoles": "Enregistrer les rôles",
@@ -751,21 +758,21 @@
         "invalid": "Vérifiez les champs puis réessayez.",
         "error": "Enregistrement impossible. Réessayez.",
         "signIn": "Connexion",
-        "invitedHelp": "Cette personne n'a pas encore défini de mot de passe.",
+        "invitedHelp": "Cette personne n’a pas encore défini de mot de passe.",
         "newInvite": "Créer un nouveau lien",
         "resetHelp": "Un lien de réinitialisation permet à cette personne de choisir un nouveau mot de passe et la déconnecte partout.",
         "resetPassword": "Créer un lien de réinitialisation",
         "disabledHelp": "Un utilisateur désactivé ne peut pas se connecter.",
         "access": "Accès au compte",
         "disableHelp": "La désactivation déconnecte cette personne et bloque sa connexion. Ses enregistrements sont conservés.",
-        "disable": "Désactiver l'utilisateur",
-        "enableHelp": "L'activation permet à cette personne de se connecter à nouveau.",
-        "enable": "Activer l'utilisateur",
+        "disable": "Désactiver l’utilisateur",
+        "enableHelp": "L’activation permet à cette personne de se connecter à nouveau.",
+        "enable": "Activer l’utilisateur",
         "higherAccess": "Vous ne pouvez pas accorder ni modifier un accès supérieur au vôtre.",
         "ownAccount": "Vous ne pouvez pas modifier votre propre compte.",
         "name": "Nom",
         "languageMismatch": "Saisissez le nom dans la langue par défaut.",
-        "departmentInactive": "Ce service est désactivé. L'utilisateur y reste tant que vous n'en choisissez pas un autre.",
+        "departmentInactive": "Ce service est désactivé. L’utilisateur y reste tant que vous n’en choisissez pas un autre.",
         "unknownUnit": "Un service choisi ici a été désactivé. Rechargez la page et choisissez-en un autre.",
         "inactiveDepartment": "{name} (service inactif)",
         "outsideScope": "Votre rôle ne couvre pas cet utilisateur, ou le service choisi pour lui. Choisissez un service couvert par votre rôle, ou adressez-vous à votre administrateur."
@@ -775,7 +782,7 @@
       "title": "Rôles",
       "add": "Ajouter un rôle",
       "builtIn": "Par défaut",
-      "notFound": "Ce rôle n'existe pas.",
+      "notFound": "Ce rôle n’existe pas.",
       "columns": {
         "name": "Rôle",
         "permissions": "Autorisations",
@@ -783,7 +790,7 @@
       },
       "form": {
         "newTitle": "Ajouter un rôle",
-        "newDescription": "Un rôle est un ensemble d'autorisations que vous attribuez aux utilisateurs.",
+        "newDescription": "Un rôle est un ensemble d’autorisations que vous attribuez aux utilisateurs.",
         "builtInHelp": "Les rôles par défaut ne peuvent pas être modifiés. Ajoutez un rôle pour créer le vôtre.",
         "code": "Code",
         "codeHelp": "Lettres minuscules, chiffres et tirets bas, en commençant par une lettre. Ne peut plus être modifié ensuite.",
@@ -796,10 +803,10 @@
         "cancel": "Annuler",
         "back": "Retour aux rôles",
         "codeTaken": "Un autre rôle utilise déjà ce code.",
-        "inUse": "Ce rôle est attribué à des utilisateurs. Retirez-le-leur d'abord.",
+        "inUse": "Ce rôle est attribué à des utilisateurs. Retirez-le-leur d’abord.",
         "invalid": "Vérifiez les champs puis réessayez.",
         "error": "Enregistrement impossible. Réessayez.",
-        "higherAccess": "Vous ne pouvez pas accorder des autorisations que vous n'avez pas.",
+        "higherAccess": "Vous ne pouvez pas accorder des autorisations que vous n’avez pas.",
         "ownRole": "Vous ne pouvez pas modifier un rôle qui vous est attribué.",
         "deleteConfirm": "Supprimer ce rôle ? Appuyez de nouveau pour confirmer. Cette action est irréversible.",
         "deleteError": "Impossible de supprimer le rôle. Réessayez.",
@@ -809,8 +816,8 @@
     },
     "organization": {
       "title": "Organisation",
-      "description": "Les sites, services et unités de votre établissement. Les incidents, les utilisateurs et les périmètres des rôles s'y rattachent.",
-      "listLabel": "Structure de l'organisation",
+      "description": "Les sites, services et unités de votre établissement. Les incidents, les utilisateurs et les périmètres des rôles s’y rattachent.",
+      "listLabel": "Structure de l’organisation",
       "type": {
         "facility": "Site",
         "department": "Service",
@@ -832,15 +839,15 @@
         "unit": "{name} (unité inactive)"
       },
       "showInactive": "Afficher les inactifs",
-      "empty": "Rien n'a encore été créé. Commencez par un site, puis ajoutez ses services et leurs unités.",
+      "empty": "Rien n’a encore été créé. Commencez par un site, puis ajoutez ses services et leurs unités.",
       "addFirst": "Ajouter votre premier site",
       "allInactive": "Toute la structure est désactivée. Cochez « Afficher les inactifs » pour la voir, ou ajoutez un site.",
-      "notFound": "Ce site, ce service ou cette unité n'existe pas. Revenez à la structure et ouvrez-le à partir de là.",
+      "notFound": "Ce site, ce service ou cette unité n’existe pas. Revenez à la structure et ouvrez-le à partir de là.",
       "back": "Retour à la structure",
       "form": {
         "newDescription": "Un site regroupe des services, et un service regroupe des unités.",
         "type": "Type",
-        "typeHelp": "Un service s'ajoute à un site, et une unité à un service.",
+        "typeHelp": "Un service s’ajoute à un site, et une unité à un service.",
         "typeFixed": "Le type ne peut pas être modifié.",
         "parent": {
           "department": "Site",
@@ -855,12 +862,12 @@
         "save": "Enregistrer",
         "saved": "Modifications enregistrées.",
         "cancel": "Annuler",
-        "parentMissing": "Ajout impossible ici : ce site ou ce service n'existe pas ou est désactivé. Revenez à la structure et ajoutez à partir de là.",
+        "parentMissing": "Ajout impossible ici : ce site ou ce service n’existe pas ou est désactivé. Revenez à la structure et ajoutez à partir de là.",
         "status": "Statut",
-        "activeHelp": "La désactivation le retire des listes utilisées pour les nouveaux incidents, les utilisateurs, les périmètres des rôles et le tri. Rien n'est supprimé : les incidents et les utilisateurs qui s'y trouvent déjà y restent, et vous pouvez le réactiver.",
+        "activeHelp": "La désactivation le retire des listes utilisées pour les nouveaux incidents, les utilisateurs, les périmètres des rôles et le tri. Rien n’est supprimé : les incidents et les utilisateurs qui s’y trouvent déjà y restent, et vous pouvez le réactiver.",
         "switchOff": "Désactiver",
         "switchedOff": "Désactivation enregistrée.",
-        "inactiveHelp": "Cet élément est désactivé : il ne peut plus être choisi pour de nouveaux incidents, des utilisateurs, des périmètres de rôle ou le tri. Son historique est conservé. Réactivez-le pour l'utiliser à nouveau.",
+        "inactiveHelp": "Cet élément est désactivé : il ne peut plus être choisi pour de nouveaux incidents, des utilisateurs, des périmètres de rôle ou le tri. Son historique est conservé. Réactivez-le pour l’utiliser à nouveau.",
         "switchOn": "Réactiver",
         "switchedOn": "Réactivation enregistrée."
       },
@@ -872,15 +879,15 @@
         "copied": "Copié",
         "qrLabel": "Code QR du lien de déclaration",
         "print": "Imprimer le code QR",
-        "printHelp": "Imprime une page à afficher sur place : le code, les noms et une ligne d'explication."
+        "printHelp": "Imprime une page à afficher sur place : le code, les noms et une ligne d’explication."
       },
       "errors": {
-        "language_mismatch": "Saisissez le nom dans la langue par défaut de l'établissement. Si ses langues ont changé récemment, rechargez d'abord la page.",
+        "language_mismatch": "Saisissez le nom dans la langue par défaut de l’établissement. Si ses langues ont changé récemment, rechargez d’abord la page.",
         "invalid_parent": "Impossible de le placer ici : un service appartient à un site, et une unité à un service. Choisissez un autre emplacement.",
-        "parent_inactive": "Le site ou le service dont il dépend est désactivé. Réactivez-le d'abord, ou choisissez-en un autre.",
+        "parent_inactive": "Le site ou le service dont il dépend est désactivé. Réactivez-le d’abord, ou choisissez-en un autre.",
         "code_taken": "Ce code est déjà utilisé, peut-être par un élément désactivé. Saisissez un autre code.",
-        "has_active_children": "Des éléments qui en dépendent sont encore actifs. Désactivez-les tous d'abord, puis désactivez celui-ci.",
-        "notFound": "Cet élément n'existe plus. Revenez à la structure.",
+        "has_active_children": "Des éléments qui en dépendent sont encore actifs. Désactivez-les tous d’abord, puis désactivez celui-ci.",
+        "notFound": "Cet élément n’existe plus. Revenez à la structure.",
         "invalid": "Vérifiez le nom et le code, puis réessayez.",
         "generic": "Enregistrement impossible. Vérifiez votre connexion puis réessayez."
       }
@@ -888,40 +895,40 @@
     "settings": {
       "title": "Paramètres",
       "description": "Le fonctionnement de Trustline dans votre établissement.",
-      "wholeOrganization": "Les paramètres s'appliquent à tout l'établissement, et votre rôle n'en couvre qu'une partie. Adressez-vous à votre administrateur.",
+      "wholeOrganization": "Les paramètres s’appliquent à tout l’établissement, et votre rôle n’en couvre qu’une partie. Adressez-vous à votre administrateur.",
       "error": "Enregistrement impossible. Vérifiez votre connexion puis réessayez.",
       "reporting": {
         "title": "Déclaration sans authentification",
         "on": "Activée",
         "off": "Désactivée",
-        "what": "Lorsque cette option est activée, toute personne qui dispose du lien, ou qui scanne le code QR d'une unité, peut envoyer une déclaration sans se connecter : un visiteur, un patient ou un membre du personnel sans compte. Ces déclarations sont toujours anonymes. Elles arrivent dans la liste des incidents comme les autres, et leur auteur reçoit un code de suivi pour lire vos réponses.",
-        "shows": "Le formulaire montre à toute personne qui ouvre le lien les noms de vos sites, services, unités et catégories d'incidents. Il ne montre aucun incident.",
-        "offHelp": "Tant que l'option est désactivée, le lien et les codes QR ouvrent une page indiquant que la déclaration n'est pas disponible.",
+        "what": "Lorsque cette option est activée, toute personne qui dispose du lien, ou qui scanne le code QR d’une unité, peut envoyer une déclaration sans se connecter : un visiteur, un patient ou un membre du personnel sans compte. Ces déclarations sont toujours anonymes. Elles arrivent dans la liste des incidents comme les autres, et leur auteur reçoit un code de suivi pour lire vos réponses.",
+        "shows": "Le formulaire montre à toute personne qui ouvre le lien les noms de vos sites, services, unités et catégories d’incidents. Il ne montre aucun incident.",
+        "offHelp": "Tant que l’option est désactivée, le lien et les codes QR ouvrent une page indiquant que la déclaration n’est pas disponible.",
         "onHelp": "La désactivation met immédiatement hors service le lien et tous les codes QR imprimés. Les déclarations déjà reçues sont conservées, et leurs codes de suivi restent valables.",
         "switchOn": "Activer",
         "switchOff": "Désactiver",
         "switchedOn": "Activation enregistrée.",
         "switchedOff": "Désactivation enregistrée.",
         "link": "Lien vers le formulaire de déclaration",
-        "linkHelp": "Pour l'intranet, un e-mail ou une affiche. Chaque site, service et unité a aussi son propre lien et son code QR, sur sa page dans « Organisation ».",
+        "linkHelp": "Pour l’intranet, un e-mail ou une affiche. Chaque site, service et unité a aussi son propre lien et son code QR, sur sa page dans « Organisation ».",
         "followUpLink": "Lien vers la page de suivi",
-        "followUpHelp": "C'est là qu'une personne ayant déclaré anonymement saisit son code de suivi pour lire vos réponses. Ce lien fonctionne que la déclaration sans authentification soit activée ou non, car le personnel connecté peut aussi déclarer anonymement.",
+        "followUpHelp": "C’est là qu’une personne ayant déclaré anonymement saisit son code de suivi pour lire vos réponses. Ce lien fonctionne que la déclaration sans authentification soit activée ou non, car le personnel connecté peut aussi déclarer anonymement.",
         "copy": "Copier le lien",
         "copied": "Copié"
       },
       "deadlines": {
         "title": "Délais de tri et de clôture",
-        "what": "Ces chiffres fixent le temps que votre établissement se donne pour trier une nouvelle déclaration et pour clôturer un incident, selon le niveau de préjudice. Ce qui dépasse son délai apparaît en retard dans la liste des incidents et sur le tableau de bord, et les personnes qui en ont la charge en sont averties.",
-        "applies": "Une modification ne s'applique qu'aux nouvelles déclarations : les échéances déjà fixées ne bougent pas. Les heures et les jours sont comptés en continu, nuits, week-ends et jours fériés compris.",
+        "what": "Ces chiffres fixent le temps que votre établissement se donne pour trier une nouvelle déclaration et pour clôturer un incident, selon le niveau de préjudice. Les deux délais courent à partir de la déclaration. Ce qui dépasse son délai apparaît en retard dans la liste des incidents et sur le tableau de bord, et les personnes qui en ont la charge en sont averties.",
+        "applies": "Une modification s’applique aux nouvelles déclarations, ainsi qu’à un incident dont le niveau de préjudice ou le caractère sentinelle est modifié par la suite : son échéance de clôture est alors recalculée d’après ce tableau. Les autres échéances déjà fixées ne bougent pas. Les heures et les jours sont comptés en continu, nuits, week-ends et jours fériés compris.",
         "sentinel": "Un événement sentinelle suit la ligne « Décès », quel que soit son niveau de préjudice.",
         "level": "Niveau de préjudice",
-        "hours": "Tri sous (heures)",
-        "days": "Clôture sous (jours)",
+        "hours": "Délai de tri (heures)",
+        "days": "Délai de clôture (jours)",
         "limits": "Heures : un nombre entier de 1 à 720. Jours : un nombre entier de 1 à 365.",
         "save": "Enregistrer les délais",
         "saved": "Délais enregistrés.",
-        "invalid": "Rien n'a été enregistré. Saisissez des nombres entiers : de 1 à 720 pour les heures, de 1 à 365 pour les jours.",
-        "readOnly": "Seule une personne dont le rôle permet de modifier les paramètres de tout l'établissement peut changer ces chiffres."
+        "invalid": "Rien n’a été enregistré. Saisissez des nombres entiers : de 1 à 720 pour les heures, de 1 à 365 pour les jours.",
+        "readOnly": "Seule une personne dont le rôle permet de modifier les paramètres de tout l’établissement peut changer ces chiffres."
       }
     },
     "permissions": {
@@ -929,12 +936,12 @@
       "incidents.view": "Consulter les incidents",
       "incidents.triage": "Trier et attribuer les incidents",
       "incidents.see_reporter": "Voir qui a déclaré un incident",
-      "incidents.sign_off": "Valider les clôtures qui exigent l'accord d'une deuxième personne",
+      "incidents.sign_off": "Valider les clôtures qui exigent l’accord d’une deuxième personne",
       "actions.manage": "Gérer les actions correctives",
       "policies.view": "Lire les politiques",
       "policies.manage": "Rédiger et gérer les politiques",
       "reports.view": "Consulter les rapports et tableaux de bord",
-      "organization.manage": "Gérer la structure de l'établissement",
+      "organization.manage": "Gérer la structure de l’établissement",
       "users.manage": "Gérer les utilisateurs",
       "roles.manage": "Gérer les rôles",
       "settings.manage": "Modifier les paramètres"

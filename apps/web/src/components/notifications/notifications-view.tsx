@@ -172,7 +172,21 @@ export function NotificationsView({
 
   const row = (n: Notification, at: Date) => {
     const reference = n.data?.reference ?? n.incident.reference;
-    const sentence = fill(sentenceFor(t.kinds, n), { reference });
+    // The reference is one piece, left to right and never broken at its
+    // hyphens: put in with the words, it would wrap as "INC-2026-" and
+    // "00042", and in Arabic its parts would be reordered across the lines.
+    const sentence = sentenceFor(t.kinds, n)
+      .split("{reference}")
+      .flatMap((words, i) =>
+        i === 0
+          ? [words]
+          : [
+              <bdi key={i} dir="ltr" className="whitespace-nowrap">
+                {reference}
+              </bdi>,
+              words,
+            ],
+      );
     const created = momentFrom(n.createdAt);
     const unread = !n.readAt;
     return (

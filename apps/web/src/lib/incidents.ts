@@ -378,6 +378,11 @@ export type PublicReporting = {
   name: Localized;
   locales: string[];
   defaultLocale: string;
+  /**
+   * The hospital's clock, which "when it happened" is typed on. Absent from
+   * an API older than the form.
+   */
+  timeZone?: string;
   orgUnits: {
     id: string;
     parentId: string | null;

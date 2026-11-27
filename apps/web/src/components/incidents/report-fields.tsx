@@ -13,6 +13,7 @@ import { Field, inputClass, roomyInputClass } from "@/components/ui/field";
 import {
   harmLevels,
   incidentTypes,
+  type HarmLevel,
   type IncidentCategory,
   type IncidentType,
 } from "@/lib/incidents";
@@ -59,10 +60,15 @@ export function useReportClock(timeZone: TimeZone) {
    * The form is on screen: called each time it is shown, also when the
    * reporter comes back to a draft. A time they chose is theirs and stays.
    */
-  const shown = useCallback(() => {
-    tick();
-    setStartedAt(new Date().toISOString());
-  }, [tick]);
+  const shown = useCallback(
+    // `on`: the clock to show it on, when it is not yet the one this hook
+    // was given (the public form learns its hospital's clock with the form).
+    (on?: { timeZone: TimeZone }) => {
+      setNow(wallClock(new Date(), on ? on.timeZone : timeZone));
+      setStartedAt(new Date().toISOString());
+    },
+    [timeZone],
+  );
 
   /** A fresh form, for the next report: "when" is the present again. */
   const start = useCallback(() => {
@@ -85,6 +91,12 @@ export function useReportClock(timeZone: TimeZone) {
 /** What a report form sends, whoever sends it. */
 export type ReportBody = Record<string, unknown>;
 
+/** One answer to the harm question: the level it is sent as, in words. */
+export type HarmChoice = { level: HarmLevel; label: string; help?: string };
+
+/** Severe harm or a death: the answers this form says more about. */
+const serious: readonly string[] = ["severe", "death"];
+
 /**
  * The questions of a report, the same for someone signed in and for someone
  * who is not: short enough to finish on a phone in two minutes.
@@ -102,6 +114,8 @@ export function ReportFields({
   privacy,
   roomy = false,
   labels,
+  harmChoices,
+  seriousNote,
   unitTree = true,
   send,
   explain,
@@ -124,6 +138,13 @@ export function ReportFields({
   roomy?: boolean;
   /** Plainer words for some questions, where the reader is not staff. */
   labels?: Partial<IncidentsProps["t"]["form"]>;
+  /**
+   * The answers to "harm", where they are not the five levels with their
+   * definitions: a reader who is not staff is asked a plainer question.
+   */
+  harmChoices?: HarmChoice[];
+  /** Said under the harm question once severe harm or a death is chosen. */
+  seriousNote?: string;
   /** False to list places by name alone, without the marks of the tree. */
   unitTree?: boolean;
   /** Sends the report. The form is emptied once this has succeeded. */
@@ -136,6 +157,8 @@ export function ReportFields({
   // The type chosen: only an incident reached someone, so only it has a
   // harm level to ask about.
   const [type, setType] = useState<IncidentType | null>(null);
+  // The harm answer chosen, so that what it means can be said under it.
+  const [harm, setHarm] = useState<HarmLevel | null>(null);
   const [anonymous, setAnonymous] = useState(false);
   const f = { ...t.form, ...labels };
   const { now, occurredAt, startedAt, setOccurredAt, chosen, tick } = clock;
@@ -168,6 +191,7 @@ export function ReportFields({
       );
       form.reset();
       setType(null);
+      setHarm(null);
       setAnonymous(false);
       setOccurredAt(null);
     } catch (err) {
@@ -178,6 +202,18 @@ export function ReportFields({
 
   const inLang = (text: IncidentCategory["name"]) =>
     pick(text, lang, defaultLocale);
+  const choices =
+    harmChoices ??
+    harmLevels.map((level) => ({
+      level,
+      label: t.harm[level],
+      help: t.harmHelp[level],
+    }));
+  // A radio card: the answer in bold, what it means under it.
+  const card =
+    "flex cursor-pointer items-start gap-3 rounded-lg border border-line bg-background p-3 has-checked:border-accent has-checked:bg-accent-soft has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-accent";
+  const radio = `mt-1 shrink-0 accent-accent ${roomy ? "size-5" : "size-4"}`;
+  const cardHelp = `block text-muted ${roomy ? "text-sm" : "text-xs"}`;
   const input = roomy ? roomyInputClass : inputClass;
   const area = roomy ? `${textareaClass} text-base` : textareaClass;
 
@@ -187,10 +223,7 @@ export function ReportFields({
         <legend className="mb-1.5 text-sm font-medium">{f.type}</legend>
         <div className={`grid gap-2 ${roomy ? "" : "sm:grid-cols-3"}`}>
           {incidentTypes.map((option) => (
-            <label
-              key={option}
-              className="flex cursor-pointer items-start gap-3 rounded-lg border border-line bg-background p-3 has-checked:border-accent has-checked:bg-accent-soft has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-accent"
-            >
+            <label key={option} className={card}>
               <input
                 type="radio"
                 name="type"
@@ -198,17 +231,13 @@ export function ReportFields({
                 required
                 checked={type === option}
                 onChange={() => setType(option)}
-                className={`mt-1 shrink-0 accent-accent ${roomy ? "size-5" : "size-4"}`}
+                className={radio}
               />
               <span>
                 <span className="block text-base font-semibold">
                   {t.type[option]}
                 </span>
-                <span
-                  className={`block text-muted ${roomy ? "text-sm" : "text-xs"}`}
-                >
-                  {t.typeHelp[option]}
-                </span>
+                <span className={cardHelp}>{t.typeHelp[option]}</span>
               </span>
             </label>
           ))}
@@ -277,7 +306,7 @@ export function ReportFields({
         />
       </Field>
 
-      <Field label={f.immediateAction}>
+      <Field label={f.immediateAction} help={f.immediateActionHelp}>
         <textarea
           name="immediateAction"
           rows={2}
@@ -287,24 +316,43 @@ export function ReportFields({
         />
       </Field>
 
-      {type !== "near_miss" && type !== "hazard" && (
-        <Field label={f.harmLevel}>
-          <select
-            name="harmLevel"
-            required
-            defaultValue=""
-            className={`${input} sm:max-w-xs`}
-          >
-            <option value="" disabled>
-              {f.choose}
-            </option>
-            {harmLevels.map((level) => (
-              <option key={level} value={level}>
-                {t.harm[level]}
-              </option>
+      {/* Asked once the type is known, and only of an incident: a near miss
+          or a hazard reached no one. */}
+      {type === "incident" && (
+        <fieldset>
+          <legend className="mb-1.5 text-sm font-medium">{f.harmLevel}</legend>
+          <div className="grid gap-2">
+            {choices.map((choice) => (
+              <label key={choice.level} className={card}>
+                <input
+                  type="radio"
+                  name="harmLevel"
+                  value={choice.level}
+                  required
+                  checked={harm === choice.level}
+                  onChange={() => setHarm(choice.level)}
+                  className={radio}
+                />
+                <span>
+                  <span className="block text-base font-semibold">
+                    {choice.label}
+                  </span>
+                  {choice.help && (
+                    <span className={cardHelp}>{choice.help}</span>
+                  )}
+                </span>
+              </label>
             ))}
-          </select>
-        </Field>
+          </div>
+          {seriousNote && harm && serious.includes(harm) && (
+            <p
+              role="status"
+              className="mt-3 rounded-lg border border-line bg-background p-3 text-sm"
+            >
+              {seriousNote}
+            </p>
+          )}
+        </fieldset>
       )}
 
       {/* Who will see the reporter's name, before they send. */}

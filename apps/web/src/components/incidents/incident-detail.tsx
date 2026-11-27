@@ -25,7 +25,13 @@ import {
 } from "./incident-view";
 import { IncidentPills } from "./pills";
 import { TriagePanel } from "./triage-panel";
-import { explain, textareaClass, type IncidentsProps } from "./types";
+import {
+  explain,
+  forReporter,
+  textareaClass,
+  whoReads,
+  type IncidentsProps,
+} from "./types";
 
 /** One incident: the report, what has happened to it, and what can be done. */
 export function IncidentDetail({ lang, t }: IncidentsProps) {
@@ -117,9 +123,12 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
   const d = t.detail;
   // Every date and time is on the hospital's clock, not this device's.
   const { timeZone } = session.tenant;
+  // Someone who sees it only as its reporter reads plain words for where it
+  // stands; staff read the office's.
+  const words = incident.access === "reporter" ? forReporter(t) : t;
   const view = {
     lang,
-    t,
+    t: words,
     incident,
     fallback: session.tenant.defaultLocale,
     timeZone,
@@ -152,7 +161,7 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
         }
         actions={
           <IncidentPills
-            t={t}
+            t={words}
             status={incident.status}
             harmLevel={incident.harmLevel}
             isSentinel={incident.isSentinel}
@@ -237,6 +246,7 @@ function CommentBox({
   const [error, setError] = useState<string | null>(null);
   const c = t.comments;
   const full = incident.access === "full";
+  const reader = whoReads(t, incident);
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -273,13 +283,15 @@ function CommentBox({
       {full && (
         <fieldset className="flex flex-col gap-1.5 text-sm">
           <legend className="mb-1.5 font-medium">{c.visibility}</legend>
-          {(["internal", "everyone"] as const).map((value) => (
+          {/* Nothing is chosen in advance: a reply meant for the reporter
+              is not lost to a default, nor an internal remark shown. */}
+          {(["everyone", "internal"] as const).map((value) => (
             <label key={value} className="flex items-start gap-2">
               <input
                 type="radio"
                 name="visibility"
                 value={value}
-                defaultChecked={value === "internal"}
+                required
                 className="mt-1 accent-accent"
               />
               {value === "internal"
@@ -287,6 +299,7 @@ function CommentBox({
                 : c.visibilityEveryone}
             </label>
           ))}
+          {reader && <p className="mt-1 text-muted">{reader}</p>}
         </fieldset>
       )}
       {error && (

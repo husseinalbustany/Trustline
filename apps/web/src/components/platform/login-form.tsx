@@ -28,8 +28,16 @@ export function LoginForm({ lang, t }: PlatformProps) {
       loadPage(`/${lang}/platform/clients`);
       return;
     } catch (err) {
-      const refused = err instanceof ApiError && err.status === 401;
-      setError(refused ? t.login.failed : t.login.error);
+      const status = err instanceof ApiError ? err.status : 0;
+      // 400: something in the email that cannot be in one, such as a
+      // control character pasted with it.
+      setError(
+        status === 401
+          ? t.login.failed
+          : status === 400
+            ? t.login.invalid
+            : t.login.error,
+      );
     }
     setBusy(false);
   }

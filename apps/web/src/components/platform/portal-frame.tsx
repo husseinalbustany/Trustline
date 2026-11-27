@@ -63,20 +63,22 @@ export function PortalFrame({
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="border-b border-line bg-surface">
-        <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-4 px-4 sm:px-6">
+        <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-4 sm:gap-4 sm:px-6">
+          {/* The title gives way on a phone, so the buttons stay on screen. */}
           <Link
             href={`/${lang}/platform/clients`}
-            className="flex items-center gap-2 font-semibold ltr:tracking-tight"
+            title={t.title}
+            className="flex min-w-0 items-center gap-2 font-semibold ltr:tracking-tight"
           >
             <span
-              className="flex size-7 items-center justify-center rounded-md bg-accent text-sm text-accent-fg"
+              className="flex size-7 shrink-0 items-center justify-center rounded-md bg-accent text-sm text-accent-fg"
               aria-hidden
             >
               T
             </span>
-            {t.title}
+            <span className="truncate">{t.title}</span>
           </Link>
-          <div className="ms-auto flex items-center gap-2">
+          <div className="ms-auto flex shrink-0 items-center gap-2">
             {problem === "signOut" && (
               <span role="alert" className="text-sm text-danger">
                 {signOutFailed}

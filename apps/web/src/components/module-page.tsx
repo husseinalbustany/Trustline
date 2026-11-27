@@ -2,7 +2,7 @@ import { Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/page-header";
 import { Panel } from "@/components/ui/panel";
-import { navItems, type ModuleKey } from "@/config/navigation";
+import { navItems, type PlaceholderKey } from "@/config/navigation";
 import { getDictionary } from "@/i18n/dictionaries";
 import { resolveLocale, type LangParams } from "@/i18n/locale";
 
@@ -15,7 +15,7 @@ export async function ModulePage({
   module,
 }: {
   params: LangParams;
-  module: ModuleKey;
+  module: PlaceholderKey;
 }) {
   const dict = await getDictionary(await resolveLocale(params));
   const content = dict.modules[module];

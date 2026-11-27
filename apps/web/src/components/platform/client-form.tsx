@@ -394,13 +394,18 @@ export function ClientForm({
                           entry.action as keyof typeof t.activity.actions
                         ] ?? entry.action}
                       </div>
+                      {/* The name and the date each kept whole: a Latin
+                          name must not tear an Arabic date apart. */}
                       <div className="text-xs text-muted">
-                        {[
-                          entry.adminName,
-                          dateFormat.format(new Date(entry.createdAt)),
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
+                        {entry.adminName && (
+                          <>
+                            <bdi>{entry.adminName}</bdi>
+                            {" · "}
+                          </>
+                        )}
+                        <time dateTime={entry.createdAt}>
+                          {dateFormat.format(new Date(entry.createdAt))}
+                        </time>
                       </div>
                     </li>
                   ))}

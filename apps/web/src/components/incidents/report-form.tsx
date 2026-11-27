@@ -157,6 +157,9 @@ export function ReportForm({
           clock={clock}
           timeNote={fill(f.hospitalTime, { zone: zoneLabel(lang, timeZone) })}
           anonymousChoice
+          // The form reaches nobody at once: someone choosing severe harm or
+          // a death is told so, and pointed at the hospital's own procedure.
+          seriousNote={f.seriousNote}
           privacy={(anonymous) =>
             anonymous ? f.anonymousWarning : f.whoSeesName
           }
