@@ -1042,9 +1042,11 @@ export const documents = pgTable(
     nextReviewOn: date({ mode: 'string' }),
     lastReviewedOn: date({ mode: 'string' }),
     status: documentStatus().notNull().default('draft'),
-    // Its foreign key to document_versions (documents_published_version_fk,
-    // with the tenant) is added by the migration that follows this table's:
-    // the two tables point at each other, which this file cannot type.
+    // Its foreign keys to document_versions are added by migrations, as the
+    // two tables point at each other, which this file cannot type:
+    // documents_published_version_fk (with the tenant, 0039) and
+    // documents_published_version_own_fk (with the tenant and the document,
+    // so that a document names only a version of its own: 0041).
     publishedVersionId: uuid(),
     retiredAt: timestamp({ withTimezone: true }),
     retiredBy: uuid(),
@@ -1200,6 +1202,13 @@ export const documentVersions = pgTable(
   },
   (t) => [
     unique('document_versions_tenant_id_id_key').on(t.tenantId, t.id),
+    // For documents_published_version_own_fk: a document's published
+    // version is one of its own.
+    unique('document_versions_document_id_key').on(
+      t.tenantId,
+      t.documentId,
+      t.id,
+    ),
     unique('document_versions_number_key').on(
       t.tenantId,
       t.documentId,

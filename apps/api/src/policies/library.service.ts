@@ -325,7 +325,8 @@ export class LibraryService {
   /**
    * The steps the viewer may decide now: the current step of a run in
    * progress on a version in review, for which they are an assignee, of a
-   * version they did not prepare. Oldest due first.
+   * version they did not prepare, in a run none of whose earlier steps they
+   * decided. Oldest due first.
    */
   private pendingFor(tx: Transaction, viewer: Viewer) {
     return tx
@@ -374,6 +375,7 @@ export class LibraryService {
           eq(approvalRunSteps.status, 'pending'),
           this.engine.assignedTo(viewer.assignment, documents.ownerUnitId),
           sql`not (${viewer.userId}::uuid = any(${documentVersions.contributors}))`,
+          sql`not exists (select from approval_run_steps decided where decided.run_id = ${approvalRunSteps.runId} and decided.decided_by = ${viewer.userId})`,
         ),
       )
       .orderBy(asc(approvalRunSteps.dueAt), asc(documents.number));

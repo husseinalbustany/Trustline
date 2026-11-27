@@ -113,6 +113,35 @@ export function reviewState(
   return null;
 }
 
+/**
+ * Whether two values a document holds are the same: a per-language text is
+ * the same whatever order its languages come in (the database keeps its
+ * own), a list only in the same order.
+ */
+function sameValue(a: unknown, b: unknown): boolean {
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((x, i) => sameValue(x, b[i]))
+    );
+  }
+  if (a && b && typeof a === 'object' && typeof b === 'object') {
+    const keys = Object.keys(a);
+    return (
+      keys.length === Object.keys(b).length &&
+      keys.every((k) =>
+        sameValue(
+          (a as Record<string, unknown>)[k],
+          (b as Record<string, unknown>)[k],
+        ),
+      )
+    );
+  }
+  return a === b;
+}
+
 const refuse = {
   outsideScope: () => new ForbiddenException({ code: 'outside_scope' }),
   staleDocument: () => new ConflictException({ code: 'stale_document' }),
@@ -611,6 +640,11 @@ export class DocumentsService {
 
     // What the viewer may do with it.
     const pending = latest ? this.engine.pendingStep(latest) : null;
+    // The one who prepared the version, or who decided an earlier step of
+    // the run, decides no step of it.
+    const samePerson =
+      version.contributors.includes(viewer.userId) ||
+      (!!latest && this.engine.decidersOf(latest).includes(viewer.userId));
     const myStep =
       pending &&
       version.status === 'in_review' &&
@@ -625,9 +659,7 @@ export class DocumentsService {
       if (version.status === 'approved') moves.push('publish');
       if (IN_PROGRESS.includes(version.status)) moves.push('withdraw');
     }
-    if (myStep && !version.contributors.includes(viewer.userId)) {
-      moves.push('approve', 'return');
-    }
+    if (myStep && !samePerson) moves.push('approve', 'return');
     let acknowledgement = null;
     if (version.id === doc.publishedVersionId && access.reads) {
       acknowledgement = await this.acknowledgementOf(
@@ -690,8 +722,7 @@ export class DocumentsService {
             position: myStep.position,
             kind: myStep.kind,
             dueAt: myStep.dueAt,
-            // The one who prepared the version decides no step of it.
-            samePerson: version.contributors.includes(viewer.userId),
+            samePerson,
           }
         : null,
       myAcknowledgement: acknowledgement,
@@ -895,10 +926,11 @@ export class DocumentsService {
       for (const field of fields) {
         const to = input[field];
         if (to === undefined) continue;
-        if (JSON.stringify(to) === JSON.stringify(doc[field])) continue;
+        if (sameValue(to, doc[field])) continue;
         (set as Record<string, unknown>)[field] = to;
         changes[field] = { from: doc[field], to };
       }
+      await this.assertMayChange(tx, doc.id, changes);
       if (input.audience) {
         const before = await this.audienceOf(tx, doc.id);
         await this.setAudience(tx, tenant.id, doc.id, input.audience);
@@ -943,6 +975,42 @@ export class DocumentsService {
       if (!fresh) return { id: doc.id, moved: true };
       return this.detail(tx, auth, after, fresh);
     });
+  }
+
+  /**
+   * What of a document may not change while one of its versions is on its
+   * way: the owning unit while a version is in review, since it decides who
+   * may decide a step (409 `in_review`); the title while a version is in
+   * review or approved and not yet published, since the approvers were
+   * shown it (409 `in_review`, or `awaiting_publication`). Each with the
+   * `field` and the `version`. The document is locked by the caller, and
+   * every change of a version's status takes the same lock.
+   */
+  private async assertMayChange(
+    tx: Transaction,
+    documentId: string,
+    changes: Record<string, unknown>,
+  ) {
+    if (!('title' in changes) && !('ownerUnitId' in changes)) return;
+    const [open] = await tx
+      .select({ version: documentVersions.version, status: documentVersions.status })
+      .from(documentVersions)
+      .where(
+        and(
+          eq(documentVersions.documentId, documentId),
+          inArray(documentVersions.status, ['in_review', 'approved']),
+        ),
+      );
+    if (!open) return;
+    const refused = (field: string, code: string) =>
+      new ConflictException({ code, field, version: open.version });
+    if (open.status === 'in_review') {
+      if ('ownerUnitId' in changes) throw refused('ownerUnitId', 'in_review');
+      if ('title' in changes) throw refused('title', 'in_review');
+    }
+    if (open.status === 'approved' && 'title' in changes) {
+      throw refused('title', 'awaiting_publication');
+    }
   }
 
   retire(auth: AuthContext, id: string, input: { reason: string; revision: number }) {
@@ -1036,7 +1104,11 @@ export class DocumentsService {
    * A new version of a document: the next number, the type's sections as
    * they are now, and the text of the published version (or, for a
    * document never published, of its latest version) for the sections it
-   * still has.
+   * still has. Text copied from a version that was never published (one
+   * withdrawn) is still its writers' text: they stay contributors of the
+   * new version, and may decide no step of it. Text copied from the
+   * published version went through approval already: whoever starts the
+   * new version is its only contributor so far.
    */
   createVersion(auth: AuthContext, id: string) {
     const { tenant, user } = auth;
@@ -1053,6 +1125,9 @@ export class DocumentsService {
         throw new ConflictException({ code: 'version_in_progress' });
       }
       const base = all.find((v) => v.id === doc.publishedVersionId) ?? all[0];
+      const kept =
+        base && base.id !== doc.publishedVersionId ? base.contributors : [];
+      const contributors = [...new Set([...kept, user.id])];
       const [type] = await tx
         .select({ sections: documentTypes.sections })
         .from(documentTypes)
@@ -1078,7 +1153,7 @@ export class DocumentsService {
           sections: type.sections,
           content,
           preparedBy: user.id,
-          contributors: [user.id],
+          contributors,
           acknowledgementRequired: base?.acknowledgementRequired ?? false,
           acknowledgeWithinDays: base?.acknowledgeWithinDays ?? 14,
         })
@@ -1094,6 +1169,7 @@ export class DocumentsService {
           versionId: created.id,
           version: created.version,
           copiedFromVersionId: base?.id ?? null,
+          contributors,
         },
       );
       const fresh = await this.find(tx, viewer, doc.id);
@@ -1353,8 +1429,10 @@ export class DocumentsService {
    * order a person would want to be told: not something they may see (404),
    * not in review (409 `not_in_review`), out of date (409 `stale_version`),
    * not theirs (403 `not_assignee`, or 409 `not_current_step` when theirs
-   * comes later), or theirs but they prepared the version (403
-   * `same_person`).
+   * comes later), or theirs but they prepared the version or decided an
+   * earlier step of this run (403 `same_person`, with `reason` `prepared`
+   * or `decided_earlier_step`): each step is decided by a different
+   * person, none of whom wrote it.
    */
   private async decision(
     tx: Transaction,
@@ -1385,7 +1463,13 @@ export class DocumentsService {
       throw new ForbiddenException({ code: 'not_assignee' });
     }
     if (version.contributors.includes(auth.user.id)) {
-      throw new ForbiddenException({ code: 'same_person' });
+      throw new ForbiddenException({ code: 'same_person', reason: 'prepared' });
+    }
+    if (this.engine.decidersOf(run).includes(auth.user.id)) {
+      throw new ForbiddenException({
+        code: 'same_person',
+        reason: 'decided_earlier_step',
+      });
     }
     return { viewer, doc, version, run, step };
   }
@@ -1751,28 +1835,14 @@ export class DocumentsService {
 
   /**
    * Every approval of the run that approved the version signed what it
-   * holds now.
+   * holds now (`Publisher.isSigned`); 409 `content_changed` otherwise.
    */
   async assertSigned(
     tx: Transaction,
     doc: { id: string; number: string },
     version: VersionRow,
   ) {
-    const runs = await this.engine.runsOf(tx, 'document_version', [version.id]);
-    const approvedRun = runs.find((r) => r.status === 'approved');
-    const signed = await this.signatures.of(tx, 'document_version', [
-      version.id,
-    ]);
-    const hash = contentHash(signedVersion(doc, version));
-    const ids = new Set(
-      approvedRun?.steps.map((s) => s.signatureId).filter(Boolean) ?? [],
-    );
-    const behind = signed.filter((s) => ids.has(s.id));
-    if (
-      !approvedRun ||
-      behind.length !== approvedRun.steps.length ||
-      behind.some((s) => s.contentHash !== hash)
-    ) {
+    if (!(await this.publisher.isSigned(tx, doc, version))) {
       throw new ConflictException({ code: 'content_changed' });
     }
   }

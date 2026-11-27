@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
+import { ApprovalEngine } from '../approvals/approval-engine.service.js';
+import { contentHash, SignatureService } from '../approvals/signatures.js';
 import type { Transaction } from '../database/client.js';
 import {
   documentAcknowledgements,
@@ -11,6 +13,7 @@ import {
 import { ProvisioningService } from '../identity/provisioning.service.js';
 import { addMonths, shiftDay } from '../i18n/time-zones.js';
 import { DocumentNotifier, type NotifiedDocument } from './document-notifier.js';
+import { signedVersion } from './signed-content.js';
 import { userInAudience } from './visibility.js';
 
 /** A document as publishing needs it, locked by the caller. */
@@ -29,6 +32,9 @@ export type PublishedVersion = {
   acknowledgementRequired: boolean;
   acknowledgeWithinDays: number;
 };
+
+/** A version as its signatures are checked against it. */
+export type SignedVersionRow = Parameters<typeof signedVersion>[1];
 
 /**
  * Publishes an approved version: by a manager now, or by the daily check on
@@ -49,7 +55,40 @@ export class Publisher {
   constructor(
     private readonly provisioning: ProvisioningService,
     private readonly notifier: DocumentNotifier,
+    private readonly engine: ApprovalEngine,
+    private readonly signatures: SignatureService,
   ) {}
+
+  /**
+   * Whether the run that approved the version stands behind what it holds
+   * now: every step of it approved by the person who signed it, and every
+   * signature of exactly this content. Checked before publishing now, when
+   * scheduling, and again by the daily check on the day.
+   */
+  async isSigned(
+    tx: Transaction,
+    doc: { id: string; number: string },
+    version: SignedVersionRow,
+  ) {
+    const runs = await this.engine.runsOf(tx, 'document_version', [version.id]);
+    const approvedRun = runs.find((r) => r.status === 'approved');
+    if (!approvedRun) return false;
+    const signed = new Map(
+      (await this.signatures.of(tx, 'document_version', [version.id])).map(
+        (s) => [s.id, s],
+      ),
+    );
+    const hash = contentHash(signedVersion(doc, version));
+    return approvedRun.steps.every((step) => {
+      const signature = step.signatureId ? signed.get(step.signatureId) : null;
+      return (
+        step.status === 'approved' &&
+        !!signature &&
+        signature.userId === step.decidedBy &&
+        signature.contentHash === hash
+      );
+    });
+  }
 
   async publish(
     tx: Transaction,

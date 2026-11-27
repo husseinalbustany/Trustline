@@ -22,6 +22,9 @@ describe("a version's text", () => {
       'Less than < 5, more than > 3 in a sentence.',
       'A list:\n\n- item\n\n    continued under the item',
       'Brackets [like this] alone.',
+      'Time 10:30, ratio 1:4, and a note: see below.',
+      'Call 4455 or ask the desk @ reception.',
+      'Room [B]. Next: the ward.',
     ]) {
       expect({ text, problem: markupProblem(text) }).toEqual({ text, problem: null });
     }
@@ -37,6 +40,20 @@ describe("a version's text", () => {
       ['[a](javascript:alert(1))', 'link'],
       ['[a][ref]', 'link'],
       ['[ref]: https://example.invalid', 'link'],
+      // A label's definition wherever it stands still makes `[x]` a link.
+      ['- [x]: javascript:alert(1)\n\nSee [x] for details.', 'link'],
+      ['1. [x]: https://evil.example/login\n\nSee [x].', 'link'],
+      ['# Heading\n\n  [x]: data:text/html,x\n\n[x]', 'link'],
+      ['# Heading\n[x]: data:text/html;base64,PHA+', 'link'],
+      ['Text then [x] : javascript:alert(1)', 'link'],
+      // Bare addresses, which a renderer may link by itself.
+      ['Sign in at https://evil.example/login now.', 'web_address'],
+      ['See http://example.invalid', 'web_address'],
+      ['- see www.example.invalid', 'web_address'],
+      ['Or WWW.EXAMPLE.INVALID', 'web_address'],
+      ['ftp://example.invalid/file', 'web_address'],
+      ['Write to someone@example.invalid today.', 'email_address'],
+      ['1. mailto:a.b+c@mail.example.invalid', 'email_address'],
       ['![a](b.png)', 'image'],
       ['`code`', 'code'],
       ['```\ncode\n```', 'code'],
@@ -99,6 +116,55 @@ describe("a version's text", () => {
     expect(compared[0].locales.ar.changed).toBe(true);
     // A first version is compared with nothing: all of it is new.
     expect(compareVersions({ sections, content: { en: { purpose: 'x' } } }, null, ['en'])[0].changed).toBe(true);
+  });
+
+  it('is compared around what changed in a long section, and whole when it all changed', () => {
+    const lines = (from: number, n: number, tag: string) =>
+      Array.from({ length: n }, (_, i) => `${tag} ${from + i}`).join('\n');
+    // One line changed among 5,000: the rest is the same.
+    const before = `${lines(0, 2_500, 'a')}\nold\n${lines(2_500, 2_500, 'a')}`;
+    const after = `${lines(0, 2_500, 'a')}\nnew\n${lines(2_500, 2_500, 'a')}`;
+    const one = diffLines(before, after);
+    expect(one.filter((l) => l.op !== 'same')).toEqual([
+      { op: 'removed', text: 'old' },
+      { op: 'added', text: 'new' },
+    ]);
+    expect(one).toHaveLength(5_002);
+    // Rewritten throughout: too large to compare line by line.
+    const whole = diffLines(lines(0, 1_000, 'a'), lines(0, 1_000, 'b'));
+    expect(whole.map((l) => l.op)).toEqual([
+      ...Array<string>(1_000).fill('removed'),
+      ...Array<string>(1_000).fill('added'),
+    ]);
+  });
+
+  it('stays fast however long the text, within the limits of a version', () => {
+    // The review's case: sections of 2,000 short lines, rewritten, in 33
+    // section-languages, against a published version as long.
+    const keys = Array.from({ length: 11 }, (_, i) => `s${i}`);
+    const sections = keys.map((key) => ({ key, name: { en: key }, required: false }));
+    const text = (tag: string) =>
+      Array.from({ length: 2_000 }, (_, i) => `${tag}${i % 2}`).join('\n');
+    const of = (tag: string) =>
+      Object.fromEntries(
+        ['en', 'ar', 'fr'].map((l) => [l, Object.fromEntries(keys.map((k) => [k, text(`${tag}${k}`)]))]),
+      );
+    const started = performance.now();
+    const compared = compareVersions({ sections, content: of('x') }, { content: of('y') }, ['en', 'ar', 'fr']);
+    const took = performance.now() - started;
+    expect(compared.every((s) => s.changed)).toBe(true);
+    expect(took).toBeLessThan(200);
+    // Sections small enough are still compared line by line, until the
+    // comparison has spent its budget.
+    const small = Array.from({ length: 400 }, (_, i) => `l${i % 3}`).join('\n');
+    const many = Array.from({ length: 30 }, (_, i) => ({ key: `k${i}`, name: { en: 'k' }, required: false }));
+    const at = performance.now();
+    compareVersions(
+      { sections: many, content: { en: Object.fromEntries(many.map((s) => [s.key, small])) } },
+      { content: { en: Object.fromEntries(many.map((s) => [s.key, `${small}\nx`.split('\n').reverse().join('\n')])) } },
+      ['en'],
+    );
+    expect(performance.now() - at).toBeLessThan(200);
   });
 });
 

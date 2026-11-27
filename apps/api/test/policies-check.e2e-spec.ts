@@ -7,6 +7,7 @@ import {
   documents,
   documentVersions,
   notifications,
+  signatures,
   users,
 } from '../src/database/schema.js';
 import { addMonths, dayOf, shiftDay, startOfDay } from '../src/i18n/time-zones.js';
@@ -218,6 +219,62 @@ describe('policies: the daily check, the module and the subscription', () => {
       // Once.
       await runCheck(at);
       expect((await sentAbout(reader.id, doc.id)).map((n) => n.kind)).toEqual(['document_published']);
+    }, 60_000);
+
+    it('leaves unpublished, and logs, a version whose signatures no longer match it, and publishes the others', async () => {
+      const today = dayOf(new Date(), 'Asia/Riyadh');
+      const day = shiftDay(today, 3);
+      const schedule = async () => {
+        const { doc, version } = await approved();
+        await post(writer.cookie, `/documents/${doc.id}/versions/${version.id}/publish`, {
+          effectiveOn: day,
+          revision: version.revision,
+        }).expect(200);
+        return { doc, version };
+      };
+      const bad = await schedule();
+      const good = await schedule();
+      // What the database itself no longer lets anyone do to the version's
+      // text, done to one of its signatures instead, as the owner.
+      const [signature] = await bench.owner.db
+        .select({ id: signatures.id, contentHash: signatures.contentHash })
+        .from(signatures)
+        .where(eq(signatures.subjectId, bad.version.id))
+        .limit(1);
+      await bench.owner.db
+        .update(signatures)
+        .set({ contentHash: '0'.repeat(64) })
+        .where(eq(signatures.id, signature.id));
+      const logged = vi.spyOn((check as unknown as { logger: { error: (m: string) => void } }).logger, 'error');
+      try {
+        const at = new Date(startOfDay(day, 'Asia/Riyadh').getTime() + 1_800_000);
+        const result = await runCheck(at);
+        expect(result).toMatchObject({ failed: 0 });
+        expect(result.published).toBeGreaterThanOrEqual(1);
+        const statusOf = async (id: string) =>
+          (
+            await bench.owner.db
+              .select({ status: documentVersions.status })
+              .from(documentVersions)
+              .where(eq(documentVersions.id, id))
+          )[0].status;
+        expect(await statusOf(bad.version.id)).toBe('approved');
+        expect(await statusOf(good.version.id)).toBe('published');
+        expect(logged.mock.calls.map((c) => c[0])).toEqual([
+          expect.stringMatching(new RegExp(`version ${bad.version.id} of client ${c.id}.*content_changed`)),
+        ]);
+        // Nothing of the version's text is in the log.
+        expect(logged.mock.calls[0][0]).not.toContain(FULL.purpose);
+        // Put right, it is published on the next run.
+        await bench.owner.db
+          .update(signatures)
+          .set({ contentHash: signature.contentHash })
+          .where(eq(signatures.id, signature.id));
+        expect((await runCheck(at)).published).toBeGreaterThanOrEqual(1);
+        expect(await statusOf(bad.version.id)).toBe('published');
+      } finally {
+        logged.mockRestore();
+      }
     }, 60_000);
   });
 

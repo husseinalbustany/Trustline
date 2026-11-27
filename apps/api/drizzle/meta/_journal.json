@@ -281,6 +281,20 @@
       "when": 1795808331193,
       "tag": "0039_policies_grants_and_existing_clients",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1795811703432,
+      "tag": "0040_published_version_of_its_own_document",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1795811708958,
+      "tag": "0041_signed_text_kept_by_the_database",
+      "breakpoints": true
     }
   ]
 }

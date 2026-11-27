@@ -132,6 +132,33 @@ const stepFields = {
   signatureId: approvalRunSteps.signatureId,
 };
 
+/**
+ * Whether every step can be decided by a different person: each step is
+ * given one of its candidates, no one twice (a matching, found by
+ * augmenting paths, so that a choice made for an early step is undone when
+ * a later step needs that person). Returns the index of the first step
+ * left without anyone, or null when all are covered.
+ */
+export function firstUncoveredStep(candidates: string[][]): number | null {
+  const stepOf = new Map<string, number>();
+  const place = (step: number, tried: Set<string>): boolean => {
+    for (const person of candidates[step]) {
+      if (tried.has(person)) continue;
+      tried.add(person);
+      const other = stepOf.get(person);
+      if (other === undefined || place(other, tried)) {
+        stepOf.set(person, step);
+        return true;
+      }
+    }
+    return false;
+  };
+  for (let step = 0; step < candidates.length; step++) {
+    if (!place(step, new Set())) return step;
+  }
+  return null;
+}
+
 /** The unit and every unit above it, as a query of ids. */
 const unitAndAbove = (unitId: string | SQLWrapper) => sql`(
   with recursive up (id, parent_id) as (
@@ -288,9 +315,12 @@ export class ApprovalEngine {
    * Starts a run of the subject through the route: the steps are copied, the
    * first becomes the current one and its time starts. Refused with 409
    * `route_has_no_steps`, or `no_assignee` with the `position` of a step
-   * that nobody could decide now (nobody holds what it names, or only
-   * people in `excluded`, who may decide no step of this run: for a
-   * document, everyone who prepared the version).
+   * that nobody could decide now: nobody holds what it names, or only
+   * people in `excluded`, who may decide no step of this run (for a
+   * document, everyone who prepared the version), or only people who would
+   * then have to decide another step too. Each step of a run is decided by
+   * a different person, so the steps must be coverable by as many
+   * different people.
    *
    * Returns the run and who the first step is for.
    */
@@ -312,8 +342,8 @@ export class ApprovalEngine {
     if (steps.length === 0) {
       throw new ConflictException({ code: 'route_has_no_steps' });
     }
-    let firstAssignees: string[] = [];
-    for (const [i, step] of steps.entries()) {
+    const candidates: string[][] = [];
+    for (const step of steps) {
       const can = (await this.assignees(tx, step, input.ctx)).filter(
         (id) => !input.excluded.includes(id),
       );
@@ -323,8 +353,16 @@ export class ApprovalEngine {
           position: step.position,
         });
       }
-      if (i === 0) firstAssignees = can;
+      candidates.push(can);
     }
+    const uncovered = firstUncoveredStep(candidates);
+    if (uncovered !== null) {
+      throw new ConflictException({
+        code: 'no_assignee',
+        position: steps[uncovered].position,
+      });
+    }
+    const firstAssignees = candidates[0];
     const [run] = await tx
       .insert(approvalRuns)
       .values({
@@ -419,6 +457,16 @@ export class ApprovalEngine {
     return runs.find((r) => r.status === 'in_progress') ?? null;
   }
 
+  /**
+   * Who has decided a step of this run. None of them may decide another:
+   * each step of a run is decided by a different person.
+   */
+  decidersOf(run: Run) {
+    return run.steps
+      .map((s) => s.decidedBy)
+      .filter((id): id is string => id !== null);
+  }
+
   /** The step to be decided now, if the run is in progress. */
   pendingStep(run: Run) {
     if (run.status !== 'in_progress') return null;
@@ -432,7 +480,8 @@ export class ApprovalEngine {
    * that the person may decide it, under the lock of `current(..., lock)`.
    *
    * Returns how the run stands and, when it moved on, the new current step
-   * and who it is for.
+   * and who it is for: its assignees, less those in `excluded` and those who
+   * have decided a step of this run, this one included.
    */
   async decide(
     tx: Transaction,
@@ -482,8 +531,9 @@ export class ApprovalEngine {
       .update(approvalRuns)
       .set({ currentPosition: next.position })
       .where(eq(approvalRuns.id, run.id));
+    const decided = [...this.decidersOf(run), input.userId];
     const nextAssignees = (await this.assignees(tx, next, input.ctx)).filter(
-      (id) => !input.excluded.includes(id),
+      (id) => !input.excluded.includes(id) && !decided.includes(id),
     );
     return {
       status: 'in_progress',

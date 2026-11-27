@@ -2,8 +2,11 @@ import '../src/env.js';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import {
+  approvalRunSteps,
   auditLog,
   documentAcknowledgements,
+  documents,
+  documentVersions,
   signatures,
   users,
 } from '../src/database/schema.js';
@@ -591,6 +594,11 @@ describe('policies and procedures', () => {
         ['<b>bold</b>', 'html'],
         ['<!-- hidden -->', 'html'],
         ['See [here](https://example.invalid)', 'link'],
+        ['- [x]: javascript:alert(1)\n\nSee [x] for details.', 'link'],
+        ['1. [x]: https://example.invalid/login\n\nSee [x].', 'link'],
+        ['Sign in at https://example.invalid/login', 'web_address'],
+        ['- see www.example.invalid', 'web_address'],
+        ['Write to someone@example.invalid', 'email_address'],
         ['<https://example.invalid>', 'html'],
         ['![picture](https://example.invalid/a.png)', 'image'],
         ['Run `rm`', 'code'],
@@ -734,6 +742,63 @@ describe('policies and procedures', () => {
         ],
         revision: named.body.revision,
       }).expect(200);
+    });
+
+    it('needs as many different people as the route has steps', async () => {
+      const route = (await get(a.cookie, '/approval-routes').expect(200)).body.find(
+        (r: { documentTypeId: string }) => r.documentTypeId === types.work_instruction,
+      );
+      let revision = route.revision as number;
+      const setSteps = async (steps: unknown[]) => {
+        revision = (
+          await patch(a.cookie, `/approval-routes/${route.id}`, { steps, revision }).expect(200)
+        ).body.revision;
+      };
+      const draft = async () => {
+        const doc = (
+          await newDocument(writer.cookie, {
+            typeId: types.work_instruction,
+            categoryId: categories.SAF,
+          }).expect(201)
+        ).body as Doc;
+        const version = await versionOf(writer.cookie, doc.id, doc.inProgress!.id);
+        const written = (
+          await write(writer.cookie, doc, version, { content: { en: { purpose: 'p', steps: 's' } } }).expect(200)
+        ).body as Version;
+        return { doc, version: written };
+      };
+      const submit = (d: { doc: Doc; version: Version }) =>
+        post(writer.cookie, `/documents/${d.doc.id}/versions/${d.version.id}/submit`, {
+          revision: d.version.revision,
+        });
+      try {
+        // One person named for both steps: the second has nobody left.
+        await setSteps([
+          { kind: 'review', userId: secondApprover.id, dueInDays: 3 },
+          { kind: 'approve', userId: secondApprover.id, dueInDays: 3 },
+        ]);
+        const twice = await draft();
+        expect((await submit(twice).expect(409)).body).toEqual({ code: 'no_assignee', position: 2 });
+        // A role for the first step and one of its holders named for the
+        // second: covered, by giving the first step to another holder.
+        await setSteps([
+          { kind: 'review', roleId: roleOf(a, 'administrator'), dueInDays: 3 },
+          { kind: 'approve', userId: secondApprover.id, dueInDays: 3 },
+        ]);
+        const covered = await draft();
+        const sent = (await submit(covered).expect(200)).body as Version;
+        // And the one named for the second step, deciding the first, may
+        // not then decide the second: someone else decides the first.
+        expect(sent.status).toBe('in_review');
+        await post(writer.cookie, `/documents/${covered.doc.id}/versions/${sent.id}/withdraw`, {
+          revision: sent.revision,
+        }).expect(200);
+      } finally {
+        await setSteps([
+          { kind: 'review', roleId: roleOf(a, 'quality_officer'), dueInDays: 7 },
+          { kind: 'approve', roleId: roleOf(a, 'administrator'), dueInDays: 7 },
+        ]);
+      }
     });
   });
 
@@ -922,6 +987,107 @@ describe('policies and procedures', () => {
       await decide(secondApprover, doc, reviewed, 'approve').expect(200);
     });
 
+    it('keeps whoever wrote a withdrawn version among the contributors of the one started from it', async () => {
+      // The approver writes version 1 and withdraws it.
+      const doc = (
+        await newDocument(approver.cookie, { ownerId: approver.id }).expect(201)
+      ).body as Doc;
+      let v1 = await versionOf(approver.cookie, doc.id, doc.inProgress!.id);
+      v1 = (await write(approver.cookie, doc, v1, { content: { en: FULL } }).expect(200)).body;
+      await post(approver.cookie, `/documents/${doc.id}/versions/${v1.id}/withdraw`, {
+        revision: v1.revision,
+      }).expect(200);
+      // Someone else starts version 2 from it, word for word, and sends it
+      // with a change summary of their own.
+      const started = (await post(writer.cookie, `/documents/${doc.id}/versions`, {}).expect(201))
+        .body as Version;
+      expect(started.content).toEqual(v1.content);
+      const v2 = (
+        await write(writer.cookie, doc, started, { changeSummary: { en: 'Started again.' } }).expect(200)
+      ).body as Version;
+      expect(v2.content).toEqual(v1.content);
+      const sent = (
+        await post(writer.cookie, `/documents/${doc.id}/versions/${v2.id}/submit`, {
+          revision: v2.revision,
+        }).expect(200)
+      ).body as Version;
+      const reviewed = (await decide(quality, doc, sent, 'approve').expect(200)).body as Version;
+      // The approver wrote the text: they do not approve it.
+      expect((await decide(approver, doc, reviewed, 'approve').expect(403)).body).toEqual({
+        code: 'same_person',
+        reason: 'prepared',
+      });
+      const created = await bench.owner.db
+        .select({ changes: auditLog.changes })
+        .from(auditLog)
+        .where(and(eq(auditLog.entityId, doc.id), eq(auditLog.action, 'document_version_created')));
+      expect(created.map((e) => e.changes)).toContainEqual(
+        expect.objectContaining({
+          versionId: v2.id,
+          copiedFromVersionId: v1.id,
+          contributors: [approver.id, writer.id],
+        }),
+      );
+      const ok = (await decide(secondApprover, doc, reviewed, 'approve').expect(200)).body as Version;
+      await post(writer.cookie, `/documents/${doc.id}/versions/${v2.id}/publish`, {
+        revision: ok.revision,
+      }).expect(200);
+      // From the published version, which was approved by others, the new
+      // version starts with whoever started it only.
+      const v3 = (await post(writer.cookie, `/documents/${doc.id}/versions`, {}).expect(201))
+        .body as Version;
+      const [entry] = await bench.owner.db
+        .select({ changes: auditLog.changes })
+        .from(auditLog)
+        .where(
+          and(
+            eq(auditLog.action, 'document_version_created'),
+            sql`${auditLog.changes} ->> 'versionId' = ${v3.id}`,
+          ),
+        );
+      expect(entry.changes).toMatchObject({ copiedFromVersionId: v2.id, contributors: [writer.id] });
+    }, 60_000);
+
+    it('has each step of a run decided by a different person', async () => {
+      // A quality officer who is an administrator too.
+      const both = await staff(a, 'both', 'quality_officer', null, facility);
+      const grant = (roles: string[]) =>
+        http()
+          .put(`/users/${both.id}/roles`)
+          .set('Cookie', a.cookie)
+          .send({ roles: roles.map((code) => ({ roleId: roleOf(a, code), orgUnitId: null })) })
+          .expect(200);
+      await grant(['quality_officer', 'administrator']);
+      try {
+        const { doc, version } = await inReview();
+        const reviewed = (await decide(both, doc, version, 'approve').expect(200)).body as Version;
+        const seen = await versionOf(both.cookie, doc.id, version.id);
+        expect(seen.moves).not.toContain('approve');
+        expect((seen as unknown as { myStep: { position: number; samePerson: boolean } }).myStep).toMatchObject({
+          position: 2,
+          samePerson: true,
+        });
+        for (const action of ['approve', 'return'] as const) {
+          expect((await decide(both, doc, reviewed, action).expect(403)).body).toEqual({
+            code: 'same_person',
+            reason: 'decided_earlier_step',
+          });
+        }
+        // Not among their pending steps, and not told of the second step.
+        const mine = (await get(both.cookie, '/approvals').expect(200)).body;
+        expect(mine.items.map((i: { version: { id: string } }) => i.version.id)).not.toContain(version.id);
+        expect(
+          (await notificationsOf(both.cookie)).filter(
+            (n) => n.document?.id === doc.id && n.kind === 'document_step_assigned',
+          ).map((n) => n.data.position),
+        ).toEqual([1]);
+        const done = (await decide(approver, doc, reviewed, 'approve').expect(200)).body as Version;
+        expect(done.control.approvals.map((x) => x.signedBy.id)).toEqual([both.id, approver.id]);
+      } finally {
+        await grant([]);
+      }
+    }, 60_000);
+
     it('returns to draft with a required comment, which the preparer is told of and shown', async () => {
       const { doc, version } = await inReview();
       await post(quality.cookie, `/documents/${doc.id}/versions/${version.id}/return`, {
@@ -1033,6 +1199,78 @@ describe('policies and procedures', () => {
         await app.pool.end();
       }
     });
+
+    it('stand behind text the database keeps, whoever writes to it', async () => {
+      const { doc: pubDoc, version: pub } = await published();
+      const { doc: other } = await published();
+      const { version: inRun } = await approved();
+      const { createDatabase } = await import('../src/database/client.js');
+      const { requireEnv } = await import('../src/env.js');
+      const { TenantDb } = await import('../src/database/tenant-db.service.js');
+      const app = createDatabase(requireEnv('APP_DATABASE_URL'));
+      const refusedBy = (constraint: string) => ({ cause: { code: '23514', constraint } });
+      try {
+        const tenantDb = new TenantDb(app.db);
+        const asApp = (fn: Parameters<typeof tenantDb.withTenant>[1]) => tenantDb.withTenant(a.id, fn);
+        // The text of a version outside draft, as the application...
+        for (const set of [
+          { content: {} },
+          { sections: [] },
+          { changeSummary: { en: 'Changed.' } },
+          { acknowledgementRequired: true },
+          { acknowledgeWithinDays: 1 },
+        ]) {
+          for (const id of [pub.id, inRun.id]) {
+            await expect(
+              asApp((tx) => tx.update(documentVersions).set(set).where(eq(documentVersions.id, id))),
+            ).rejects.toMatchObject(refusedBy('document_versions_signed_text_fixed'));
+          }
+        }
+        // ...and as the owner of the tables.
+        await expect(
+          bench.owner.db.update(documentVersions).set({ content: {} }).where(eq(documentVersions.id, pub.id)),
+        ).rejects.toMatchObject(refusedBy('document_versions_signed_text_fixed'));
+        // Nor put back to draft to be edited there.
+        await expect(
+          asApp((tx) => tx.update(documentVersions).set({ status: 'draft' }).where(eq(documentVersions.id, pub.id))),
+        ).rejects.toMatchObject(refusedBy('document_versions_status_order'));
+        // What is not signed still changes.
+        await asApp((tx) =>
+          tx.update(documentVersions).set({ updatedAt: new Date() }).where(eq(documentVersions.id, pub.id)),
+        );
+        // A run's step: what it is never changes, and once decided nothing.
+        const [step] = await bench.owner.db
+          .select({ id: approvalRunSteps.id, decidedBy: approvalRunSteps.decidedBy })
+          .from(approvalRunSteps)
+          .innerJoin(signatures, eq(signatures.id, approvalRunSteps.signatureId))
+          .where(eq(signatures.subjectId, pub.id))
+          .limit(1);
+        await expect(
+          asApp((tx) => tx.update(approvalRunSteps).set({ assigneeUserId: writer.id }).where(eq(approvalRunSteps.id, step.id))),
+        ).rejects.toMatchObject({ cause: { code: '42501' } });
+        for (const set of [{ decidedBy: writer.id }, { comment: 'After the fact.' }, { status: 'pending' as const }]) {
+          await expect(
+            asApp((tx) => tx.update(approvalRunSteps).set(set).where(eq(approvalRunSteps.id, step.id))),
+          ).rejects.toMatchObject(refusedBy('approval_run_steps_decided_fixed'));
+        }
+        await expect(
+          bench.owner.db.update(approvalRunSteps).set({ decidedBy: writer.id }).where(eq(approvalRunSteps.id, step.id)),
+        ).rejects.toMatchObject(refusedBy('approval_run_steps_decided_fixed'));
+        // A document's published version is one of its own.
+        await expect(
+          asApp((tx) =>
+            tx.update(documents).set({ publishedVersionId: pub.id }).where(eq(documents.id, other.id)),
+          ),
+        ).rejects.toMatchObject({ cause: { code: '23503', constraint: 'documents_published_version_own_fk' } });
+        // All of it as it was.
+        const seen = await versionOf(writer.cookie, pubDoc.id, pub.id);
+        expect(seen.contentHash).toBe(pub.contentHash);
+        expect(seen.control.approvals.map((x) => x.signedBy.id)).toEqual([quality.id, approver.id]);
+        expect(step.decidedBy).toBe(quality.id);
+      } finally {
+        await app.pool.end();
+      }
+    }, 60_000);
 
     it('hash exactly what was signed', async () => {
       const { doc, version } = await approved();
@@ -1285,6 +1523,55 @@ describe('policies and procedures', () => {
       // The keyword is searched.
       expect((await listOf(writer.cookie, '&q=floor')).items.map((i) => i.id)).toContain(doc.id);
     });
+
+    it('keeps its owning unit while a version is in review, and its title until it is published', async () => {
+      const edit = async (id: string, body: Record<string, unknown>, status: number) => {
+        const { revision } = (await get(writer.cookie, `/documents/${id}`).expect(200)).body;
+        return (await patch(writer.cookie, `/documents/${id}`, { revision, ...body }).expect(status)).body;
+      };
+      const { doc, version } = await inReview();
+      expect(await edit(doc.id, { ownerUnitId: pharmacy }, 409)).toEqual({
+        code: 'in_review',
+        field: 'ownerUnitId',
+        version: 1,
+      });
+      expect(await edit(doc.id, { title: { en: 'Another title' } }, 409)).toEqual({
+        code: 'in_review',
+        field: 'title',
+        version: 1,
+      });
+      // The same title and unit again are no change, and the rest changes.
+      await edit(doc.id, {
+        title: { en: 'Handling a spill', ar: 'التعامل مع الانسكاب' },
+        ownerUnitId: nursing,
+        keywords: ['wet floor'],
+      }, 200);
+      const reviewed = (await decide(quality, doc, await versionOf(writer.cookie, doc.id, version.id), 'approve').expect(200)).body as Version;
+      const ok = (await decide(approver, doc, reviewed, 'approve').expect(200)).body as Version;
+      // Approved: the unit may move, the title waits for publication.
+      expect(await edit(doc.id, { title: { en: 'Another title' } }, 409)).toEqual({
+        code: 'awaiting_publication',
+        field: 'title',
+        version: 1,
+      });
+      await edit(doc.id, { ownerUnitId: ward }, 200);
+      await post(writer.cookie, `/documents/${doc.id}/versions/${version.id}/publish`, {
+        revision: (await versionOf(writer.cookie, doc.id, version.id)).revision,
+      }).expect(200);
+      expect(ok.status).toBe('approved');
+      // Published: it may be renamed, and that is audited.
+      const renamed = await edit(doc.id, { title: { en: 'Another title' } }, 200);
+      expect(renamed.title).toEqual({ en: 'Another title' });
+      const entries = await bench.owner.db
+        .select({ changes: auditLog.changes })
+        .from(auditLog)
+        .where(and(eq(auditLog.entityId, doc.id), eq(auditLog.action, 'document_updated')));
+      expect(entries.map((e) => e.changes)).toContainEqual(
+        expect.objectContaining({ title: { from: { en: 'Handling a spill', ar: 'التعامل مع الانسكاب' }, to: { en: 'Another title' } } }),
+      );
+      // Nothing of a refused change was written.
+      expect(entries.filter((e) => 'ownerUnitId' in (e.changes as object))).toHaveLength(1);
+    }, 60_000);
   });
 
   describe('settings', () => {

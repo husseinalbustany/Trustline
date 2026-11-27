@@ -171,7 +171,8 @@ Rules:
   They may be a reviewer only if the route says so explicitly (not in this
   release: refuse).
 - A step can be decided only by an assignee, in order: the step must be the
-  current one.
+  current one. Each step of a run is decided by a different person
+  (decided after the fifth security review).
 - Every decision, publish, review and acknowledgement is audited, and every
   approval, review sign-off and acknowledgement is a signature.
 - Drafts and in-review versions are visible only to those who manage the
@@ -291,7 +292,7 @@ allowed.
 
 ## Built: database and API
 
-Status: the database and the API are built (migrations 0038 and 0039,
+Status: the database and the API are built (migrations 0038 to 0041,
 `apps/api/src/policies/`, `apps/api/src/approvals/`). The web screens are
 not. What was decided where this document left it open is marked
 **Chosen**; the full request and response shapes are below.
@@ -358,10 +359,25 @@ not. What was decided where this document left it open is marked
   nothing for a run in progress.
 - **Chosen: the same-person rule** covers everyone who created, edited or
   sent the version for review (`document_versions.contributors`), for
-  every step, review or approval (403 `same_person`). Sending for review is
-  refused when a step has nobody else who could decide it (409
-  `no_assignee` with its `position`), so a run cannot be started that can
-  never end.
+  every step, review or approval (403 `same_person`, `reason: "prepared"`).
+  A new version started from a version that was never published (one
+  withdrawn) holds its writers' text, so it keeps that version's
+  contributors; one started from the published version starts with
+  whoever started it only.
+- **Decided: one person, one step.** Within one run each step is decided
+  by a different person: someone who decided an earlier step of the run,
+  for instance holding both the Quality officer and the Administrator
+  roles, may not decide a later one (403 `same_person`, `reason:
+  "decided_earlier_step"`; the version's `myStep.samePerson` is true and
+  `approve` and `return` are not in its `moves`; the step is not in their
+  `GET /approvals`, and they are not notified of it).
+- Sending for review is refused when the steps cannot be covered by
+  different people other than the contributors (409 `no_assignee` with the
+  `position` of the first step left without anyone), so a run cannot be
+  started that can never end. A route that names one person for two
+  steps is refused this way at its second step; a route whose first step
+  is a role and whose second names one of its holders is accepted, since
+  another holder can take the first.
 - Two people deciding the same step at once take turns on the document's
   row lock: one decides it, the other is answered 409 (`stale_version`).
 - **Chosen:** a manager may **recall** a version in review (back to draft,
@@ -389,18 +405,39 @@ not. What was decided where this document left it open is marked
   `{ documentId, number, versionId, version, sections, content,
   changeSummary, acknowledgementRequired, acknowledgeWithinDays }`, shown on
   the version as `contentHash`. **Chosen:** the title is not in it: it is
-  the document's, edited on its own. Publishing checks that every approval
-  of the approving run signed what the version holds (409
-  `content_changed`, which no route can bring about).
+  the document's, edited on its own, and kept while it is on its way (see
+  "Editing a document" below). Publishing, scheduling and the daily check
+  on the scheduled day check that every step of the approving run is
+  approved by the person whose signature it holds, of what the version
+  holds now (409 `content_changed`, which no route can bring about; the
+  daily check leaves such a version approved, unpublished, and names it
+  and its client in the log).
 - The application role may insert and read signatures, never update or
   delete them (migration 0039). Reviews are insert-only too.
+- **The database keeps what is signed** (migration 0041), whoever writes:
+  outside draft, a version's text, sections, change summary and
+  acknowledgement settings, and its document and number, are refused
+  (`document_versions_signed_text_fixed`); its status goes only draft →
+  in review or withdrawn, in review → draft, approved or withdrawn,
+  approved → published or withdrawn, published → superseded
+  (`document_versions_status_order`). Of a run's step the application role
+  may update only its status, times and decision; a decided or skipped
+  step never changes, and only a pending step's decision writes who and
+  the signature (`approval_run_steps_decided_fixed`,
+  `approval_run_steps_status_order`,
+  `approval_run_steps_decision_complete`). A document's published version
+  is one of its own versions (`documents_published_version_own_fk`).
 
 ### Content
 
 - Markdown limited to paragraphs, headings of levels 1 to 3, bulleted and
   numbered lists (nested by indenting) and bold. Refused with 400
   `unsupported_markup` (`locale`, `section`, `problem`): HTML tags and
-  comments and autolinks (`html`), links of any form (`link`), images
+  comments and autolinks (`html`), links of any form (`link`), including a
+  label's definition (`[x]: …`) wherever it stands, in a list item or
+  under a heading; bare web addresses (`http://`, `https://`, any
+  `scheme://`, `www.`: `web_address`) and e-mail addresses
+  (`email_address`), which a renderer could link by itself; images
   (`image`), code spans and blocks (`code`, `indented`), block quotes
   (`quote`), tables (`table`), headings of level 4 and deeper
   (`heading_level`), and control characters as elsewhere
@@ -414,7 +451,11 @@ not. What was decided where this document left it open is marked
   created; a later change of the type counts for new versions.
 - The comparison with the published version is section by section and
   language by language, with whether it changed and the lines kept, added
-  and removed.
+  and removed. **Chosen: its cost is bounded.** The lines a section starts
+  and ends with in both are set aside; what is left is compared line by
+  line up to 250,000 cells (lines before times lines after), and up to
+  2,000,000 over the whole version; beyond, it is shown removed then
+  added.
 
 ### Numbering, defaults and dates
 
@@ -438,6 +479,16 @@ not. What was decided where this document left it open is marked
 - **Chosen:** a document's metadata (title, owner, owning unit, audience,
   confidentiality, keywords, references, review period, category) is
   edited directly, audited, not through a version. Its type cannot change.
+- **Decided: editing a document** while a version is on its way. Its
+  owning unit, which decides who may decide a role's step, may not change
+  while a version is in review (409 `in_review`). Its title, which the
+  approvers were shown, may not change while a version is in review (409
+  `in_review`) or approved and not yet published (409
+  `awaiting_publication`). Each answer has the `field` (`ownerUnitId`,
+  `title`) and the `version`. Sending the same value again is no change
+  (a title is the same whatever order its languages come in). The title
+  of a published document with no version on its way may change, audited
+  as any edit.
 
 ### Acknowledgement
 

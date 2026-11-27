@@ -1,0 +1,1 @@
+ALTER TABLE "document_versions" ADD CONSTRAINT "document_versions_document_id_key" UNIQUE("tenant_id","document_id","id");

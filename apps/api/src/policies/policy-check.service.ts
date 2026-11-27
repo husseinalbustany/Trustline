@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, notInArray, sql } from 'drizzle-orm';
 import type { Database, Transaction } from '../database/client.js';
 import { databaseFailure } from '../database/database-error.filter.js';
 import { DATABASE } from '../database/database.constants.js';
@@ -67,7 +67,10 @@ type Client = { id: string; timeZone: string };
  * check and built the same way:
  *
  * - **Scheduled publishing:** an approved version whose effective day has
- *   come, on the client's calendar, is published (`Publisher`).
+ *   come, on the client's calendar, is published (`Publisher`), if its
+ *   signatures still stand behind what it holds (`Publisher.isSigned`).
+ *   One whose do not is left approved, unpublished, and named in the log
+ *   with its client, on every run until someone deals with it.
  * - **Review reminders:** the owner of an active document is told 60, 30
  *   and 7 days before its next review, and when it has passed; managers of
  *   the document are told too when it has passed. Each once per review
@@ -230,13 +233,16 @@ export class PolicyCheck implements OnModuleDestroy {
     );
     if (!inUse) return done;
     const today = dayOf(now, client.timeZone);
+    // Versions passed over in this run because their signatures do not
+    // stand behind them: not looked at again until the next run.
+    const unsigned = new Set<string>();
     const steps: (() => Promise<{
       claimed: number;
       published?: number;
       assigned?: number;
       notified: number;
     }>)[] = [
-      () => this.publishScheduled(client.id, today, now),
+      () => this.publishScheduled(client.id, today, now, unsigned),
       () => this.remindReviews(client.id, today),
       () => this.remindAcknowledgements(client.id, today, now),
     ];
@@ -259,9 +265,16 @@ export class PolicyCheck implements OnModuleDestroy {
   /**
    * Publishes up to BATCH approved versions whose day has come. Each
    * document is locked before its version, as the routes do, and one
-   * another process holds is passed over.
+   * another process holds is passed over. One whose signatures do not stand
+   * behind what it holds now is not published: it is logged, with its
+   * client, and added to `unsigned`.
    */
-  private publishScheduled(tenantId: string, today: string, now: Date) {
+  private publishScheduled(
+    tenantId: string,
+    today: string,
+    now: Date,
+    unsigned: Set<string>,
+  ) {
     return this.inClient(tenantId, async (tx) => {
       const due = await tx
         .select({ id: documentVersions.id, documentId: documentVersions.documentId })
@@ -270,11 +283,15 @@ export class PolicyCheck implements OnModuleDestroy {
           and(
             eq(documentVersions.status, 'approved'),
             sql`${documentVersions.effectiveOn} <= ${today}`,
+            unsigned.size > 0
+              ? notInArray(documentVersions.id, [...unsigned])
+              : undefined,
           ),
         )
         .orderBy(asc(documentVersions.effectiveOn), asc(documentVersions.id))
         .limit(BATCH);
       let published = 0;
+      let passed = 0;
       let notified = 0;
       for (const candidate of due) {
         const [doc] = await tx
@@ -301,6 +318,9 @@ export class PolicyCheck implements OnModuleDestroy {
             effectiveOn: documentVersions.effectiveOn,
             preparedBy: documentVersions.preparedBy,
             scheduledBy: documentVersions.scheduledBy,
+            sections: documentVersions.sections,
+            content: documentVersions.content,
+            changeSummary: documentVersions.changeSummary,
             acknowledgementRequired: documentVersions.acknowledgementRequired,
             acknowledgeWithinDays: documentVersions.acknowledgeWithinDays,
           })
@@ -316,6 +336,14 @@ export class PolicyCheck implements OnModuleDestroy {
         ) {
           continue;
         }
+        if (!(await this.publisher.isSigned(tx, doc, version))) {
+          unsigned.add(version.id);
+          passed += 1;
+          this.logger.error(
+            `Policy check did not publish version ${version.id} of client ${tenantId}: its signatures do not match what it holds (content_changed)`,
+          );
+          continue;
+        }
         const outcome = await this.publisher.publish(tx, tenantId, doc, version, {
           actorId: null,
           effectiveOn: version.effectiveOn,
@@ -325,9 +353,10 @@ export class PolicyCheck implements OnModuleDestroy {
         published += 1;
         notified += outcome.notified;
       }
-      // Only a full batch published means there may be more: candidates
-      // passed over (held by another process) are that process's to do.
-      return { claimed: published, published, notified };
+      // Only a full batch published or found unsigned means there may be
+      // more: candidates passed over (held by another process) are that
+      // process's to do. Unsigned ones are not looked at again this run.
+      return { claimed: published + passed, published, notified };
     });
   }
 
