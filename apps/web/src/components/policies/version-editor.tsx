@@ -566,7 +566,9 @@ function Editor({
                         {value.trim() ? (
                           <Markup text={value} />
                         ) : (
-                          <p className="text-sm text-muted">{e.emptyPreview}</p>
+                          <p lang={lang} dir={direction(lang)} className="text-sm text-muted">
+                            {e.emptyPreview}
+                          </p>
                         )}
                       </div>
                     )}

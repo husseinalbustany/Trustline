@@ -40,6 +40,7 @@ import {
   VersionStatusPill,
 } from "./pills";
 import { isStale, textareaClass, type PoliciesProps } from "./types";
+import { Sentence } from "./sentence";
 import { useExplain } from "./use-explain";
 
 type Loaded = {
@@ -228,7 +229,7 @@ function DocumentView({
         <InProgress lang={lang} t={t} doc={doc} version={inProgress} />
       )}
 
-      <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <div className="mt-6 grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] print:block">
         <div className="flex min-w-0 flex-col gap-6">
           {published ? (
             <>
@@ -478,7 +479,9 @@ function Details({ lang, t, doc }: PoliciesProps & { doc: PolicyDocument }) {
   if (doc.lastReviewedOn) {
     rows.push([d.lastReviewedOn, day(doc.lastReviewedOn) ?? ""]);
   }
-  if (doc.nextReviewOn) rows.push([d.nextReviewOn, day(doc.nextReviewOn) ?? ""]);
+  if (doc.nextReviewOn && doc.status === "active") {
+    rows.push([d.nextReviewOn, day(doc.nextReviewOn) ?? ""]);
+  }
   return (
     <Panel title={d.details}>
       <dl className="flex flex-col gap-3 px-4 py-3 text-sm">
@@ -566,10 +569,13 @@ function Acknowledge({
           )}
           <PasswordPrompt
             t={t}
-            intro={fill(a.intro, {
-              number: doc.number,
-              version: numberFormat(lang).format(version.version),
-            })}
+            intro={
+              <Sentence
+                text={a.intro}
+                number={doc.number}
+                values={{ version: numberFormat(lang).format(version.version) }}
+              />
+            }
             confirm={a.confirm}
             explainError={explainError}
             submit={async (password) => {
@@ -681,7 +687,9 @@ function DocumentActions({
               {open === "review" ? (
                 <PasswordPrompt
                   t={t}
-                  intro={fill(x.confirmReviewIntro, { number: doc.number })}
+                  intro={
+                    <Sentence text={x.confirmReviewIntro} number={doc.number} />
+                  }
                   confirm={x.confirmReview}
                   comment={{ label: x.reviewComment }}
                   explainError={explainError}
@@ -750,7 +758,7 @@ function DocumentActions({
                 </Field>
                 {confirmRetire && (
                   <p role="alert" className="text-sm font-medium text-danger">
-                    {fill(x.retireConfirm, { number: doc.number })}
+                    <Sentence text={x.retireConfirm} number={doc.number} />
                   </p>
                 )}
                 <div className="flex flex-wrap gap-2">

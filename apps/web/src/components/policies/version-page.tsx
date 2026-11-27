@@ -36,6 +36,7 @@ import { Markup } from "./markup";
 import { PasswordPrompt } from "./password-prompt";
 import { VersionStatusPill } from "./pills";
 import { isStale, textareaClass, type PoliciesProps } from "./types";
+import { Sentence } from "./sentence";
 import { useExplain } from "./use-explain";
 
 type Loaded = { doc: PolicyDocument; version: DocumentVersion };
@@ -664,13 +665,13 @@ function VersionActions({
             open === "approve" ? (
               <PasswordPrompt
                 t={t}
-                intro={fill(
-                  version.myStep.kind === "review" ? r.signReview : r.signApprove,
-                  {
-                    number: doc.number,
-                    version: numbers.format(version.version),
-                  },
-                )}
+                intro={
+                  <Sentence
+                    text={version.myStep.kind === "review" ? r.signReview : r.signApprove}
+                    number={doc.number}
+                    values={{ version: numbers.format(version.version) }}
+                  />
+                }
                 confirm={version.myStep.kind === "review" ? r.confirmReviewed : r.confirmApproved}
                 comment={{ label: r.approveComment }}
                 explainError={explainError}

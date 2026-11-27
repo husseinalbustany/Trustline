@@ -44,6 +44,18 @@ export function explain(
       language: names.language?.(String(details.locale ?? "")) ?? "",
     });
   }
+  if (code === "same_person" && details.reason === "decided_earlier_step") {
+    return errors.same_person_decided;
+  }
+  if (code === "same_person" && details.reason === "prepared") {
+    return errors.same_person_prepared;
+  }
+  if (code === "in_review" || code === "awaiting_publication") {
+    const field = details.field === "title" ? "title" : "ownerUnitId";
+    return fill(errors[`${code}_${field}`], {
+      version: String(details.version ?? ""),
+    });
+  }
   if (code === "unknown_section") {
     return fill(errors.unknown_section, {
       section: String(details.section ?? ""),

@@ -1651,7 +1651,7 @@
       "moveUp": "Move up",
       "moveDown": "Move down",
       "typesHelp": "A type gives a document its sections, the start of its number and its review period. A change counts for versions started after it; a version keeps the sections it began with.",
-      "typeLine": "Review every {months} months · {sections}",
+      "typeLine": "Review period in months: {months} · {sections}",
       "newType": "New type",
       "addType": "Add a type",
       "codeHelp": "Lower-case letters, digits and _, for example quality_manual. It cannot be changed.",
@@ -1702,6 +1702,8 @@
       "removeStep": "Remove this step"
     },
     "markupProblems": {
+      "web_address": "a web address",
+      "email_address": "an email address",
       "html": "HTML tags",
       "link": "a link or a web address",
       "image": "an image",
@@ -1714,6 +1716,13 @@
       "other": "formatting that is not allowed"
     },
     "errors": {
+      "same_person_prepared": "You prepared or changed this version, so you cannot decide a step of its review. Someone else must.",
+      "same_person_decided": "You decided an earlier step of this review, so you cannot decide this one too. Someone else must.",
+      "awaiting_publication": "This change cannot be made while an approved version waits to be published. Wait until it is published, or withdraw it first.",
+      "in_review_title": "The title cannot change while version {version} is in review: it is part of what is being reviewed. Wait until the review ends, or take the version back to draft first.",
+      "in_review_ownerUnitId": "The owning unit cannot change while version {version} is in review. Wait until the review ends, or take the version back to draft first.",
+      "awaiting_publication_title": "The title cannot change while version {version} is approved and waiting to be published: it is part of what was approved. Wait until it is published, or withdraw it first.",
+      "awaiting_publication_ownerUnitId": "The owning unit cannot change while version {version} is approved and waiting to be published. Wait until it is published, or withdraw it first.",
       "generic": "Something went wrong and nothing was changed. Try again.",
       "invalid": "Something in this form cannot be accepted. Check it and try again.",
       "signedOut": "Your session has ended. Sign in again; what you typed here is not kept.",

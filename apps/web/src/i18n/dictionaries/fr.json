@@ -1702,6 +1702,8 @@
       "removeStep": "Supprimer cette étape"
     },
     "markupProblems": {
+      "web_address": "une adresse web",
+      "email_address": "une adresse e-mail",
       "html": "des balises HTML",
       "link": "un lien ou une adresse web",
       "image": "une image",
@@ -1714,6 +1716,13 @@
       "other": "une mise en forme non autorisée"
     },
     "errors": {
+      "same_person_prepared": "Vous avez préparé ou modifié cette version : vous ne pouvez donc décider d’aucune étape de sa relecture. Une autre personne doit le faire.",
+      "same_person_decided": "Vous avez décidé d’une étape précédente de cette relecture : vous ne pouvez donc pas décider aussi de celle-ci. Une autre personne doit le faire.",
+      "awaiting_publication": "Cette modification n’est pas possible tant qu’une version approuvée attend sa publication. Attendez qu’elle soit publiée, ou abandonnez-la d’abord.",
+      "in_review_title": "Le titre ne peut pas changer pendant la relecture de la version {version} : il fait partie de ce qui est relu. Attendez la fin de la relecture, ou remettez d’abord la version en brouillon.",
+      "in_review_ownerUnitId": "L’entité responsable ne peut pas changer pendant la relecture de la version {version}. Attendez la fin de la relecture, ou remettez d’abord la version en brouillon.",
+      "awaiting_publication_title": "Le titre ne peut pas changer tant que la version {version} est approuvée et attend sa publication : il fait partie de ce qui a été approuvé. Attendez qu’elle soit publiée, ou abandonnez-la d’abord.",
+      "awaiting_publication_ownerUnitId": "L’entité responsable ne peut pas changer tant que la version {version} est approuvée et attend sa publication. Attendez qu’elle soit publiée, ou abandonnez-la d’abord.",
       "generic": "Un problème est survenu et rien n’a été modifié. Réessayez.",
       "invalid": "Un élément de ce formulaire ne peut pas être accepté. Vérifiez-le puis réessayez.",
       "signedOut": "Votre session a pris fin. Reconnectez-vous ; ce que vous avez saisi ici n’est pas conservé.",

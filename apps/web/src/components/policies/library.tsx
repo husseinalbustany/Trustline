@@ -401,7 +401,9 @@ export function Library({ lang, t }: PoliciesProps) {
                       </span>{" "}
                       <span className="inline-block">
                         {"· "}
-                        {item.version === null
+                        {item.status === "retired"
+                          ? t.status.retired
+                          : item.version === null
                           ? l.notPublished
                           : fill(l.versionEffective, {
                               version: numbers.format(item.version),
