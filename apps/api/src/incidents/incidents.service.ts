@@ -20,6 +20,7 @@ import {
   or,
   sql,
   type SQL,
+  type SQLWrapper,
 } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import type { Transaction } from '../database/client.js';
@@ -33,6 +34,7 @@ import {
   users,
 } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
+import { AccessService } from '../identity/access.service.js';
 import type { AuthContext } from '../identity/auth.service.js';
 import type { Localized } from '../i18n/locales.js';
 import { lastDays } from '../i18n/time-zones.js';
@@ -44,7 +46,13 @@ import {
   matchesFollowUpCode,
   newFollowUpCode,
 } from './follow-up-code.js';
-import { Notifier, type Draft, type Subject, type Who } from './notifier.js';
+import {
+  Notifier,
+  type Announcement,
+  type Draft,
+  type Subject,
+  type Who,
+} from './notifier.js';
 import {
   BUSY_RETRY_SECONDS,
   FOLLOW_UP_COMMENTS_PER_INCIDENT_PER_DAY,
@@ -57,6 +65,7 @@ import {
   callsForSignOff,
   chooseMove,
   DEADLINE_LIVE_IN,
+  gradedByStaff,
   hasSay,
   movesFor,
   needsSignOff,
@@ -71,7 +80,7 @@ import {
   type IncidentStatus,
   type MoveKind,
 } from './status.js';
-import { seenInFull, visibleTo } from './visibility.js';
+import { reporterToldTo, seenInFull, visibleTo } from './visibility.js';
 
 export type { HarmLevel, IncidentStatus } from './status.js';
 export type IncidentType = (typeof incidents.type.enumValues)[number];
@@ -108,6 +117,8 @@ export type PublicReportInput = Omit<ReportInput, 'anonymous'>;
  * they see, and whether they are told who reported it.
  */
 type Reader = Caller & {
+  /** Who is reading, if they are signed in. */
+  userId: string | null;
   /** Sees the internal parts too, not only what its reporter sees. */
   full: boolean;
   /** Reported it, or holds the right to see who did. */
@@ -126,6 +137,7 @@ type Reader = Caller & {
  * without the incident's number, and may do nothing but comment.
  */
 const ANONYMOUS_REPORTER: Reader = {
+  userId: null,
   full: false,
   canTriage: false,
   canSignOff: false,
@@ -189,6 +201,13 @@ export type ListInput = {
   type?: IncidentType;
   harmLevel?: HarmLevel;
   sentinel?: boolean;
+  categoryId?: string;
+  /**
+   * How it arrived. Applied only to incidents whose reporter the caller is
+   * told of: any other matches neither value, so the filter cannot tell an
+   * anonymous report from a named one to someone not told who reported.
+   */
+  channel?: IncidentChannel;
   /** Where it happened or who owns it. */
   orgUnitId?: string;
   /** Reported at or after this moment, and before that one. */
@@ -251,6 +270,7 @@ export class IncidentsService {
     private readonly orgUnits: OrgUnitsService,
     private readonly rules: ResponseRulesService,
     private readonly notifier: Notifier,
+    private readonly access: AccessService,
   ) {}
 
   /**
@@ -309,6 +329,7 @@ export class IncidentsService {
     },
   ): Reader {
     return {
+      userId: auth.user.id,
       full: this.seesAll(auth, incident),
       canTriage: this.holds(auth, 'incidents.triage', incident),
       canSignOff: this.holds(auth, 'incidents.sign_off', incident),
@@ -498,8 +519,10 @@ export class IncidentsService {
    *
    * The first refusal of an hour is written to the hospital's audit log, and
    * to the server's log with the hospital's id, so that its quality office
-   * and whoever runs the server can see the form is being held shut. Once an
-   * hour, however many are refused. Nothing about any sender is in either.
+   * and whoever runs the server can see the form is being held shut; and it
+   * is told, as `public_form_paused`, to those who hold `settings.manage` or
+   * `incidents.triage` for the whole hospital. Once an hour, however many
+   * are refused. Nothing about any sender is in any of these.
    */
   async reportPublicly(
     tenant: Hospital,
@@ -558,6 +581,17 @@ export class IncidentsService {
               'tenant',
               tenant.id,
               { limit: PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR, perMinutes: 60 },
+            );
+            // And to the people who can do something about it: whoever may
+            // switch the form off or on, and whoever triages for the whole
+            // hospital. Once an hour with the entry above, however many are
+            // refused; nothing about any sender.
+            await this.notifier.tellHospital(
+              tx,
+              tenant.id,
+              'public_form_paused',
+              { limit: PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR },
+              ['settings.manage', 'incidents.triage'],
             );
           }
           return {
@@ -630,9 +664,11 @@ export class IncidentsService {
         followUpCodeHash: followUpCode && hashFollowUpCode(followUpCode),
         reportedAt: now,
         reportStartedAt: believable ? startedAt : null,
-        // A death reported needs a second person to close it from the
-        // start, whatever triage makes of it later.
-        signOffNeeded: callsForSignOff(gravity),
+        // A death reported by a member of staff needs a second person to
+        // close it from the start, whatever triage makes of it later. One
+        // sent through the public link does not until a triager confirms
+        // it: anyone with the link can choose "Death".
+        signOffNeeded: channel === 'app' && callsForSignOff(gravity),
         triageDueAt: triageDueAt(now, gravity, rules),
         closeDueAt: closeDueAt(now, gravity, rules, tenant.timeZone),
       })
@@ -666,6 +702,7 @@ export class IncidentsService {
     await this.notifier.send(tx, tenantId, {
       incident: {
         ...incident,
+        ...gravity,
         orgUnitId: input.orgUnitId,
         ownerUnitId: null,
         assignedTo: null,
@@ -693,6 +730,9 @@ export class IncidentsService {
       'triage' | 'closure' | null
     >`case when ${inFull} then ${overdueAt(now)} end`;
     const dueAt = sql<Date | null>`case when ${inFull} then ${liveDueAt} end`;
+    // How a report arrived is told only with who made it: a report through
+    // the public link is always anonymous.
+    const toldReporter = reporterToldTo(auth);
     // Every filter narrows what the caller may see, never widens it: an org
     // unit or a reference outside their view simply matches nothing.
     const where = and(
@@ -703,6 +743,10 @@ export class IncidentsService {
       input.sentinel === undefined
         ? undefined
         : eq(incidents.isSentinel, input.sentinel),
+      input.categoryId ? eq(incidents.categoryId, input.categoryId) : undefined,
+      input.channel
+        ? and(toldReporter, eq(incidents.channel, input.channel))
+        : undefined,
       input.orgUnitId
         ? or(
             eq(incidents.orgUnitId, input.orgUnitId),
@@ -759,6 +803,8 @@ export class IncidentsService {
           isSentinel: incidents.isSentinel,
           status: incidents.status,
           assignedToMe: sql<boolean>`coalesce(${incidents.assignedTo} = ${auth.user.id}, false)`,
+          // Null where the caller is not told who reported, as in the detail.
+          channel: sql<IncidentChannel | null>`case when ${toldReporter} then ${incidents.channel} end`,
           // Null for an incident the caller sees only as its reporter.
           triageDueAt:
             sql<Date | null>`case when ${inFull} then ${incidents.triageDueAt} end`.mapWith(
@@ -816,12 +862,14 @@ export class IncidentsService {
     // Deadlines are counted only over what the caller sees in full, as the
     // list shows them: someone's own reports say nothing here.
     const inFull = seenInFull(auth);
-    // Triaged for the first time, and so measured against its deadline.
-    const triaged = and(
+    // Measured against its deadline: triaged, or set aside, for the first
+    // time; or still waiting for that past its deadline, which is late
+    // already whenever it comes.
+    const measured = and(
       inFull,
       recent,
-      sql`${incidents.firstTriagedAt} is not null`,
       sql`${incidents.triageDueAt} is not null`,
+      sql`(${incidents.firstTriagedAt} is not null or (${incidents.status} = 'new' and ${lt(incidents.triageDueAt, now)}))`,
     )!;
     return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
       const [counts] = await tx
@@ -837,12 +885,13 @@ export class IncidentsService {
           serious: number(and(isOpen, isSeriousOne)!),
           // What the list gives for `overdue=true`.
           overdue: number(sql`${inFull} and ${overdueAt(now)} is not null`),
-          // Of the reports of the last 30 days that have been triaged, the
-          // share whose first triage came no later than its deadline, as a
-          // whole percentage. Null when none has been triaged.
+          // Of the reports of the last 30 days that have been triaged or set
+          // aside, or are still untriaged past their deadline, the share
+          // whose first triage came no later than its deadline, as a whole
+          // percentage. Null when there is none of either.
           triagedOnTime: sql<
             number | null
-          >`round(100.0 * count(*) filter (where ${triaged} and ${incidents.firstTriagedAt} <= ${incidents.triageDueAt}) / nullif(count(*) filter (where ${triaged}), 0))::int`,
+          >`round(100.0 * count(*) filter (where ${measured} and ${incidents.firstTriagedAt} <= ${incidents.triageDueAt}) / nullif(count(*) filter (where ${measured}), 0))::int`,
           // The middle value, in whole seconds, over the reports of the last
           // 30 days that carry a start time. Null when there are none.
           medianSecondsToReport: sql<
@@ -943,6 +992,7 @@ export class IncidentsService {
         triageDueAt: incidents.triageDueAt,
         closeDueAt: incidents.closeDueAt,
         channel: incidents.channel,
+        firstTriagedAt: incidents.firstTriagedAt,
         reportedBy: incidents.reportedBy,
         reporter: { id: reporter.id, name: reporter.name },
         assignedTo: { id: assignee.id, name: assignee.name },
@@ -974,6 +1024,7 @@ export class IncidentsService {
       reportedBy,
       reporter: namedReporter,
       channel,
+      firstTriagedAt,
       assignedTo,
       closureRequestedBy,
       closureRequestedAt,
@@ -982,6 +1033,12 @@ export class IncidentsService {
       closeDueAt: closeDue,
       ...incident
     } = row;
+    // Whether it takes two people to close, as status.ts weighs it.
+    const weighed = {
+      ...incident,
+      signOffNeeded,
+      graded: gradedByStaff({ channel, firstTriagedAt }),
+    };
     const reader = readerOf({
       orgUnitId: row.orgUnit.id,
       ownerUnitId: row.ownerUnit?.id ?? null,
@@ -1085,6 +1142,7 @@ export class IncidentsService {
     });
 
     const names = await this.namesIn(tx, events);
+    const twoPeople = needsSignOff(weighed);
     return {
       // The incident's id and number, for everyone who is signed in.
       ...(seesStaff && { id: incidentId, reference }),
@@ -1103,7 +1161,25 @@ export class IncidentsService {
       triageDueAt: full ? triageDue : null,
       closeDueAt: full ? closeDue : null,
       overdue: full ? overdueOf(row, new Date()) : null,
-      needsSignOff: needsSignOff({ ...incident, signOffNeeded }),
+      needsSignOff: twoPeople,
+      // How many others could give the second signature, for those
+      // handling it; null where none is needed.
+      signOff:
+        full && twoPeople
+          ? {
+              others: await this.otherSigners(tx, {
+                orgUnitId: row.orgUnit.id,
+                ownerUnitId: row.ownerUnit?.id ?? null,
+                assignedTo: assignedTo?.id ?? null,
+                // Whoever asked for the closure it waits on, or would ask:
+                // the one reading, while nobody has asked yet.
+                asker:
+                  row.status === 'awaiting_sign_off'
+                    ? (closureRequestedBy?.id ?? null)
+                    : reader.userId,
+              }),
+            }
+          : null,
       // While it awaits sign-off, `closureSummary` is the one proposed.
       closureRequestedBy: full ? closureRequestedBy : null,
       closureRequestedAt: full ? closureRequestedAt : null,
@@ -1111,7 +1187,7 @@ export class IncidentsService {
       canTriage,
       // What this reader may do next, so no screen has to know the rules.
       canRetriage: canTriage && TRIAGE_FROM.includes(row.status),
-      moves: movesFor(row, reader).map((m) => ({
+      moves: movesFor({ ...weighed, status: row.status }, reader).map((m) => ({
         to: m.to,
         noteRequired: m.note === 'required',
         revisionRequired: m.revision === 'required',
@@ -1169,7 +1245,44 @@ export class IncidentsService {
     if (event.kind === 'sent_back') return null;
     const details = event.details as Record<string, unknown> | null;
     if (details?.withdrawn === true) return { withdrawn: true };
+    // Deadlines are for those handling it: a reopening says it happened,
+    // and why, but not by when it is now to be closed.
+    if (details && 'closeDueAt' in details) {
+      const { closeDueAt: _deadline, ...rest } = details;
+      return rest;
+    }
     return event.details;
+  }
+
+  /**
+   * How many active people other than `asker` could give an incident its
+   * second signature: they hold `incidents.sign_off` covering it, and see
+   * all of it, which that right alone does not let them do. The same people
+   * `sign_off_requested` is sent to.
+   */
+  private async otherSigners(
+    tx: Transaction,
+    incident: {
+      orgUnitId: string;
+      ownerUnitId: string | null;
+      assignedTo: string | null;
+      asker: string | null;
+    },
+  ) {
+    const units = [incident.orgUnitId, incident.ownerUnitId];
+    const holders = await this.access.holders(
+      tx,
+      ['incidents.view', 'incidents.triage', 'incidents.sign_off'],
+      units,
+    );
+    const seeAll = new Set([
+      ...holders.of('incidents.view', units),
+      ...holders.of('incidents.triage', units),
+    ]);
+    if (incident.assignedTo) seeAll.add(incident.assignedTo);
+    return [...holders.of('incidents.sign_off', units)].filter(
+      (id) => seeAll.has(id) && id !== incident.asker,
+    ).length;
   }
 
   /**
@@ -1240,15 +1353,18 @@ export class IncidentsService {
         assignedTo: incidents.assignedTo,
         reportedBy: incidents.reportedBy,
         reportedAt: incidents.reportedAt,
+        channel: incidents.channel,
+        firstTriagedAt: incidents.firstTriagedAt,
         triagedBy: incidents.triagedBy,
         closeDueAt: incidents.closeDueAt,
+        closeDueFrom: incidents.closeDueFrom,
         closureRequestedBy: incidents.closureRequestedBy,
       })
       .from(incidents)
       .where(and(eq(incidents.id, id), visibleTo(auth)))
       .for('update');
     if (!incident) throw new NotFoundException();
-    return incident;
+    return { ...incident, graded: gradedByStaff(incident) };
   }
 
   triage(auth: AuthContext, id: string, input: TriageInput) {
@@ -1313,21 +1429,34 @@ export class IncidentsService {
       const to = incident.status === 'in_progress' ? 'in_progress' : 'triaged';
       const now = new Date();
       // A new gravity brings a new deadline for closing, counted as ever
-      // from when it was reported, under the rules as they are now. The
-      // deadline for triage is not moved: this triage is the one it was set
-      // for, and moving it now would change whether it was met.
+      // from when the time to close it started (the report, or the
+      // reopening), under the rules as they are now. The deadline for
+      // triage is not moved: this triage is the one it was set for, and
+      // moving it now would change whether it was met.
+      //
+      // What was announced about the old deadline is kept, with the
+      // deadline it was announced for. The deadline check announces a
+      // deadline only if it is later than the last one announced at that
+      // stage: a later one still to come is another deadline, announced in
+      // its turn, and changing the harm level back and forth repeats
+      // nothing. One moved to a moment already past is not announced again
+      // either, where the old one was: it counts as announced, so whoever
+      // was told the incident is overdue is not told again each time its
+      // harm level is changed. (If nobody was told yet, the next check says
+      // it once.)
       const regraded = 'harmLevel' in changes || 'isSentinel' in changes;
       const closeDue = regraded
         ? closeDueAt(
-            incident.reportedAt,
+            incident.closeDueFrom ?? incident.reportedAt,
             next,
             await this.rules.inForce(tx),
             tenant.timeZone,
           )
         : incident.closeDueAt;
       const moved = closeDue?.getTime() !== incident.closeDueAt?.getTime();
-      // Whether the deadline, where it now falls, is still to come.
-      const ahead = closeDue !== null && closeDue.getTime() > now.getTime();
+      const past = closeDue !== null && closeDue.getTime() <= now.getTime();
+      const sentFor = (at: SQLWrapper, about: SQLWrapper) =>
+        sql<Date | null>`case when ${at} is not null then greatest(${about}, ${closeDue!.toISOString()}::timestamptz) end`;
       await tx
         .update(incidents)
         .set({
@@ -1337,24 +1466,27 @@ export class IncidentsService {
           // Never cleared: what has once called for a second person to
           // close it goes on needing one, whatever it is called later. What
           // it was until this triage counts too, in case it was stored by a
-          // release that did not keep this.
+          // release that did not keep this; but not a grade the sender of a
+          // public report gave, which this triage is the first to confirm or
+          // correct. What it decides now always counts.
           signOffNeeded:
             incident.signOffNeeded ||
-            callsForSignOff(incident) ||
+            (incident.graded && callsForSignOff(incident)) ||
             callsForSignOff(next),
           ...(decided && { triagedBy: user.id, triagedAt: now }),
           ...(incident.status === 'new' && { firstTriagedAt: now }),
-          // A deadline that moved to a moment still to come is another
-          // deadline: what was announced about the old one says nothing
-          // about it, and it is announced in its turn. One that moved and is
-          // already past is not: what was announced stands, so whoever was
-          // told the incident is overdue is not told again each time its
-          // harm level is changed. (If nobody was told yet, there is
-          // nothing recorded, and the next check says it once.)
-          ...(moved && {
-            closeDueAt: closeDue,
-            ...(ahead && { closeDueSoonAt: null, closeOverdueAt: null }),
-          }),
+          ...(moved && { closeDueAt: closeDue }),
+          ...(moved &&
+            past && {
+              closeDueSoonFor: sentFor(
+                incidents.closeDueSoonAt,
+                incidents.closeDueSoonFor,
+              ),
+              closeOverdueFor: sentFor(
+                incidents.closeOverdueAt,
+                incidents.closeOverdueFor,
+              ),
+            }),
           revision: incident.revision + 1,
           updatedAt: now,
         })
@@ -1402,19 +1534,42 @@ export class IncidentsService {
 
       // The person it is now assigned to, and everyone the handover brings
       // to it: who may triage it now that this department handles it, and
-      // could not before. Whoever could already, through the unit where it
-      // happened, the department that handled it until now or the whole
-      // organization, was told of it when it was reported or handed to
-      // them, and is not told again. Someone who is both assigned and
-      // brought to it is told once, of the assignment.
+      // could not before; and who may view it now, the department's
+      // managers, and could neither view nor triage it before. Whoever could
+      // already, through the unit where it happened, the department that
+      // handled it until now or the whole organization, was told of it when
+      // it was reported or handed to them, or could open it all along, and
+      // is not told again. Someone who is both assigned and brought to it is
+      // told once, of the assignment.
+      //
+      // Made a sentinel event: told, separately, to everyone who may give
+      // the second signature its closure now needs, and to everyone who
+      // triages for the whole organization.
       const handedOver = 'ownerUnitId' in changes;
+      const flagged = next.isSentinel && !incident.isSentinel;
+      const subject: Subject = {
+        ...incident,
+        ...next,
+        ownerUnitId: input.ownerUnitId,
+        assignedTo: input.assignedTo,
+      };
+      const announcements: Announcement[] = [];
+      if (flagged) {
+        announcements.push({
+          incident: subject,
+          actorId: user.id,
+          drafts: (who) => [
+            {
+              kind: 'sentinel_flagged',
+              to: [...who.maySignOff(), ...who.mayTriageEverywhere()],
+              internal: true,
+            },
+          ],
+        });
+      }
       if ((personChanged && input.assignedTo) || handedOver) {
-        await this.notifier.send(tx, tenant.id, {
-          incident: {
-            ...incident,
-            ownerUnitId: input.ownerUnitId,
-            assignedTo: input.assignedTo,
-          },
+        announcements.push({
+          incident: subject,
           ...(handedOver && { handedOverFrom: incident.ownerUnitId }),
           actorId: user.id,
           drafts: (who) => [
@@ -1431,7 +1586,7 @@ export class IncidentsService {
               ? [
                   {
                     kind: 'incident_handed_over',
-                    to: who.mayTriageSinceHandover(),
+                    to: who.newlyCovering(),
                     internal: true,
                   } satisfies Draft,
                 ]
@@ -1439,6 +1594,7 @@ export class IncidentsService {
           ],
         });
       }
+      await this.notifier.sendAll(tx, tenant.id, announcements);
 
       // Handed to a department outside the caller's own view: the change
       // stands, and they are told so instead of being shown what they may no
@@ -1521,6 +1677,19 @@ export class IncidentsService {
 
       const now = new Date();
       const noRequest = { closureRequestedBy: null, closureRequestedAt: null };
+      // Reopened, it has a new deadline to close by, counted from now under
+      // the rules as they are now, as a new report would be. The one it had
+      // stays on the timeline, in the entry written below. Nothing was
+      // announced about the new one yet.
+      const reopenedDue =
+        move.kind === 'reopen'
+          ? closeDueAt(
+              now,
+              incident,
+              await this.rules.inForce(tx),
+              tenant.timeZone,
+            )
+          : null;
       const fields: Record<MoveKind, Partial<typeof incidents.$inferInsert>> = {
         start: {},
         close: { closedBy: user.id, closedAt: now, closureSummary: note },
@@ -1536,7 +1705,12 @@ export class IncidentsService {
         // The proposal falls; it stays on the timeline only.
         send_back: { closureSummary: null, ...noRequest },
         withdraw: { closureSummary: null, ...noRequest },
-        reject: { rejectionReason: note },
+        // Set aside before triage, it was decided on as much as by a
+        // triage, and counts as triaged at this moment for "triaged on time".
+        reject: {
+          rejectionReason: note,
+          ...(incident.status === 'new' && { firstTriagedAt: now }),
+        },
         // Open again: the earlier ending stays on the timeline only.
         reopen: {
           closedBy: null,
@@ -1544,6 +1718,12 @@ export class IncidentsService {
           closureSummary: null,
           rejectionReason: null,
           ...noRequest,
+          closeDueAt: reopenedDue,
+          closeDueFrom: now,
+          closeDueSoonAt: null,
+          closeDueSoonFor: null,
+          closeOverdueAt: null,
+          closeOverdueFor: null,
         },
       };
       await tx
@@ -1555,9 +1735,15 @@ export class IncidentsService {
           ...fields[move.kind],
         })
         .where(eq(incidents.id, id));
+      // A reopening keeps the deadline it had next to the one it now has.
+      // Neither is shown to someone who sees it only as its reporter.
+      const newDeadline = reopenedDue && {
+        closeDueAt: { from: incident.closeDueAt, to: reopenedDue },
+      };
       const details = {
         ...(note && { note }),
         ...(move.kind === 'withdraw' && { withdrawn: true }),
+        ...newDeadline,
       };
       await this.addEvent(tx, tenant.id, id, {
         kind: move.event,
@@ -1577,7 +1763,7 @@ export class IncidentsService {
         'incident_status_changed',
         'incident',
         id,
-        { from, to, kind: move.kind },
+        { from, to, kind: move.kind, ...newDeadline },
       );
 
       const subject: Subject = incident;
@@ -1662,6 +1848,8 @@ export class IncidentsService {
           assignedTo: incidents.assignedTo,
           reportedBy: incidents.reportedBy,
           triagedBy: incidents.triagedBy,
+          harmLevel: incidents.harmLevel,
+          isSentinel: incidents.isSentinel,
         })
         .from(incidents)
         .where(and(eq(incidents.id, id), visibleTo(auth)))
@@ -1797,6 +1985,8 @@ export class IncidentsService {
         assignedTo: incidents.assignedTo,
         reportedBy: incidents.reportedBy,
         triagedBy: incidents.triagedBy,
+        harmLevel: incidents.harmLevel,
+        isSentinel: incidents.isSentinel,
       })
       .from(incidents)
       .where(eq(incidents.followUpCodeHash, hashFollowUpCode(code)));

@@ -654,17 +654,34 @@ describe('incident deadlines', () => {
       // Closed, late: nothing left to be late for.
       await move(quality.cookie, id, 'closed', 'Done.').expect(200);
       expect(await seen()).toBeNull();
-      // Reopened: no new deadline, so overdue again at once.
+      // Reopened: a new deadline, counted from the reopening, so not overdue
+      // at once (second quality review, question 9).
       const before = await stored(id);
+      const reopenedAt = Date.now();
       await move(quality.cookie, id, 'in_progress', 'Not done.').expect(200);
+      expect(await seen()).toBeNull();
+      const after = await stored(id);
+      expect(after.close_due_at).not.toEqual(before.close_due_at);
+      // Thirty days on the hospital's calendar from the reopening.
+      expect(after.close_due_at!.getTime() - reopenedAt).toBeGreaterThan(
+        30 * DAY - 5_000,
+      );
+      expect(after.close_due_at!.getTime() - reopenedAt).toBeLessThan(
+        30 * DAY + 5_000,
+      );
+      // Thirty-one days after the reopening, overdue again.
+      await bench.owner.db.execute(
+        sql`update incidents set close_due_at = close_due_at - interval '31 days' where id = ${id}`,
+      );
       expect(await seen()).toBe('closure');
-      expect((await stored(id)).close_due_at).toEqual(before.close_due_at);
       // Nothing of this was ever stored as a fact about the incident.
       const columns = await bench.owner.db.execute<{ column_name: string }>(
         sql`select column_name from information_schema.columns where table_name = 'incidents' and column_name like '%overdue%'`,
       );
+      // (When it was announced, and for which deadline: not whether it is.)
       expect(columns.rows.map((c) => c.column_name).sort()).toEqual([
         'close_overdue_at',
+        'close_overdue_for',
         'triage_overdue_at',
       ]);
     });
@@ -835,16 +852,34 @@ describe('incident deadlines', () => {
       await triaged(fourth.id).expect(200);
       expect(await share()).toBe(75);
 
-      // Set aside without triage: never triaged, so not counted.
+      // Set aside without triage: decided on as much, so it counts as
+      // triaged at that moment, against the same deadline (second quality
+      // review, question 8). Four of five.
       const aside = await fresh();
       await move(t.cookie, aside.id, 'rejected', 'Not an incident.').expect(
         200,
       );
-      expect(await share()).toBe(75);
+      expect((await stored(aside.id)).first_triaged_at).not.toBeNull();
+      expect(await share()).toBe(80);
+      // Set aside late, it is late.
+      const asideLate = await fresh();
+      await age(asideLate.id, 73 * HOUR);
+      await move(t.cookie, asideLate.id, 'rejected', 'Duplicate.').expect(200);
+      expect(await share()).toBe(67);
+      // Still waiting for triage past its deadline: late already, whenever
+      // it comes, and counted as such. Four of seven.
+      const waiting = await fresh();
+      await age(waiting.id, 71 * HOUR);
+      expect(await share()).toBe(67);
+      await age(waiting.id, 2 * HOUR);
+      expect(await share()).toBe(57);
+      // Triaged at last, it stays late, and is counted once.
+      await triaged(waiting.id).expect(200);
+      expect(await share()).toBe(57);
       // Closing or reopening changes nothing about when it was triaged.
       await move(t.cookie, first.id, 'closed', 'Done.').expect(200);
       await move(t.cookie, first.id, 'in_progress', 'Again.').expect(200);
-      expect(await share()).toBe(75);
+      expect(await share()).toBe(57);
     });
 
     it('is measured on the first triage, against the deadline it was made under', async () => {
@@ -875,19 +910,19 @@ describe('incident deadlines', () => {
       const raised = await fresh({ harmLevel: 'none' });
       await age(raised.id, 30 * HOUR); // 72 were allowed
       await triaged(raised.id, { harmLevel: 'death' }).expect(200);
-      // Before: 3 of 4. Now 5 of 7.
-      expect(before).toBe(75);
-      expect(await share()).toBe(71);
+      // Before: 4 of 7. Now 6 of 10.
+      expect(before).toBe(57);
+      expect(await share()).toBe(60);
     });
 
     it('leaves out what was reported more than 30 days ago', async () => {
       const old = await fresh();
       await age(old.id, 80 * HOUR);
       await triaged(old.id).expect(200);
-      // 5 of 8.
-      expect(await share()).toBe(63);
+      // 6 of 11.
+      expect(await share()).toBe(55);
       await age(old.id, 31 * DAY);
-      expect(await share()).toBe(71);
+      expect(await share()).toBe(60);
     });
   });
 

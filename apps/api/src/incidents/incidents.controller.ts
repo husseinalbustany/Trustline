@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 import { z } from 'zod';
 import {
+  incidentChannel,
   incidentCommentVisibility,
   incidentHarmLevel,
   incidentStatus,
@@ -47,6 +48,11 @@ const listSchema = z.preprocess(
     type: z.enum(incidentType.enumValues).optional(),
     harmLevel: z.enum(incidentHarmLevel.enumValues).optional(),
     sentinel: flag.optional(),
+    // A category of another hospital, or none at all, finds nothing.
+    categoryId: z.uuid().optional(),
+    // How it arrived. Only for those who may see who reported, and then
+    // only among the incidents they are told that of: see the service.
+    channel: z.enum(incidentChannel.enumValues).optional(),
     orgUnitId: z.uuid().optional(),
     // Days, both included, on the date of reporting: days on the hospital's
     // own calendar, whatever time zone the caller's browser is in.
@@ -132,6 +138,9 @@ export class IncidentsController {
   list(@Query() query: unknown, @Req() req: AuthedRequest) {
     const parsed = listSchema.safeParse(query);
     if (!parsed.success) throw new BadRequestException();
+    // How a report arrived says whether it was anonymous, so asking is for
+    // those who may be told who reported, somewhere.
+    if (parsed.data.channel) requirePermission(req, 'incidents.see_reporter');
     const { from, to, ...filters } = parsed.data;
     const { timeZone } = req.auth.tenant;
     return this.incidents.list(req.auth, {

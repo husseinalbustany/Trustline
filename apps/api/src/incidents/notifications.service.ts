@@ -25,7 +25,8 @@ export class NotificationsService {
   /**
    * Newest first. Each says which incident it is about and whether the
    * caller can still open it: someone taken off an incident, or whose role
-   * changed, keeps the notification and is not given the incident.
+   * changed, keeps the notification and is not given the incident. One
+   * about the hospital itself (`public_form_paused`) has `incident: null`.
    */
   list(
     auth: AuthContext,
@@ -37,25 +38,36 @@ export class NotificationsService {
         .select({ total: count() })
         .from(notifications)
         .where(where);
-      const items = await tx
+      const rows = await tx
         .select({
           id: notifications.id,
           kind: notifications.kind,
           createdAt: notifications.createdAt,
           readAt: notifications.readAt,
-          incident: {
-            id: incidents.id,
-            reference: incidents.reference,
-            canOpen: sql<boolean>`coalesce(${visibleTo(auth)}, false)`,
-          },
+          incidentId: incidents.id,
+          reference: incidents.reference,
+          canOpen: sql<boolean>`coalesce(${visibleTo(auth)}, false)`,
           data: notifications.data,
         })
         .from(notifications)
-        .innerJoin(incidents, eq(incidents.id, notifications.incidentId))
+        .leftJoin(incidents, eq(incidents.id, notifications.incidentId))
         .where(where)
         .orderBy(desc(notifications.createdAt), desc(notifications.id))
         .limit(input.pageSize)
         .offset((input.page - 1) * input.pageSize);
+      const items = rows.map(
+        ({ incidentId, reference, canOpen, ...notification }) => ({
+          id: notification.id,
+          kind: notification.kind,
+          createdAt: notification.createdAt,
+          readAt: notification.readAt,
+          incident:
+            incidentId === null || reference === null
+              ? null
+              : { id: incidentId, reference, canOpen },
+          data: notification.data,
+        }),
+      );
       return { items, total };
     });
   }

@@ -95,7 +95,18 @@ export const tenants = pgTable(
     timeZone: text().notNull().default('UTC'),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
-  () => [
+  (t) => [
+    // What the API stores, kept by the database too, so that a script or a
+    // mistake cannot leave a hospital on a clock nothing can read: `UTC`, or
+    // a name of the form Area/Location (one more part at most), each part
+    // starting with a capital letter or a digit as IANA writes them, and
+    // nothing from the `Etc/` area, whose names are offsets. Which names
+    // exist is for the API to check against the runtime: the database's own
+    // list of zones is not the same one.
+    check(
+      'tenants_time_zone_shape',
+      sql`${t.timeZone} = 'UTC' or (${t.timeZone} ~ '^[A-Z][A-Za-z_]*(/[A-Z0-9][A-Za-z0-9_+-]*){1,2}$' and ${t.timeZone} !~ '^Etc/')`,
+    ),
     // The application reads every client record: it has to find one by its
     // identifier before anyone has signed in.
     pgPolicy('tenants_app_read', {
@@ -447,6 +458,8 @@ export const incidents = pgTable(
     // Set once the incident has been a sentinel event or a death, when it is
     // reported or triaged, and never cleared: closing it then takes a second
     // person even if its harm level is lowered or the flag removed later.
+    // A report through the public link is not set by the sender's own harm
+    // level: only once a triager has graded it (`first_triaged_at`).
     signOffNeeded: boolean().notNull().default(false),
     status: incidentStatus().notNull().default('new'),
     // The department responsible, and the person in it. Both set at triage.
@@ -474,8 +487,16 @@ export const incidents = pgTable(
     // go on storing reports: the deadline check fills in any it left empty.
     triageDueAt: timestamp({ withTimezone: true }),
     closeDueAt: timestamp({ withTimezone: true }),
-    // When it first left `new` by triage. `triagedAt` moves with every later
-    // correction, so it cannot say whether the first triage was on time.
+    // When the time to close it started to run: the reopening, for an
+    // incident that was reopened, which gives it a new deadline counted from
+    // then. Null means from the report. The deadline it had before stays on
+    // the timeline, in the `reopened` entry.
+    closeDueFrom: timestamp({ withTimezone: true }),
+    // When it first left `new` by triage, or by being set aside, which
+    // decides about it as much. `triagedAt` moves with every later
+    // correction, so it cannot say whether the first decision was on time.
+    // For a report through the public link it also says that its harm level
+    // is now one a member of staff gave, not the sender's own.
     firstTriagedAt: timestamp({ withTimezone: true }),
     // When each deadline notification was sent, so each is sent once. The
     // deadline check claims an incident by setting the column, in the same
@@ -484,6 +505,14 @@ export const incidents = pgTable(
     triageOverdueAt: timestamp({ withTimezone: true }),
     closeDueSoonAt: timestamp({ withTimezone: true }),
     closeOverdueAt: timestamp({ withTimezone: true }),
+    // The closing deadline each of the two was sent for. Triage can move the
+    // deadline, and a deadline is announced only if it is later than the
+    // last one announced at that stage, so that changing the harm level back
+    // and forth never repeats a notification. Cleared with the two above
+    // when the incident is reopened. Null beside a time set by a release
+    // that did not record it: read as sent for the deadline it has.
+    closeDueSoonFor: timestamp({ withTimezone: true }),
+    closeOverdueFor: timestamp({ withTimezone: true }),
     // Raised by every triage and every change of status, and by nothing
     // else. Someone saving a decision says which revision they were looking
     // at, so a decision made on an out-of-date screen is refused. A comment
@@ -703,6 +732,9 @@ export const incidentResponseRules = pgTable(
   ],
 );
 
+/** What a notification carries: short words, flags and counts only. */
+export type NotificationData = Record<string, string | number | boolean>;
+
 export const notificationKind = pgEnum('notification_kind', [
   'incident_reported',
   'incident_assigned',
@@ -713,6 +745,11 @@ export const notificationKind = pgEnum('notification_kind', [
   'sign_off_decided',
   'due_soon',
   'overdue',
+  // An incident was made a sentinel event at triage.
+  'sentinel_flagged',
+  // The hospital's public form turned a report away because it had taken
+  // its hour's worth. About the hospital, not about an incident.
+  'public_form_paused',
 ]);
 
 // Something a user is told about an incident they can see. Stored so that it
@@ -729,11 +766,14 @@ export const notifications = pgTable(
     // Who it is for. Never anyone who could not see the incident at the time.
     userId: uuid().notNull(),
     kind: notificationKind().notNull(),
-    incidentId: uuid().notNull(),
-    // The incident's reference and, for some kinds, which deadline or which
-    // outcome. Never a name, a description or the text of a comment: nothing
-    // a patient, a reporter or a member of staff could be identified from.
-    data: jsonb().$type<Record<string, string>>().notNull(),
+    // Null only for a notification about the hospital itself rather than
+    // one of its incidents (`public_form_paused`).
+    incidentId: uuid(),
+    // The incident's reference, whether it is serious and, for some kinds,
+    // which deadline or which outcome. Never a name, a description or the
+    // text of a comment: nothing a patient, a reporter or a member of staff
+    // could be identified from.
+    data: jsonb().$type<NotificationData>().notNull(),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     readAt: timestamp({ withTimezone: true }),
   },
@@ -753,6 +793,13 @@ export const notifications = pgTable(
     index('notifications_unread_idx')
       .on(t.tenantId, t.userId)
       .where(sql`${t.readAt} is null`),
+    // Every notification is about an incident, except the one kind that is
+    // about the hospital. Compared as text so that the check does not need
+    // the new kind to be committed before it is created.
+    check(
+      'notifications_about_incident',
+      sql`${t.incidentId} is not null or ${t.kind}::text = 'public_form_paused'`,
+    ),
     tenantIsolation(),
   ],
 );

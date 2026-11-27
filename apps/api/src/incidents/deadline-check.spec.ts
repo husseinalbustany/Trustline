@@ -6,6 +6,7 @@ import {
   CHECK_STATEMENT_TIMEOUT_MS,
   DeadlineCheck,
 } from './deadline-check.service.js';
+import type { ProvisioningService } from '../identity/provisioning.service.js';
 import type { Notifier } from './notifier.js';
 import type { ResponseRulesService } from './response-rules.service.js';
 
@@ -44,6 +45,7 @@ function checkOver(
     {} as TenantDb,
     {} as ResponseRulesService,
     {} as Notifier,
+    {} as ProvisioningService,
   );
   const checked: string[] = [];
   vi.spyOn(

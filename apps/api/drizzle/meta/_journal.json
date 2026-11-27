@@ -204,6 +204,20 @@
       "when": 1795598169285,
       "tag": "0028_application_role_timeouts",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1795777536342,
+      "tag": "0029_review_2_deadlines_and_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1795777537335,
+      "tag": "0030_public_grade_and_announced_deadlines",
+      "breakpoints": true
     }
   ]
 }

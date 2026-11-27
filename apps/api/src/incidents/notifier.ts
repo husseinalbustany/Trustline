@@ -1,8 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { and, eq, inArray } from 'drizzle-orm';
 import type { Transaction } from '../database/client.js';
-import { notifications, users } from '../database/schema.js';
+import {
+  notifications,
+  users,
+  type NotificationData,
+} from '../database/schema.js';
 import { AccessService } from '../identity/access.service.js';
+import type { Permission } from '../identity/permissions.js';
+import { isSerious, type HarmLevel } from './status.js';
 
 export type NotificationKind = (typeof notifications.kind.enumValues)[number];
 
@@ -35,6 +41,9 @@ export type Subject = {
   ownerUnitId: string | null;
   assignedTo: string | null;
   reportedBy: string | null;
+  /** What makes it serious or not, which every notification says. */
+  harmLevel: HarmLevel;
+  isSentinel: boolean;
 };
 
 /** One kind of notification about an incident, and who it is meant for. */
@@ -67,14 +76,21 @@ export type Who = {
   /** Everyone who may triage for the whole organization. */
   mayTriageEverywhere(): Set<string>;
   /**
-   * Everyone a handover brings to the incident: whose right to triage covers
-   * it now, through the department it has been handed to, and did not cover
-   * it before, through the unit where it happened or the department that
-   * handled it until then. Those it covered before were told of the incident
-   * when it was reported or handed to them. Nobody, when the change being
-   * announced is not a handover.
+   * Everyone a handover brings to the incident, through the department it
+   * has been handed to:
+   *
+   * - whose right to triage covers it now and did not cover it before,
+   *   through the unit where it happened or the department that handled it
+   *   until then;
+   * - whose right to view covers it now, and who before could neither view
+   *   nor triage it through either of those: the department's managers,
+   *   whom nothing told of the incident until now.
+   *
+   * Those it covered before were told of the incident when it was reported
+   * or handed to them, or could already open it. Nobody, when the change
+   * being announced is not a handover.
    */
-  mayTriageSinceHandover(): Set<string>;
+  newlyCovering(): Set<string>;
   /** Everyone who may sign off the closure of this incident. */
   maySignOff(): Set<string>;
 };
@@ -149,17 +165,22 @@ export class Notifier {
         // of them is covered from the whole organization alone.
         mayTriage: (ids) => holders.of('incidents.triage', ids),
         mayTriageEverywhere: () => holders.everywhere('incidents.triage'),
-        mayTriageSinceHandover: () => {
+        newlyCovering: () => {
           if (event.handedOverFrom === undefined) return new Set();
-          const before = holders.of('incidents.triage', [
-            incident.orgUnitId,
-            event.handedOverFrom,
+          const before = [incident.orgUnitId, event.handedOverFrom];
+          const triagedBefore = holders.of('incidents.triage', before);
+          const sawBefore = new Set([
+            ...triagedBefore,
+            ...holders.of('incidents.view', before),
           ]);
-          return new Set(
-            [...holders.of('incidents.triage', units)].filter(
-              (id) => !before.has(id),
+          return new Set([
+            ...[...holders.of('incidents.triage', units)].filter(
+              (id) => !triagedBefore.has(id),
             ),
-          );
+            ...[...holders.of('incidents.view', units)].filter(
+              (id) => !sawBefore.has(id),
+            ),
+          ]);
         },
         // The right to sign off does not by itself let anyone see the
         // incident; the check below drops those who cannot.
@@ -211,13 +232,48 @@ export class Notifier {
             userId,
             kind: draft.kind,
             incidentId: incident.id,
-            data: { ...draft.data, reference: incident.reference },
+            // Whether it is serious as it stands now, so that a death does
+            // not read like a wet floor in a list of notifications.
+            data: {
+              ...draft.data,
+              reference: incident.reference,
+              serious: isSerious(incident),
+            },
           });
         }
       }
     }
     // In the caller's transaction all the same: every piece is written or
     // none is.
+    for (const chunk of inChunks(rows)) {
+      await tx.insert(notifications).values(chunk);
+    }
+    return rows.length;
+  }
+
+  /**
+   * Tells something about the hospital itself, not one of its incidents,
+   * to everyone who holds one of these rights for the whole organization.
+   * Active users only. The notification carries no incident, and `data`
+   * says whether it is serious like every other.
+   */
+  async tellHospital(
+    tx: Transaction,
+    tenantId: string,
+    kind: NotificationKind,
+    data: Record<string, string | number>,
+    everywhere: Permission[],
+  ) {
+    const holders = await this.access.holders(tx, everywhere, []);
+    const to = new Set(everywhere.flatMap((p) => [...holders.everywhere(p)]));
+    if (to.size === 0) return 0;
+    const rows = [...to].map((userId) => ({
+      tenantId,
+      userId,
+      kind,
+      incidentId: null,
+      data: { ...data, serious: false } satisfies NotificationData,
+    }));
     for (const chunk of inChunks(rows)) {
       await tx.insert(notifications).values(chunk);
     }

@@ -9,12 +9,14 @@ import {
   or,
   sql,
   type SQL,
+  type SQLWrapper,
 } from 'drizzle-orm';
 import type { Database, Transaction } from '../database/client.js';
 import { databaseFailure } from '../database/database-error.filter.js';
 import { DATABASE } from '../database/database.constants.js';
 import { incidents, tenants } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
+import { ProvisioningService } from '../identity/provisioning.service.js';
 import { Notifier, type Announcement } from './notifier.js';
 import { closeDueAt, triageDueAt } from './response-rules.js';
 import { ResponseRulesService } from './response-rules.service.js';
@@ -64,49 +66,83 @@ export type CheckResult = {
   filled: number;
 };
 
+type Mark = {
+  /** When it was announced. */
+  at:
+    'triageDueSoonAt' | 'triageOverdueAt' | 'closeDueSoonAt' | 'closeOverdueAt';
+  /**
+   * For a deadline that can move (closing): which deadline it was announced
+   * for. A deadline is announced only if it is later than that one.
+   */
+  for?: 'closeDueSoonFor' | 'closeOverdueFor';
+};
+
 type Stage = {
   deadline: Deadline;
   kind: 'due_soon' | 'overdue';
   /** The deadline itself. */
   dueAt: 'triageDueAt' | 'closeDueAt';
+  /** When the time allowed for it started to run, if not at the report. */
+  from?: 'closeDueFrom';
   /** Where it is recorded that this was announced. */
-  announced:
-    'triageDueSoonAt' | 'triageOverdueAt' | 'closeDueSoonAt' | 'closeOverdueAt';
+  announced: Mark;
   /** For "overdue": where "due soon" is recorded, which it makes pointless. */
-  supersedes?: 'triageDueSoonAt' | 'closeDueSoonAt';
+  supersedes?: Mark;
 };
 
 // "Overdue" before "due soon" for each deadline. An incident found already
 // past its deadline is announced as overdue and its "due soon" is recorded as
 // sent with it, so nobody is told the lesser thing after the greater.
+const TRIAGE_SOON: Mark = { at: 'triageDueSoonAt' };
+const CLOSE_SOON: Mark = { at: 'closeDueSoonAt', for: 'closeDueSoonFor' };
 const STAGES: Stage[] = [
   {
     deadline: 'triage',
     kind: 'overdue',
     dueAt: 'triageDueAt',
-    announced: 'triageOverdueAt',
-    supersedes: 'triageDueSoonAt',
+    announced: { at: 'triageOverdueAt' },
+    supersedes: TRIAGE_SOON,
   },
   {
     deadline: 'triage',
     kind: 'due_soon',
     dueAt: 'triageDueAt',
-    announced: 'triageDueSoonAt',
+    announced: TRIAGE_SOON,
   },
   {
     deadline: 'closure',
     kind: 'overdue',
     dueAt: 'closeDueAt',
-    announced: 'closeOverdueAt',
-    supersedes: 'closeDueSoonAt',
+    from: 'closeDueFrom',
+    announced: { at: 'closeOverdueAt', for: 'closeOverdueFor' },
+    supersedes: CLOSE_SOON,
   },
   {
     deadline: 'closure',
     kind: 'due_soon',
     dueAt: 'closeDueAt',
-    announced: 'closeDueSoonAt',
+    from: 'closeDueFrom',
+    announced: CLOSE_SOON,
   },
 ];
+
+/**
+ * Whether the incident's deadline, where it now is, is still to be
+ * announced at this mark: nothing was, or what was was for an earlier
+ * deadline. The triage deadline never moves, so once is once. A time set
+ * without the deadline it was for (by a release that did not record it)
+ * counts as set for the deadline the incident has.
+ */
+const unannounced = (mark: Mark, dueAt: SQLWrapper) =>
+  mark.for
+    ? sql`(${incidents[mark.at]} is null or ${dueAt} > coalesce(${incidents[mark.for]}, ${dueAt}))`
+    : isNull(incidents[mark.at]);
+
+/** Records a mark as announced now, for the deadline the incident has. */
+const marked = (mark: Mark, dueAt: SQLWrapper, now: Date) => ({
+  [mark.at]: now,
+  ...(mark.for && { [mark.for]: dueAt }),
+});
 
 /**
  * The background check behind the `due_soon` and `overdue` notifications.
@@ -141,6 +177,7 @@ export class DeadlineCheck implements OnModuleDestroy {
     private readonly tenantDb: TenantDb,
     private readonly rules: ResponseRulesService,
     private readonly notifier: Notifier,
+    private readonly provisioning: ProvisioningService,
   ) {}
 
   /**
@@ -313,19 +350,22 @@ export class DeadlineCheck implements OnModuleDestroy {
    * in one transaction.
    */
   private announce(tenantId: string, stage: Stage, now: Date) {
-    const announced = incidents[stage.announced];
     const dueAt = incidents[stage.dueAt];
     // When to announce: at the deadline, or a quarter of the allowed time
-    // (from the report to the deadline) before it.
+    // (from the report, or the reopening, to the deadline) before it.
+    const from = stage.from
+      ? sql`coalesce(${incidents[stage.from]}, ${incidents.reportedAt})`
+      : sql`${incidents.reportedAt}`;
     const moment: SQL =
       stage.kind === 'overdue'
         ? sql`${dueAt}`
-        : sql`${dueAt} - (${dueAt} - ${incidents.reportedAt}) * ${DUE_SOON_SHARE}::float8`;
+        : sql`${dueAt} - (${dueAt} - ${from}) * ${DUE_SOON_SHARE}::float8`;
+    const toAnnounce = unannounced(stage.announced, dueAt);
     const due = and(
       // Only while the deadline is live: an incident already triaged has no
       // triage deadline to miss, a closed one no closure deadline.
       inArray(incidents.status, DEADLINE_LIVE_IN[stage.deadline]),
-      isNull(announced),
+      toAnnounce,
       lte(moment, now),
     );
     return this.inHospital(tenantId, async (tx) => {
@@ -340,12 +380,19 @@ export class DeadlineCheck implements OnModuleDestroy {
         .limit(BATCH)
         .for('update', { skipLocked: true });
       if (mine.length === 0) return { claimed: 0, notified: 0 };
+      // Announced now, for the deadline it has; and an overdue deadline is
+      // no longer due soon, which is recorded as said with it unless it was
+      // said already for this deadline.
+      const soon = stage.supersedes;
       const claimed = await tx
         .update(incidents)
         .set({
-          [stage.announced]: now,
-          ...(stage.supersedes && {
-            [stage.supersedes]: sql`coalesce(${incidents[stage.supersedes]}, ${now})`,
+          ...marked(stage.announced, sql`${dueAt}`, now),
+          ...(soon && {
+            [soon.at]: sql`case when ${unannounced(soon, dueAt)} then ${now.toISOString()}::timestamptz else ${incidents[soon.at]} end`,
+            ...(soon.for && {
+              [soon.for]: sql`greatest(${incidents[soon.for]}, ${dueAt})`,
+            }),
           }),
         })
         .where(
@@ -354,7 +401,7 @@ export class DeadlineCheck implements OnModuleDestroy {
               incidents.id,
               mine.map((i) => i.id),
             ),
-            isNull(announced),
+            toAnnounce,
           ),
         )
         .returning({
@@ -364,12 +411,16 @@ export class DeadlineCheck implements OnModuleDestroy {
           ownerUnitId: incidents.ownerUnitId,
           assignedTo: incidents.assignedTo,
           reportedBy: incidents.reportedBy,
+          harmLevel: incidents.harmLevel,
+          isSentinel: incidents.isSentinel,
+          status: incidents.status,
+          closureRequestedBy: incidents.closureRequestedBy,
         });
 
       const notified = await this.notifier.sendAll(
         tx,
         tenantId,
-        claimed.map((incident): Announcement => ({
+        claimed.map(({ status, closureRequestedBy, ...incident }): Announcement => ({
           incident,
           actorId: null,
           drafts: (who) => {
@@ -404,6 +455,21 @@ export class DeadlineCheck implements OnModuleDestroy {
                     },
                   ]
                 : []),
+              // A closure that passes its deadline while it waits for the
+              // second signature waits on those who may give it: they are
+              // told too, but for the one who asked, who cannot.
+              ...(stage.kind === 'overdue' && status === 'awaiting_sign_off'
+                ? [
+                    {
+                      kind: stage.kind,
+                      data: { deadline: stage.deadline },
+                      internal: true,
+                      to: [...who.maySignOff()].filter(
+                        (id) => id !== closureRequestedBy,
+                      ),
+                    },
+                  ]
+                : []),
             ];
           },
         })),
@@ -432,6 +498,7 @@ export class DeadlineCheck implements OnModuleDestroy {
           isSentinel: incidents.isSentinel,
           triageDueAt: incidents.triageDueAt,
           closeDueAt: incidents.closeDueAt,
+          closeDueFrom: incidents.closeDueFrom,
         })
         .from(incidents)
         .where(or(isNull(incidents.triageDueAt), isNull(incidents.closeDueAt)))
@@ -440,22 +507,40 @@ export class DeadlineCheck implements OnModuleDestroy {
       if (missing.length === 0) return 0;
       const rules = await this.rules.inForce(tx);
       for (const incident of missing) {
+        const set = {
+          ...(incident.triageDueAt === null && {
+            triageDueAt: triageDueAt(incident.reportedAt, incident, rules),
+          }),
+          ...(incident.closeDueAt === null && {
+            closeDueAt: closeDueAt(
+              incident.closeDueFrom ?? incident.reportedAt,
+              incident,
+              rules,
+              hospital.timeZone,
+            ),
+          }),
+        };
         await tx
           .update(incidents)
-          .set({
-            triageDueAt:
-              incident.triageDueAt ??
-              triageDueAt(incident.reportedAt, incident, rules),
-            closeDueAt:
-              incident.closeDueAt ??
-              closeDueAt(
-                incident.reportedAt,
-                incident,
-                rules,
-                hospital.timeZone,
-              ),
-          })
+          .set(set)
           .where(eq(incidents.id, incident.id));
+        // A change to the record like any other, so it is audited, in the
+        // same transaction. Nobody made it: the check did. The deadlines
+        // given, and nothing else.
+        await this.provisioning.audit(
+          tx,
+          hospital.id,
+          null,
+          'incident_deadlines_filled',
+          'incident',
+          incident.id,
+          Object.fromEntries(
+            Object.entries(set).map(([field, at]) => [
+              field,
+              { from: null, to: at.toISOString() },
+            ]),
+          ),
+        );
       }
       return missing.length;
     });

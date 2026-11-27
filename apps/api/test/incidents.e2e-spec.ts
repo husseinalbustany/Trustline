@@ -831,6 +831,7 @@ describe('incident reporting', () => {
       expect(Object.keys(first).sort()).toEqual([
         'assignedToMe',
         'category',
+        'channel',
         'closeDueAt',
         'descriptionExcerpt',
         'harmLevel',
@@ -1198,6 +1199,9 @@ describe('incident reporting', () => {
       'triaged>closed',
       'in_progress>closed',
       'new>rejected',
+      // Set aside after triage too, when it turns out to be a duplicate or
+      // not an incident (second quality review, D1).
+      'triaged>rejected',
       'closed>in_progress',
       'rejected>in_progress',
     ]);
@@ -1335,7 +1339,17 @@ describe('incident reporting', () => {
         visibility: 'internal',
       });
       expect(events[5].details).toEqual({ note: 'Pump replaced.' });
-      expect(events[6].details).toEqual({ note: 'Fault returned.' });
+      // Reopened, it has a new deadline to close by, counted from the
+      // reopening; the one it had is kept beside it.
+      expect(events[6].details).toEqual({
+        note: 'Fault returned.',
+        closeDueAt: { from: expect.any(String), to: expect.any(String) },
+      });
+      const deadlines = events[6].details!.closeDueAt as Record<string, string>;
+      expect(res.body.closeDueAt).toBe(deadlines.to);
+      expect(Date.parse(deadlines.to)).toBeGreaterThan(
+        Date.parse(deadlines.from),
+      );
 
       // The reporter sees the same life without its internal parts.
       const theirs = await open(reporter.cookie, id).expect(200);
@@ -1347,6 +1361,12 @@ describe('incident reporting', () => {
         'reopened',
       ]);
       expect(JSON.stringify(theirs.body)).not.toContain(wardTriager.id);
+      // Without either deadline: they are for those handling it.
+      expect(theirs.body.events.at(-1).details).toEqual({
+        note: 'Fault returned.',
+      });
+      expect(JSON.stringify(theirs.body)).not.toContain(deadlines.from);
+      expect(JSON.stringify(theirs.body)).not.toContain(deadlines.to);
     });
   });
 
@@ -1898,6 +1918,13 @@ describe('incident reporting', () => {
           revisionRequired: false,
           kind: 'close',
         },
+        // Still not serious: it can be set aside after triage too.
+        {
+          to: 'rejected',
+          noteRequired: true,
+          revisionRequired: false,
+          kind: 'reject',
+        },
       ]);
     });
 
@@ -2157,14 +2184,14 @@ describe('incident reporting', () => {
     });
 
     it('lets only one of two opposite decisions through', async () => {
-      const id = await incidentIn('new');
-      const [rejected, triaged] = await Promise.all([
+      const id = await incidentIn('triaged');
+      const [rejected, closed] = await Promise.all([
         move(quality.cookie, id, 'rejected', 'Not an incident'),
-        triage(a.cookie, id),
+        move(a.cookie, id, 'closed', 'Done.'),
       ]);
-      // Either order is valid, but never both from "new": after a rejection
-      // triage is refused, and after triage a rejection is refused.
-      expect([rejected.status, triaged.status].sort((x, y) => x - y)).toEqual([
+      // Either order is valid, but never both from "triaged": once set
+      // aside it cannot be closed, and once closed it cannot be set aside.
+      expect([rejected.status, closed.status].sort((x, y) => x - y)).toEqual([
         200, 409,
       ]);
     });

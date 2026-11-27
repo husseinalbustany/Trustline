@@ -42,3 +42,21 @@ export function visibleTo(auth: AuthContext): SQL {
     inArray(incidents.ownerUnitId, reach),
   )!;
 }
+
+/**
+ * The incidents whose reporter a user is told of, and with it how the report
+ * arrived: the ones they reported themselves, and those that happened in,
+ * or are handled by, a unit their right to see reporters covers. The same
+ * rule as `readerOf()` in incidents.service.ts, for a query. Never null.
+ */
+export function reporterToldTo(auth: AuthContext): SQL {
+  const reach = reachOf(auth, ['incidents.see_reporter']);
+  if (reach === 'all') return sql`true`;
+  const mine = sql`coalesce(${incidents.reportedBy} = ${auth.user.id}, false)`;
+  if (reach.length === 0) return mine;
+  return sql`coalesce(${or(
+    eq(incidents.reportedBy, auth.user.id),
+    inArray(incidents.orgUnitId, reach),
+    inArray(incidents.ownerUnitId, reach),
+  )}, false)`;
+}

@@ -1,6 +1,7 @@
 import {
   callsForSignOff,
   chooseMove,
+  gradedByStaff,
   hasSay,
   MOVE_KINDS,
   movesFor,
@@ -25,17 +26,20 @@ const ordinary = {
   harmLevel: 'mild',
   isSentinel: false,
   signOffNeeded: false,
+  graded: true,
 } as const;
 const sentinel = {
   harmLevel: 'severe',
   isSentinel: true,
   signOffNeeded: true,
+  graded: true,
 } as const;
 /** Was a sentinel event; called something milder at a later triage. */
 const downgraded = {
   harmLevel: 'mild',
   isSentinel: false,
   signOffNeeded: true,
+  graded: true,
 } as const;
 const at = <T extends object>(incident: T, status: IncidentStatus) => ({
   ...incident,
@@ -59,7 +63,7 @@ describe('incident status rules', () => {
   });
 
   it('asks for a second person for a sentinel event and for a death, and nothing else', () => {
-    const never = { signOffNeeded: false };
+    const never = { signOffNeeded: false, graded: true };
     expect(callsForSignOff({ harmLevel: 'none', isSentinel: true })).toBe(true);
     expect(callsForSignOff({ harmLevel: 'death', isSentinel: false })).toBe(
       true,
@@ -285,5 +289,59 @@ describe('incident status rules', () => {
     expect(chooseMove(at(ordinary, 'new'), 'rejected', officer)).toMatchObject({
       kind: 'reject',
     });
+  });
+
+  it('sets aside what is not serious after triage too, with a reason, and nothing once work has started', () => {
+    expect(offered(at(ordinary, 'triaged'), triager)).toContain(
+      'reject>rejected',
+    );
+    expect(
+      chooseMove(at(ordinary, 'triaged'), 'rejected', triager),
+    ).toMatchObject({ kind: 'reject', note: 'required' });
+    const severe = { ...ordinary, harmLevel: 'severe' } as const;
+    expect(offered(at(severe, 'triaged'), triager)).not.toContain(
+      'reject>rejected',
+    );
+    expect(chooseMove(at(severe, 'triaged'), 'rejected', triager)).toBe(
+      'serious_cannot_be_rejected',
+    );
+    for (const status of [
+      'in_progress',
+      'awaiting_sign_off',
+      'closed',
+    ] as const) {
+      expect(chooseMove(at(ordinary, status), 'rejected', officer)).toBe(
+        'invalid_transition',
+      );
+    }
+    expect(offered(at(ordinary, 'triaged'), nobody)).toEqual([]);
+    // Once it has needed a second person to close it, one person cannot
+    // end it by setting it aside either, whatever it is called now.
+    expect(offered(at(downgraded, 'triaged'), officer)).not.toContain(
+      'reject>rejected',
+    );
+    expect(chooseMove(at(downgraded, 'triaged'), 'rejected', officer)).toBe(
+      'serious_cannot_be_rejected',
+    );
+  });
+
+  it("does not ask a second person for a public sender's own grade, until a triager has graded it", () => {
+    expect(gradedByStaff({ channel: 'app', firstTriagedAt: null })).toBe(true);
+    expect(gradedByStaff({ channel: 'public', firstTriagedAt: null })).toBe(
+      false,
+    );
+    expect(
+      gradedByStaff({ channel: 'public', firstTriagedAt: new Date() }),
+    ).toBe(true);
+    const sent = {
+      harmLevel: 'death',
+      isSentinel: false,
+      signOffNeeded: false,
+      graded: false,
+    } as const;
+    expect(needsSignOff(sent)).toBe(false);
+    expect(needsSignOff({ ...sent, graded: true })).toBe(true);
+    // Once raised, the flag decides, whoever graded it.
+    expect(needsSignOff({ ...sent, signOffNeeded: true })).toBe(true);
   });
 });

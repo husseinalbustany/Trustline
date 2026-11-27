@@ -52,10 +52,24 @@ export const isSerious = (incident: Gravity) =>
 export const callsForSignOff = (incident: Gravity) =>
   incident.isSentinel || incident.harmLevel === 'death';
 
+/**
+ * Whether the harm level an incident carries was given by a member of
+ * staff: a signed-in reporter, or a triager. The sender of a report through
+ * the public link may be anyone with the link, and their grade is theirs
+ * alone until a triager has looked at it (`firstTriagedAt`). The database
+ * trigger on `incidents` (migration 0030) holds the same rule.
+ */
+export const gradedByStaff = (incident: {
+  channel: 'app' | 'public';
+  firstTriagedAt: Date | null;
+}) => incident.channel !== 'public' || incident.firstTriagedAt !== null;
+
 /** An incident with its memory of having called for sign-off. */
 export type Weighed = Gravity & {
   /** Stored once it has been a sentinel event or a death; never cleared. */
   signOffNeeded: boolean;
+  /** See `gradedByStaff()`. */
+  graded: boolean;
 };
 
 /**
@@ -63,10 +77,11 @@ export type Weighed = Gravity & {
  * does: lowering the harm level or clearing the sentinel flag afterwards
  * does not remove the second signature, or one person with the right to
  * triage could close a sentinel event alone by first calling it something
- * else.
+ * else. What a public sender chose does not count until a triager has
+ * graded the report.
  */
 export const needsSignOff = (incident: Weighed) =>
-  incident.signOffNeeded || callsForSignOff(incident);
+  incident.signOffNeeded || (incident.graded && callsForSignOff(incident));
 
 /**
  * What a move is, whatever status it leads to. A screen labels its button by
@@ -192,15 +207,18 @@ const MOVES: Move[] = [
     by: (caller) => caller.isRequester || caller.canTriage,
   },
   {
-    // A serious report cannot be set aside: its harm level has to be lowered
-    // at triage first, which leaves a trace of who decided so.
+    // Not taken forward: before triage, or after it when triage shows it is
+    // a duplicate or not an incident at all. A serious report cannot be set
+    // aside: its harm level has to be lowered at triage first, which leaves
+    // a trace of who decided so. Nor one that has needed a second person to
+    // close it: set aside by one, it would end without that signature.
     kind: 'reject',
-    from: ['new'],
+    from: ['new', 'triaged'],
     to: 'rejected',
     event: 'rejected',
     note: 'required',
     revision: 'optional',
-    fits: (incident) => !isSerious(incident),
+    fits: (incident) => !isSerious(incident) && !needsSignOff(incident),
     by: triager,
   },
   {
@@ -291,8 +309,8 @@ export type Deadline = (typeof DEADLINES)[number];
 /**
  * The statuses in which each deadline is live. The triage deadline stops
  * mattering once the incident leaves `new`, by triage or by being set aside;
- * the closure deadline once it is `closed` or `rejected`. Reopening brings
- * the closure deadline back as it was: it does not give a new one.
+ * the closure deadline once it is `closed` or `rejected`. Reopening gives a
+ * new closure deadline, counted from the reopening (`closeDueFrom`).
  */
 export const DEADLINE_LIVE_IN: Record<Deadline, IncidentStatus[]> = {
   triage: ['new'],

@@ -68,6 +68,8 @@ const overdue = (incidentId: string): Announcement => ({
     ownerUnitId: null,
     assignedTo: null,
     reportedBy: null,
+    harmLevel: 'none',
+    isSentinel: false,
   },
   actorId: null,
   drafts: (who) => [

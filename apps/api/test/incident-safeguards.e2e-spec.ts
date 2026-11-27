@@ -1103,6 +1103,7 @@ describe('incident safeguards', () => {
         expect(Object.keys(item).sort()).toEqual([
           'assignedToMe',
           'category',
+          'channel',
           'closeDueAt',
           'descriptionExcerpt',
           'harmLevel',
@@ -1118,6 +1119,8 @@ describe('incident safeguards', () => {
           'triageDueAt',
           'type',
         ]);
+        // How it arrived would say whether it was anonymous: not told.
+        expect(item.channel).toBeNull();
       }
       expect(JSON.stringify(list.body)).not.toContain(reporter.id);
       const summary = await http()
@@ -1149,13 +1152,24 @@ describe('incident safeguards', () => {
       for (const query of [
         `reportedBy=${reporter.id}`,
         `reporter=${reporter.id}`,
-        'channel=public',
         'anonymous=true',
       ]) {
         await http()
           .get(`/incidents?${query}`)
           .set('Cookie', manager.cookie)
           .expect(400);
+      }
+      // How a report arrived is a filter only for those who may see who
+      // reported (second quality review, Q-A5): refused to anyone else.
+      for (const channel of ['public', 'app']) {
+        const res = await http()
+          .get(`/incidents?channel=${channel}`)
+          .set('Cookie', manager.cookie)
+          .expect(403);
+        expect(res.body).toMatchObject({
+          code: 'missing_permission',
+          permission: 'incidents.see_reporter',
+        });
       }
       // "Reported by me" is about the caller alone.
       const mine = await http()
@@ -3341,6 +3355,12 @@ describe('incident safeguards', () => {
           noteRequired: true,
           revisionRequired: false,
           kind: 'close',
+        },
+        {
+          to: 'rejected',
+          noteRequired: true,
+          revisionRequired: false,
+          kind: 'reject',
         },
       ]);
       const refused = await move(

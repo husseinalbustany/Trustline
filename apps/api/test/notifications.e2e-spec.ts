@@ -70,7 +70,7 @@ describe('notifications', () => {
     id: string;
     user_id: string;
     kind: string;
-    data: Record<string, string>;
+    data: Record<string, string | boolean>;
     read_at: string | null;
   };
   const rowsFor = async (incidentId: string) =>
@@ -183,7 +183,7 @@ describe('notifications', () => {
         createdAt: string;
         readAt: string | null;
         incident: { id: string; reference: string; canOpen: boolean };
-        data: Record<string, string>;
+        data: Record<string, string | boolean>;
       }[];
     };
   const unread = async (who: Staff) =>
@@ -350,7 +350,7 @@ describe('notifications', () => {
       });
       // The reference, and nothing a patient or a person could be known by.
       for (const row of await rowsFor(id)) {
-        expect(row.data).toEqual({ reference });
+        expect(row.data).toEqual({ reference, serious: false });
         expect(row.read_at).toBeNull();
       }
       expect(await expectAllCouldOpen(id)).toBe(5);
@@ -427,7 +427,7 @@ describe('notifications', () => {
       await triage(quality, id, { assignedTo: nurse.id }).expect(200);
       expect(await told(id)).toEqual({ incident_assigned: sorted(nurse) });
       for (const row of await rowsFor(id)) {
-        expect(row.data).toEqual({ reference });
+        expect(row.data).toEqual({ reference, serious: false });
       }
       await expectAllCouldOpen(id);
 
@@ -443,7 +443,7 @@ describe('notifications', () => {
       expect(await told(id)).toEqual({
         incident_handed_over: sorted(labQuality),
       });
-      expect((await rowsFor(id))[0].data).toEqual({ reference });
+      expect((await rowsFor(id))[0].data).toEqual({ reference, serious: false });
       await expectAllCouldOpen(id);
 
       // And back to the ward: its quality officer never lost it, since it
@@ -608,7 +608,7 @@ describe('notifications', () => {
       });
       // Not a word of it, and not who wrote it.
       for (const row of await rowsFor(id)) {
-        expect(row.data).toEqual({ reference });
+        expect(row.data).toEqual({ reference, serious: false });
       }
       expect(JSON.stringify(await rowsFor(id))).not.toContain(quality.id);
       await expectAllCouldOpen(id);
@@ -659,7 +659,7 @@ describe('notifications', () => {
       expect(latest).toMatchObject({
         kind: 'comment_added',
         incident: { id, reference, canOpen: true },
-        data: { reference },
+        data: { reference, serious: false },
       });
       expect(Object.keys(latest).sort()).toEqual([
         'createdAt',
@@ -675,14 +675,16 @@ describe('notifications', () => {
       expect(everything).not.toContain(reporter.email);
       expect(everything).not.toContain('happened again');
       // And in the table itself no notification carries anything but a
-      // reference and, for some kinds, a word from a fixed list.
+      // reference, whether it is serious (which every one says) and, for
+      // some kinds, a word from a fixed list.
       const odd = await bench.owner.db.execute(
         sql`select data from notifications n
             where tenant_id = ${a.id}
-              and exists (
+              and (not (n.data ? 'serious') or exists (
                 select from jsonb_each_text(n.data) d
-                where d.key not in ('reference', 'deadline', 'decision', 'change')
-                   or (d.key <> 'reference' and d.value not in ('triage', 'closure', 'signed_off', 'sent_back', 'withdrawn', 'closed', 'rejected', 'reopened')))`,
+                where d.key not in ('reference', 'deadline', 'decision', 'change', 'serious')
+                   or (d.key = 'serious' and d.value not in ('true', 'false'))
+                   or (d.key not in ('reference', 'serious') and d.value not in ('triage', 'closure', 'signed_off', 'sent_back', 'withdrawn', 'closed', 'rejected', 'reopened'))))`,
       );
       expect(odd.rows).toEqual([]);
     });
@@ -732,7 +734,7 @@ describe('notifications', () => {
       const rows = await rowsFor(fresh.id);
       expect(rows).toHaveLength(5);
       for (const row of rows) {
-        expect(row.data).toEqual({ reference: fresh.reference });
+        expect(row.data).toEqual({ reference: fresh.reference, serious: false });
       }
       expect(JSON.stringify(rows)).not.toContain(reporter.id);
       expect(JSON.stringify(rows)).not.toContain('One more thing');
@@ -806,7 +808,7 @@ describe('notifications', () => {
         comment_added: sorted(...triagers),
       });
       for (const row of await rowsFor(hidden.id)) {
-        expect(row.data).toEqual({ reference: hidden.reference });
+        expect(row.data).toEqual({ reference: hidden.reference, serious: false });
       }
       // When they comment under their own name, as a handler, they are its
       // author like any other and the rest are told.
@@ -915,8 +917,8 @@ describe('notifications', () => {
         status_changed: sorted(reporter, nurse),
       });
       expect((await rowsFor(id)).map((r) => r.data)).toEqual([
-        { reference, change: 'closed' },
-        { reference, change: 'closed' },
+        { reference, change: 'closed', serious: false },
+        { reference, change: 'closed', serious: false },
       ]);
       // The reporter is told, though they see it only as its reporter.
       await expectAllCouldOpen(id);
@@ -931,6 +933,7 @@ describe('notifications', () => {
       expect((await rowsFor(id))[0].data).toEqual({
         reference,
         change: 'reopened',
+        serious: false,
       });
       // No closure note in any of it.
       const everything = JSON.stringify(await rowsFor(id));
@@ -947,6 +950,7 @@ describe('notifications', () => {
       expect((await rowsFor(named.id))[0].data).toEqual({
         reference: named.reference,
         change: 'rejected',
+        serious: false,
       });
       const anonymous = await report(reporter, { anonymous: true });
       await clear(anonymous.id);
@@ -1001,7 +1005,7 @@ describe('notifications', () => {
         sign_off_requested: sorted(admin, quality2, wardQuality),
       });
       for (const row of await rowsFor(id)) {
-        expect(row.data).toEqual({ reference });
+        expect(row.data).toEqual({ reference, serious: true });
       }
       await http()
         .get(`/incidents/${id}`)
@@ -1025,6 +1029,7 @@ describe('notifications', () => {
       expect((await rowsFor(id))[0].data).toEqual({
         reference,
         decision: 'sent_back',
+        serious: true,
       });
       expect(JSON.stringify(await rowsFor(id))).not.toContain('convincing');
 
@@ -1043,8 +1048,8 @@ describe('notifications', () => {
         (await rowsFor(id)).map((r) => [r.kind, r.data]),
       );
       expect(data).toEqual({
-        sign_off_decided: { reference, decision: 'signed_off' },
-        status_changed: { reference, change: 'closed' },
+        sign_off_decided: { reference, decision: 'signed_off', serious: true },
+        status_changed: { reference, change: 'closed', serious: true },
       });
     });
 
@@ -1086,7 +1091,7 @@ describe('notifications', () => {
       expect(await told(id)).toEqual({ sign_off_decided: sorted(quality) });
       const rows = await rowsFor(id);
       expect(rows).toHaveLength(1);
-      expect(rows[0].data).toEqual({ reference, decision: 'withdrawn' });
+      expect(rows[0].data).toEqual({ reference, decision: 'withdrawn', serious: true });
       expect(JSON.stringify(rows)).not.toContain('family');
       expect(JSON.stringify(rows)).not.toContain(quality2.id);
       await expectAllCouldOpen(id);
@@ -1098,7 +1103,7 @@ describe('notifications', () => {
         kind: 'sign_off_decided',
         readAt: null,
         incident: { id, reference, canOpen: true },
-        data: { reference, decision: 'withdrawn' },
+        data: { reference, decision: 'withdrawn', serious: true },
       });
 
       // By someone who may triage it and not sign it off: the same.
@@ -1595,7 +1600,7 @@ describe('notifications', () => {
       expect(await at(reported + 54 * HOUR)).toBe(2);
       expect(await told(id)).toEqual({ due_soon: sorted(boss, officer) });
       for (const row of await rowsFor(id)) {
-        expect(row.data).toEqual({ reference, deadline: 'triage' });
+        expect(row.data).toEqual({ reference, deadline: 'triage', serious: false });
       }
       expect((await timesOf(id)).sent).toEqual({
         triageDueSoon: true,
@@ -1620,7 +1625,7 @@ describe('notifications', () => {
       // The administrator may triage everywhere and this unit too: once.
       expect(await told(id)).toEqual({ overdue: sorted(boss, officer) });
       for (const row of await rowsFor(id)) {
-        expect(row.data).toEqual({ reference, deadline: 'triage' });
+        expect(row.data).toEqual({ reference, deadline: 'triage', serious: false });
       }
       expect(await at(triageDue + HOUR)).toBe(0);
       expect(await at(triageDue + 10 * DAY)).toBe(0);
@@ -1673,6 +1678,7 @@ describe('notifications', () => {
       expect((await rowsFor(id))[0].data).toEqual({
         reference,
         deadline: 'closure',
+        serious: false,
       });
       expect(await at(closeDue - DAY)).toBe(0);
       await clear(id);
@@ -1716,20 +1722,40 @@ describe('notifications', () => {
       }
     });
 
-    it('announces nothing about closing once closed, nothing new on reopening, and a new deadline anew', async () => {
+    it('announces nothing about closing once closed, and a reopened incident by its new deadline', async () => {
       const { id } = await triaged({ assignedTo: assignee.id });
       const { closeDue } = await timesOf(id);
       await at(closeDue + HOUR);
       expect(await told(id)).toEqual({ overdue: sorted(assignee, boss) });
       await clear(id);
-      // Closed late and reopened: the same deadline, already announced.
+      // Closed late and reopened: a new deadline, thirty days from the
+      // reopening (second quality review, question 9), and nothing said of
+      // the old one again.
       await move(boss, id, 'closed', 'Done.').expect(200);
+      const reopenedAt = Date.now();
       await move(boss, id, 'in_progress', 'Not done.').expect(200);
       await clear(id);
+      const reopened = await timesOf(id);
+      expect(reopened.closeDue - reopenedAt).toBeGreaterThan(30 * DAY - 5000);
+      expect(reopened.closeDue - reopenedAt).toBeLessThan(30 * DAY + 5000);
+      expect(reopened.sent).toMatchObject({
+        closeDueSoon: false,
+        closeOverdue: false,
+      });
       expect(await at(closeDue + 2 * HOUR)).toBe(0);
       expect(await told(id)).toEqual({});
+      // Its last quarter counts from the reopening, not from the report: a
+      // quarter of 30 days is 7 and a half.
+      expect(await at(reopened.closeDue - 8 * DAY)).toBe(0);
+      expect(await at(reopened.closeDue - 7 * DAY)).toBe(1);
+      expect(await told(id)).toEqual({ due_soon: sorted(assignee) });
+      await clear(id);
+      expect(await at(reopened.closeDue + HOUR)).toBe(2);
+      expect(await told(id)).toEqual({ overdue: sorted(assignee, boss) });
+      await clear(id);
 
-      // Closed in time and reopened after the deadline: announced then.
+      // Closed in time and reopened after the old deadline: the new one is
+      // still to come.
       const early = await triaged({ assignedTo: assignee.id });
       await move(boss, early.id, 'closed', 'Done.').expect(200);
       await clear(early.id);
@@ -1738,24 +1764,23 @@ describe('notifications', () => {
       await move(boss, early.id, 'in_progress', 'Not done.').expect(200);
       await clear(early.id);
       await at(closeDue + 4 * HOUR);
-      expect(await told(early.id)).toEqual({ overdue: sorted(assignee, boss) });
+      expect(await told(early.id)).toEqual({});
 
       // A deadline that triage moves is another deadline: announced again.
-      await clear(id);
-      await triage(boss, id, {
+      const later = await triaged({ assignedTo: assignee.id });
+      const first = await timesOf(later.id);
+      await at(first.closeDue + HOUR);
+      await clear(later.id);
+      await triage(boss, later.id, {
         ownerUnitId: unit,
         assignedTo: assignee.id,
         harmLevel: 'severe',
       }).expect(200);
-      await clear(id);
-      const moved = await timesOf(id);
+      await clear(later.id);
+      const moved = await timesOf(later.id);
       expect(moved.closeDue - moved.reported).toBe(45 * DAY);
-      expect(moved.sent).toMatchObject({
-        closeDueSoon: false,
-        closeOverdue: false,
-      });
       await at(moved.closeDue + HOUR);
-      expect(await told(id)).toEqual({ overdue: sorted(assignee, boss) });
+      expect(await told(later.id)).toEqual({ overdue: sorted(assignee, boss) });
     });
 
     it('sends each once when several checks run at the same moment', async () => {
@@ -2076,10 +2101,8 @@ describe('notifications', () => {
       await clear(other);
       const ahead = await timesOf(other);
       expect(ahead.closeDue).toBeGreaterThan(Date.now());
-      expect(ahead.sent).toMatchObject({
-        closeDueSoon: false,
-        closeOverdue: false,
-      });
+      // What was announced is kept, with the deadline it was for; this one
+      // is later, and so is still to be announced.
       expect(
         (
           await http()
