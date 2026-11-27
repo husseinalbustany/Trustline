@@ -56,7 +56,7 @@
     },
     "seriousHelp": "Severe harm, death or sentinel event",
     "overdueHelp": "Past the deadline for triage or closure",
-    "triagedOnTimeHelp": "Of the reports from the last 30 days that have been triaged",
+    "triagedOnTimeHelp": "Reports from the last 30 days that were triaged or not taken forward, plus those still awaiting triage past their deadline (counted as late)",
     "timeToReportHelp": "From opening the form to sending it, over the last 30 days",
     "clock": {
       "minutes": "{time} min",
@@ -172,6 +172,7 @@
       "hospitalDays": "Days are counted in the hospital's time: {zone}.",
       "empty": "No incidents to show. When one is reported, it appears here.",
       "emptyFiltered": "No incidents match these filters. Change them, or clear them to see every incident.",
+      "handedOff": "{reference} was handed to {unit}. It no longer appears in this list.",
       "reported": "Reported {date}",
       "reportedAgo": "Reported {ago}",
       "reportedJustNow": "Reported just now",
@@ -242,6 +243,7 @@
       "harmLevel": "Harm level",
       "ownerUnit": "Handling department",
       "ownerUnitNone": "Not decided yet",
+      "unitInactive": "{name} (inactive)",
       "assignedTo": "Assigned to",
       "assignedToNone": "No one yet",
       "closureSummary": "Closure summary",
@@ -254,9 +256,9 @@
     },
     "signOff": {
       "others": "People who can sign it off, other than the person who asked: {count}.",
-      "nobody": "Nobody other than the person who asked can sign off this closure, so the incident cannot be closed as things stand. Ask an administrator to give the permission “Sign off closures that need a second signature” to a second person who can see this incident.",
+      "nobody": "Nobody other than the person who asked can sign off this closure, so the incident cannot be closed as things stand. A second person who can see this incident needs the permission “Sign off closures that need a second signature”. An administrator gives it under “Users and roles”.",
       "othersBefore": "People other than you who can sign it off: {count}.",
-      "nobodyBefore": "Nobody but you can sign off this closure. If you ask now, the incident will wait and cannot be closed. Ask an administrator first to give the permission “Sign off closures that need a second signature” to a second person who can see this incident."
+      "nobodyBefore": "Nobody but you can sign off this closure. If you ask now, the incident will wait and cannot be closed. First, a second person who can see this incident needs the permission “Sign off closures that need a second signature”. An administrator gives it under “Users and roles”."
     },
     "deadline": {
       "title": "Deadlines",
@@ -431,6 +433,10 @@
     "loadTooManyTitle": "The form cannot be opened right now",
     "loadTooMany": "This form has been opened too many times in the last hour. You can try again after {time}.",
     "loadTooManyLater": "This form has been opened too many times in the last hour. Try again later.",
+    "pausedTitle": "This form is not taking reports for now",
+    "paused": "Too many reports were sent in the last hour, so this form is paused. You can send a report again after {time}: open this page again then.",
+    "pausedLater": "Too many reports were sent in the last hour, so this form is paused. Open this page again later.",
+    "timeNote": "Times on this page are in the organization's time: {zone}.",
     "haveCode": "Already sent a report?",
     "followUp": "Follow it up with your code",
     "sentTitle": "Report sent",

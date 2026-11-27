@@ -3,7 +3,13 @@
 import { Clock, Plus, Search, SlidersHorizontal } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { can, useSession } from "@/components/shell/session";
 import { Button } from "@/components/ui/button";
 import { ButtonLink } from "@/components/ui/button-link";
@@ -12,6 +18,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
 import { api } from "@/lib/api";
+import { tellHandOff, useHandOff } from "@/lib/hand-off";
 import {
   dateTimeFormat,
   deadlineFormat,
@@ -71,6 +78,11 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
   // Opened or closed by hand; until then, open when one of its filters is on.
   const [moreOpen, setMoreOpen] = useState<boolean | null>(null);
   const referenceInput = useRef<HTMLInputElement>(null);
+  // An incident just handed out of this user's sight, from its own page:
+  // said here once, and gone when this list is left (visited pages stay
+  // mounted, and it is not news the next time).
+  const handOff = useHandOff();
+  useLayoutEffect(() => () => tellHandOff(null), []);
   const l = t.list;
   const inLang = (text: Localized) =>
     pick(text, lang, session.tenant.defaultLocale);
@@ -178,17 +190,14 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
 
   /**
    * Asks a new question by changing the address. A filter starts again at
-   * page 1 and replaces the address; turning a page adds one, so the
-   * browser's back button returns to the page before.
+   * page 1. Each question, a filter or a page, adds an entry to the
+   * history, so the browser's back button undoes the last one instead of
+   * leaving the list.
    */
   const ask = (next: Partial<IncidentFilters>) => {
     const to = { ...filters, page: 1, ...next };
     if (filtersQuery(to) === query) return;
-    window.history[next.page ? "pushState" : "replaceState"](
-      null,
-      "",
-      incidentsPath(lang, to),
-    );
+    window.history.pushState(null, "", incidentsPath(lang, to));
   };
 
   function search(e: FormEvent<HTMLFormElement>) {
@@ -246,6 +255,26 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
           )
         }
       />
+
+      {handOff && (
+        <p
+          role="status"
+          className="mt-4 rounded-md bg-accent-soft px-3 py-2 text-sm"
+        >
+          {/* The reference is kept whole and left to right, as in the
+              list; the department's name keeps its own direction. */}
+          {l.handedOff.split("{reference}").map((part, index) => (
+            <span key={index}>
+              {index > 0 && (
+                <bdi dir="ltr" className="whitespace-nowrap">
+                  {handOff.reference}
+                </bdi>
+              )}
+              {fill(part, { unit: inLang(handOff.unit) })}
+            </span>
+          ))}
+        </p>
+      )}
 
       <div className="mt-6 flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2">

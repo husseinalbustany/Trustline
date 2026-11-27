@@ -1,4 +1,4 @@
-import { deviceTime, usableZone, type TimeZone } from "./time-zone";
+import { usableZone, type TimeZone } from "./time-zone";
 
 /**
  * Dates and numbers in the reader's language, always with Western digits
@@ -105,25 +105,44 @@ export const percentFormat = (lang: string) => {
  * "after 14:32" is never too early. A clock time and not "in 12 minutes":
  * it needs no plural form, and cannot be read as "during".
  *
- * On the clock of the reader's own device: it is the one they will look at
- * to know when to try again.
+ * On the clock of `timeZone`, asked for every time as `dateTimeFormat`
+ * asks for it: the organization's whenever the page knows it, so the time
+ * agrees with the page's note on which clock its times are on, and
+ * `deviceTime` on a page that does not know it yet (and says nothing
+ * about clocks).
  *
  * `withDay` is for a wait that can run past midnight (a limit counted over
  * a day): the time is then given with its day of the week when it is not
- * today, "Thursday 14:32", so "after 14:32" is not read as this afternoon.
+ * today on that clock, "Thursday 14:32", so "after 14:32" is not read as
+ * this afternoon.
  */
-export function clockTimeIn(lang: string, { withDay = false } = {}) {
+export function clockTimeIn(
+  lang: string,
+  timeZone: TimeZone,
+  options: { withDay?: boolean } = {},
+) {
+  const at = clockTimeAt(lang, timeZone, options);
+  return (seconds: number) => at(new Date(Date.now() + seconds * 1000));
+}
+
+/**
+ * The same, for a moment already worked out: one kept on a page that is
+ * drawn again later, which must not move forward each time it is.
+ */
+export function clockTimeAt(
+  lang: string,
+  timeZone: TimeZone,
+  { withDay = false } = {},
+) {
   const hour = { hour: "numeric", minute: "2-digit" } as const;
-  const clock = dateTimeFormat(lang, deviceTime, hour);
-  const dayAndClock = dateTimeFormat(lang, deviceTime, {
+  const clock = dateTimeFormat(lang, timeZone, hour);
+  const dayAndClock = dateTimeFormat(lang, timeZone, {
     weekday: "long",
     ...hour,
   });
-  const day = dateTimeFormat("en", deviceTime, { dateStyle: "short" });
-  return (seconds: number) => {
-    const then = new Date(
-      Math.ceil((Date.now() + seconds * 1000) / 60_000) * 60_000,
-    );
+  const day = dateTimeFormat("en", timeZone, { dateStyle: "short" });
+  return (moment: Date) => {
+    const then = new Date(Math.ceil(moment.getTime() / 60_000) * 60_000);
     const today = day.format(then) === day.format(new Date());
     return (withDay && !today ? dayAndClock : clock).format(then);
   };

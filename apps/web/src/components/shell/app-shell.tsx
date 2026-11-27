@@ -25,7 +25,7 @@ import {
   UnreadContext,
 } from "./session";
 import { Sidebar, type SidebarLabels } from "./sidebar";
-import { loadPage } from "@/lib/navigate";
+import { loadPage, signInFor } from "@/lib/navigate";
 
 export type ShellLabels = SidebarLabels & {
   skipToContent: string;
@@ -72,7 +72,8 @@ export function AppShell({
       .catch((err) => {
         setSession(null);
         // A full page load, so nothing of the previous session stays mounted.
-        if (statusOf(err) === 401) loadPage(loginPath);
+        // Signed in again, the user comes back to the page they asked for.
+        if (statusOf(err) === 401) loadPage(signInFor(loginPath));
         else setProblem("session");
       });
   }, [loginPath]);

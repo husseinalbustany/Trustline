@@ -105,9 +105,14 @@ export function FollowUp({
   // and staff are pointed to if it does not. Null until it is known.
   const [formOpen, setFormOpen] = useState<boolean | null>(null);
   const path = `/public/follow-up/${encodeURIComponent(slug)}`;
-  const clockTime = clockTimeIn(lang);
+  // When to try again, on the clock every other time on the page is on:
+  // the organization's once a report is open (the page then says which
+  // clock that is), and this device's before, when nothing is known of
+  // the organization and nothing is said about clocks.
+  const zone = open?.view.hospital.timeZone ?? deviceTime;
+  const clockTime = clockTimeIn(lang, zone);
   // A limit on comments is counted over a day: the time may be tomorrow.
-  const dayAndTime = clockTimeIn(lang, { withDay: true });
+  const dayAndTime = clockTimeIn(lang, zone, { withDay: true });
 
   // Closed or not taken forward: such a report can be read, not added to.
   const ended =

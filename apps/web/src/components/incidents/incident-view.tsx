@@ -58,11 +58,17 @@ export function IncidentReport(props: ViewProps) {
   const when = (iso: string) => dates.format(new Date(iso));
   // A name a client wrote keeps its own direction.
   const name = (text: Localized) => <bdi>{pick(text, lang, fallback)}</bdi>;
+  // A department switched off since keeps its name here, marked inactive,
+  // as the triage form marks it.
+  const unit = (place: { name: Localized; active?: boolean }) =>
+    place.active === false
+      ? fill(d.unitInactive, { name: pick(place.name, lang, fallback) })
+      : name(place.name);
 
   const facts: [string, ReactNode][] = [
     [d.type, t.type[incident.type]],
     [d.category, name(incident.category.name)],
-    [d.where, name(incident.orgUnit.name)],
+    [d.where, unit(incident.orgUnit)],
     [d.occurredAt, when(incident.occurredAt)],
     [d.reportedAt, when(incident.reportedAt)],
     [
@@ -84,7 +90,7 @@ export function IncidentReport(props: ViewProps) {
     [d.harmLevel, t.harm[incident.harmLevel]],
     [
       d.ownerUnit,
-      incident.ownerUnit ? name(incident.ownerUnit.name) : d.ownerUnitNone,
+      incident.ownerUnit ? unit(incident.ownerUnit) : d.ownerUnitNone,
     ],
   ];
   // Who it is assigned to is for the people handling it, not the reporter.

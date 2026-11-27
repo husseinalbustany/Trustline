@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
 import { ApiError, platformApi } from "@/lib/platform-api";
 import type { PlatformProps } from "./types";
-import { loadPage } from "@/lib/navigate";
+import { loadPage, returnPath } from "@/lib/navigate";
 
 export function LoginForm({ lang, t }: PlatformProps) {
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +25,15 @@ export function LoginForm({ lang, t }: PlatformProps) {
       // Visited pages stay mounted, so clear the password before leaving.
       formElement.reset();
       // A full page load, so no page from an earlier session stays mounted.
-      loadPage(`/${lang}/platform/clients`);
+      // To the portal page asked for before signing in, in this language;
+      // otherwise to the list of clients.
+      loadPage(
+        returnPath(
+          `/${lang}/platform`,
+          [`/${lang}/platform/login`],
+          `/${lang}/platform/clients`,
+        ),
+      );
       return;
     } catch (err) {
       const status = err instanceof ApiError ? err.status : 0;

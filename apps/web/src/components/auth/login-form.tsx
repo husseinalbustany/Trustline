@@ -7,7 +7,7 @@ import { api, statusOf } from "@/lib/api";
 import type { Dictionary } from "@/i18n/dictionaries";
 import type { Locale } from "@/i18n/config";
 import { AuthCard } from "./auth-card";
-import { loadPage } from "@/lib/navigate";
+import { loadPage, returnPath } from "@/lib/navigate";
 
 const ORG_KEY = "trustline.org";
 
@@ -61,7 +61,15 @@ export function LoginForm({
       form.reset();
       if (orgInput.current) orgInput.current.value = org;
       // A full page load, so no page from an earlier session stays mounted.
-      loadPage(`/${lang}/dashboard`);
+      // To the page asked for before signing in, when it is a page of the
+      // hospital's app in this language; otherwise to the dashboard.
+      loadPage(
+        returnPath(
+          `/${lang}`,
+          [`/${lang}/login`, `/${lang}/invite`, `/${lang}/platform`],
+          `/${lang}/dashboard`,
+        ),
+      );
       return;
     } catch (err) {
       const status = statusOf(err);

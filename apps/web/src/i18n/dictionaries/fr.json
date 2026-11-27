@@ -56,7 +56,7 @@
     },
     "seriousHelp": "Préjudice grave, décès ou événement sentinelle",
     "overdueHelp": "Échéance de tri ou de clôture dépassée",
-    "triagedOnTimeHelp": "Parmi les déclarations des 30 derniers jours déjà triées",
+    "triagedOnTimeHelp": "Déclarations des 30 derniers jours triées ou classées sans suite, et celles encore en attente de tri après leur échéance (comptées en retard)",
     "timeToReportHelp": "De l’ouverture du formulaire à l’envoi, sur les 30 derniers jours",
     "clock": {
       "minutes": "{time} min",
@@ -172,6 +172,7 @@
       "hospitalDays": "Les jours sont comptés à l’heure de l’hôpital : {zone}.",
       "empty": "Aucun incident à afficher. Dès qu’un incident est déclaré, il apparaît ici.",
       "emptyFiltered": "Aucun incident ne correspond à ces filtres. Modifiez-les, ou effacez-les pour voir tous les incidents.",
+      "handedOff": "L’incident {reference} a été transmis à un autre service : {unit}. Il n’apparaît plus dans cette liste.",
       "reported": "Déclaré le {date}",
       "reportedAgo": "Déclaré {ago}",
       "reportedJustNow": "Déclaré à l’instant",
@@ -242,6 +243,7 @@
       "harmLevel": "Niveau de préjudice",
       "ownerUnit": "Service chargé du traitement",
       "ownerUnitNone": "Pas encore défini",
+      "unitInactive": "{name} (service inactif)",
       "assignedTo": "Attribué à",
       "assignedToNone": "Personne pour l’instant",
       "closureSummary": "Synthèse de clôture",
@@ -254,9 +256,9 @@
     },
     "signOff": {
       "others": "Personnes pouvant valider la clôture, hormis celle qui l’a demandée : {count}.",
-      "nobody": "Hormis la personne qui l’a demandée, personne ne peut valider cette clôture : en l’état, l’incident ne peut pas être clôturé. Demandez à un administrateur d’accorder l’autorisation « Valider les clôtures qui exigent l’accord d’une deuxième personne » à une autre personne qui a accès à cet incident.",
+      "nobody": "Hormis la personne qui l’a demandée, personne ne peut valider cette clôture : en l’état, l’incident ne peut pas être clôturé. L’autorisation « Valider les clôtures qui exigent l’accord d’une deuxième personne » doit être accordée à une autre personne qui a accès à cet incident. Un administrateur l’accorde depuis « Utilisateurs et rôles ».",
       "othersBefore": "Personnes autres que vous pouvant valider la clôture : {count}.",
-      "nobodyBefore": "Personne d’autre que vous ne peut valider cette clôture. Si vous la demandez maintenant, l’incident restera en attente sans pouvoir être clôturé. Demandez d’abord à un administrateur d’accorder l’autorisation « Valider les clôtures qui exigent l’accord d’une deuxième personne » à une autre personne qui a accès à cet incident."
+      "nobodyBefore": "Personne d’autre que vous ne peut valider cette clôture. Si vous la demandez maintenant, l’incident restera en attente sans pouvoir être clôturé. L’autorisation « Valider les clôtures qui exigent l’accord d’une deuxième personne » doit d’abord être accordée à une autre personne qui a accès à cet incident. Un administrateur l’accorde depuis « Utilisateurs et rôles »."
     },
     "deadline": {
       "title": "Échéances",
@@ -431,6 +433,10 @@
     "loadTooManyTitle": "Le formulaire ne peut pas être ouvert pour le moment",
     "loadTooMany": "Ce formulaire a été ouvert trop de fois au cours de la dernière heure. Vous pourrez réessayer après {time}.",
     "loadTooManyLater": "Ce formulaire a été ouvert trop de fois au cours de la dernière heure. Réessayez plus tard.",
+    "pausedTitle": "Ce formulaire ne reçoit pas de déclarations pour le moment",
+    "paused": "Trop de déclarations ont été envoyées au cours de la dernière heure : ce formulaire est suspendu. Vous pourrez de nouveau envoyer une déclaration après {time} : rouvrez alors cette page.",
+    "pausedLater": "Trop de déclarations ont été envoyées au cours de la dernière heure : ce formulaire est suspendu. Rouvrez cette page plus tard.",
+    "timeNote": "Les heures de cette page sont celles de l’établissement : {zone}.",
     "haveCode": "Vous avez déjà envoyé une déclaration ?",
     "followUp": "Suivez-la avec votre code",
     "sentTitle": "Déclaration envoyée",

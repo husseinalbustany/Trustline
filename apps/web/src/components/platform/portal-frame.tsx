@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { statusOf } from "@/lib/api";
 import { platformApi, type Admin } from "@/lib/platform-api";
 import type { PlatformProps } from "./types";
-import { loadPage } from "@/lib/navigate";
+import { loadPage, signInFor } from "@/lib/navigate";
 
 /** The admin portal's frame. Shows nothing until the session is confirmed. */
 export function PortalFrame({
@@ -38,7 +38,8 @@ export function PortalFrame({
       .catch((err) => {
         setAdmin(null);
         // A full page load, so nothing of the previous session stays mounted.
-        if (statusOf(err) === 401) loadPage(loginPath);
+        // Signed in again, the admin comes back to the page they asked for.
+        if (statusOf(err) === 401) loadPage(signInFor(loginPath));
         else setProblem("session");
       });
   }, [loginPath]);

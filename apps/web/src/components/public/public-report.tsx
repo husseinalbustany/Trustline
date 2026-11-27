@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/dictionaries";
 import { api, codeOf, retryAfterOf, statusOf } from "@/lib/api";
-import { clockTimeIn, fill } from "@/lib/format";
+import { clockTimeAt, clockTimeIn, fill } from "@/lib/format";
 import { followUpUrl } from "@/lib/identity";
 import type { PublicReporting, ReportSent } from "@/lib/incidents";
 import { pick } from "@/lib/localized";
@@ -80,6 +80,9 @@ export function PublicReport({
   // just reads the time on their phone.
   const zone: TimeZone = form?.timeZone ?? deviceTime;
   const [sameClock, setSameClock] = useState(true);
+  // When a paused form takes reports again: worked out once, when the form
+  // arrives, so the time shown does not move on each time the page is drawn.
+  const [resumesAt, setResumesAt] = useState<Date | null>(null);
   const clock = useReportClock(zone);
   const { shown, start } = clock;
   // Called when the form arrives, without asking for it again each time the
@@ -102,6 +105,11 @@ export function PublicReport({
         setForm(loaded);
         setSameClock(
           wallClock(now, hospitalZone) === wallClock(now, deviceTime),
+        );
+        setResumesAt(
+          loaded.paused && loaded.retryAfterSeconds
+            ? new Date(now.getTime() + loaded.retryAfterSeconds * 1000)
+            : null,
         );
         setProblem(null);
         shownOn.current({ timeZone: hospitalZone });
@@ -151,7 +159,11 @@ export function PublicReport({
     setCode(sent.followUpCode ?? "");
   }
 
-  const clockTime = clockTimeIn(lang);
+  // When to try again, on the clock every other time on the form is on:
+  // the organization's once the form has arrived (the form says which clock
+  // that is), and this device's when it could not be opened, when nothing is
+  // known of the organization and nothing is said about clocks.
+  const clockTime = clockTimeIn(lang, zone);
   // The form's own answers to a refusal. None of them is the staff wording:
   // "reload the page" would throw away what this reader has written.
   const refusal = (err: unknown) => {
@@ -254,6 +266,46 @@ export function PublicReport({
     );
   }
 
+  // Coming back to a report already sent works whether or not the form
+  // takes new ones.
+  const followUpLine = (
+    <p className="border-t border-line pt-4 text-base">
+      {p.haveCode}{" "}
+      <Link
+        href={followUpPath}
+        className="inline-flex min-h-11 items-center font-medium text-accent underline"
+      >
+        {p.followUp}
+      </Link>
+    </p>
+  );
+  // Which clock a time is on, said only when this device shows another.
+  const clockNote = !sameClock && (
+    <p className="mt-2 text-sm text-muted">
+      {fill(p.timeNote, { zone: zoneLabel(lang, zone) })}
+    </p>
+  );
+
+  // Too many reports this hour: said before anyone starts writing, with
+  // when it takes reports again and what to do if it is urgent.
+  if (form.paused) {
+    return frame(
+      <div className="flex flex-col gap-5">
+        <div className="rounded-lg border border-line bg-background p-5">
+          <h1 className="text-xl font-semibold">{p.pausedTitle}</h1>
+          <p className="mt-2 text-base text-muted">
+            {resumesAt
+              ? fill(p.paused, { time: clockTimeAt(lang, zone)(resumesAt) })
+              : p.pausedLater}
+          </p>
+          {resumesAt && clockNote}
+          <p className="mt-3 text-base">{p.urgent}</p>
+        </div>
+        {followUpLine}
+      </div>,
+    );
+  }
+
   // A plain question for someone who is not staff, sent as three of the
   // five levels; whoever triages it sets the level.
   const harmChoices: HarmChoice[] = (
@@ -296,15 +348,7 @@ export function PublicReport({
         send={send}
         explain={refusal}
       />
-      <p className="border-t border-line pt-4 text-base">
-        {p.haveCode}{" "}
-        <Link
-          href={followUpPath}
-          className="inline-flex min-h-11 items-center font-medium text-accent underline"
-        >
-          {p.followUp}
-        </Link>
-      </p>
+      {followUpLine}
     </div>,
   );
 }

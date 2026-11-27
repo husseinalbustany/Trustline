@@ -414,6 +414,14 @@ export type PublicReporting = {
    * an API older than the form.
    */
   timeZone?: string;
+  /**
+   * Too many reports have reached the organization this hour: the form
+   * takes none until the hour moves on. Absent from an API older than this
+   * page, which says so only when a report is sent.
+   */
+  paused?: boolean;
+  /** When paused, the seconds until it takes reports again, if known. */
+  retryAfterSeconds?: number | null;
   orgUnits: {
     id: string;
     parentId: string | null;

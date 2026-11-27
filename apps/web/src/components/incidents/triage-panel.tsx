@@ -8,6 +8,7 @@ import { Field, inputClass } from "@/components/ui/field";
 import { Panel } from "@/components/ui/panel";
 import { api, codeOf } from "@/lib/api";
 import { fill, numberFormat } from "@/lib/format";
+import { tellHandOff } from "@/lib/hand-off";
 import type { OrgUnit } from "@/lib/identity";
 import {
   harmLevels,
@@ -233,10 +234,16 @@ function TriageForm({
         },
       );
       // Handed to a department this user cannot see: there is no incident
-      // to show any more, so back to the list (the form warned of this).
+      // to show any more, so back to the list (the form warned of this),
+      // which says where it went. In place of this page in the history:
+      // back would only find the incident gone.
       if ("handedOff" in result) {
+        const unit = units.find((u) => u.id === ownerUnitId);
+        tellHandOff(
+          unit ? { reference: incident.reference, unit: unit.name } : null,
+        );
         setBusy(false);
-        return router.push(`/${lang}/incidents`);
+        return router.replace(`/${lang}/incidents`);
       }
       // Said before the incident is replaced: this form is then put away.
       say({
