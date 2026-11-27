@@ -15,11 +15,14 @@ export function PortalFrame({
   lang,
   t,
   language,
+  appName,
   children,
   signOutFailed,
   sessionError,
 }: PlatformProps & {
   language: string;
+  /** The product's name, which is all of the title that fits on a phone. */
+  appName: string;
   signOutFailed: string;
   sessionError: string;
   children: ReactNode;
@@ -64,7 +67,9 @@ export function PortalFrame({
   return (
     <div className="flex min-h-dvh flex-col">
       <header className="border-b border-line bg-surface">
-        <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-3 px-4 sm:gap-4 sm:px-6">
+        {/* Closer together on a phone, as in the app's bar, so that the
+            product's name, the languages and the way out fit in 390 pixels. */}
+        <div className="mx-auto flex h-14 w-full max-w-6xl items-center gap-2 px-3 sm:gap-4 sm:px-6">
           {/* The title gives way on a phone, so the buttons stay on screen. */}
           <Link
             href={`/${lang}/platform/clients`}
@@ -77,9 +82,12 @@ export function PortalFrame({
             >
               T
             </span>
-            <span className="truncate">{t.title}</span>
+            {/* On a phone the portal's full title would be cut to its first
+                word, which in some languages is not the product's name. */}
+            <span className="truncate sm:hidden">{appName}</span>
+            <span className="truncate max-sm:hidden">{t.title}</span>
           </Link>
-          <div className="ms-auto flex shrink-0 items-center gap-2">
+          <div className="ms-auto flex shrink-0 items-center gap-1 sm:gap-2">
             {problem === "signOut" && (
               <span role="alert" className="text-sm text-danger">
                 {signOutFailed}

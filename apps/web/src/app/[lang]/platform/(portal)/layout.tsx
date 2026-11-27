@@ -20,6 +20,7 @@ export default async function PortalLayout({
         lang={lang}
         t={dict.platform}
         language={dict.shell.language}
+        appName={dict.app.name}
         signOutFailed={dict.shell.signOutFailed}
         sessionError={dict.shell.sessionError}
       >

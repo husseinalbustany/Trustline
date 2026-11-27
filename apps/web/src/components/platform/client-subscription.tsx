@@ -28,6 +28,7 @@ import {
   type TenantSubscription,
 } from "@/lib/platform-api";
 import { dependencyRefusal, needsText, type ModuleNames } from "./module-words";
+import { limitsLine } from "./plans-list";
 import type { PlatformProps } from "./types";
 
 type Message = { kind: "ok" | "error"; text: string };
@@ -298,13 +299,12 @@ export function ClientSubscription({
             t={w.meter}
           />
           <p className="text-xs text-muted tabular-nums">
-            {t.plans.limitNames.storageMb}{" "}
-            {limitText(effective.limits.storageMb)}
+            {limitsLine(lang, effective.limits, t.plans, [
+              "storageMb",
+              "aiCreditsPerMonth",
+            ])}
             {" · "}
-            {t.plans.limitNames.aiCreditsPerMonth}{" "}
-            {limitText(effective.limits.aiCreditsPerMonth)}
-            {" · "}
-            {w.notCounted}
+            <span className="whitespace-nowrap">{w.notCounted}</span>
           </p>
         </div>
         <p className="text-xs text-muted">
@@ -508,12 +508,22 @@ export function ClientSubscription({
           </p>
         )}
         <div className="flex flex-wrap gap-2">
+          {/* The question's own answers: what is about to be done, and
+              leaving the status as it is. Neither reads "Cancel", which is
+              what a subscription is about to be. */}
           <Button type="submit" disabled={busy}>
-            {confirming ? w.confirmSave : w.save}
+            {confirming === "cancelled"
+              ? w.confirmCancelButton
+              : confirming === "suspended"
+                ? w.confirmSuspendButton
+                : w.save}
           </Button>
           {confirming && (
-            <Button variant="secondary" onClick={() => setConfirming(null)}>
-              {t.form.cancel}
+            <Button
+              variant="secondary"
+              onClick={() => set({ status: stored.status })}
+            >
+              {w.keep}
             </Button>
           )}
         </div>

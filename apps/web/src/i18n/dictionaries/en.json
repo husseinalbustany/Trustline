@@ -1,7 +1,7 @@
 {
   "app": {
     "name": "Trustline",
-    "tagline": "Quality, risk and incident management for hospitals"
+    "tagline": "Quality, risk and incident management"
   },
   "shell": {
     "skipToContent": "Skip to content",
@@ -89,7 +89,7 @@
       "hazard": "Hazard"
     },
     "typeHelp": {
-      "incident": "Something went wrong and reached a patient, a visitor or a member of staff.",
+      "incident": "Something went wrong and reached a person: a member of staff, a visitor or anyone else.",
       "near_miss": "Something went wrong but was caught before it reached anyone.",
       "hazard": "A condition that could cause harm if nothing is done."
     },
@@ -170,7 +170,7 @@
       "channelPublic": "Public link, without signing in",
       "from": "Reported from",
       "to": "Reported up to",
-      "hospitalDays": "Days are counted in the hospital's time: {zone}.",
+      "hospitalDays": "Days are counted in the organization's time: {zone}.",
       "empty": "No incidents to show. When one is reported, it appears here.",
       "emptyFiltered": "No incidents match these filters. Change them, or clear them to see every incident.",
       "handedOff": "{reference} was handed to {unit}. It no longer appears in this list.",
@@ -194,23 +194,23 @@
       "where": "Where it happened",
       "occurredAt": "When it happened",
       "occurredAtHelp": "Set to now. Change it if it happened earlier; it cannot be in the future.",
-      "hospitalTime": "Enter it in the hospital's time: {zone}.",
+      "hospitalTime": "Enter it in the organization's time: {zone}.",
       "description": "What happened",
-      "descriptionHelp": "Use your own words. Do not type patient names or record numbers.",
+      "descriptionHelp": "Use your own words. Do not type the names or identifying numbers of the people involved.",
       "immediateAction": "What was done immediately (optional)",
-      "immediateActionHelp": "Do not type patient names or record numbers.",
+      "immediateActionHelp": "Do not type the names or identifying numbers of the people involved.",
       "harmLevel": "Harm level",
-      "seriousNote": "This report alerts nobody straight away: it is read when the quality team next looks at new reports. Follow your hospital's escalation procedure now, as you would without this form.",
+      "seriousNote": "This report alerts nobody straight away: it is read when the quality team next looks at new reports. Follow your organization's escalation procedure now, as you would without this form.",
       "anonymous": "Report anonymously",
-      "whoSeesName": "If you leave this box unticked, your name is saved with the report. Only staff the hospital has authorised to see who reported, normally the quality team, can see it: everyone else who works on the report sees “The reporter” in its place.",
-      "anonymousWarning": "Your name is not saved with the report: nobody, not even the quality team, can see who sent it. It will not appear under “Reported by me”, and you will not be notified of replies: come back with the code to read them. After sending, you get a follow-up code, shown once: with it you can come back to read the replies and add a comment. The hospital knows about you only what you write here.",
+      "whoSeesName": "If you leave this box unticked, your name is saved with the report. Only staff your organization has authorised to see who reported, normally the quality team, can see it: everyone else who works on the report sees “The reporter” in its place.",
+      "anonymousWarning": "Your name is not saved with the report: nobody, not even the quality team, can see who sent it. It will not appear under “Reported by me”. After sending, you get a follow-up code, shown once: with it you can come back to read the replies and add a comment. You will not be notified of replies, so come back with the code to check. The organization knows about you only what you write here.",
       "submit": "Send report",
       "cancel": "Cancel",
       "doneTitle": "Report sent",
       "doneHelp": "Thank you. The quality team will review it. Its reference is:",
       "view": "View the report",
       "another": "Report another incident",
-      "intro": "Reports are used to make care safer, not to blame anyone.",
+      "intro": "Reports are used to make things safer, not to blame anyone.",
       "loadError": "Could not load the report form. Reload the page."
     },
     "code": {
@@ -240,7 +240,7 @@
       "reportedBy": "Reported by",
       "anonymous": "Anonymous",
       "sentPublicly": "Sent through the public link, without signing in",
-      "reporterHidden": "Only staff the hospital has authorised, normally the quality team, can see this",
+      "reporterHidden": "Only staff your organization has authorised, normally the quality team, can see this",
       "harmLevel": "Harm level",
       "ownerUnit": "Handling department",
       "ownerUnitNone": "Not decided yet",
@@ -282,7 +282,7 @@
       "title": "Timeline",
       "byline": "{name} · {date}",
       "theReporter": "The reporter",
-      "staff": "Hospital staff",
+      "staff": "A member of staff",
       "unknownPerson": "Unknown user",
       "note": "Note:",
       "changed": {
@@ -318,16 +318,16 @@
       "empty": "No comments yet.",
       "internal": "Internal",
       "body": "Add a comment",
-      "bodyHelp": "Do not type patient names or record numbers.",
+      "bodyHelp": "Do not type the names or identifying numbers of the people involved.",
       "visibility": "Who can read it",
       "visibilityInternal": "Internal: staff handling the incident only, not the reporter",
       "visibilityEveryone": "The reporter can read this, as can everyone who can see this incident",
-      "reporterHelp": "The staff handling this incident will read your comment. Do not type patient names or record numbers.",
+      "reporterHelp": "The staff handling this incident will read your comment. Do not type the names or identifying numbers of the people involved.",
       "submit": "Add comment"
     },
     "reader": {
-      "anonymous": "This report was sent anonymously: whoever holds its follow-up code reads what the reporter can read, and may not work at the hospital.",
-      "maybeAnonymous": "If this report was sent anonymously, whoever holds its follow-up code reads what the reporter can read, and may not work at the hospital."
+      "anonymous": "This report was sent anonymously: whoever holds its follow-up code reads what the reporter can read, and may not be a member of staff.",
+      "maybeAnonymous": "If this report was sent anonymously, whoever holds its follow-up code reads what the reporter can read, and may not be a member of staff."
     },
     "triage": {
       "title": "Triage",
@@ -377,8 +377,8 @@
         "send_back": "The incident goes back to being worked on. Say what is still needed.",
         "withdraw": "The request is taken back, and the incident goes back to being worked on."
       },
-      "noteHelp": "The reporter can read this note. Do not type patient names or record numbers.",
-      "noteHelpInternal": "The reporter cannot read this note. Do not type patient names or record numbers.",
+      "noteHelp": "The reporter can read this note. Do not type the names or identifying numbers of the people involved.",
+      "noteHelpInternal": "The reporter cannot read this note. Do not type the names or identifying numbers of the people involved.",
       "revisionHelp": "Your decision is recorded for the incident as this page shows it. If someone has changed the incident since you opened this page, nothing is saved and the page shows the latest version for you to check.",
       "confirm": "Confirm",
       "cancel": "Cancel",
@@ -408,13 +408,13 @@
       "signedOut": "Your session has ended, so this was not saved. Sign in again in another tab, then come back to this page and try again: what you typed is still here.",
       "notFound": "This incident does not exist, or your role does not let you see it. Go back to the list.",
       "generic": "Could not save. Check your connection and try again.",
-      "subscription_suspended": "This was not saved: your organization's account is read-only for now. Contact your administrator."
+      "subscription_suspended": "This was not saved: changes like this are paused for your organization's account. Contact your administrator."
     },
     "inactiveUnit": "a department that is now inactive"
   },
   "publicReport": {
     "title": "Report an incident",
-    "description": "Tell the hospital about something that went wrong, nearly went wrong, or could cause harm. It takes about two minutes.",
+    "description": "Tell {organization} about something that went wrong, nearly went wrong, or could cause harm. It takes about two minutes.",
     "urgent": "This form is not watched around the clock. If someone is in danger now, tell a member of staff straight away.",
     "deviceTime": "Use the time your phone or computer shows.",
     "form": {
@@ -427,10 +427,10 @@
       "moderate": "Someone was hurt",
       "severe": "Someone was seriously hurt or died"
     },
-    "privacy": "You do not sign in, and you are not asked for your name. Nothing about you or your phone is saved with the report. After sending, you get a follow-up code to come back and read any reply from the hospital. The hospital knows about you only what you write here.",
+    "privacy": "You do not sign in, and you are not asked for your name. Nothing about you or your phone is saved with the report. After sending, you get a follow-up code to come back and read any reply. {organization} knows about you only what you write here.",
     "unavailableTitle": "Reporting is not available on this link",
-    "unavailable": "This link is not in use. To report an incident, speak to a member of staff or to the hospital's quality team.",
-    "notSent": "Your report was not sent: this link has just stopped taking reports. Speak to a member of staff or to the hospital's quality team.",
+    "unavailable": "This link is not in use. To report an incident, speak to a member of staff or to the quality team.",
+    "notSent": "Your report was not sent: this link has just stopped taking reports. Speak to a member of staff or to the quality team.",
     "loadErrorTitle": "The form could not be loaded",
     "loadError": "Check your connection, then reload the page.",
     "loadTooManyTitle": "The form cannot be opened right now",
@@ -447,7 +447,7 @@
     "another": "Send another report",
     "tooMany": "Too many reports were sent in the last hour, so this one was not sent. Keep this page open: what you wrote is still here. You can try again after {time}.",
     "tooManyLater": "Too many reports were sent in the last hour, so this one was not sent. Keep this page open: what you wrote is still here. Try again later.",
-    "busy": "Your report was not sent: the hospital was receiving another report at the same moment. What you wrote is still here: send it again in a moment.",
+    "busy": "Your report was not sent: another report was arriving at the same moment. What you wrote is still here: send it again in a moment.",
     "errors": {
       "invalid": "Your report was not sent. Check each answer, then send it again.",
       "occurred_in_future": "Your report was not sent: the time it happened is in the future. Correct it, then send it again. What you wrote is still here.",
@@ -509,7 +509,7 @@
       "incident_assigned": "{reference} has been assigned to you.",
       "incident_handed_over": "{reference} has been handed to a department you look after.",
       "sentinel_flagged": "{reference} has been marked as a sentinel event: closing it will need a second person to sign off.",
-      "public_form_paused": "Reporting without sign-in is paused: {limit} reports arrived through the public link in the last hour, the most it accepts. It takes reports again on its own as the hour passes; until then, anyone who tries is asked to come back later.",
+      "public_form_paused": "Reporting without sign-in is paused: the public link has taken the most reports it accepts in an hour ({limit}). It takes reports again on its own as the hour passes; until then, anyone who tries is asked to come back later.",
       "comment_added": "There is a new comment on {reference}.",
       "status_changed": {
         "closed": "{reference} has been closed.",
@@ -610,17 +610,17 @@
   },
   "subscription": {
     "pastDue": "Your organization's subscription payment is overdue. Everything keeps working. To settle it, contact Trustline.",
-    "suspendedTitle": "Your organization's account is read-only for now",
+    "suspendedTitle": "Changes are paused for your organization's account",
     "suspended": "Reporting and handling incidents work as usual, and so does taking away someone's access. Nothing else can be added or changed for now. If you need something changed, contact your administrator; administrators can contact Trustline.",
     "suspendedNoReporting": "Reading works as usual, and so does taking away someone's access. Nothing else can be added or changed for now. If you need something changed, contact your administrator; administrators can contact Trustline.",
-    "refused": "This was not saved: your organization's account is read-only for now. Contact your administrator; administrators can contact Trustline.",
+    "refused": "This was not saved: changes like this are paused for your organization's account. Contact your administrator; administrators can contact Trustline.",
     "limit": {
-      "users": "Not saved: your organization's plan has a limit of {max} on users, and it has been reached, so no one can be added or enabled again. Everyone who already has access keeps it. Disabling the account of someone who has left frees a place. To raise the limit, contact your administrator; administrators can ask Trustline to change the plan.",
-      "sites": "Not saved: your organization's plan has a limit of {max} on facilities switched on, and it has been reached, so no facility can be added or switched on again. Existing facilities, departments and units are not affected, and departments and units can still be added. Switching off a facility no longer in use frees a place. To raise the limit, contact your administrator; administrators can ask Trustline to change the plan."
+      "users": "Not saved: your organization has reached its plan's limit on users ({max}), so no one can be added or enabled again. Everyone who already has access keeps it. Disabling the account of someone who has left frees a place. To raise the limit, contact your administrator; administrators can ask Trustline to change the plan.",
+      "sites": "Not saved: your organization has reached its plan's limit on active facilities ({max}), so no facility can be added or switched on again. Existing facilities, departments and units are not affected, and departments and units can still be added. Switching off a facility no longer in use frees a place. To raise the limit, contact your administrator; administrators can ask Trustline to change the plan."
     },
     "notIncluded": {
       "title": "Not part of your organization's subscription",
-      "body": "This part of Trustline is not included in what your organization uses, so there is nothing to show here. If you need it, ask your administrator.",
+      "body": "Your organization's subscription does not include this part of Trustline, so there is nothing to show here. If you need it, ask your administrator.",
       "back": "Go to the dashboard"
     }
   },
@@ -640,7 +640,7 @@
     },
     "clients": {
       "title": "Clients",
-      "description": "Every hospital and organization using Trustline.",
+      "description": "Every organization using Trustline.",
       "add": "Add client",
       "empty": "No clients yet. Add the first one.",
       "loadError": "Could not load clients. Reload the page.",
@@ -655,7 +655,7 @@
     },
     "form": {
       "newTitle": "Add client",
-      "newDescription": "Create the record for a new hospital or organization.",
+      "newDescription": "Create the record for a new organization.",
       "slug": "Identifier",
       "slugHelp": "Lowercase letters, digits and hyphens, 3 to 40 characters. Cannot be changed later.",
       "accreditationStandard": "Accreditation standard",
@@ -666,7 +666,7 @@
       "dataRegionHelp": "Where this client's data must be hosted. Leave empty if not decided.",
       "timeZone": {
         "label": "Time zone",
-        "help": "The hospital's own clock. Every date, deadline and “last 30 days” its staff see follows it. Type part of a city or region to search, for example Riyadh.",
+        "help": "The client's own clock. Every date, deadline and “last 30 days” its staff see follows it. Type part of a city or region to search, for example Riyadh.",
         "list": "Time zones",
         "now": "Time there now: {time} – {zone}",
         "none": "No time zone matches. Try the name of a large city in the same zone.",
@@ -726,15 +726,15 @@
       "copied": "Copied"
     },
     "administrator": {
-      "title": "Hospital administrator",
+      "title": "Client administrator",
       "help": "Create the first administrator for this client. They add everyone else.",
       "create": "Create administrator",
       "emailTaken": "A user with this email already exists for this client.",
-      "exists": "This client already has an administrator. The hospital adds further administrators itself.",
+      "exists": "This client already has an administrator. The client adds further administrators itself.",
       "suspended": "This client is suspended. Reactivate it first.",
       "ssoOnly": "This client uses single sign-on only, so a password link cannot be used.",
       "cancelled": "This client's subscription is cancelled, so nobody can sign in. Change its status in the Subscription panel first.",
-      "limitReached": "This client's plan has a limit of {max} on users, and it has been reached. Raise the users limit in the Subscription panel, then create the administrator."
+      "limitReached": "This client has reached its plan's limit on users ({max}). Raise the users limit in the Subscription panel, then create the administrator."
     },
     "loadError": "Could not load this client. Reload the page.",
     "nav": {
@@ -755,9 +755,10 @@
       "modules": "Modules:",
       "coreOnly": "Core only",
       "unlimited": "Unlimited",
+      "limitPair": "{name}: {value}",
       "limitNames": {
         "users": "Users",
-        "sites": "Sites (facilities)",
+        "sites": "Facilities",
         "storageMb": "Storage (MB)",
         "aiCreditsPerMonth": "AI credits a month"
       },
@@ -787,31 +788,31 @@
         "limitHelp": {
           "users": "Invited and active accounts. Disabled ones do not count.",
           "sites": "Facilities switched on. Departments and units do not count.",
-          "storageMb": "Stored, not enforced yet.",
-          "aiCreditsPerMonth": "Stored, not enforced yet."
+          "storageMb": "Saved with the plan, not applied yet.",
+          "aiCreditsPerMonth": "Saved with the plan, not applied yet."
         },
         "notEnforced": "Only users and sites are counted today. Incident reports are never limited.",
         "extras": "Extras",
         "extrasHelp": "Recorded with the plan. The plan does not switch any of them on or off yet.",
         "prices": "Prices",
-        "pricesHelp": "Kept as data, for reference. Nothing is charged from here, and clients never see prices.",
+        "pricesHelp": "For reference only. Nothing is charged from here, and clients never see prices.",
         "noPrices": "No prices.",
         "priceNumber": "Price {number}",
         "currency": "Currency",
         "amount": "Amount",
-        "term": "Term",
+        "term": "Billing period",
         "terms": {
           "monthly": "Monthly",
           "yearly": "Yearly"
         },
-        "basis": "Basis",
+        "basis": "Price basis",
         "bases": {
-          "flat": "Flat",
+          "flat": "Flat fee",
           "per_user": "Per user",
-          "per_site": "Per site"
+          "per_site": "Per facility"
         },
         "addPrice": "Add a price",
-        "removePrice": "Remove",
+        "removePrice": "Remove this price",
         "position": "Order",
         "positionHelp": "Plans are listed from the lowest number up.",
         "create": "Add plan",
@@ -829,11 +830,11 @@
         "reactivated": "The plan can be given to clients again.",
         "retiredDone": "Plan retired. Its clients keep it.",
         "errors": {
-          "language_mismatch": "Write the name in English, Arabic and French. A description, if there is one, needs all three too.",
+          "language_mismatch": "Write the name in every language Trustline has. A description, if there is one, needs every language too.",
           "code_taken": "Another plan already uses this code.",
           "invalid": "Check the fields and try again.",
           "generic": "Could not save. Try again.",
-          "dependency": "{module} needs {requires}. Add it to the plan, or untick the module that needs it.",
+          "dependency": "{module} needs {requires}. Add {requires} to the plan, or untick {module}.",
           "dependencyAnyOther": "{module} needs at least one other module. Add one, or untick it.",
           "clientDependency": "A client on this plan has {module} as an add-on, and this change would leave it without the module it needs. Change that client's add-ons first, or keep that module in the plan."
         }
@@ -863,7 +864,7 @@
         "trial": "Trial",
         "active": "Active",
         "past_due": "Past due",
-        "suspended": "Suspended (read-only)",
+        "suspended": "Suspended (changes paused)",
         "cancelled": "Cancelled"
       },
       "statusHelp": {
@@ -883,17 +884,19 @@
       "addOnsHelp": "Modules on top of the plan, for this client only.",
       "inPlan": "In the plan",
       "overrides": "Limits for this client",
-      "overridesHelp": "Each limit follows the plan unless it is set here. A limit lowered below what the client already has affects nobody already there.",
-      "usePlan": "As the plan: {value}",
+      "overridesHelp": "Each limit follows the plan unless it is set here. Lowering a limit below what the client already has removes nothing: only new additions are refused.",
+      "usePlan": "Same as the plan: {value}",
       "ownLimit": "Own limit",
       "ownLimitOf": "Own limit: {limit}",
       "note": "Note",
       "noteHelp": "For Trustline staff only. The client never sees it.",
       "save": "Save subscription",
       "saved": "Subscription saved.",
-      "confirmSave": "Yes, save",
-      "confirmSuspend": "Suspend the subscription of {name}? Its staff can then only read, report and handle incidents, and take away access; everything else is refused until the status changes. Choose “Yes, save” to confirm.",
-      "confirmCancel": "Cancel the subscription of {name}? Nobody there can sign in from now on, everyone is signed out, and the public reporting link stops. Nothing is deleted, but sessions stay ended even if it is made active again. Choose “Yes, save” to confirm.",
+      "confirmCancelButton": "Yes, cancel the subscription",
+      "keep": "Keep it as it is",
+      "confirmSuspendButton": "Yes, suspend the subscription",
+      "confirmSuspend": "Suspend the subscription of {name}? Its staff can then only read, report and handle incidents, and take away access; everything else is refused until the status changes. Choose “Yes, suspend the subscription” to confirm.",
+      "confirmCancel": "Cancel the subscription of {name}? Nobody there can sign in from now on, everyone is signed out, and the public reporting link stops. Nothing is deleted, but sessions stay ended even if it is made active again. Choose “Yes, cancel the subscription” to confirm.",
       "errors": {
         "unknown_plan": "This plan no longer exists. Reload the page and choose another.",
         "plan_retired": "This plan has been retired, so the client cannot be moved to it. Choose another.",
@@ -908,7 +911,7 @@
     "login": {
       "title": "Sign in",
       "org": "Organization ID",
-      "orgHelp": "The identifier your hospital gave you.",
+      "orgHelp": "The identifier your organization gave you.",
       "email": "Email",
       "password": "Password",
       "submit": "Sign in",
@@ -1006,8 +1009,8 @@
         "unknownUnit": "A department chosen here has been switched off. Reload the page and choose another.",
         "inactiveDepartment": "{name} (inactive)",
         "outsideScope": "Your role does not cover this user, or the department chosen for them. Choose a department your role covers, or ask your administrator.",
-        "rolesReadOnly": "Your organization's account is read-only for now: roles can be taken away, but not given.",
-        "enableReadOnly": "Your organization's account is read-only for now, so this account cannot be enabled again."
+        "rolesReadOnly": "Changes are paused for your organization's account: roles can be taken away, but not given.",
+        "enableReadOnly": "Changes are paused for your organization's account, so this account cannot be enabled again."
       }
     },
     "roles": {
@@ -1044,12 +1047,12 @@
         "deleteError": "Could not delete the role. Try again.",
         "name": "Name",
         "languageMismatch": "Fill in the name in the default language.",
-        "permissionsReadOnly": "Your organization's account is read-only for now: permissions can be taken away from this role, but not added, and its name cannot be changed."
+        "permissionsReadOnly": "Changes are paused for your organization's account: permissions can be taken away from this role, but not added, and its name cannot be changed."
       }
     },
     "organization": {
       "title": "Organization",
-      "description": "The facilities, departments and units of your hospital. Incidents, users and role scopes are linked to them.",
+      "description": "The facilities, departments and units of your organization. Incidents, users and role scopes are linked to them.",
       "listLabel": "Organization structure",
       "type": {
         "facility": "Facility",
@@ -1090,7 +1093,7 @@
         "choose": "Choose…",
         "name": "Name",
         "code": "Code",
-        "codeHelp": "2 to 40 capital letters (A to Z), digits or hyphens, for example ICU-2. It cannot be changed later.",
+        "codeHelp": "2 to 40 capital letters (A to Z), digits or hyphens, for example NORTH-2. It cannot be changed later.",
         "codeFixed": "The code cannot be changed.",
         "save": "Save changes",
         "saved": "Changes saved.",
@@ -1115,7 +1118,7 @@
         "printHelp": "Prints one page to put up on the spot: the code, the names and a line of instruction."
       },
       "errors": {
-        "language_mismatch": "Write the name in the hospital's default language. If the hospital's languages were changed recently, reload the page first.",
+        "language_mismatch": "Write the name in the organization's default language. If the organization's languages were changed recently, reload the page first.",
         "invalid_parent": "It cannot be placed there: a department goes in a facility, and a unit in a department. Choose another place.",
         "parent_inactive": "The facility or department above it is switched off. Switch that one on first, or choose another.",
         "code_taken": "This code is already in use, possibly by something that is switched off. Enter a different code.",
@@ -1134,7 +1137,7 @@
         "title": "Reporting without sign-in",
         "on": "On",
         "off": "Off",
-        "what": "When this is on, anyone who has the link, or who scans the QR code of a unit, can send a report without signing in: a visitor, a patient, or a member of staff with no account. These reports are always anonymous. They arrive in the incidents list like any other, and the sender gets a follow-up code to read your replies.",
+        "what": "When this is on, anyone who has the link, or who scans the QR code of a unit, can send a report without signing in: a visitor, a member of the public, or a member of staff with no account. These reports are always anonymous. They arrive in the incidents list like any other, and the sender gets a follow-up code to read your replies.",
         "shows": "The form shows the names of your facilities, departments, units and incident categories to anyone who opens the link. It does not show any incidents.",
         "offHelp": "While it is off, the link and the QR codes open a page saying that reporting is not available.",
         "onHelp": "Switching it off stops the link and every printed QR code at once. Reports already received are kept, and their follow-up codes keep working.",
@@ -1151,7 +1154,7 @@
       },
       "deadlines": {
         "title": "Deadlines for triage and closure",
-        "what": "These numbers set how long your hospital allows itself to triage a new report and to close an incident, by harm level. Both are counted from the moment the report is made. Anything past its time shows as overdue in the incidents list and on the dashboard, and the people responsible for it are notified.",
+        "what": "These numbers set how long your organization allows itself to triage a new report and to close an incident, by harm level. Both are counted from the moment the report is made. Anything past its time shows as overdue in the incidents list and on the dashboard, and the people responsible for it are notified.",
         "applies": "A change applies to new reports, and to an incident whose harm level or sentinel flag is changed afterwards: its closure deadline is then worked out again from this table. Other deadlines already set do not move. Hours and days are calendar time, so nights, weekends and holidays count.",
         "sentinel": "A sentinel event follows the row for a death, whatever its harm level.",
         "level": "Harm level",
@@ -1171,7 +1174,7 @@
           "trial": "Trial",
           "active": "Active",
           "past_due": "Payment overdue",
-          "suspended": "Read-only"
+          "suspended": "Changes paused"
         },
         "startsOn": "Started on",
         "renewsOn": "Renews on",
@@ -1189,7 +1192,7 @@
         "sitesHelp": "Facilities switched on. Departments and units do not count.",
         "storage": "Storage",
         "ai": "AI credits a month",
-        "notInUse": "Not in use yet",
+        "notInUse": "Not counted yet",
         "meter": {
           "usedOf": "{used} of {max}",
           "inUse": "{used} in use",

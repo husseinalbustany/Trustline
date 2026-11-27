@@ -2,7 +2,7 @@
 
 import { Plus } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { ButtonLink } from "@/components/ui/button-link";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Panel } from "@/components/ui/panel";
@@ -12,27 +12,45 @@ import { pick } from "@/lib/localized";
 import {
   limitKeys,
   platformApi,
+  type LimitKey,
   type Limits,
   type Plan,
 } from "@/lib/platform-api";
 import { moduleList, type ModuleNames } from "./module-words";
 import type { PlatformProps } from "./types";
 
-/** A plan's limits in one line: "Users 100 · Sites 1 · …". */
+/**
+ * Limits in one line: "Users: 100 · Facilities: 1 · …". Each name stays on
+ * the same line as its figure; the line breaks only between pairs.
+ */
 export function limitsLine(
   lang: string,
-  limits: Limits,
-  words: { limitNames: Record<string, string>; unlimited: string },
-) {
+  limits: Partial<Limits>,
+  words: {
+    limitNames: Record<string, string>;
+    unlimited: string;
+    limitPair: string;
+  },
+  keys: readonly LimitKey[] = limitKeys,
+): ReactNode {
   const numbers = numberFormat(lang);
-  return limitKeys
-    .map(
-      (key) =>
-        `${words.limitNames[key]} ${
-          limits[key] === null ? words.unlimited : numbers.format(limits[key])
-        }`,
-    )
-    .join(" · ");
+  return keys.map((key, i) => {
+    const limit = limits[key];
+    return (
+      <Fragment key={key}>
+        {i > 0 && " · "}
+        <span className="whitespace-nowrap">
+          {fill(words.limitPair, {
+            name: words.limitNames[key],
+            value:
+              limit === null || limit === undefined
+                ? words.unlimited
+                : numbers.format(limit),
+          })}
+        </span>
+      </Fragment>
+    );
+  });
 }
 
 /** The plans Trustline offers, retired ones included, in their order. */

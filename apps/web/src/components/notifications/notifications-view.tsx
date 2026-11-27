@@ -213,7 +213,8 @@ export function NotificationsView({
     return (
       <li
         key={n.id}
-        className={`flex gap-3 border-b border-line py-3 pe-4 last:border-b-0 ${
+        // On a phone the button goes under the text, which keeps the width.
+        className={`flex gap-3 border-b border-line py-3 pe-4 last:border-b-0 max-sm:flex-col ${
           // A bar down the leading edge marks what has not been read.
           unread ? "border-s-4 border-s-accent ps-3" : "ps-4"
         }`}
@@ -281,7 +282,7 @@ export function NotificationsView({
         {unread && !opens && (
           <Button
             variant="secondary"
-            className="shrink-0"
+            className="shrink-0 max-sm:self-start"
             onClick={() => void markRead(n.id)}
           >
             {t.markRead}

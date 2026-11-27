@@ -1,7 +1,7 @@
 {
   "app": {
     "name": "Trustline",
-    "tagline": "Gestion de la qualité, des risques et des incidents pour les hôpitaux"
+    "tagline": "Gestion de la qualité, des risques et des incidents"
   },
   "shell": {
     "skipToContent": "Aller au contenu",
@@ -89,7 +89,7 @@
       "hazard": "Danger"
     },
     "typeHelp": {
-      "incident": "Un événement indésirable qui a touché un patient, un visiteur ou un membre du personnel.",
+      "incident": "Un événement indésirable qui a touché une personne : un membre du personnel, un visiteur ou toute autre personne.",
       "near_miss": "Un événement indésirable détecté avant de toucher qui que ce soit.",
       "hazard": "Une situation qui pourrait causer un préjudice si rien n’est fait."
     },
@@ -128,7 +128,7 @@
       "death": "Décès"
     },
     "harmHelp": {
-      "none": "L’événement a touché quelqu’un, sans symptôme ni traitement nécessaire.",
+      "none": "L’événement a touché quelqu’un, sans provoquer de symptôme ni nécessiter de traitement.",
       "mild": "Préjudice de courte durée, qui n’a demandé qu’une surveillance accrue ou un traitement mineur.",
       "moderate": "Préjudice qui a demandé un traitement supplémentaire ou un séjour prolongé, sans séquelle permanente.",
       "severe": "Préjudice permanent, ou qui a demandé un traitement vital ou une intervention lourde.",
@@ -170,7 +170,7 @@
       "channelPublic": "Lien public, sans authentification",
       "from": "Déclaré à partir du",
       "to": "Déclaré jusqu’au",
-      "hospitalDays": "Les jours sont comptés à l’heure de l’hôpital : {zone}.",
+      "hospitalDays": "Les jours sont comptés à l’heure de l’établissement : {zone}.",
       "empty": "Aucun incident à afficher. Dès qu’un incident est déclaré, il apparaît ici.",
       "emptyFiltered": "Aucun incident ne correspond à ces filtres. Modifiez-les, ou effacez-les pour voir tous les incidents.",
       "handedOff": "L’incident {reference} a été transmis à un autre service : {unit}. Il n’apparaît plus dans cette liste.",
@@ -194,16 +194,16 @@
       "where": "Lieu de l’événement",
       "occurredAt": "Date et heure de l’événement",
       "occurredAtHelp": "Par défaut, la date et l’heure actuelles. Modifiez-les si l’événement s’est produit plus tôt ; elles ne peuvent pas être dans le futur.",
-      "hospitalTime": "Saisissez-les à l’heure de l’hôpital : {zone}.",
+      "hospitalTime": "Saisissez-les à l’heure de l’établissement : {zone}.",
       "description": "Que s’est-il passé ?",
-      "descriptionHelp": "Écrivez avec vos propres mots. N’indiquez ni nom de patient ni numéro de dossier.",
+      "descriptionHelp": "Écrivez avec vos propres mots. N’indiquez ni le nom ni aucun numéro permettant d’identifier les personnes concernées.",
       "immediateAction": "Mesures immédiates prises (facultatif)",
-      "immediateActionHelp": "N’indiquez ni nom de patient ni numéro de dossier.",
+      "immediateActionHelp": "N’indiquez ni le nom ni aucun numéro permettant d’identifier les personnes concernées.",
       "harmLevel": "Niveau de préjudice",
-      "seriousNote": "Cette déclaration n’alerte personne dans l’immédiat : elle sera lue lorsque l’équipe qualité consultera les nouvelles déclarations. Suivez dès maintenant la procédure d’alerte de votre hôpital, comme vous le feriez sans ce formulaire.",
+      "seriousNote": "Cette déclaration n’alerte personne dans l’immédiat : elle sera lue lorsque l’équipe qualité consultera les nouvelles déclarations. Suivez dès maintenant la procédure d’alerte de votre établissement, comme vous le feriez sans ce formulaire.",
       "anonymous": "Déclarer anonymement",
-      "whoSeesName": "Si vous ne cochez pas cette case, votre nom est enregistré avec la déclaration. Seul le personnel que l’hôpital a autorisé à voir qui a déclaré, en général l’équipe qualité, peut le voir : les autres personnes qui traitent la déclaration voient « Le déclarant » à la place.",
-      "anonymousWarning": "Votre nom n’est pas enregistré avec la déclaration : personne, pas même l’équipe qualité, ne peut savoir qui l’a envoyée. Elle n’apparaîtra pas dans « Déclarés par moi », et vous ne serez pas averti des réponses : revenez avec le code pour les lire. Après l’envoi, un code de suivi s’affiche une seule fois : il vous permet de revenir lire les réponses et d’ajouter un commentaire. L’hôpital ne sait de vous que ce que vous écrivez ici.",
+      "whoSeesName": "Si vous ne cochez pas cette case, votre nom est enregistré avec la déclaration. Seul le personnel que l’établissement a autorisé à voir qui a déclaré, en général l’équipe qualité, peut le voir : les autres personnes qui traitent la déclaration voient « Le déclarant » à la place.",
+      "anonymousWarning": "Votre nom n’est pas enregistré avec la déclaration : personne, pas même l’équipe qualité, ne peut savoir qui l’a envoyée. Elle n’apparaîtra pas dans « Déclarés par moi ». Après l’envoi, un code de suivi s’affiche une seule fois : il vous permet de revenir lire les réponses et d’ajouter un commentaire, car vous ne serez pas averti des réponses. L’établissement ne sait de vous que ce que vous écrivez ici.",
       "submit": "Envoyer la déclaration",
       "cancel": "Annuler",
       "doneTitle": "Déclaration envoyée",
@@ -240,7 +240,7 @@
       "reportedBy": "Déclaré par",
       "anonymous": "Anonyme",
       "sentPublicly": "Envoi par le lien public, sans authentification",
-      "reporterHidden": "Seul le personnel autorisé par l’hôpital, en général l’équipe qualité, voit cette information",
+      "reporterHidden": "Seul le personnel autorisé par l’établissement, en général l’équipe qualité, voit cette information",
       "harmLevel": "Niveau de préjudice",
       "ownerUnit": "Service chargé du traitement",
       "ownerUnitNone": "Pas encore défini",
@@ -282,7 +282,7 @@
       "title": "Chronologie",
       "byline": "{name} · {date}",
       "theReporter": "Le déclarant",
-      "staff": "Personnel de l’hôpital",
+      "staff": "Un membre du personnel",
       "unknownPerson": "Utilisateur inconnu",
       "note": "Note :",
       "changed": {
@@ -318,16 +318,16 @@
       "empty": "Aucun commentaire pour l’instant.",
       "internal": "Interne",
       "body": "Ajouter un commentaire",
-      "bodyHelp": "N’indiquez ni nom de patient ni numéro de dossier.",
+      "bodyHelp": "N’indiquez ni le nom ni aucun numéro permettant d’identifier les personnes concernées.",
       "visibility": "Qui peut le lire",
       "visibilityInternal": "Interne : uniquement le personnel qui traite l’incident, pas le déclarant",
       "visibilityEveryone": "Le déclarant peut le lire, comme toutes les personnes qui voient cet incident",
-      "reporterHelp": "Le personnel qui traite cet incident lira votre commentaire. N’indiquez ni nom de patient ni numéro de dossier.",
+      "reporterHelp": "Le personnel qui traite cet incident lira votre commentaire. N’indiquez ni le nom ni aucun numéro permettant d’identifier les personnes concernées.",
       "submit": "Ajouter le commentaire"
     },
     "reader": {
-      "anonymous": "Cette déclaration a été envoyée de manière anonyme : toute personne qui détient son code de suivi lit ce que le déclarant peut lire, et ne travaille peut-être pas à l’hôpital.",
-      "maybeAnonymous": "Si cette déclaration a été envoyée de manière anonyme, toute personne qui détient son code de suivi lit ce que le déclarant peut lire, et ne travaille peut-être pas à l’hôpital."
+      "anonymous": "Cette déclaration a été envoyée de manière anonyme : toute personne qui détient son code de suivi lit ce que le déclarant peut lire, et ne fait peut-être pas partie du personnel.",
+      "maybeAnonymous": "Si cette déclaration a été envoyée de manière anonyme, toute personne qui détient son code de suivi lit ce que le déclarant peut lire, et ne fait peut-être pas partie du personnel."
     },
     "triage": {
       "title": "Tri",
@@ -377,8 +377,8 @@
         "send_back": "L’incident repasse en cours de traitement. Indiquez ce qui manque encore.",
         "withdraw": "La demande est retirée, et l’incident repasse en cours de traitement."
       },
-      "noteHelp": "Le déclarant peut lire cette note. N’indiquez ni nom de patient ni numéro de dossier.",
-      "noteHelpInternal": "Le déclarant ne peut pas lire cette note. N’indiquez ni nom de patient ni numéro de dossier.",
+      "noteHelp": "Le déclarant peut lire cette note. N’indiquez ni le nom ni aucun numéro permettant d’identifier les personnes concernées.",
+      "noteHelpInternal": "Le déclarant ne peut pas lire cette note. N’indiquez ni le nom ni aucun numéro permettant d’identifier les personnes concernées.",
       "revisionHelp": "Votre décision porte sur l’incident tel que cette page l’affiche. Si quelqu’un l’a modifié entre-temps, rien n’est enregistré et la page affiche sa dernière version pour que vous la vérifiiez.",
       "confirm": "Confirmer",
       "cancel": "Annuler",
@@ -408,29 +408,29 @@
       "signedOut": "Votre session a expiré : rien n’a été enregistré. Reconnectez-vous dans un autre onglet, puis revenez sur cette page et réessayez. Ce que vous avez saisi est toujours là.",
       "notFound": "Cet incident n’existe pas, ou votre rôle ne vous permet pas de le consulter. Revenez à la liste.",
       "generic": "Enregistrement impossible. Vérifiez votre connexion puis réessayez.",
-      "subscription_suspended": "Rien n’a été enregistré : le compte de votre établissement est en lecture seule pour le moment. Adressez-vous à votre administrateur."
+      "subscription_suspended": "Rien n’a été enregistré : ce type de modification est suspendu pour le compte de votre établissement. Adressez-vous à votre administrateur."
     },
     "inactiveUnit": "un service désormais inactif"
   },
   "publicReport": {
     "title": "Déclarer un incident",
-    "description": "Un incident, un incident évité de justesse ou une situation dangereuse. Cela prend environ deux minutes.",
+    "description": "{organization} recueille ici les incidents, les incidents évités de justesse et les situations dangereuses. Une déclaration prend environ deux minutes.",
     "urgent": "Ce formulaire n’est pas suivi en continu. Si quelqu’un est en danger maintenant, prévenez tout de suite un membre du personnel.",
     "deviceTime": "Utilisez l’heure affichée sur votre téléphone ou votre ordinateur.",
     "form": {
       "category": "De quoi s’agit-il ?",
       "immediateAction": "Ce qui a été fait tout de suite (facultatif)",
-      "harmLevel": "Quelqu’un a-t-il subi un préjudice ?"
+      "harmLevel": "Quelqu’un a-t-il été blessé ?"
     },
     "harm": {
-      "none": "Personne n’a subi de préjudice",
-      "moderate": "Quelqu’un a subi un préjudice",
-      "severe": "Quelqu’un a subi un préjudice grave ou est décédé"
+      "none": "Personne n’a été blessé",
+      "moderate": "Quelqu’un a été blessé",
+      "severe": "Quelqu’un a été gravement blessé ou est décédé"
     },
-    "privacy": "Vous n’avez pas à vous connecter, et votre nom ne vous est pas demandé. Rien sur vous ni sur votre téléphone n’est enregistré avec la déclaration. Après l’envoi, un code de suivi vous permet de revenir lire toute réponse de l’hôpital. L’hôpital ne sait de vous que ce que vous écrivez ici.",
+    "privacy": "Vous n’avez pas à vous connecter, et votre nom ne vous est pas demandé. Rien sur vous ni sur votre téléphone n’est enregistré avec la déclaration. Après l’envoi, un code de suivi vous permet de revenir lire toute réponse. {organization} ne sait de vous que ce que vous écrivez ici.",
     "unavailableTitle": "La déclaration n’est pas disponible avec ce lien",
-    "unavailable": "Ce lien n’est pas en service. Pour déclarer un incident, adressez-vous à un membre du personnel ou à l’équipe qualité de l’hôpital.",
-    "notSent": "Votre déclaration n’a pas été envoyée : ce lien vient d’être mis hors service. Adressez-vous à un membre du personnel ou à l’équipe qualité de l’hôpital.",
+    "unavailable": "Ce lien n’est pas en service. Pour déclarer un incident, adressez-vous à un membre du personnel ou à l’équipe qualité.",
+    "notSent": "Votre déclaration n’a pas été envoyée : ce lien vient d’être mis hors service. Adressez-vous à un membre du personnel ou à l’équipe qualité.",
     "loadErrorTitle": "Impossible de charger le formulaire",
     "loadError": "Vérifiez votre connexion Internet, puis rechargez la page.",
     "loadTooManyTitle": "Le formulaire ne peut pas être ouvert pour le moment",
@@ -447,7 +447,7 @@
     "another": "Envoyer une autre déclaration",
     "tooMany": "Trop de déclarations ont été envoyées au cours de la dernière heure : celle-ci n’a pas été envoyée. Gardez cette page ouverte : ce que vous avez écrit est toujours là. Vous pourrez réessayer après {time}.",
     "tooManyLater": "Trop de déclarations ont été envoyées au cours de la dernière heure : celle-ci n’a pas été envoyée. Gardez cette page ouverte : ce que vous avez écrit est toujours là. Réessayez plus tard.",
-    "busy": "Votre déclaration n’a pas été envoyée : l’hôpital recevait une autre déclaration au même moment. Ce que vous avez écrit est toujours là : envoyez-la de nouveau dans un instant.",
+    "busy": "Votre déclaration n’a pas été envoyée : une autre déclaration arrivait au même moment. Ce que vous avez écrit est toujours là : envoyez-la de nouveau dans un instant.",
     "errors": {
       "invalid": "Votre déclaration n’a pas été envoyée. Vérifiez chaque réponse, puis envoyez-la de nouveau.",
       "occurred_in_future": "Votre déclaration n’a pas été envoyée : la date de l’événement est dans le futur. Corrigez-la, puis envoyez-la de nouveau. Ce que vous avez écrit est toujours là.",
@@ -509,7 +509,7 @@
       "incident_assigned": "L’incident {reference} vous a été attribué.",
       "incident_handed_over": "L’incident {reference} a été transmis à un service dont vous avez la charge.",
       "sentinel_flagged": "L’incident {reference} a été signalé comme événement sentinelle : sa clôture devra être validée par une deuxième personne.",
-      "public_form_paused": "La déclaration sans authentification est suspendue : {limit} déclarations sont arrivées par le lien public au cours de la dernière heure, le maximum accepté. Elle reprendra d’elle-même au fil de l’heure ; d’ici là, toute personne qui essaie est invitée à revenir plus tard.",
+      "public_form_paused": "La déclaration sans authentification est suspendue : le lien public a reçu au cours de la dernière heure le maximum de déclarations qu’il accepte ({limit}). Elle reprendra d’elle-même au fil de l’heure ; d’ici là, toute personne qui essaie est invitée à revenir plus tard.",
       "comment_added": "Nouveau commentaire sur l’incident {reference}.",
       "status_changed": {
         "closed": "L’incident {reference} a été clôturé.",
@@ -610,17 +610,17 @@
   },
   "subscription": {
     "pastDue": "Le paiement de l’abonnement de votre établissement est en retard. Tout continue de fonctionner. Pour le régulariser, contactez Trustline.",
-    "suspendedTitle": "Le compte de votre établissement est en lecture seule pour le moment",
+    "suspendedTitle": "Les modifications sont suspendues pour le compte de votre établissement",
     "suspended": "La déclaration et le traitement des incidents fonctionnent normalement, de même que le retrait des accès d’une personne. Rien d’autre ne peut être ajouté ni modifié pour l’instant. Si vous avez besoin d’une modification, adressez-vous à votre administrateur ; les administrateurs peuvent contacter Trustline.",
     "suspendedNoReporting": "La consultation fonctionne normalement, de même que le retrait des accès d’une personne. Rien d’autre ne peut être ajouté ni modifié pour l’instant. Si vous avez besoin d’une modification, adressez-vous à votre administrateur ; les administrateurs peuvent contacter Trustline.",
-    "refused": "Rien n’a été enregistré : le compte de votre établissement est en lecture seule pour le moment. Adressez-vous à votre administrateur ; les administrateurs peuvent contacter Trustline.",
+    "refused": "Rien n’a été enregistré : ce type de modification est suspendu pour le compte de votre établissement. Adressez-vous à votre administrateur ; les administrateurs peuvent contacter Trustline.",
     "limit": {
       "users": "Non enregistré : l’offre de votre établissement limite les utilisateurs à {max}, et cette limite est atteinte ; personne ne peut donc être ajouté ni réactivé. Toutes les personnes qui ont déjà un accès le conservent. Désactiver le compte d’une personne partie libère une place. Pour relever la limite, adressez-vous à votre administrateur ; les administrateurs peuvent demander à Trustline de changer l’offre.",
       "sites": "Non enregistré : l’offre de votre établissement limite les sites actifs à {max}, et cette limite est atteinte ; aucun site ne peut donc être ajouté ni réactivé. Les sites, services et unités existants ne sont pas touchés, et des services et des unités peuvent encore être ajoutés. Désactiver un site qui ne sert plus libère une place. Pour relever la limite, adressez-vous à votre administrateur ; les administrateurs peuvent demander à Trustline de changer l’offre."
     },
     "notIncluded": {
       "title": "Ne fait pas partie de l’abonnement de votre établissement",
-      "body": "Cette partie de Trustline n’est pas incluse dans ce qu’utilise votre établissement : il n’y a donc rien à afficher ici. Si vous en avez besoin, adressez-vous à votre administrateur.",
+      "body": "L’abonnement de votre établissement ne comprend pas cette partie de Trustline : il n’y a donc rien à afficher ici. Si vous en avez besoin, adressez-vous à votre administrateur.",
       "back": "Aller au tableau de bord"
     }
   },
@@ -640,7 +640,7 @@
     },
     "clients": {
       "title": "Clients",
-      "description": "Tous les hôpitaux et établissements qui utilisent Trustline.",
+      "description": "Tous les établissements qui utilisent Trustline.",
       "add": "Ajouter un client",
       "empty": "Aucun client pour l’instant. Ajoutez le premier.",
       "loadError": "Impossible de charger les clients. Rechargez la page.",
@@ -655,7 +655,7 @@
     },
     "form": {
       "newTitle": "Ajouter un client",
-      "newDescription": "Créez la fiche d’un nouvel hôpital ou établissement.",
+      "newDescription": "Créez la fiche d’un nouvel établissement.",
       "slug": "Identifiant",
       "slugHelp": "Lettres minuscules, chiffres et tirets, de 3 à 40 caractères. Ne peut plus être modifié ensuite.",
       "accreditationStandard": "Référentiel d’accréditation",
@@ -666,7 +666,7 @@
       "dataRegionHelp": "Le lieu où les données de ce client doivent être hébergées. Laissez vide si ce n’est pas encore décidé.",
       "timeZone": {
         "label": "Fuseau horaire",
-        "help": "L’heure de l’hôpital. Chaque date, chaque échéance et les « 30 derniers jours » que voit son personnel la suivent. Pour chercher, saisissez en anglais une partie du nom d’une ville ou d’une région, par exemple Riyadh.",
+        "help": "L’heure du client. Chaque date, chaque échéance et les « 30 derniers jours » que voit son personnel la suivent. Pour chercher, saisissez en anglais une partie du nom d’une ville ou d’une région, par exemple Riyadh.",
         "list": "Fuseaux horaires",
         "now": "Heure sur place en ce moment : {time} – {zone}",
         "none": "Aucun fuseau horaire ne correspond. Essayez le nom anglais d’une grande ville du même fuseau.",
@@ -726,11 +726,11 @@
       "copied": "Copié"
     },
     "administrator": {
-      "title": "Administrateur de l’hôpital",
+      "title": "Administrateur du client",
       "help": "Créez le premier administrateur de ce client. Il ajoutera les autres utilisateurs.",
       "create": "Créer l’administrateur",
       "emailTaken": "Un utilisateur avec cet e-mail existe déjà chez ce client.",
-      "exists": "Ce client a déjà un administrateur. L’hôpital ajoute lui-même les suivants.",
+      "exists": "Ce client a déjà un administrateur. Le client ajoute lui-même les suivants.",
       "suspended": "Ce client est suspendu. Réactivez-le d’abord.",
       "ssoOnly": "Ce client utilise uniquement l’authentification unique (SSO) : un lien de mot de passe ne peut pas servir.",
       "cancelled": "L’abonnement de ce client est résilié : personne ne peut se connecter. Changez d’abord son statut dans le panneau Abonnement.",
@@ -755,6 +755,7 @@
       "modules": "Modules :",
       "coreOnly": "Socle uniquement",
       "unlimited": "Illimité",
+      "limitPair": "{name} : {value}",
       "limitNames": {
         "users": "Utilisateurs",
         "sites": "Sites",
@@ -763,7 +764,7 @@
       },
       "extraNames": {
         "sso": "Authentification unique (SSO)",
-        "publicReporting": "Déclaration sans connexion",
+        "publicReporting": "Déclaration sans authentification",
         "clinicalAiSuggestions": "Suggestions de l’IA sur les incidents cliniques (accord signé requis)"
       },
       "form": {
@@ -773,7 +774,7 @@
         "codeHelp": "Lettres minuscules, chiffres, traits d’union et tirets bas, de 2 à 40 caractères. Ne peut pas être modifié ensuite.",
         "codeFixed": "Le code ne peut pas être modifié.",
         "name": "Nom",
-        "nameHelp": "Dans chaque langue de Trustline : n’importe quel client peut le voir.",
+        "nameHelp": "Saisissez-le dans chaque langue de Trustline : il peut être montré à n’importe quel client.",
         "description": "Description",
         "descriptionHelp": "Facultative. Si vous en écrivez une, écrivez-la dans chaque langue.",
         "modules": "Modules",
@@ -787,31 +788,31 @@
         "limitHelp": {
           "users": "Comptes invités et actifs. Les comptes désactivés ne comptent pas.",
           "sites": "Sites actifs. Les services et les unités ne comptent pas.",
-          "storageMb": "Enregistrée, pas encore appliquée.",
-          "aiCreditsPerMonth": "Enregistrée, pas encore appliquée."
+          "storageMb": "Valeur enregistrée avec l’offre, pas encore appliquée.",
+          "aiCreditsPerMonth": "Valeur enregistrée avec l’offre, pas encore appliquée."
         },
         "notEnforced": "Seuls les utilisateurs et les sites sont comptés aujourd’hui. Les déclarations d’incident ne sont jamais limitées.",
         "extras": "Options",
         "extrasHelp": "Enregistrées avec l’offre. L’offre n’en active ni n’en désactive aucune pour l’instant.",
         "prices": "Prix",
-        "pricesHelp": "Conservés comme données, pour référence. Rien n’est facturé d’ici, et les clients ne voient jamais les prix.",
+        "pricesHelp": "À titre indicatif seulement. Rien n’est facturé d’ici, et les clients ne voient jamais les prix.",
         "noPrices": "Aucun prix.",
         "priceNumber": "Prix {number}",
         "currency": "Devise",
         "amount": "Montant",
-        "term": "Durée",
+        "term": "Périodicité",
         "terms": {
           "monthly": "Mensuel",
           "yearly": "Annuel"
         },
-        "basis": "Base",
+        "basis": "Base de calcul",
         "bases": {
           "flat": "Forfait",
           "per_user": "Par utilisateur",
           "per_site": "Par site"
         },
         "addPrice": "Ajouter un prix",
-        "removePrice": "Retirer",
+        "removePrice": "Supprimer ce prix",
         "position": "Ordre",
         "positionHelp": "Les offres sont classées du plus petit nombre au plus grand.",
         "create": "Ajouter l’offre",
@@ -829,11 +830,11 @@
         "reactivated": "L’offre peut de nouveau être attribuée à des clients.",
         "retiredDone": "Offre retirée. Ses clients la conservent.",
         "errors": {
-          "language_mismatch": "Écrivez le nom en anglais, en arabe et en français. Une description, s’il y en a une, doit aussi l’être dans les trois langues.",
+          "language_mismatch": "Écrivez le nom dans chaque langue de Trustline. Une description, s’il y en a une, doit l’être aussi.",
           "code_taken": "Une autre offre utilise déjà ce code.",
           "invalid": "Vérifiez les champs puis réessayez.",
           "generic": "Impossible d’enregistrer. Réessayez.",
-          "dependency": "Le module {module} nécessite {requires}. Ajoutez-le à l’offre, ou décochez le module qui en a besoin.",
+          "dependency": "Le module {module} nécessite {requires}. Ajoutez {requires} à l’offre, ou décochez {module}.",
           "dependencyAnyOther": "Le module {module} nécessite au moins un autre module. Ajoutez-en un, ou décochez-le.",
           "clientDependency": "Un client sur cette offre a le module {module} en option, et cette modification le laisserait sans le module dont il a besoin. Modifiez d’abord les options de ce client, ou gardez ce module dans l’offre."
         }
@@ -848,10 +849,10 @@
       "moduleOn": "{module} : activé",
       "moduleOff": "{module} : désactivé",
       "notCounted": "pas encore comptés",
-      "since": "Abonnement commencé le {date}.",
+      "since": "Début de l’abonnement : {date}.",
       "meter": {
         "usedOf": "{used} sur {max}",
-        "inUse": "{used} utilisés",
+        "inUse": "Utilisés : {used}",
         "unlimited": "Illimité",
         "atLimit": "Limite atteinte : rien de plus ne peut être ajouté."
       },
@@ -863,14 +864,14 @@
         "trial": "Essai",
         "active": "Actif",
         "past_due": "Paiement en retard",
-        "suspended": "Suspendu (lecture seule)",
+        "suspended": "Suspendu (modifications bloquées)",
         "cancelled": "Résilié"
       },
       "statusHelp": {
         "trial": "Tout ce que comprend l’abonnement fonctionne. Un essai a besoin d’une date de fin ; rien ne change tout seul à cette date.",
         "active": "Tout ce que comprend l’abonnement fonctionne.",
         "past_due": "Tout fonctionne. Les administrateurs du client voient un avis leur demandant de contacter Trustline.",
-        "suspended": "Lecture seule pour le personnel du client, sauf la déclaration et le traitement des incidents et le retrait d’accès. Le lien de déclaration public reste ouvert.",
+        "suspended": "Lecture seule pour le personnel du client, sauf pour déclarer et traiter des incidents, et retirer des accès. Le lien de déclaration public reste ouvert.",
         "cancelled": "Personne ne peut se connecter, et toutes les sessions prennent fin aussitôt. Le lien de déclaration public s’arrête. Rien n’est supprimé."
       },
       "startsOn": "Début",
@@ -878,22 +879,24 @@
       "trialEndsOn": "Fin de l’essai",
       "optionalDate": "Facultatif.",
       "trialEndsRequired": "Obligatoire pour un essai.",
-      "datesHelp": "Les dates sont indicatives : aucun statut ne change tout seul quand l’une d’elles passe.",
+      "datesHelp": "Les dates servent seulement de repère : aucun statut ne change tout seul quand l’une d’elles passe.",
       "addOns": "Modules en option",
       "addOnsHelp": "Des modules en plus de l’offre, pour ce client seulement.",
       "inPlan": "Dans l’offre",
       "overrides": "Limites de ce client",
-      "overridesHelp": "Chaque limite suit l’offre, sauf si elle est fixée ici. Une limite abaissée sous ce que le client a déjà ne touche personne parmi l’existant.",
-      "usePlan": "Comme l’offre : {value}",
+      "overridesHelp": "Chaque limite suit l’offre, sauf si elle est fixée ici. Abaisser une limite sous l’existant ne retire rien : seuls les nouveaux ajouts sont refusés.",
+      "usePlan": "Selon l’offre : {value}",
       "ownLimit": "Limite propre",
       "ownLimitOf": "Limite propre : {limit}",
       "note": "Note",
       "noteHelp": "Pour le personnel de Trustline seulement. Le client ne la voit jamais.",
       "save": "Enregistrer l’abonnement",
       "saved": "Abonnement enregistré.",
-      "confirmSave": "Oui, enregistrer",
-      "confirmSuspend": "Suspendre l’abonnement de {name} ? Son personnel pourra alors seulement consulter, déclarer et traiter des incidents, et retirer des accès ; tout le reste sera refusé jusqu’au changement de statut. Choisissez « Oui, enregistrer » pour confirmer.",
-      "confirmCancel": "Résilier l’abonnement de {name} ? Plus personne ne pourra s’y connecter, tout le monde sera déconnecté et le lien de déclaration public s’arrêtera. Rien n’est supprimé, mais les sessions restent terminées même si l’abonnement est réactivé. Choisissez « Oui, enregistrer » pour confirmer.",
+      "confirmCancelButton": "Oui, résilier l’abonnement",
+      "keep": "Ne rien changer",
+      "confirmSuspendButton": "Oui, suspendre l’abonnement",
+      "confirmSuspend": "Suspendre l’abonnement de {name} ? Son personnel pourra alors seulement consulter, déclarer et traiter des incidents, et retirer des accès ; tout le reste sera refusé jusqu’au changement de statut. Choisissez « Oui, suspendre l’abonnement » pour confirmer.",
+      "confirmCancel": "Résilier l’abonnement de {name} ? Plus personne ne pourra s’y connecter, tout le monde sera déconnecté et le lien de déclaration public s’arrêtera. Rien n’est supprimé, mais les sessions restent terminées même si l’abonnement est réactivé. Choisissez « Oui, résilier l’abonnement » pour confirmer.",
       "errors": {
         "unknown_plan": "Cette offre n’existe plus. Rechargez la page et choisissez-en une autre.",
         "plan_retired": "Cette offre a été retirée : le client ne peut pas y être placé. Choisissez-en une autre.",
@@ -908,7 +911,7 @@
     "login": {
       "title": "Connexion",
       "org": "Identifiant de l’établissement",
-      "orgHelp": "L’identifiant fourni par votre hôpital.",
+      "orgHelp": "L’identifiant fourni par votre établissement.",
       "email": "E-mail",
       "password": "Mot de passe",
       "submit": "Se connecter",
@@ -1006,8 +1009,8 @@
         "unknownUnit": "Un service choisi ici a été désactivé. Rechargez la page et choisissez-en un autre.",
         "inactiveDepartment": "{name} (service inactif)",
         "outsideScope": "Votre rôle ne couvre pas cet utilisateur, ou le service choisi pour lui. Choisissez un service couvert par votre rôle, ou adressez-vous à votre administrateur.",
-        "rolesReadOnly": "Le compte de votre établissement est en lecture seule pour le moment : des rôles peuvent être retirés, mais pas attribués.",
-        "enableReadOnly": "Le compte de votre établissement est en lecture seule pour le moment : ce compte ne peut donc pas être réactivé."
+        "rolesReadOnly": "Les modifications sont suspendues pour le compte de votre établissement : des rôles peuvent être retirés, mais pas attribués.",
+        "enableReadOnly": "Les modifications sont suspendues pour le compte de votre établissement : ce compte ne peut donc pas être réactivé."
       }
     },
     "roles": {
@@ -1044,7 +1047,7 @@
         "deleteError": "Impossible de supprimer le rôle. Réessayez.",
         "name": "Nom",
         "languageMismatch": "Saisissez le nom dans la langue par défaut.",
-        "permissionsReadOnly": "Le compte de votre établissement est en lecture seule pour le moment : des autorisations peuvent être retirées de ce rôle, mais pas ajoutées, et son nom ne peut pas être modifié."
+        "permissionsReadOnly": "Les modifications sont suspendues pour le compte de votre établissement : des autorisations peuvent être retirées de ce rôle, mais pas ajoutées, et son nom ne peut pas être modifié."
       }
     },
     "organization": {
@@ -1090,7 +1093,7 @@
         "choose": "Choisir…",
         "name": "Nom",
         "code": "Code",
-        "codeHelp": "De 2 à 40 lettres majuscules (A à Z), chiffres ou tirets, par exemple ICU-2. Il ne pourra plus être modifié.",
+        "codeHelp": "De 2 à 40 lettres majuscules (A à Z), chiffres ou tirets, par exemple NORTH-2. Il ne pourra plus être modifié.",
         "codeFixed": "Le code ne peut pas être modifié.",
         "save": "Enregistrer",
         "saved": "Modifications enregistrées.",
@@ -1134,7 +1137,7 @@
         "title": "Déclaration sans authentification",
         "on": "Activée",
         "off": "Désactivée",
-        "what": "Lorsque cette option est activée, toute personne qui dispose du lien, ou qui scanne le code QR d’une unité, peut envoyer une déclaration sans se connecter : un visiteur, un patient ou un membre du personnel sans compte. Ces déclarations sont toujours anonymes. Elles arrivent dans la liste des incidents comme les autres, et leur auteur reçoit un code de suivi pour lire vos réponses.",
+        "what": "Lorsque cette option est activée, toute personne qui dispose du lien, ou qui scanne le code QR d’une unité, peut envoyer une déclaration sans se connecter : un visiteur, toute autre personne ou un membre du personnel sans compte. Ces déclarations sont toujours anonymes. Elles arrivent dans la liste des incidents comme les autres, et leur auteur reçoit un code de suivi pour lire vos réponses.",
         "shows": "Le formulaire montre à toute personne qui ouvre le lien les noms de vos sites, services, unités et catégories d’incidents. Il ne montre aucun incident.",
         "offHelp": "Tant que l’option est désactivée, le lien et les codes QR ouvrent une page indiquant que la déclaration n’est pas disponible.",
         "onHelp": "La désactivation met immédiatement hors service le lien et tous les codes QR imprimés. Les déclarations déjà reçues sont conservées, et leurs codes de suivi restent valables.",
@@ -1171,7 +1174,7 @@
           "trial": "Essai",
           "active": "Actif",
           "past_due": "Paiement en retard",
-          "suspended": "Lecture seule"
+          "suspended": "Modifications suspendues"
         },
         "startsOn": "Début",
         "renewsOn": "Renouvellement",
@@ -1189,10 +1192,10 @@
         "sitesHelp": "Sites actifs. Les services et les unités ne comptent pas.",
         "storage": "Stockage",
         "ai": "Crédits IA par mois",
-        "notInUse": "Pas encore utilisé",
+        "notInUse": "Pas encore comptabilisé",
         "meter": {
           "usedOf": "{used} sur {max}",
-          "inUse": "{used} utilisés",
+          "inUse": "Utilisés : {used}",
           "unlimited": "Illimité",
           "atLimit": "Limite atteinte : rien de plus ne peut être ajouté."
         },

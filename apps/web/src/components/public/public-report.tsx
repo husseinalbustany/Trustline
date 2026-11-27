@@ -306,6 +306,9 @@ export function PublicReport({
     );
   }
 
+  // Whom the report goes to, by name, in the sentences that say so.
+  const organization = pick(form.name, lang, form.defaultLocale);
+
   // A plain question for someone who is not staff, sent as three of the
   // five levels; whoever triages it sets the level.
   const harmChoices: HarmChoice[] = (
@@ -319,7 +322,9 @@ export function PublicReport({
     <div className="flex flex-col gap-5">
       <div>
         <h1 className="text-2xl font-semibold ltr:tracking-tight">{p.title}</h1>
-        <p className="mt-1 text-base text-muted">{p.description}</p>
+        <p className="mt-1 text-base text-muted">
+          {fill(p.description, { organization })}
+        </p>
         <p className="mt-3 text-base">{t.form.intro}</p>
         {/* Before they write: nobody is watching this form for emergencies. */}
         <p className="mt-3 rounded-lg border border-line bg-background p-3 text-sm">
@@ -340,7 +345,7 @@ export function PublicReport({
             : fill(t.form.hospitalTime, { zone: zoneLabel(lang, zone) })
         }
         anonymousChoice={false}
-        privacy={() => p.privacy}
+        privacy={() => fill(p.privacy, { organization })}
         roomy
         labels={p.form}
         harmChoices={harmChoices}
