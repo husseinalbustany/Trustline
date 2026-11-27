@@ -98,6 +98,30 @@ export function PortalFrame({
             </Button>
           </div>
         </div>
+        <nav
+          aria-label={t.nav.label}
+          className="mx-auto flex w-full max-w-6xl gap-1 px-4 sm:px-6"
+        >
+          {(["clients", "plans"] as const).map((area) => {
+            const href = `/${lang}/platform/${area}`;
+            const current =
+              pathname === href || pathname.startsWith(`${href}/`);
+            return (
+              <Link
+                key={area}
+                href={href}
+                aria-current={current ? "page" : undefined}
+                className={`-mb-px border-b-2 px-3 py-2 text-sm ${
+                  current
+                    ? "border-accent font-medium text-accent"
+                    : "border-transparent text-muted hover:text-foreground"
+                }`}
+              >
+                {t.nav[area]}
+              </Link>
+            );
+          })}
+        </nav>
       </header>
       <main className="flex-1 px-4 py-6 sm:px-6">
         <div className="mx-auto w-full max-w-6xl">{children}</div>

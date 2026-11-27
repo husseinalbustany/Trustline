@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { can, useSession } from "@/components/shell/session";
+import { useReadOnly } from "@/components/shell/subscription";
 import { ButtonLink } from "@/components/ui/button-link";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Panel } from "@/components/ui/panel";
@@ -30,6 +31,9 @@ type Loaded = {
 export function OrgTree({ lang, t }: AdminProps) {
   const session = useSession();
   const allowed = can(session, "organization.manage");
+  // Nothing can be added while the organization's account is read-only.
+  const readOnly = useReadOnly();
+  const adds = allowed && !readOnly;
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [showInactive, setShowInactive] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -65,7 +69,7 @@ export function OrgTree({ lang, t }: AdminProps) {
       title={o.title}
       description={o.description}
       actions={
-        allowed && (
+        adds && (
           <ButtonLink href={`${base}/new`}>
             <Plus className="size-4" aria-hidden />
             {o.add.facility}
@@ -112,10 +116,12 @@ export function OrgTree({ lang, t }: AdminProps) {
               <EmptyState>
                 {loaded.allInactive ? o.allInactive : o.empty}
               </EmptyState>
-              <ButtonLink href={`${base}/new`}>
-                <Plus className="size-4" aria-hidden />
-                {o.addFirst}
-              </ButtonLink>
+              {adds && (
+                <ButtonLink href={`${base}/new`}>
+                  <Plus className="size-4" aria-hidden />
+                  {o.addFirst}
+                </ButtonLink>
+              )}
             </div>
           ) : (
             <ul aria-label={o.listLabel}>
@@ -153,7 +159,7 @@ export function OrgTree({ lang, t }: AdminProps) {
                       </p>
                     </div>
                     {/* Nothing new goes under a unit that is switched off. */}
-                    {child && unit.active && (
+                    {adds && child && unit.active && (
                       <ButtonLink
                         href={`${base}/${unit.id}/new`}
                         variant="secondary"

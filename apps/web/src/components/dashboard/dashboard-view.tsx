@@ -6,6 +6,12 @@ import { useEffect, useState } from "react";
 import { IncidentPills } from "@/components/incidents/pills";
 import type { IncidentsText } from "@/components/incidents/types";
 import { can, useSession } from "@/components/shell/session";
+import { hasModule } from "@/components/shell/subscription";
+import {
+  dashboardPanels,
+  dashboardTiles,
+  type DashboardTileKey,
+} from "@/config/navigation";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Panel } from "@/components/ui/panel";
 import type { Locale } from "@/i18n/config";
@@ -25,7 +31,7 @@ import { pick } from "@/lib/localized";
 type Loaded = { summary: IncidentSummary; recent: IncidentList };
 
 type Tile = {
-  key: keyof Dictionary["dashboard"]["tiles"];
+  key: DashboardTileKey;
   /** What a live tile shows once loaded; null when there is nothing to show. */
   figure?: string | null;
   /** Live: its figure comes from the API. The others are not built yet. */
@@ -38,7 +44,10 @@ type Tile = {
   alert?: boolean;
 };
 
-/** The dashboard. Incident figures are live; the rest is not built yet. */
+/**
+ * The dashboard. Incident figures are live; the rest is not built yet.
+ * Each tile and panel shows only while its module is on.
+ */
 export function DashboardView({
   lang,
   t,
@@ -61,7 +70,11 @@ export function DashboardView({
     return fill(t.clock[unit], { time });
   };
 
+  const incidentsOn = hasModule(session, "incidents");
+
   useEffect(() => {
+    // Nothing to ask for when the client has no incidents.
+    if (!incidentsOn) return;
     let current = true;
     Promise.all([
       api<IncidentSummary>("/incidents/summary"),
@@ -76,7 +89,7 @@ export function DashboardView({
     return () => {
       current = false;
     };
-  }, []);
+  }, [incidentsOn]);
 
   const summary = data?.summary;
   const count = (n: number | undefined) =>
@@ -94,7 +107,7 @@ export function DashboardView({
   const handles =
     can(session, "incidents.triage") || can(session, "incidents.view");
 
-  const tiles: Tile[] = [
+  const drawn: Tile[] = [
     // Each count links to the list of exactly the incidents it counts.
     {
       key: "openIncidents",
@@ -160,6 +173,12 @@ export function DashboardView({
     { key: "overdueActions" },
     { key: "policiesDue" },
   ];
+  // In the order the configuration gives, for the modules the client has.
+  const tiles = dashboardTiles
+    .filter(({ module }) => hasModule(session, module))
+    .flatMap(({ key }) => drawn.filter((tile) => tile.key === key));
+  const showRecent = hasModule(session, dashboardPanels.recentIncidents);
+  const showTasks = hasModule(session, dashboardPanels.myTasks);
   // While a live figure is on its way, or could not be fetched.
   const pending = problem ? t.loadError : i.loading;
 
@@ -167,134 +186,152 @@ export function DashboardView({
     <>
       <PageHeader title={t.title} description={t.description} />
 
-      <dl className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-3">
-        {tiles.map(({ key, figure, live, help, href, alert }) => (
-          <div
-            key={key}
-            className={`relative rounded-lg border p-4 ${
-              alert ? "border-danger bg-danger-soft" : "border-line"
-            } ${href && !alert ? "hover:bg-surface" : ""}`}
-          >
-            <dt className="text-sm text-muted">
-              {href ? (
-                // The whole tile is the link; its name is the label.
-                <Link
-                  href={href}
-                  className="after:absolute after:inset-0 after:rounded-lg hover:underline"
-                >
-                  {t.tiles[key]}
-                </Link>
-              ) : (
-                t.tiles[key]
-              )}
-            </dt>
-            <dd
-              className={`mt-2 flex flex-wrap items-center gap-2 text-2xl font-semibold tabular-nums ${
-                alert ? "text-danger" : ""
-              }`}
+      {tiles.length === 0 && !showRecent && !showTasks && (
+        <EmptyState>{t.nothing}</EmptyState>
+      )}
+
+      {tiles.length > 0 && (
+        <dl className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-3">
+          {tiles.map(({ key, figure, live, help, href, alert }) => (
+            <div
+              key={key}
+              className={`relative rounded-lg border p-4 ${
+                alert ? "border-danger bg-danger-soft" : "border-line"
+              } ${href && !alert ? "hover:bg-surface" : ""}`}
             >
-              {alert && <TriangleAlert className="size-5" aria-hidden />}
-              {figure ?? (
+              <dt className="text-sm text-muted">
+                {href ? (
+                  // The whole tile is the link; its name is the label.
+                  <Link
+                    href={href}
+                    className="after:absolute after:inset-0 after:rounded-lg hover:underline"
+                  >
+                    {t.tiles[key]}
+                  </Link>
+                ) : (
+                  t.tiles[key]
+                )}
+              </dt>
+              <dd
+                className={`mt-2 flex flex-wrap items-center gap-2 text-2xl font-semibold tabular-nums ${
+                  alert ? "text-danger" : ""
+                }`}
+              >
+                {alert && <TriangleAlert className="size-5" aria-hidden />}
+                {figure ?? (
+                  <>
+                    <span aria-hidden>–</span>
+                    <span className="sr-only">
+                      {live && figure === undefined ? pending : t.noData}
+                    </span>
+                  </>
+                )}
+              </dd>
+              {help && <dd className="mt-1 text-xs text-muted">{help}</dd>}
+            </div>
+          ))}
+        </dl>
+      )}
+
+      {(showRecent || showTasks) && (
+        <div className="mt-6 grid items-start gap-6 lg:grid-cols-2">
+          {showRecent && (
+            <Panel title={t.recentIncidents}>
+              {problem ? (
+                <EmptyState>{t.loadError}</EmptyState>
+              ) : !data ? (
+                <EmptyState>{i.loading}</EmptyState>
+              ) : data.recent.items.length === 0 ? (
+                <EmptyState>{t.noIncidents}</EmptyState>
+              ) : (
                 <>
-                  <span aria-hidden>–</span>
-                  <span className="sr-only">
-                    {live && figure === undefined ? pending : t.noData}
-                  </span>
+                  <ul>
+                    {data.recent.items.map((item) => (
+                      <li
+                        key={item.id}
+                        className="border-b border-line px-4 py-3"
+                      >
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                          <Link
+                            href={`/${lang}/incidents/${item.id}`}
+                            className="font-medium text-accent hover:underline"
+                          >
+                            <bdi dir="ltr">{item.reference}</bdi>
+                          </Link>
+                          <IncidentPills
+                            t={i}
+                            status={item.status}
+                            harmLevel={item.harmLevel}
+                            isSentinel={item.isSentinel}
+                          />
+                        </div>
+                        <p className="mt-1 text-sm">
+                          {i.type[item.type]}
+                          <span className="text-muted"> · </span>
+                          <bdi>
+                            {pick(
+                              item.orgUnit.name,
+                              lang,
+                              session.tenant.defaultLocale,
+                            )}
+                          </bdi>
+                        </p>
+                        <p className="mt-0.5 text-xs text-muted">
+                          {fill(i.list.reported, {
+                            date: dates.format(new Date(item.reportedAt)),
+                          })}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="px-4 py-3 text-sm">
+                    <Link
+                      href={incidentsPath(lang)}
+                      className="text-accent hover:underline"
+                    >
+                      {t.viewAll}
+                    </Link>
+                  </p>
                 </>
               )}
-            </dd>
-            {help && <dd className="mt-1 text-xs text-muted">{help}</dd>}
-          </div>
-        ))}
-      </dl>
-
-      <div className="mt-6 grid items-start gap-6 lg:grid-cols-2">
-        <Panel title={t.recentIncidents}>
-          {problem ? (
-            <EmptyState>{t.loadError}</EmptyState>
-          ) : !data ? (
-            <EmptyState>{i.loading}</EmptyState>
-          ) : data.recent.items.length === 0 ? (
-            <EmptyState>{t.noIncidents}</EmptyState>
-          ) : (
-            <>
-              <ul>
-                {data.recent.items.map((item) => (
-                  <li key={item.id} className="border-b border-line px-4 py-3">
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                      <Link
-                        href={`/${lang}/incidents/${item.id}`}
-                        className="font-medium text-accent hover:underline"
-                      >
-                        <bdi dir="ltr">{item.reference}</bdi>
-                      </Link>
-                      <IncidentPills
-                        t={i}
-                        status={item.status}
-                        harmLevel={item.harmLevel}
-                        isSentinel={item.isSentinel}
-                      />
-                    </div>
-                    <p className="mt-1 text-sm">
-                      {i.type[item.type]}
-                      <span className="text-muted"> · </span>
-                      <bdi>
-                        {pick(
-                          item.orgUnit.name,
-                          lang,
-                          session.tenant.defaultLocale,
-                        )}
-                      </bdi>
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted">
-                      {fill(i.list.reported, {
-                        date: dates.format(new Date(item.reportedAt)),
-                      })}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-              <p className="px-4 py-3 text-sm">
-                <Link
-                  href={incidentsPath(lang)}
-                  className="text-accent hover:underline"
-                >
-                  {t.viewAll}
-                </Link>
-              </p>
-            </>
+            </Panel>
           )}
-        </Panel>
 
-        {/* What is waiting for this person: the open incidents assigned to
+          {/* What is waiting for this person: the open incidents assigned to
             them. Actions and reviews will join it when they are built. */}
-        <Panel title={t.myTasks}>
-          {problem ? (
-            <EmptyState>{t.loadError}</EmptyState>
-          ) : !summary ? (
-            <EmptyState>{i.loading}</EmptyState>
-          ) : summary.assignedToMe === 0 ? (
-            <EmptyState>{t.noTasks}</EmptyState>
-          ) : (
-            <div className="flex flex-col gap-3 p-4">
-              <p className="flex items-baseline gap-3">
-                <span className="text-2xl font-semibold tabular-nums">
-                  {numbers.format(summary.assignedToMe)}
-                </span>
-                <span className="text-sm text-muted">{t.assignedToMe}</span>
-              </p>
-              <p className="text-sm">
-                <Link
-                  href={incidentsPath(lang, { open: true, assignedToMe: true })}
-                  className="text-accent hover:underline"
-                >
-                  {t.viewTasks}
-                </Link>
-              </p>
-            </div>
+          {showTasks && (
+            <Panel title={t.myTasks}>
+              {problem ? (
+                <EmptyState>{t.loadError}</EmptyState>
+              ) : !summary ? (
+                <EmptyState>{i.loading}</EmptyState>
+              ) : summary.assignedToMe === 0 ? (
+                <EmptyState>{t.noTasks}</EmptyState>
+              ) : (
+                <div className="flex flex-col gap-3 p-4">
+                  <p className="flex items-baseline gap-3">
+                    <span className="text-2xl font-semibold tabular-nums">
+                      {numbers.format(summary.assignedToMe)}
+                    </span>
+                    <span className="text-sm text-muted">{t.assignedToMe}</span>
+                  </p>
+                  <p className="text-sm">
+                    <Link
+                      href={incidentsPath(lang, {
+                        open: true,
+                        assignedToMe: true,
+                      })}
+                      className="text-accent hover:underline"
+                    >
+                      {t.viewTasks}
+                    </Link>
+                  </p>
+                </div>
+              )}
+            </Panel>
           )}
-        </Panel>
-      </div>
+        </div>
+      )}
     </>
   );
 }

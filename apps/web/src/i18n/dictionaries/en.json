@@ -42,7 +42,7 @@
   },
   "dashboard": {
     "title": "Dashboard",
-    "description": "What needs attention across incidents, actions and policies.",
+    "description": "What needs your attention in your organization.",
     "noData": "No data yet",
     "tiles": {
       "openIncidents": "Open incidents",
@@ -69,7 +69,8 @@
     "viewTasks": "View these incidents",
     "loadError": "Could not load incidents. Reload the page.",
     "noIncidents": "No incidents to show yet.",
-    "viewAll": "View all incidents"
+    "viewAll": "View all incidents",
+    "nothing": "Nothing to show here yet for the parts of Trustline your organization uses."
   },
   "reportIncident": {
     "title": "Report an incident",
@@ -406,7 +407,8 @@
       "internal_not_allowed": "You cannot add internal comments. Under “Who can read it”, choose the option that includes the reporter, then add the comment again.",
       "signedOut": "Your session has ended, so this was not saved. Sign in again in another tab, then come back to this page and try again: what you typed is still here.",
       "notFound": "This incident does not exist, or your role does not let you see it. Go back to the list.",
-      "generic": "Could not save. Check your connection and try again."
+      "generic": "Could not save. Check your connection and try again.",
+      "subscription_suspended": "This was not saved: your organization's account is read-only for now. Contact your administrator."
     },
     "inactiveUnit": "a department that is now inactive"
   },
@@ -533,7 +535,9 @@
         "other": "A deadline for {reference} has passed."
       },
       "other": "There is an update on {reference}."
-    }
+    },
+    "descriptionGeneral": "What has happened that concerns you. A notification names no one.",
+    "emptyGeneral": "You have no notifications yet. When something happens that concerns you, it appears here."
   },
   "modulePage": {
     "scopeTitle": "What this area will cover",
@@ -595,6 +599,31 @@
       ]
     }
   },
+  "moduleNames": {
+    "incidents": "Incidents",
+    "investigations": "Investigations",
+    "actions": "Actions",
+    "policies": "Policies and procedures",
+    "risks": "Risk management",
+    "training": "Training and awareness",
+    "ai_assistant": "AI assistant"
+  },
+  "subscription": {
+    "pastDue": "Your organization's subscription payment is overdue. Everything keeps working. To settle it, contact Trustline.",
+    "suspendedTitle": "Your organization's account is read-only for now",
+    "suspended": "Reporting and handling incidents work as usual, and so does taking away someone's access. Nothing else can be added or changed for now. If you need something changed, contact your administrator; administrators can contact Trustline.",
+    "suspendedNoReporting": "Reading works as usual, and so does taking away someone's access. Nothing else can be added or changed for now. If you need something changed, contact your administrator; administrators can contact Trustline.",
+    "refused": "This was not saved: your organization's account is read-only for now. Contact your administrator; administrators can contact Trustline.",
+    "limit": {
+      "users": "Not saved: your organization's plan has a limit of {max} on users, and it has been reached, so no one can be added or enabled again. Everyone who already has access keeps it. Disabling the account of someone who has left frees a place. To raise the limit, contact your administrator; administrators can ask Trustline to change the plan.",
+      "sites": "Not saved: your organization's plan has a limit of {max} on facilities switched on, and it has been reached, so no facility can be added or switched on again. Existing facilities, departments and units are not affected, and departments and units can still be added. Switching off a facility no longer in use frees a place. To raise the limit, contact your administrator; administrators can ask Trustline to change the plan."
+    },
+    "notIncluded": {
+      "title": "Not part of your organization's subscription",
+      "body": "This part of Trustline is not included in what your organization uses, so there is nothing to show here. If you need it, ask your administrator.",
+      "back": "Go to the dashboard"
+    }
+  },
   "platform": {
     "title": "Trustline Platform",
     "signOut": "Sign out",
@@ -621,7 +650,8 @@
         "plan": "Plan",
         "signIn": "Sign-in",
         "status": "Status"
-      }
+      },
+      "noPlan": "No subscription"
     },
     "form": {
       "newTitle": "Add client",
@@ -653,7 +683,15 @@
       "name": "Name",
       "languageMismatch": "Fill in the name in the default language.",
       "locales": "Languages",
-      "localesHelp": "The languages this client works in. Names are written in each of them."
+      "localesHelp": "The languages this client works in. Names are written in each of them.",
+      "planHelp": "The plan the client starts on, active from today. Its plan, dates and status are changed later on the client's page.",
+      "choosePlan": "Choose a plan",
+      "plansError": "Could not load the plans. Reload the page.",
+      "planErrors": {
+        "unknown_plan": "This plan no longer exists. Reload the page and choose another.",
+        "plan_retired": "This plan has been retired, so no new client can be given it. Choose another.",
+        "plan_required": "Choose a plan for this client."
+      }
     },
     "status": {
       "title": "Status",
@@ -665,11 +703,6 @@
       "suspendedHelp": "This client's staff cannot sign in. Their data is kept."
     },
     "options": {
-      "plan": {
-        "starter": "Starter",
-        "professional": "Professional",
-        "enterprise": "Enterprise"
-      },
       "signInMethod": {
         "password": "Email and password",
         "sso": "Single sign-on",
@@ -682,7 +715,8 @@
       "actions": {
         "client_created": "Client added",
         "client_updated": "Client updated",
-        "client_administrator_created": "Administrator created"
+        "client_administrator_created": "Administrator created",
+        "subscription_updated": "Subscription changed"
       }
     },
     "inviteLink": {
@@ -698,9 +732,177 @@
       "emailTaken": "A user with this email already exists for this client.",
       "exists": "This client already has an administrator. The hospital adds further administrators itself.",
       "suspended": "This client is suspended. Reactivate it first.",
-      "ssoOnly": "This client uses single sign-on only, so a password link cannot be used."
+      "ssoOnly": "This client uses single sign-on only, so a password link cannot be used.",
+      "cancelled": "This client's subscription is cancelled, so nobody can sign in. Change its status in the Subscription panel first.",
+      "limitReached": "This client's plan has a limit of {max} on users, and it has been reached. Raise the users limit in the Subscription panel, then create the administrator."
     },
-    "loadError": "Could not load this client. Reload the page."
+    "loadError": "Could not load this client. Reload the page.",
+    "nav": {
+      "label": "Portal",
+      "clients": "Clients",
+      "plans": "Plans"
+    },
+    "plans": {
+      "title": "Plans",
+      "description": "What Trustline offers: modules, limits and extras. A plan is retired, never deleted.",
+      "add": "Add plan",
+      "empty": "No plans yet. Add the first one.",
+      "loadError": "Could not load the plans. Reload the page.",
+      "notFound": "This plan does not exist.",
+      "active": "Available",
+      "retired": "Retired",
+      "subscribers": "Clients: {count}",
+      "modules": "Modules:",
+      "coreOnly": "Core only",
+      "unlimited": "Unlimited",
+      "limitNames": {
+        "users": "Users",
+        "sites": "Sites (facilities)",
+        "storageMb": "Storage (MB)",
+        "aiCreditsPerMonth": "AI credits a month"
+      },
+      "extraNames": {
+        "sso": "Single sign-on",
+        "publicReporting": "Reporting without sign-in",
+        "clinicalAiSuggestions": "AI suggestions on clinical incidents (needs a signed agreement)"
+      },
+      "form": {
+        "newTitle": "Add plan",
+        "newDescription": "A plan bundles modules, limits and extras. Clients are put on it from their own page.",
+        "code": "Code",
+        "codeHelp": "Lowercase letters, digits, hyphens and underscores, 2 to 40 characters. Cannot be changed later.",
+        "codeFixed": "The code cannot be changed.",
+        "name": "Name",
+        "nameHelp": "In every language Trustline has: any client may be shown it.",
+        "description": "Description",
+        "descriptionHelp": "Optional. If you write one, write it in every language.",
+        "modules": "Modules",
+        "modulesHelp": "Tick what the plan includes. A module that needs another one says so.",
+        "notBuilt": "Not built yet",
+        "needs": "Needs {modules}.",
+        "needsAnyOther": "Needs at least one other module.",
+        "coreNote": "Core is in every plan: sign-in, users and roles, the organization's structure, notifications, reports and settings.",
+        "limits": "Limits",
+        "limitsHelp": "A limit can be raised or lowered for one client on that client's page.",
+        "limitHelp": {
+          "users": "Invited and active accounts. Disabled ones do not count.",
+          "sites": "Facilities switched on. Departments and units do not count.",
+          "storageMb": "Stored, not enforced yet.",
+          "aiCreditsPerMonth": "Stored, not enforced yet."
+        },
+        "notEnforced": "Only users and sites are counted today. Incident reports are never limited.",
+        "extras": "Extras",
+        "extrasHelp": "Recorded with the plan. The plan does not switch any of them on or off yet.",
+        "prices": "Prices",
+        "pricesHelp": "Kept as data, for reference. Nothing is charged from here, and clients never see prices.",
+        "noPrices": "No prices.",
+        "priceNumber": "Price {number}",
+        "currency": "Currency",
+        "amount": "Amount",
+        "term": "Term",
+        "terms": {
+          "monthly": "Monthly",
+          "yearly": "Yearly"
+        },
+        "basis": "Basis",
+        "bases": {
+          "flat": "Flat",
+          "per_user": "Per user",
+          "per_site": "Per site"
+        },
+        "addPrice": "Add a price",
+        "removePrice": "Remove",
+        "position": "Order",
+        "positionHelp": "Plans are listed from the lowest number up.",
+        "create": "Add plan",
+        "save": "Save changes",
+        "saved": "Changes saved.",
+        "cancel": "Cancel",
+        "back": "Back to plans",
+        "availability": "Availability",
+        "activeHelp": "Clients on this plan: {count}. It can be given to new clients.",
+        "retiredHelp": "Clients on this plan: {count}. Retired: they keep it, and no other client can be given it.",
+        "retire": "Retire plan",
+        "retireConfirm": "Retire this plan? Its clients ({count}) keep it, with everything it includes. No other client can be given it until it is made available again. Choose “Yes, retire it” to confirm.",
+        "retireConfirmButton": "Yes, retire it",
+        "reactivate": "Make available again",
+        "reactivated": "The plan can be given to clients again.",
+        "retiredDone": "Plan retired. Its clients keep it.",
+        "errors": {
+          "language_mismatch": "Write the name in English, Arabic and French. A description, if there is one, needs all three too.",
+          "code_taken": "Another plan already uses this code.",
+          "invalid": "Check the fields and try again.",
+          "generic": "Could not save. Try again.",
+          "dependency": "{module} needs {requires}. Add it to the plan, or untick the module that needs it.",
+          "dependencyAnyOther": "{module} needs at least one other module. Add one, or untick it.",
+          "clientDependency": "A client on this plan has {module} as an add-on, and this change would leave it without the module it needs. Change that client's add-ons first, or keep that module in the plan."
+        }
+      }
+    },
+    "subscription": {
+      "title": "Subscription",
+      "notFound": "This client has no subscription.",
+      "loadError": "Could not load the subscription. Reload the page.",
+      "effective": "What the client has now",
+      "currentPlan": "Plan: {name}",
+      "moduleOn": "{module}: on",
+      "moduleOff": "{module}: off",
+      "notCounted": "not counted yet",
+      "since": "Subscription started on {date}.",
+      "meter": {
+        "usedOf": "{used} of {max}",
+        "inUse": "{used} in use",
+        "unlimited": "Unlimited",
+        "atLimit": "Limit reached: no more can be added."
+      },
+      "plan": "Plan",
+      "planHelp": "Moving to another plan changes the client's modules and limits at once. A retired plan can be kept, not chosen.",
+      "planRetired": "{name} (retired)",
+      "status": "Status",
+      "statuses": {
+        "trial": "Trial",
+        "active": "Active",
+        "past_due": "Past due",
+        "suspended": "Suspended (read-only)",
+        "cancelled": "Cancelled"
+      },
+      "statusHelp": {
+        "trial": "Everything the subscription includes works. A trial needs an end date; nothing changes by itself when it comes.",
+        "active": "Everything the subscription includes works.",
+        "past_due": "Everything works. The client's administrators see a notice asking them to contact Trustline.",
+        "suspended": "Read-only for the client's staff, except reporting and handling incidents and taking away access. The public reporting link stays open.",
+        "cancelled": "Nobody can sign in, and every session ends at once. The public reporting link stops. Nothing is deleted."
+      },
+      "startsOn": "Starts on",
+      "renewsOn": "Renews on",
+      "trialEndsOn": "Trial ends on",
+      "optionalDate": "Optional.",
+      "trialEndsRequired": "Required for a trial.",
+      "datesHelp": "Dates are records only: no status changes by itself when one passes.",
+      "addOns": "Add-on modules",
+      "addOnsHelp": "Modules on top of the plan, for this client only.",
+      "inPlan": "In the plan",
+      "overrides": "Limits for this client",
+      "overridesHelp": "Each limit follows the plan unless it is set here. A limit lowered below what the client already has affects nobody already there.",
+      "usePlan": "As the plan: {value}",
+      "ownLimit": "Own limit",
+      "ownLimitOf": "Own limit: {limit}",
+      "note": "Note",
+      "noteHelp": "For Trustline staff only. The client never sees it.",
+      "save": "Save subscription",
+      "saved": "Subscription saved.",
+      "confirmSave": "Yes, save",
+      "confirmSuspend": "Suspend {name}'s subscription? Its staff can then only read, report and handle incidents, and take away access; everything else is refused until the status changes. Choose “Yes, save” to confirm.",
+      "confirmCancel": "Cancel {name}'s subscription? Nobody there can sign in from now on, everyone is signed out, and the public reporting link stops. Nothing is deleted, but sessions stay ended even if it is made active again. Choose “Yes, save” to confirm.",
+      "errors": {
+        "unknown_plan": "This plan no longer exists. Reload the page and choose another.",
+        "plan_retired": "This plan has been retired, so the client cannot be moved to it. Choose another.",
+        "trial_end_required": "A trial needs an end date. Fill in “Trial ends on”.",
+        "invalid_dates": "The renewal and the end of the trial cannot come before the start. Check the dates.",
+        "invalid": "Check the fields and try again.",
+        "generic": "Could not save. Try again."
+      }
+    }
   },
   "auth": {
     "login": {
@@ -710,7 +912,7 @@
       "email": "Email",
       "password": "Password",
       "submit": "Sign in",
-      "failed": "The organization, email or password is wrong, or the account is locked. Check them, or wait 15 minutes and try again.",
+      "failed": "The organization, email or password is wrong, or the account is locked. Check them, or wait 15 minutes and try again. If it still fails, your organization's access to Trustline may have ended: ask your administrator.",
       "invalid": "The organization ID or the email contains a character that cannot be part of it, perhaps from pasting. Type both again, then sign in.",
       "error": "Could not sign in. Try again.",
       "forgot": "Forgot your password? Ask your administrator for a reset link."
@@ -803,7 +1005,9 @@
         "departmentInactive": "This department is switched off. The user stays in it until you choose another.",
         "unknownUnit": "A department chosen here has been switched off. Reload the page and choose another.",
         "inactiveDepartment": "{name} (inactive)",
-        "outsideScope": "Your role does not cover this user, or the department chosen for them. Choose a department your role covers, or ask your administrator."
+        "outsideScope": "Your role does not cover this user, or the department chosen for them. Choose a department your role covers, or ask your administrator.",
+        "rolesReadOnly": "Your organization's account is read-only for now: roles can be taken away, but not given.",
+        "enableReadOnly": "Your organization's account is read-only for now, so this account cannot be enabled again."
       }
     },
     "roles": {
@@ -839,7 +1043,8 @@
         "deleteConfirm": "Delete this role? Press again to confirm. This cannot be undone.",
         "deleteError": "Could not delete the role. Try again.",
         "name": "Name",
-        "languageMismatch": "Fill in the name in the default language."
+        "languageMismatch": "Fill in the name in the default language.",
+        "permissionsReadOnly": "Your organization's account is read-only for now: permissions can be taken away from this role, but not added, and its name cannot be changed."
       }
     },
     "organization": {
@@ -922,7 +1127,7 @@
     },
     "settings": {
       "title": "Settings",
-      "description": "How Trustline works for your hospital.",
+      "description": "How Trustline works for your organization.",
       "wholeOrganization": "Settings apply to the whole organization, and your role covers only part of it. Ask your administrator.",
       "error": "Could not save. Check your connection and try again.",
       "reporting": {
@@ -957,6 +1162,41 @@
         "saved": "Deadlines saved.",
         "invalid": "Not saved. Enter whole numbers: from 1 to 720 for the hours, from 1 to 365 for the days.",
         "readOnly": "Only someone whose role lets them change settings for the whole organization can change these numbers."
+      },
+      "subscription": {
+        "title": "Subscription",
+        "intro": "What your organization's subscription includes, and how much of it is in use. Trustline manages it.",
+        "plan": "Plan",
+        "status": {
+          "trial": "Trial",
+          "active": "Active",
+          "past_due": "Payment overdue",
+          "suspended": "Read-only"
+        },
+        "startsOn": "Started on",
+        "renewsOn": "Renews on",
+        "trialEndsOn": "Trial ends on",
+        "modules": "Modules",
+        "on": "Included",
+        "off": "Not included",
+        "fromPlan": "In the plan",
+        "fromAddOn": "Added to the plan",
+        "comingLater": "Coming later",
+        "limits": "Use and limits",
+        "users": "Users",
+        "usersHelp": "Invited and active accounts. A disabled account does not count.",
+        "sites": "Facilities",
+        "sitesHelp": "Facilities switched on. Departments and units do not count.",
+        "storage": "Storage",
+        "ai": "AI credits a month",
+        "notInUse": "Not in use yet",
+        "meter": {
+          "usedOf": "{used} of {max}",
+          "inUse": "{used} in use",
+          "unlimited": "Unlimited",
+          "atLimit": "Limit reached: no more can be added."
+        },
+        "change": "To change the plan, add a module or raise a limit, contact Trustline."
       }
     },
     "permissions": {

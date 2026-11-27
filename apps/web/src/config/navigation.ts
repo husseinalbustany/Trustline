@@ -13,7 +13,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { Dictionary } from "@/i18n/dictionaries";
-import type { ModuleKey } from "./modules";
+import type { ModuleKey as ModuleOrCore } from "./modules";
 
 export type ModuleKey =
   | "incidents"
@@ -36,11 +36,7 @@ export type PlaceholderKey = Exclude<
 >;
 
 export type NavGroupKey =
-  | "overview"
-  | "safety"
-  | "governance"
-  | "insights"
-  | "administration";
+  "overview" | "safety" | "governance" | "insights" | "administration";
 
 export type NavItem = {
   key: NavItemKey;
@@ -56,7 +52,7 @@ export type NavItem = {
    * the item is not in the menu, and this page and every page under it
    * say that it is not part of the subscription.
    */
-  module?: ModuleKey;
+  module?: ModuleOrCore;
 };
 
 /** The single source for the sidebar: order, grouping, routes and icons. */
@@ -152,7 +148,7 @@ export const navItems = navigation.flatMap((group) => group.items);
  * the address after the language, such as `/incidents/new`. Core for every
  * page that no module's item covers.
  */
-export function moduleOfPath(path: string): ModuleKey {
+export function moduleOfPath(path: string): ModuleOrCore {
   const item = navItems.find(
     (i) => i.module && (path === i.href || path.startsWith(`${i.href}/`)),
   );
@@ -162,7 +158,10 @@ export function moduleOfPath(path: string): ModuleKey {
 export type DashboardTileKey = keyof Dictionary["dashboard"]["tiles"];
 
 /** The dashboard's figures, in order, each with the module it counts in. */
-export const dashboardTiles: { key: DashboardTileKey; module: ModuleKey }[] = [
+export const dashboardTiles: {
+  key: DashboardTileKey;
+  module: ModuleOrCore;
+}[] = [
   { key: "openIncidents", module: "incidents" },
   { key: "awaitingTriage", module: "incidents" },
   { key: "seriousOpen", module: "incidents" },
@@ -178,4 +177,4 @@ export const dashboardPanels = {
   recentIncidents: "incidents",
   // Only incidents are assigned so far; actions and reviews will join it.
   myTasks: "incidents",
-} as const satisfies Record<string, ModuleKey>;
+} as const satisfies Record<string, ModuleOrCore>;

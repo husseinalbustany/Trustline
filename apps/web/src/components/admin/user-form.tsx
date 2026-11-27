@@ -4,6 +4,11 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { useSession } from "@/components/shell/session";
+import {
+  ReadOnlyFieldset,
+  useReadOnly,
+  useSubscriptionRefusal,
+} from "@/components/shell/subscription";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
 import { InviteLink } from "@/components/ui/invite-link";
@@ -19,7 +24,11 @@ import { LocalizedField } from "@/components/ui/localized-field";
 import type { AdminProps } from "./types";
 import { statusTone } from "./users-list";
 
-type Message = { kind: "ok" | "error"; text: string; at?: "roles" };
+type Message = {
+  kind: "ok" | "error";
+  text: string;
+  at?: "roles" | "access";
+};
 // roleId -> org unit id, or "" for the whole organization
 type Grants = Record<string, string>;
 
@@ -46,6 +55,11 @@ export function UserForm({
   const f = t.users.form;
   const listPath = `/${lang}/admin/users`;
   const isSelf = user?.id === session.user.id;
+  // While the organization's account is read-only, access can still be
+  // taken away (a role removed, an account disabled) and links issued;
+  // nothing can be added or changed.
+  const readOnly = useReadOnly();
+  const refusal = useSubscriptionRefusal();
 
   const adopt = (u: User) => {
     setUser(u);
@@ -86,6 +100,8 @@ export function UserForm({
     }));
 
   const explain = (err: unknown) => {
+    const refused = refusal(err);
+    if (refused) return refused;
     const code = codeOf(err);
     if (code === "email_taken") return f.emailTaken;
     if (code === "language_mismatch") return f.languageMismatch;
@@ -98,7 +114,7 @@ export function UserForm({
   };
 
   // `at` says where a failure is shown: beside the part that was acted on.
-  async function run(work: () => Promise<void>, at?: "roles") {
+  async function run(work: () => Promise<void>, at?: Message["at"]) {
     setBusy(true);
     setMessage(null);
     try {
@@ -158,7 +174,7 @@ export function UserForm({
         await api<User>(`/users/${id}`, { method: "PATCH", body: { status } }),
       );
       setInvite(null);
-    });
+    }, "access");
 
   const newLink = () =>
     run(async () => {
@@ -239,6 +255,13 @@ export function UserForm({
                 type="checkbox"
                 className="mt-1 accent-accent"
                 checked={checked}
+                // Read-only: a role can be taken away, not given. One
+                // taken away by mistake can be ticked again before saving.
+                disabled={
+                  readOnly &&
+                  !checked &&
+                  !user?.roles.some((r) => r.roleId === role.id)
+                }
                 onChange={(e) => {
                   const next = { ...grants };
                   if (e.target.checked) next[role.id] = "";
@@ -258,6 +281,7 @@ export function UserForm({
             {checked && (
               <select
                 aria-label={f.scope}
+                disabled={readOnly}
                 value={grants[role.id]}
                 onChange={(e) =>
                   setGrants({ ...grants, [role.id]: e.target.value })
@@ -274,6 +298,9 @@ export function UserForm({
         );
       })}
       {isSelf && <p className="text-xs text-muted">{f.ownRoles}</p>}
+      {readOnly && !isSelf && (
+        <p className="text-xs text-muted">{f.rolesReadOnly}</p>
+      )}
     </fieldset>
   );
 
@@ -300,74 +327,76 @@ export function UserForm({
             onSubmit={submit}
             className="flex flex-col gap-5 rounded-lg border border-line p-4 sm:p-6"
           >
-            <LocalizedField
-              label={f.name}
-              name="name"
-              locales={languages.locales}
-              required={languages.defaultLocale}
-              value={user?.name}
-            />
-            <Field
-              label={f.email}
-              help={mode === "edit" ? f.emailFixed : undefined}
-            >
-              <input
-                name="email"
-                type="email"
-                required
-                dir="ltr"
-                defaultValue={user?.email}
-                disabled={mode === "edit"}
-                className={`${inputClass} disabled:bg-surface disabled:text-muted`}
+            <ReadOnlyFieldset>
+              <LocalizedField
+                label={f.name}
+                name="name"
+                locales={languages.locales}
+                required={languages.defaultLocale}
+                value={user?.name}
               />
-            </Field>
-            <div className="grid gap-5 sm:grid-cols-2">
               <Field
-                label={f.department}
-                help={departmentInactive ? f.departmentInactive : undefined}
+                label={f.email}
+                help={mode === "edit" ? f.emailFixed : undefined}
               >
-                <select
-                  name="orgUnitId"
-                  defaultValue={user?.orgUnitId ?? ""}
-                  className={inputClass}
+                <input
+                  name="email"
+                  type="email"
+                  required
+                  dir="ltr"
+                  defaultValue={user?.email}
+                  disabled={mode === "edit"}
+                  className={`${inputClass} disabled:bg-surface disabled:text-muted`}
+                />
+              </Field>
+              <div className="grid gap-5 sm:grid-cols-2">
+                <Field
+                  label={f.department}
+                  help={departmentInactive ? f.departmentInactive : undefined}
                 >
-                  <option value="">{f.noDepartment}</option>
-                  {unitChoices(user?.orgUnit)}
-                </select>
-              </Field>
-              <Field label={f.jobTitle}>
-                <input
-                  name="jobTitle"
-                  dir="auto"
-                  maxLength={200}
-                  defaultValue={user?.jobTitle ?? ""}
-                  className={inputClass}
-                />
-              </Field>
-              <Field label={f.employeeNumber}>
-                <input
-                  name="employeeNumber"
-                  maxLength={50}
-                  dir="ltr"
-                  defaultValue={user?.employeeNumber ?? ""}
-                  className={inputClass}
-                />
-              </Field>
-              <Field label={f.phone}>
-                <input
-                  name="phone"
-                  type="tel"
-                  maxLength={50}
-                  dir="ltr"
-                  defaultValue={user?.phone ?? ""}
-                  className={inputClass}
-                />
-              </Field>
-            </div>
+                  <select
+                    name="orgUnitId"
+                    defaultValue={user?.orgUnitId ?? ""}
+                    className={inputClass}
+                  >
+                    <option value="">{f.noDepartment}</option>
+                    {unitChoices(user?.orgUnit)}
+                  </select>
+                </Field>
+                <Field label={f.jobTitle}>
+                  <input
+                    name="jobTitle"
+                    dir="auto"
+                    maxLength={200}
+                    defaultValue={user?.jobTitle ?? ""}
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label={f.employeeNumber}>
+                  <input
+                    name="employeeNumber"
+                    maxLength={50}
+                    dir="ltr"
+                    defaultValue={user?.employeeNumber ?? ""}
+                    className={inputClass}
+                  />
+                </Field>
+                <Field label={f.phone}>
+                  <input
+                    name="phone"
+                    type="tel"
+                    maxLength={50}
+                    dir="ltr"
+                    defaultValue={user?.phone ?? ""}
+                    className={inputClass}
+                  />
+                </Field>
+              </div>
 
-            {mode === "new" && roleBoxes}
+              {mode === "new" && roleBoxes}
+            </ReadOnlyFieldset>
 
-            {message && message.at !== "roles" && (
+            {message && !message.at && (
               <p
                 role={message.kind === "error" ? "alert" : "status"}
                 className={`text-sm ${message.kind === "error" ? "text-danger" : "text-accent"}`}
@@ -376,7 +405,7 @@ export function UserForm({
               </p>
             )}
             <div className="flex flex-wrap gap-2">
-              <Button type="submit" disabled={busy}>
+              <Button type="submit" disabled={busy || readOnly}>
                 {mode === "new" ? f.create : f.save}
               </Button>
               <Link
@@ -449,11 +478,23 @@ export function UserForm({
             <Panel title={f.access}>
               <div className="flex flex-col items-start gap-3 p-4">
                 <p className="text-sm text-muted">
-                  {user.status === "disabled" ? f.enableHelp : f.disableHelp}
+                  {user.status !== "disabled"
+                    ? f.disableHelp
+                    : readOnly
+                      ? f.enableReadOnly
+                      : f.enableHelp}
                 </p>
+                {message?.at === "access" && (
+                  <p
+                    role={message.kind === "error" ? "alert" : "status"}
+                    className={`text-sm ${message.kind === "error" ? "text-danger" : "text-accent"}`}
+                  >
+                    {message.text}
+                  </p>
+                )}
                 <Button
                   variant="secondary"
-                  disabled={busy}
+                  disabled={busy || (readOnly && user.status === "disabled")}
                   onClick={() =>
                     setStatus(
                       user.status === "disabled" ? "active" : "disabled",

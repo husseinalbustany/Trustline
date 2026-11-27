@@ -8,6 +8,12 @@ import {
   type ReactNode,
 } from "react";
 import { can, useRefreshSession, useSession } from "@/components/shell/session";
+import {
+  hasModule,
+  useSubscriptionRefusal,
+} from "@/components/shell/subscription";
+import { features } from "@/config/modules";
+import type { Dictionary } from "@/i18n/dictionaries";
 import { Button } from "@/components/ui/button";
 import { CopyLink } from "@/components/ui/copy-link";
 import { inputClass } from "@/components/ui/field";
@@ -19,6 +25,7 @@ import { numberFormat } from "@/lib/format";
 import { followUpUrl, publicReportUrl } from "@/lib/identity";
 import { harmLevels, type HarmLevel } from "@/lib/incidents";
 import { readForm } from "@/lib/localized";
+import { SubscriptionPanel } from "./subscription-panel";
 import type { AdminProps } from "./types";
 
 type Reporting = { publicReporting: boolean; slug: string };
@@ -50,6 +57,7 @@ const LIMITS = { hours: { min: 1, max: 720 }, days: { min: 1, max: 365 } };
 type Props = AdminProps & {
   /** The harm levels in words, as the incident screens name them. */
   harm: Record<HarmLevel, string>;
+  moduleNames: Dictionary["moduleNames"];
 };
 
 function Said({ message }: { message: Message | null }) {
@@ -65,9 +73,10 @@ function Said({ message }: { message: Message | null }) {
 }
 
 /**
- * The hospital's own settings, one panel each: reporting without sign-in,
- * and the deadlines for triage and closure. Each panel reads and saves on
- * its own, so a problem with one does not hide the other.
+ * The organization's own settings, one panel each: reporting without
+ * sign-in and the deadlines for triage and closure (while it has
+ * incidents), and its subscription. Each panel reads and saves on its own,
+ * so a problem with one does not hide the other.
  *
  * Changing a setting takes `settings.manage` for the whole organization.
  * Someone who may triage is held to the deadlines, so can read them here,
@@ -78,6 +87,9 @@ export function SettingsView(props: Props) {
   const session = useSession();
   const manages = can(session, "settings.manage");
   const triages = can(session, "incidents.triage");
+  const wholeOrganization = session.scope?.["settings.manage"] === "all";
+  const reporting = manages && hasModule(session, features.reportingSettings);
+  const deadlines = hasModule(session, features.deadlineSettings);
   const s = t.settings;
 
   const header = <PageHeader title={s.title} description={s.description} />;
@@ -90,16 +102,27 @@ export function SettingsView(props: Props) {
     );
   }
 
+  // Someone whose role covers only part of the organization, at a client
+  // without incidents: no setting is theirs to read.
+  if (!reporting && !deadlines && !wholeOrganization) {
+    return (
+      <>
+        {header}
+        <EmptyState>{s.wholeOrganization}</EmptyState>
+      </>
+    );
+  }
+
   return (
     <>
       {header}
       {/* One panel per setting, one under the other. */}
       <div className="mt-6 flex max-w-3xl flex-col gap-6">
-        {manages && <ReportingPanel {...props} />}
-        <DeadlinesPanel
-          {...props}
-          editable={session.scope?.["settings.manage"] === "all"}
-        />
+        {reporting && <ReportingPanel {...props} />}
+        {deadlines && (
+          <DeadlinesPanel {...props} editable={wholeOrganization} />
+        )}
+        {wholeOrganization && <SubscriptionPanel {...props} />}
       </div>
     </>
   );
@@ -108,6 +131,7 @@ export function SettingsView(props: Props) {
 /** Reporting without sign-in: the switch, and the links to pass on. */
 function ReportingPanel({ t }: Props) {
   const refreshSession = useRefreshSession();
+  const refusal = useSubscriptionRefusal();
   const [reporting, setReporting] = useState<Reporting | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -156,7 +180,9 @@ function ReportingPanel({ t }: Props) {
     } catch (err) {
       setMessage({
         kind: "error",
-        text: statusOf(err) === 403 ? s.wholeOrganization : s.error,
+        text:
+          refusal(err) ??
+          (statusOf(err) === 403 ? s.wholeOrganization : s.error),
       });
     }
     setBusy(false);
@@ -227,6 +253,7 @@ function DeadlinesPanel({
   harm,
   editable,
 }: Props & { editable: boolean }) {
+  const refusal = useSubscriptionRefusal();
   const [stored, setStored] = useState<Stored | null>(null);
   const [problem, setProblem] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -283,11 +310,12 @@ function DeadlinesPanel({
       setMessage({
         kind: "error",
         text:
-          status === 400
+          refusal(err) ??
+          (status === 400
             ? d.invalid
             : status === 403
               ? s.wholeOrganization
-              : s.error,
+              : s.error),
       });
     }
     setBusy(false);

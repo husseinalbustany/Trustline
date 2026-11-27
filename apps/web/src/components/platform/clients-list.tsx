@@ -8,6 +8,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Panel } from "@/components/ui/panel";
 import { pick } from "@/lib/localized";
 import { platformApi, type Client } from "@/lib/platform-api";
+import { Pill } from "@/components/ui/pill";
+import { statusTone } from "./client-subscription";
 import { StatusPill } from "./status-pill";
 import type { PlatformProps } from "./types";
 
@@ -84,8 +86,29 @@ export function ClientsList({ lang, t }: PlatformProps) {
                       <td className="px-4 py-3">
                         {client.accreditationStandard}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {t.options.plan[client.plan]}
+                      <td className="px-4 py-3">
+                        {client.subscription ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <bdi className="whitespace-nowrap">
+                              {pick(client.subscription.plan.name, lang)}
+                            </bdi>
+                            {/* Active is the usual case: only the others
+                                are marked. */}
+                            {client.subscription.status !== "active" && (
+                              <Pill
+                                tone={statusTone[client.subscription.status]}
+                              >
+                                {
+                                  t.subscription.statuses[
+                                    client.subscription.status
+                                  ]
+                                }
+                              </Pill>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-muted">{t.clients.noPlan}</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap">
                         {t.options.signInMethod[client.signInMethod]}

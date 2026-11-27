@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 export const inputClass =
-  "h-10 w-full rounded-md border border-line bg-background px-3 text-sm font-normal";
+  "h-10 w-full rounded-md border border-line bg-background px-3 text-sm font-normal disabled:bg-surface disabled:text-muted";
 
 /**
  * The same control on the pages built for a phone first: tall enough for a

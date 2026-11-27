@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { useSession, useUnread } from "@/components/shell/session";
+import { hasModule } from "@/components/shell/subscription";
+import { features } from "@/config/modules";
 import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ui/pill";
 import { PageHeader } from "@/components/ui/page-header";
@@ -80,6 +82,10 @@ export function NotificationsView({
   // On the hospital's clock, like every date its staff see.
   const dates = dateTimeFormat(lang, session.tenant.timeZone);
   const path = `/${lang}/notifications`;
+  // Notifications are core, but so far only incidents send any: without
+  // them the page does not speak of incidents.
+  const aboutIncidents = hasModule(session, "incidents");
+  const seriousNote = hasModule(session, features.seriousNotifications);
   // Where the form for reporting without sign-in is switched, for whoever
   // may switch it: a notification that it is paused leads there.
   const settingsPath =
@@ -289,7 +295,7 @@ export function NotificationsView({
     <>
       <PageHeader
         title={t.title}
-        description={t.description}
+        description={aboutIncidents ? t.description : t.descriptionGeneral}
         actions={
           <Button
             variant="secondary"
@@ -319,7 +325,7 @@ export function NotificationsView({
             </button>
           ))}
         </div>
-        <p className="text-xs text-muted">{t.seriousNote}</p>
+        {seriousNote && <p className="text-xs text-muted">{t.seriousNote}</p>}
       </div>
 
       {actionFailed && (
@@ -335,7 +341,13 @@ export function NotificationsView({
           ) : !data || !answer || pastTheEnd ? (
             <EmptyState>{t.loading}</EmptyState>
           ) : data.items.length === 0 ? (
-            <EmptyState>{asked.unread ? t.emptyUnread : t.empty}</EmptyState>
+            <EmptyState>
+              {asked.unread
+                ? t.emptyUnread
+                : aboutIncidents
+                  ? t.empty
+                  : t.emptyGeneral}
+            </EmptyState>
           ) : (
             <ul className="overflow-hidden rounded-lg">
               {data.items.map((n) => row(n, answer.at))}

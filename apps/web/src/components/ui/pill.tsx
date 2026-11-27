@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 const tones = {
   ok: "bg-accent-soft text-accent",
   danger: "bg-danger-soft text-danger",
+  // Needs seeing to, but is not a danger.
+  warn: "bg-warn-soft text-warn",
   // Solid, for what must not be missed. Both colours are tokens, so it
   // keeps its contrast in dark mode.
   alert: "bg-danger text-background",
@@ -23,7 +25,9 @@ export function Pill({
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium whitespace-nowrap ${tones[tone]}`}
     >
-      {icon ?? <span className="size-1.5 rounded-full bg-current" aria-hidden />}
+      {icon ?? (
+        <span className="size-1.5 rounded-full bg-current" aria-hidden />
+      )}
       {children}
     </span>
   );

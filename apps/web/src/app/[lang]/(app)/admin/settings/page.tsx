@@ -5,5 +5,12 @@ import { resolveLocale, type LangParams } from "@/i18n/locale";
 export default async function Page({ params }: { params: LangParams }) {
   const lang = await resolveLocale(params);
   const dict = await getDictionary(lang);
-  return <SettingsView lang={lang} t={dict.admin} harm={dict.incidents.harm} />;
+  return (
+    <SettingsView
+      lang={lang}
+      t={dict.admin}
+      harm={dict.incidents.harm}
+      moduleNames={dict.moduleNames}
+    />
+  );
 }

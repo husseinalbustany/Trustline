@@ -12,6 +12,7 @@ import { fill } from "@/lib/format";
 import type { User } from "@/lib/identity";
 import { pick, type Localized } from "@/lib/localized";
 import { useSession } from "@/components/shell/session";
+import { useReadOnly } from "@/components/shell/subscription";
 import { AdminTabs } from "./admin-tabs";
 import type { AdminProps } from "./types";
 
@@ -25,6 +26,8 @@ export function UsersList({ lang, t }: AdminProps) {
   const [users, setUsers] = useState<User[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const session = useSession();
+  // No one can be added while the organization's account is read-only.
+  const readOnly = useReadOnly();
   const inLang = (text: Localized | null) =>
     pick(text, lang, session.tenant.defaultLocale);
   const roleList = new Intl.ListFormat(lang, { style: "short", type: "unit" });
@@ -61,10 +64,12 @@ export function UsersList({ lang, t }: AdminProps) {
         title={t.title}
         description={t.description}
         actions={
-          <ButtonLink href={`/${lang}/admin/users/new`}>
-            <Plus className="size-4" aria-hidden />
-            {t.users.add}
-          </ButtonLink>
+          !readOnly && (
+            <ButtonLink href={`/${lang}/admin/users/new`}>
+              <Plus className="size-4" aria-hidden />
+              {t.users.add}
+            </ButtonLink>
+          )
         }
       />
       <AdminTabs lang={lang} t={t} current="users" />

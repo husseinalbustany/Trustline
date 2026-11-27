@@ -11,6 +11,8 @@ import { api, statusOf } from "@/lib/api";
 import type { Role } from "@/lib/identity";
 import { pick } from "@/lib/localized";
 import { useSession } from "@/components/shell/session";
+import { hasModule, useReadOnly } from "@/components/shell/subscription";
+import { permissionModule } from "@/config/modules";
 import { AdminTabs } from "./admin-tabs";
 import type { AdminProps } from "./types";
 
@@ -18,7 +20,14 @@ export function RolesList({ lang, t }: AdminProps) {
   const [roles, setRoles] = useState<Role[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const session = useSession();
+  // No role can be added while the organization's account is read-only.
+  const readOnly = useReadOnly();
   const c = t.roles.columns;
+  // Counted as the form shows them: a permission of a module the client
+  // does not have is kept by the role, and neither shown nor counted.
+  const inUse = (role: Role) =>
+    role.permissions.filter((p) => hasModule(session, permissionModule(p)))
+      .length;
 
   useEffect(() => {
     api<{ roles: Role[] }>("/roles")
@@ -37,10 +46,12 @@ export function RolesList({ lang, t }: AdminProps) {
         title={t.title}
         description={t.description}
         actions={
-          <ButtonLink href={`/${lang}/admin/roles/new`}>
-            <Plus className="size-4" aria-hidden />
-            {t.roles.add}
-          </ButtonLink>
+          !readOnly && (
+            <ButtonLink href={`/${lang}/admin/roles/new`}>
+              <Plus className="size-4" aria-hidden />
+              {t.roles.add}
+            </ButtonLink>
+          )
         }
       />
       <AdminTabs lang={lang} t={t} current="roles" />
@@ -87,9 +98,7 @@ export function RolesList({ lang, t }: AdminProps) {
                           {role.isSystem && <Badge>{t.roles.builtIn}</Badge>}
                         </div>
                       </td>
-                      <td className="px-4 py-3 tabular-nums">
-                        {role.permissions.length}
-                      </td>
+                      <td className="px-4 py-3 tabular-nums">{inUse(role)}</td>
                       <td className="px-4 py-3 tabular-nums">
                         {role.assignments}
                       </td>

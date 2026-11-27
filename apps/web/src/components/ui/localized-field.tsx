@@ -13,15 +13,21 @@ export function LocalizedField({
   required,
   value,
   maxLength = 200,
+  readOnly = false,
 }: {
   label: string;
   name: string;
   /** The client's languages, in its own order. */
   locales: string[];
-  /** The language that must be filled in: the client's default. */
-  required?: string;
+  /**
+   * The language that must be filled in: the client's default; `true` for
+   * every one of them.
+   */
+  required?: string | true;
   value?: Localized | null;
   maxLength?: number;
+  /** Shown and sent as it is, but not editable. */
+  readOnly?: boolean;
 }) {
   return (
     <div className="grid gap-5 sm:grid-cols-2">
@@ -36,12 +42,13 @@ export function LocalizedField({
         >
           <input
             name={`${name}.${locale}`}
-            required={locale === required}
+            required={required === true || locale === required}
             maxLength={maxLength}
             lang={locale}
             dir={direction(locale)}
             defaultValue={value?.[locale] ?? ""}
-            className={inputClass}
+            readOnly={readOnly}
+            className={`${inputClass} read-only:bg-surface read-only:text-muted`}
           />
         </Field>
       ))}

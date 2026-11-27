@@ -12,6 +12,9 @@
   --accent-soft: #dff0ef;
   --danger: #b3261e;
   --danger-soft: #fbe9e7;
+  /* Attention, not danger: a notice that something needs seeing to. */
+  --warn: #8a5300;
+  --warn-soft: #fdf1dc;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -27,6 +30,8 @@
     --accent-soft: #14302f;
     --danger: #f2877f;
     --danger-soft: #3a1b19;
+    --warn: #f0b75e;
+    --warn-soft: #33260f;
   }
 }
 
@@ -42,6 +47,8 @@
   --color-accent-soft: var(--accent-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
   /* System fonts: no build-time font download, and each platform's own
      Arabic face. */
   --font-sans:
@@ -87,5 +94,7 @@ body {
     --accent-soft: #dff0ef;
     --danger: #b3261e;
     --danger-soft: #fbe9e7;
+    --warn: #8a5300;
+    --warn-soft: #fdf1dc;
   }
 }

@@ -19,7 +19,12 @@ export default async function AppLayout({
     <Suspense>
       <AppShell
         lang={lang}
-        labels={{ appName: dict.app.name, ...dict.shell, ...dict.nav }}
+        labels={{
+          appName: dict.app.name,
+          ...dict.shell,
+          ...dict.nav,
+          subscription: dict.subscription,
+        }}
       >
         {children}
       </AppShell>

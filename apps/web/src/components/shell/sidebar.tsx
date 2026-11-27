@@ -6,6 +6,7 @@ import {
   type NavGroupKey,
   type NavItemKey,
 } from "@/config/navigation";
+import { moduleOn } from "@/config/modules";
 import type { Locale } from "@/i18n/config";
 
 export type SidebarLabels = {
@@ -30,6 +31,7 @@ export function Sidebar({
   onClose,
   organization,
   permissions,
+  modules,
 }: {
   lang: Locale;
   pathname: string;
@@ -37,6 +39,8 @@ export function Sidebar({
   /** The signed-in user's hospital, shown under the product name. */
   organization: string;
   permissions: string[];
+  /** The modules the client has: the items of the others are left out. */
+  modules: string[];
   /** Whether the drawer is open on small screens. Always shown on large ones. */
   open: boolean;
   onClose: () => void;
@@ -53,8 +57,9 @@ export function Sidebar({
       ...group,
       items: group.items.filter(
         (item) =>
-          !item.permissions ||
-          item.permissions.some((p) => permissions.includes(p)),
+          moduleOn(modules, item.module ?? "core") &&
+          (!item.permissions ||
+            item.permissions.some((p) => permissions.includes(p))),
       ),
     }))
     .filter((group) => group.items.length > 0);

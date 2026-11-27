@@ -13,6 +13,12 @@ import type { Role } from "@/lib/identity";
 import { pick, readForm } from "@/lib/localized";
 import { LocalizedField } from "@/components/ui/localized-field";
 import { useSession } from "@/components/shell/session";
+import {
+  hasModule,
+  useReadOnly,
+  useSubscriptionRefusal,
+} from "@/components/shell/subscription";
+import { permissionModule } from "@/config/modules";
 import type { AdminProps } from "./types";
 
 type Message = { kind: "ok" | "error"; text: string };
@@ -33,7 +39,12 @@ export function RoleForm({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message | null>(null);
   const [confirming, setConfirming] = useState(false);
-  const languages = useSession().tenant;
+  const session = useSession();
+  const languages = session.tenant;
+  // While the organization's account is read-only, a role can be made to
+  // grant less, or deleted; nothing can be added or renamed.
+  const readOnly = useReadOnly();
+  const refusal = useSubscriptionRefusal();
   const f = t.roles.form;
   const listPath = `/${lang}/admin/roles`;
   const locked = role?.isSystem ?? false;
@@ -65,7 +76,8 @@ export function RoleForm({
     } catch (err) {
       const code = codeOf(err);
       const text =
-        code === "language_mismatch"
+        refusal(err) ??
+        (code === "language_mismatch"
           ? f.languageMismatch
           : code === "code_taken"
             ? f.codeTaken
@@ -79,7 +91,7 @@ export function RoleForm({
                     ? t.noAccess
                     : statusOf(err) === 400
                       ? f.invalid
-                      : fallback;
+                      : fallback);
       setMessage({ kind: "error", text });
     }
     setBusy(false);
@@ -136,7 +148,10 @@ export function RoleForm({
         onSubmit={submit}
         className="mt-6 flex max-w-3xl flex-col gap-5 rounded-lg border border-line p-4 sm:p-6"
       >
-        <fieldset disabled={locked} className="flex flex-col gap-5">
+        <fieldset
+          disabled={locked || (readOnly && mode === "new")}
+          className="flex flex-col gap-5"
+        >
           <LocalizedField
             label={f.name}
             name="name"
@@ -144,6 +159,7 @@ export function RoleForm({
             required={languages.defaultLocale}
             value={role?.name}
             maxLength={100}
+            readOnly={readOnly}
           />
           {mode === "new" && (
             <Field label={f.code} help={f.codeHelp}>
@@ -162,31 +178,45 @@ export function RoleForm({
             locales={languages.locales}
             value={role?.description}
             maxLength={500}
+            readOnly={readOnly}
           />
 
           <div>
             <p className="mb-2 text-sm font-medium">{f.permissions}</p>
+            {readOnly && !locked && mode === "edit" && (
+              <p className="mb-2 text-xs text-muted">{f.permissionsReadOnly}</p>
+            )}
             <div className="grid gap-2 sm:grid-cols-2">
-              {catalog.map((permission) => (
-                <label
-                  key={permission}
-                  className="flex items-start gap-3 text-sm"
-                >
-                  <input
-                    type="checkbox"
-                    className="mt-1 accent-accent"
-                    checked={granted.includes(permission)}
-                    onChange={(e) =>
-                      setGranted(
-                        e.target.checked
-                          ? [...granted, permission]
-                          : granted.filter((p) => p !== permission),
-                      )
-                    }
-                  />
-                  {labels[permission] ?? permission}
-                </label>
-              ))}
+              {/* A permission of a module the client does not have is not
+                  shown, and the role keeps it: it is sent back as it was. */}
+              {catalog
+                .filter((p) => hasModule(session, permissionModule(p)))
+                .map((permission) => (
+                  <label
+                    key={permission}
+                    className="flex items-start gap-3 text-sm"
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-1 accent-accent"
+                      checked={granted.includes(permission)}
+                      // Read-only: a permission can be taken away, not given.
+                      disabled={
+                        readOnly &&
+                        !granted.includes(permission) &&
+                        !role?.permissions.includes(permission)
+                      }
+                      onChange={(e) =>
+                        setGranted(
+                          e.target.checked
+                            ? [...granted, permission]
+                            : granted.filter((p) => p !== permission),
+                        )
+                      }
+                    />
+                    {labels[permission] ?? permission}
+                  </label>
+                ))}
             </div>
           </div>
         </fieldset>
@@ -206,7 +236,10 @@ export function RoleForm({
         )}
         <div className="flex flex-wrap gap-2">
           {!locked && (
-            <Button type="submit" disabled={busy}>
+            <Button
+              type="submit"
+              disabled={busy || (readOnly && mode === "new")}
+            >
               {mode === "new" ? f.create : f.save}
             </Button>
           )}

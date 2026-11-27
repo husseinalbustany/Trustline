@@ -6,7 +6,14 @@ import { resolveLocale, type LangParams } from "@/i18n/locale";
 async function Content({ params }: { params: LangParams }) {
   const lang = await resolveLocale(params);
   const dict = await getDictionary(lang);
-  return <ClientForm lang={lang} t={dict.platform} mode="edit" />;
+  return (
+    <ClientForm
+      lang={lang}
+      t={dict.platform}
+      mode="edit"
+      moduleNames={dict.moduleNames}
+    />
+  );
 }
 
 // The client id is only known at request time, so this page streams in.

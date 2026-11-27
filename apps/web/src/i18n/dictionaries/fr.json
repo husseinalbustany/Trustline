@@ -42,7 +42,7 @@
   },
   "dashboard": {
     "title": "Tableau de bord",
-    "description": "Ce qui demande votre attention parmi les incidents, les actions correctives et les politiques.",
+    "description": "Ce qui demande votre attention dans votre établissement.",
     "noData": "Aucune donnée pour l’instant",
     "tiles": {
       "openIncidents": "Incidents ouverts",
@@ -69,7 +69,8 @@
     "viewTasks": "Voir ces incidents",
     "loadError": "Impossible de charger les incidents. Rechargez la page.",
     "noIncidents": "Aucun incident à afficher pour l’instant.",
-    "viewAll": "Voir tous les incidents"
+    "viewAll": "Voir tous les incidents",
+    "nothing": "Rien à afficher ici pour l’instant pour les parties de Trustline qu’utilise votre établissement."
   },
   "reportIncident": {
     "title": "Déclarer un incident",
@@ -406,7 +407,8 @@
       "internal_not_allowed": "Vous ne pouvez pas ajouter de commentaire interne. Sous « Qui peut le lire », choisissez l’option qui inclut le déclarant, puis ajoutez de nouveau le commentaire.",
       "signedOut": "Votre session a expiré : rien n’a été enregistré. Reconnectez-vous dans un autre onglet, puis revenez sur cette page et réessayez. Ce que vous avez saisi est toujours là.",
       "notFound": "Cet incident n’existe pas, ou votre rôle ne vous permet pas de le consulter. Revenez à la liste.",
-      "generic": "Enregistrement impossible. Vérifiez votre connexion puis réessayez."
+      "generic": "Enregistrement impossible. Vérifiez votre connexion puis réessayez.",
+      "subscription_suspended": "Rien n’a été enregistré : le compte de votre établissement est en lecture seule pour le moment. Adressez-vous à votre administrateur."
     },
     "inactiveUnit": "un service désormais inactif"
   },
@@ -533,7 +535,9 @@
         "other": "Une échéance est dépassée pour l’incident {reference}."
       },
       "other": "Du nouveau concernant l’incident {reference}."
-    }
+    },
+    "descriptionGeneral": "Ce qui s’est passé et vous concerne. Une notification ne nomme personne.",
+    "emptyGeneral": "Vous n’avez encore aucune notification. Dès qu’il se passe quelque chose qui vous concerne, cela apparaît ici."
   },
   "modulePage": {
     "scopeTitle": "Ce que cette partie couvrira",
@@ -595,6 +599,31 @@
       ]
     }
   },
+  "moduleNames": {
+    "incidents": "Incidents",
+    "investigations": "Enquêtes",
+    "actions": "Actions correctives",
+    "policies": "Politiques et procédures",
+    "risks": "Gestion des risques",
+    "training": "Formation et sensibilisation",
+    "ai_assistant": "Assistant IA"
+  },
+  "subscription": {
+    "pastDue": "Le paiement de l’abonnement de votre établissement est en retard. Tout continue de fonctionner. Pour le régulariser, contactez Trustline.",
+    "suspendedTitle": "Le compte de votre établissement est en lecture seule pour le moment",
+    "suspended": "La déclaration et le traitement des incidents fonctionnent normalement, de même que le retrait des accès d’une personne. Rien d’autre ne peut être ajouté ni modifié pour l’instant. Si vous avez besoin d’une modification, adressez-vous à votre administrateur ; les administrateurs peuvent contacter Trustline.",
+    "suspendedNoReporting": "La consultation fonctionne normalement, de même que le retrait des accès d’une personne. Rien d’autre ne peut être ajouté ni modifié pour l’instant. Si vous avez besoin d’une modification, adressez-vous à votre administrateur ; les administrateurs peuvent contacter Trustline.",
+    "refused": "Rien n’a été enregistré : le compte de votre établissement est en lecture seule pour le moment. Adressez-vous à votre administrateur ; les administrateurs peuvent contacter Trustline.",
+    "limit": {
+      "users": "Non enregistré : l’offre de votre établissement limite les utilisateurs à {max}, et cette limite est atteinte ; personne ne peut donc être ajouté ni réactivé. Toutes les personnes qui ont déjà un accès le conservent. Désactiver le compte d’une personne partie libère une place. Pour relever la limite, adressez-vous à votre administrateur ; les administrateurs peuvent demander à Trustline de changer l’offre.",
+      "sites": "Non enregistré : l’offre de votre établissement limite les sites actifs à {max}, et cette limite est atteinte ; aucun site ne peut donc être ajouté ni réactivé. Les sites, services et unités existants ne sont pas touchés, et des services et des unités peuvent encore être ajoutés. Désactiver un site qui ne sert plus libère une place. Pour relever la limite, adressez-vous à votre administrateur ; les administrateurs peuvent demander à Trustline de changer l’offre."
+    },
+    "notIncluded": {
+      "title": "Ne fait pas partie de l’abonnement de votre établissement",
+      "body": "Cette partie de Trustline n’est pas incluse dans ce qu’utilise votre établissement : il n’y a donc rien à afficher ici. Si vous en avez besoin, adressez-vous à votre administrateur.",
+      "back": "Aller au tableau de bord"
+    }
+  },
   "platform": {
     "title": "Plateforme Trustline",
     "signOut": "Se déconnecter",
@@ -621,7 +650,8 @@
         "plan": "Offre",
         "signIn": "Connexion",
         "status": "Statut"
-      }
+      },
+      "noPlan": "Sans abonnement"
     },
     "form": {
       "newTitle": "Ajouter un client",
@@ -653,7 +683,15 @@
       "name": "Nom",
       "languageMismatch": "Saisissez le nom dans la langue par défaut.",
       "locales": "Langues",
-      "localesHelp": "Les langues de travail de ce client. Les noms sont saisis dans chacune d’elles."
+      "localesHelp": "Les langues de travail de ce client. Les noms sont saisis dans chacune d’elles.",
+      "planHelp": "L’offre sur laquelle le client démarre, active dès aujourd’hui. L’offre, les dates et le statut se changent ensuite sur la page du client.",
+      "choosePlan": "Choisissez une offre",
+      "plansError": "Impossible de charger les offres. Rechargez la page.",
+      "planErrors": {
+        "unknown_plan": "Cette offre n’existe plus. Rechargez la page et choisissez-en une autre.",
+        "plan_retired": "Cette offre a été retirée : elle ne peut plus être attribuée à un nouveau client. Choisissez-en une autre.",
+        "plan_required": "Choisissez une offre pour ce client."
+      }
     },
     "status": {
       "title": "Statut",
@@ -665,11 +703,6 @@
       "suspendedHelp": "Le personnel de ce client ne peut pas se connecter. Ses données sont conservées."
     },
     "options": {
-      "plan": {
-        "starter": "Essentiel",
-        "professional": "Professionnel",
-        "enterprise": "Entreprise"
-      },
       "signInMethod": {
         "password": "E-mail et mot de passe",
         "sso": "Authentification unique (SSO)",
@@ -682,7 +715,8 @@
       "actions": {
         "client_created": "Client ajouté",
         "client_updated": "Client modifié",
-        "client_administrator_created": "Administrateur créé"
+        "client_administrator_created": "Administrateur créé",
+        "subscription_updated": "Abonnement modifié"
       }
     },
     "inviteLink": {
@@ -698,9 +732,177 @@
       "emailTaken": "Un utilisateur avec cet e-mail existe déjà chez ce client.",
       "exists": "Ce client a déjà un administrateur. L’hôpital ajoute lui-même les suivants.",
       "suspended": "Ce client est suspendu. Réactivez-le d’abord.",
-      "ssoOnly": "Ce client utilise uniquement l’authentification unique (SSO) : un lien de mot de passe ne peut pas servir."
+      "ssoOnly": "Ce client utilise uniquement l’authentification unique (SSO) : un lien de mot de passe ne peut pas servir.",
+      "cancelled": "L’abonnement de ce client est résilié : personne ne peut se connecter. Changez d’abord son statut dans le panneau Abonnement.",
+      "limitReached": "L’offre de ce client limite les utilisateurs à {max}, et cette limite est atteinte. Relevez la limite d’utilisateurs dans le panneau Abonnement, puis créez l’administrateur."
     },
-    "loadError": "Impossible de charger ce client. Rechargez la page."
+    "loadError": "Impossible de charger ce client. Rechargez la page.",
+    "nav": {
+      "label": "Portail",
+      "clients": "Clients",
+      "plans": "Offres"
+    },
+    "plans": {
+      "title": "Offres",
+      "description": "Ce que propose Trustline : modules, limites et options. Une offre est retirée, jamais supprimée.",
+      "add": "Ajouter une offre",
+      "empty": "Aucune offre pour l’instant. Ajoutez la première.",
+      "loadError": "Impossible de charger les offres. Rechargez la page.",
+      "notFound": "Cette offre n’existe pas.",
+      "active": "Disponible",
+      "retired": "Retirée",
+      "subscribers": "Clients : {count}",
+      "modules": "Modules :",
+      "coreOnly": "Socle uniquement",
+      "unlimited": "Illimité",
+      "limitNames": {
+        "users": "Utilisateurs",
+        "sites": "Sites",
+        "storageMb": "Stockage (Mo)",
+        "aiCreditsPerMonth": "Crédits IA par mois"
+      },
+      "extraNames": {
+        "sso": "Authentification unique (SSO)",
+        "publicReporting": "Déclaration sans connexion",
+        "clinicalAiSuggestions": "Suggestions de l’IA sur les incidents cliniques (accord signé requis)"
+      },
+      "form": {
+        "newTitle": "Ajouter une offre",
+        "newDescription": "Une offre réunit des modules, des limites et des options. Les clients y sont placés depuis leur propre page.",
+        "code": "Code",
+        "codeHelp": "Lettres minuscules, chiffres, traits d’union et tirets bas, de 2 à 40 caractères. Ne peut pas être modifié ensuite.",
+        "codeFixed": "Le code ne peut pas être modifié.",
+        "name": "Nom",
+        "nameHelp": "Dans chaque langue de Trustline : n’importe quel client peut le voir.",
+        "description": "Description",
+        "descriptionHelp": "Facultative. Si vous en écrivez une, écrivez-la dans chaque langue.",
+        "modules": "Modules",
+        "modulesHelp": "Cochez ce que comprend l’offre. Un module qui en demande un autre l’indique.",
+        "notBuilt": "Pas encore développé",
+        "needs": "Nécessite {modules}.",
+        "needsAnyOther": "Nécessite au moins un autre module.",
+        "coreNote": "Le socle fait partie de toutes les offres : connexion, utilisateurs et rôles, structure de l’établissement, notifications, rapports et paramètres.",
+        "limits": "Limites",
+        "limitsHelp": "Une limite peut être relevée ou abaissée pour un client, sur la page de ce client.",
+        "limitHelp": {
+          "users": "Comptes invités et actifs. Les comptes désactivés ne comptent pas.",
+          "sites": "Sites actifs. Les services et les unités ne comptent pas.",
+          "storageMb": "Enregistrée, pas encore appliquée.",
+          "aiCreditsPerMonth": "Enregistrée, pas encore appliquée."
+        },
+        "notEnforced": "Seuls les utilisateurs et les sites sont comptés aujourd’hui. Les déclarations d’incident ne sont jamais limitées.",
+        "extras": "Options",
+        "extrasHelp": "Enregistrées avec l’offre. L’offre n’en active ni n’en désactive aucune pour l’instant.",
+        "prices": "Prix",
+        "pricesHelp": "Conservés comme données, pour référence. Rien n’est facturé d’ici, et les clients ne voient jamais les prix.",
+        "noPrices": "Aucun prix.",
+        "priceNumber": "Prix {number}",
+        "currency": "Devise",
+        "amount": "Montant",
+        "term": "Durée",
+        "terms": {
+          "monthly": "Mensuel",
+          "yearly": "Annuel"
+        },
+        "basis": "Base",
+        "bases": {
+          "flat": "Forfait",
+          "per_user": "Par utilisateur",
+          "per_site": "Par site"
+        },
+        "addPrice": "Ajouter un prix",
+        "removePrice": "Retirer",
+        "position": "Ordre",
+        "positionHelp": "Les offres sont classées du plus petit nombre au plus grand.",
+        "create": "Ajouter l’offre",
+        "save": "Enregistrer les modifications",
+        "saved": "Modifications enregistrées.",
+        "cancel": "Annuler",
+        "back": "Retour aux offres",
+        "availability": "Disponibilité",
+        "activeHelp": "Clients sur cette offre : {count}. Elle peut être attribuée à de nouveaux clients.",
+        "retiredHelp": "Clients sur cette offre : {count}. Retirée : ils la conservent, et elle ne peut être attribuée à aucun autre client.",
+        "retire": "Retirer l’offre",
+        "retireConfirm": "Retirer cette offre ? Ses clients ({count}) la conservent, avec tout ce qu’elle comprend. Elle ne peut être attribuée à aucun autre client tant qu’elle n’est pas de nouveau disponible. Choisissez « Oui, la retirer » pour confirmer.",
+        "retireConfirmButton": "Oui, la retirer",
+        "reactivate": "La rendre de nouveau disponible",
+        "reactivated": "L’offre peut de nouveau être attribuée à des clients.",
+        "retiredDone": "Offre retirée. Ses clients la conservent.",
+        "errors": {
+          "language_mismatch": "Écrivez le nom en anglais, en arabe et en français. Une description, s’il y en a une, doit aussi l’être dans les trois langues.",
+          "code_taken": "Une autre offre utilise déjà ce code.",
+          "invalid": "Vérifiez les champs puis réessayez.",
+          "generic": "Impossible d’enregistrer. Réessayez.",
+          "dependency": "Le module {module} nécessite {requires}. Ajoutez-le à l’offre, ou décochez le module qui en a besoin.",
+          "dependencyAnyOther": "Le module {module} nécessite au moins un autre module. Ajoutez-en un, ou décochez-le.",
+          "clientDependency": "Un client sur cette offre a le module {module} en option, et cette modification le laisserait sans le module dont il a besoin. Modifiez d’abord les options de ce client, ou gardez ce module dans l’offre."
+        }
+      }
+    },
+    "subscription": {
+      "title": "Abonnement",
+      "notFound": "Ce client n’a pas d’abonnement.",
+      "loadError": "Impossible de charger l’abonnement. Rechargez la page.",
+      "effective": "Ce que le client a maintenant",
+      "currentPlan": "Offre : {name}",
+      "moduleOn": "{module} : activé",
+      "moduleOff": "{module} : désactivé",
+      "notCounted": "pas encore comptés",
+      "since": "Abonnement commencé le {date}.",
+      "meter": {
+        "usedOf": "{used} sur {max}",
+        "inUse": "{used} utilisés",
+        "unlimited": "Illimité",
+        "atLimit": "Limite atteinte : rien de plus ne peut être ajouté."
+      },
+      "plan": "Offre",
+      "planHelp": "Changer d’offre modifie aussitôt les modules et les limites du client. Une offre retirée peut être conservée, pas choisie.",
+      "planRetired": "{name} (retirée)",
+      "status": "Statut",
+      "statuses": {
+        "trial": "Essai",
+        "active": "Actif",
+        "past_due": "Paiement en retard",
+        "suspended": "Suspendu (lecture seule)",
+        "cancelled": "Résilié"
+      },
+      "statusHelp": {
+        "trial": "Tout ce que comprend l’abonnement fonctionne. Un essai a besoin d’une date de fin ; rien ne change tout seul à cette date.",
+        "active": "Tout ce que comprend l’abonnement fonctionne.",
+        "past_due": "Tout fonctionne. Les administrateurs du client voient un avis leur demandant de contacter Trustline.",
+        "suspended": "Lecture seule pour le personnel du client, sauf la déclaration et le traitement des incidents et le retrait d’accès. Le lien de déclaration public reste ouvert.",
+        "cancelled": "Personne ne peut se connecter, et toutes les sessions prennent fin aussitôt. Le lien de déclaration public s’arrête. Rien n’est supprimé."
+      },
+      "startsOn": "Début",
+      "renewsOn": "Renouvellement",
+      "trialEndsOn": "Fin de l’essai",
+      "optionalDate": "Facultatif.",
+      "trialEndsRequired": "Obligatoire pour un essai.",
+      "datesHelp": "Les dates sont indicatives : aucun statut ne change tout seul quand l’une d’elles passe.",
+      "addOns": "Modules en option",
+      "addOnsHelp": "Des modules en plus de l’offre, pour ce client seulement.",
+      "inPlan": "Dans l’offre",
+      "overrides": "Limites de ce client",
+      "overridesHelp": "Chaque limite suit l’offre, sauf si elle est fixée ici. Une limite abaissée sous ce que le client a déjà ne touche personne parmi l’existant.",
+      "usePlan": "Comme l’offre : {value}",
+      "ownLimit": "Limite propre",
+      "ownLimitOf": "Limite propre : {limit}",
+      "note": "Note",
+      "noteHelp": "Pour le personnel de Trustline seulement. Le client ne la voit jamais.",
+      "save": "Enregistrer l’abonnement",
+      "saved": "Abonnement enregistré.",
+      "confirmSave": "Oui, enregistrer",
+      "confirmSuspend": "Suspendre l’abonnement de {name} ? Son personnel pourra alors seulement consulter, déclarer et traiter des incidents, et retirer des accès ; tout le reste sera refusé jusqu’au changement de statut. Choisissez « Oui, enregistrer » pour confirmer.",
+      "confirmCancel": "Résilier l’abonnement de {name} ? Plus personne ne pourra s’y connecter, tout le monde sera déconnecté et le lien de déclaration public s’arrêtera. Rien n’est supprimé, mais les sessions restent terminées même si l’abonnement est réactivé. Choisissez « Oui, enregistrer » pour confirmer.",
+      "errors": {
+        "unknown_plan": "Cette offre n’existe plus. Rechargez la page et choisissez-en une autre.",
+        "plan_retired": "Cette offre a été retirée : le client ne peut pas y être placé. Choisissez-en une autre.",
+        "trial_end_required": "Un essai a besoin d’une date de fin. Remplissez « Fin de l’essai ».",
+        "invalid_dates": "Le renouvellement et la fin de l’essai ne peuvent pas précéder le début. Vérifiez les dates.",
+        "invalid": "Vérifiez les champs puis réessayez.",
+        "generic": "Impossible d’enregistrer. Réessayez."
+      }
+    }
   },
   "auth": {
     "login": {
@@ -710,7 +912,7 @@
       "email": "E-mail",
       "password": "Mot de passe",
       "submit": "Se connecter",
-      "failed": "L’établissement, l’e-mail ou le mot de passe est incorrect, ou le compte est verrouillé. Vérifiez-les, ou patientez 15 minutes avant de réessayer.",
+      "failed": "L’établissement, l’e-mail ou le mot de passe est incorrect, ou le compte est verrouillé. Vérifiez-les, ou patientez 15 minutes avant de réessayer. Si cela persiste, l’accès de votre établissement à Trustline a peut-être pris fin : adressez-vous à votre administrateur.",
       "invalid": "L’identifiant de l’établissement ou l’e-mail contient un caractère qui ne peut pas en faire partie, peut-être à cause d’un copier-coller. Saisissez-les de nouveau, puis connectez-vous.",
       "error": "Connexion impossible. Réessayez.",
       "forgot": "Mot de passe oublié ? Demandez un lien de réinitialisation à votre administrateur."
@@ -803,7 +1005,9 @@
         "departmentInactive": "Ce service est désactivé. L’utilisateur y reste tant que vous n’en choisissez pas un autre.",
         "unknownUnit": "Un service choisi ici a été désactivé. Rechargez la page et choisissez-en un autre.",
         "inactiveDepartment": "{name} (service inactif)",
-        "outsideScope": "Votre rôle ne couvre pas cet utilisateur, ou le service choisi pour lui. Choisissez un service couvert par votre rôle, ou adressez-vous à votre administrateur."
+        "outsideScope": "Votre rôle ne couvre pas cet utilisateur, ou le service choisi pour lui. Choisissez un service couvert par votre rôle, ou adressez-vous à votre administrateur.",
+        "rolesReadOnly": "Le compte de votre établissement est en lecture seule pour le moment : des rôles peuvent être retirés, mais pas attribués.",
+        "enableReadOnly": "Le compte de votre établissement est en lecture seule pour le moment : ce compte ne peut donc pas être réactivé."
       }
     },
     "roles": {
@@ -839,7 +1043,8 @@
         "deleteConfirm": "Supprimer ce rôle ? Appuyez de nouveau pour confirmer. Cette action est irréversible.",
         "deleteError": "Impossible de supprimer le rôle. Réessayez.",
         "name": "Nom",
-        "languageMismatch": "Saisissez le nom dans la langue par défaut."
+        "languageMismatch": "Saisissez le nom dans la langue par défaut.",
+        "permissionsReadOnly": "Le compte de votre établissement est en lecture seule pour le moment : des autorisations peuvent être retirées de ce rôle, mais pas ajoutées, et son nom ne peut pas être modifié."
       }
     },
     "organization": {
@@ -957,6 +1162,41 @@
         "saved": "Délais enregistrés.",
         "invalid": "Rien n’a été enregistré. Saisissez des nombres entiers : de 1 à 720 pour les heures, de 1 à 365 pour les jours.",
         "readOnly": "Seule une personne dont le rôle permet de modifier les paramètres de tout l’établissement peut changer ces chiffres."
+      },
+      "subscription": {
+        "title": "Abonnement",
+        "intro": "Ce que comprend l’abonnement de votre établissement, et ce qui en est utilisé. Il est géré par Trustline.",
+        "plan": "Offre",
+        "status": {
+          "trial": "Essai",
+          "active": "Actif",
+          "past_due": "Paiement en retard",
+          "suspended": "Lecture seule"
+        },
+        "startsOn": "Début",
+        "renewsOn": "Renouvellement",
+        "trialEndsOn": "Fin de l’essai",
+        "modules": "Modules",
+        "on": "Inclus",
+        "off": "Non inclus",
+        "fromPlan": "Dans l’offre",
+        "fromAddOn": "Ajouté à l’offre",
+        "comingLater": "À venir",
+        "limits": "Utilisation et limites",
+        "users": "Utilisateurs",
+        "usersHelp": "Comptes invités et actifs. Un compte désactivé ne compte pas.",
+        "sites": "Sites",
+        "sitesHelp": "Sites actifs. Les services et les unités ne comptent pas.",
+        "storage": "Stockage",
+        "ai": "Crédits IA par mois",
+        "notInUse": "Pas encore utilisé",
+        "meter": {
+          "usedOf": "{used} sur {max}",
+          "inUse": "{used} utilisés",
+          "unlimited": "Illimité",
+          "atLimit": "Limite atteinte : rien de plus ne peut être ajouté."
+        },
+        "change": "Pour changer d’offre, ajouter un module ou relever une limite, contactez Trustline."
       }
     },
     "permissions": {
