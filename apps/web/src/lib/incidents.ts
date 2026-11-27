@@ -96,6 +96,13 @@ export type IncidentListItem = {
   status: IncidentStatus;
   assignedToMe: boolean;
   descriptionExcerpt: string;
+  /**
+   * `reporter` when the caller sees it only as its reporter: its status is
+   * then said in the reporter's plain words.
+   */
+  access: "full" | "reporter";
+  /** How it arrived. Null unless the caller is told who reported it. */
+  channel: "app" | "public" | null;
 } & Deadlines;
 
 export type IncidentList = { items: IncidentListItem[]; total: number };
@@ -163,8 +170,20 @@ export type IncidentEvent = {
         details: { ownerUnitId: string; assignedTo: string | null };
       }
     | {
-        kind: "closed" | "rejected" | "reopened" | "signed_off";
+        kind: "closed" | "rejected" | "signed_off";
         details: Note;
+      }
+    | {
+        /**
+         * Reopening starts a new closing deadline. The one it replaced and
+         * the new one are kept, for those handling it (absent in the
+         * reporter's view, and in events stored before).
+         */
+        kind: "reopened";
+        details: {
+          note: string | null;
+          closeDueAt?: { from: string | null; to: string | null };
+        } | null;
       }
     | {
         /**
@@ -231,10 +250,14 @@ export type Incident = Omit<
   reporterShown: boolean;
   /** With `reporterShown`: null means it was reported anonymously. */
   reporter: Named | null;
-  /** How it arrived. Null when the reporter is not shown. */
-  channel: "app" | "public" | null;
   /** A sentinel event or a death: closing it takes a second person. */
   needsSignOff: boolean;
+  /**
+   * For those handling it, when it needs sign-off: how many active people,
+   * other than whoever asked for the closure (or, before anyone has, the
+   * reader), could give the second signature. 0 means nobody can.
+   */
+  signOff?: { others: number } | null;
   /** Who asked for it to be closed, while it awaits sign-off. */
   closureRequestedBy: Named | null;
   closureRequestedAt: string | null;
@@ -245,7 +268,6 @@ export type Incident = Omit<
   /** While it awaits sign-off: the summary being proposed. */
   closureSummary: string | null;
   rejectionReason: string | null;
-  access: "full" | "reporter";
   /**
    * Raised by every triage and status change (not by a comment); sent back
    * so a decision made on a stale page is refused.
@@ -370,7 +392,16 @@ export type IncidentView = Omit<Incident, "id" | "reference">;
  */
 export type FollowUpView = IncidentView & {
   /** Whose report this is, and the languages its names are written in. */
-  hospital: { name: Localized; locales: string[]; defaultLocale: string };
+  hospital: {
+    name: Localized;
+    locales: string[];
+    defaultLocale: string;
+    /**
+     * The organization's clock, which every time on the page is shown on.
+     * Absent from an API older than the page.
+     */
+    timeZone?: string;
+  };
 };
 
 /** What the report form needs, for someone who has not signed in. */

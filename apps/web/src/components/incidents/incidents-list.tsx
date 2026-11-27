@@ -37,6 +37,7 @@ import {
   isSerious,
   liveDeadline,
   sortOrders,
+  type IncidentCategory,
   type IncidentList,
   type IncidentListItem,
 } from "@/lib/incidents";
@@ -44,7 +45,7 @@ import { pick, type Localized } from "@/lib/localized";
 import { unitOptions } from "@/lib/org-units";
 import { zoneLabel } from "@/lib/time-zone";
 import { IncidentPills } from "./pills";
-import type { IncidentsProps } from "./types";
+import { forReporter, type IncidentsProps } from "./types";
 
 const PAGE_SIZE = 20;
 const statusChips = ["", "open", ...incidentStatuses] as const;
@@ -54,12 +55,19 @@ type Answer = { query: string; list: IncidentList; at: Date };
 
 export function IncidentsList({ lang, t }: IncidentsProps) {
   const session = useSession();
-  // What is asked for is in the address, and nowhere else.
-  const filters = readFilters(useSearchParams());
+  // How a report arrived is told only to those who may see who reported
+  // it, somewhere: nobody else is offered a filter the API would refuse.
+  const seesReporters = can(session, "incidents.see_reporter");
+  // What is asked for is in the address, and nowhere else. An address that
+  // asks for the way reports arrived, from someone who may not ask (an old
+  // bookmark, a link from a colleague), is read without it.
+  const asked = readFilters(useSearchParams());
+  const filters = seesReporters ? asked : { ...asked, channel: "" as const };
   const query = filtersQuery(filters);
   const [answer, setAnswer] = useState<Answer | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [units, setUnits] = useState<OrgUnit[]>([]);
+  const [categories, setCategories] = useState<IncidentCategory[]>([]);
   // Opened or closed by hand; until then, open when one of its filters is on.
   const [moreOpen, setMoreOpen] = useState<boolean | null>(null);
   const referenceInput = useRef<HTMLInputElement>(null);
@@ -76,6 +84,9 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
   // reports is sent none, so is not offered a filter that finds nothing.
   const handles =
     can(session, "incidents.triage") || can(session, "incidents.view");
+  // Someone who only reports sees every incident here as its reporter, and
+  // reads its status in plain words: the filter says them too.
+  const chipWords = handles ? t : forReporter(t);
 
   // How long a report has waited, counted from when the list was fetched.
   const reportedAgo = (reportedAt: string) => {
@@ -122,11 +133,15 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
     };
   }, [query, findsNothing]);
 
-  // The departments to filter by. The list works without them.
+  // The departments and categories to filter by. The list works without
+  // them.
   useEffect(() => {
     let current = true;
     api<OrgUnit[]>("/org-units")
       .then((list) => current && setUnits(list))
+      .catch(() => {});
+    api<IncidentCategory[]>("/incident-categories")
+      .then((list) => current && setCategories(list))
       .catch(() => {});
     return () => {
       current = false;
@@ -191,6 +206,20 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
     (u) => inLang(u.name),
     filters.orgUnitId ? { id: filters.orgUnitId, label: t.inactiveUnit } : null,
   );
+  // Likewise a category in the address that is no longer offered.
+  const categoryOptions = categories.map((c) => ({
+    id: c.id,
+    label: inLang(c.name),
+  }));
+  if (
+    filters.categoryId &&
+    !categoryOptions.some((c) => c.id === filters.categoryId)
+  ) {
+    categoryOptions.unshift({
+      id: filters.categoryId,
+      label: l.inactiveCategory,
+    });
+  }
 
   const chip =
     "inline-flex h-9 items-center rounded-full border px-3 text-sm whitespace-nowrap";
@@ -247,7 +276,11 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
                   }
                   className={`${chip} ${chipTone(on)}`}
                 >
-                  {value === "open" ? l.open : value ? t.status[value] : l.all}
+                  {value === "open"
+                    ? l.open
+                    : value
+                      ? chipWords.status[value]
+                      : l.all}
                 </button>
               );
             })}
@@ -426,6 +459,37 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
                 <option value="false">{t.no}</option>
               </select>
             </Field>
+            <Field label={l.category}>
+              <select
+                value={filters.categoryId}
+                onChange={(e) => ask({ categoryId: e.target.value })}
+                className={inputClass}
+              >
+                <option value="">{l.all}</option>
+                {categoryOptions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            {seesReporters && (
+              <Field label={l.channel} help={l.channelHelp}>
+                <select
+                  value={filters.channel}
+                  onChange={(e) =>
+                    ask({
+                      channel: e.target.value as IncidentFilters["channel"],
+                    })
+                  }
+                  className={inputClass}
+                >
+                  <option value="">{l.all}</option>
+                  <option value="app">{l.channelApp}</option>
+                  <option value="public">{l.channelPublic}</option>
+                </select>
+              </Field>
+            )}
             <Field label={l.department} help={l.departmentHelp}>
               <select
                 value={filters.orgUnitId}
@@ -480,6 +544,9 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
             <ul className="overflow-hidden rounded-lg">
               {data.items.map((item) => {
                 const deadline = deadlineOf(item);
+                // Someone who sees it only as its reporter reads plain
+                // words for where it stands, as on the incident itself.
+                const words = item.access === "reporter" ? forReporter(t) : t;
                 return (
                   <li
                     key={item.id}
@@ -499,7 +566,7 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
                         <bdi dir="ltr">{item.reference}</bdi>
                       </Link>
                       <IncidentPills
-                        t={t}
+                        t={words}
                         status={item.status}
                         harmLevel={item.harmLevel}
                         isSentinel={item.isSentinel}
@@ -516,6 +583,10 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
                       )}
                       {item.assignedToMe && (
                         <Pill tone="ok">{l.assignedToYou}</Pill>
+                      )}
+                      {/* Only to those told who reported it. */}
+                      {item.channel === "public" && (
+                        <Pill tone="neutral">{l.publicLink}</Pill>
                       )}
                     </div>
                     {/* Each dot stays with the piece after it when the line
@@ -572,7 +643,7 @@ export function IncidentsList({ lang, t }: IncidentsProps) {
                           {" "}
                           <span className="inline-block">
                             {"· "}
-                            {t.timeline.changed.ownerUnitId}{" "}
+                            {words.timeline.changed.ownerUnitId}{" "}
                             <bdi>{inLang(item.ownerUnit.name)}</bdi>
                           </span>
                         </>

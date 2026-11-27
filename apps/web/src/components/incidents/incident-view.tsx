@@ -2,7 +2,7 @@ import { ArrowRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
-import { dateTimeFormat, fill } from "@/lib/format";
+import { dateTimeFormat, fill, momentFrom } from "@/lib/format";
 import {
   wordFor,
   type IncidentView,
@@ -69,11 +69,17 @@ export function IncidentReport(props: ViewProps) {
       d.reportedBy,
       // A reader who may not know is told that, and nothing about whether
       // there is a name to know.
-      !incident.reporterShown
-        ? d.reporterHidden
-        : incident.reporter
-          ? name(incident.reporter.name)
-          : d.anonymous,
+      <>
+        {!incident.reporterShown
+          ? d.reporterHidden
+          : incident.reporter
+            ? name(incident.reporter.name)
+            : d.anonymous}
+        {/* How it arrived comes only to those told who reported it. */}
+        {incident.channel === "public" && (
+          <span className="block text-muted">{d.sentPublicly}</span>
+        )}
+      </>,
     ],
     [d.harmLevel, t.harm[incident.harmLevel]],
     [
@@ -219,10 +225,18 @@ export function IncidentTimeline(props: ViewProps) {
             : e.commented,
           [],
         ];
+      case "reopened": {
+        // Reopening starts a new closing deadline, told to those handling
+        // the incident.
+        const due = momentFrom(event.details?.closeDueAt?.to);
+        return [
+          e.reopened,
+          due ? [{ label: c.closeDueAt, to: dates.format(due) }] : [],
+        ];
+      }
       case "reported":
       case "closed":
       case "rejected":
-      case "reopened":
       case "sign_off_requested":
       case "signed_off":
       case "sent_back":

@@ -27,11 +27,20 @@ import { api, codeOf, retryAfterOf, statusOf } from "@/lib/api";
 import { clockTimeIn, fill } from "@/lib/format";
 import type { FollowUpView } from "@/lib/incidents";
 import { pick } from "@/lib/localized";
-import { deviceTime } from "@/lib/time-zone";
+import { deviceTime, wallClock, zoneLabel } from "@/lib/time-zone";
 import { PublicFrame } from "./public-frame";
 
-/** A report that is open: what the API answered, and the code that opened it. */
-type Open = { code: string; view: FollowUpView };
+/**
+ * A report that is open: what the API answered, the code that opened it,
+ * and whether the organization's clock shows what this device's does.
+ */
+type Open = { code: string; view: FollowUpView; sameClock: boolean };
+
+/** Whether a clock in this zone shows the same time as this device now. */
+const showsDeviceTime = (timeZone: string | undefined) => {
+  const now = new Date();
+  return wallClock(now, timeZone) === wallClock(now, deviceTime);
+};
 
 /**
  * The API names no one to a reader who came with a code: whatever staff did
@@ -153,7 +162,11 @@ export function FollowUp({
       // The field is emptied: the code is now in memory only.
       form.reset();
       setEndedSince(false);
-      setOpen({ code, view: withoutNames(view) });
+      setOpen({
+        code,
+        view: withoutNames(view),
+        sameClock: showsDeviceTime(view.hospital.timeZone),
+      });
     } catch (err) {
       setError(refusal(err));
     }
@@ -284,10 +297,16 @@ export function FollowUp({
     incident: open.view,
     // Names the hospital wrote, in its own language when not in the reader's.
     fallback: hospital?.defaultLocale,
-    // This reader belongs to no hospital's staff: times are on the clock of
-    // the device in their hands, as on the form they reported with.
-    timeZone: deviceTime,
+    // On the organization's clock, as the report form is: "when it
+    // happened" was typed on it, and staff read every time on it. An API
+    // older than this page sends no clock: the device's is used.
+    timeZone: hospital?.timeZone ?? deviceTime,
   };
+  // Which clock that is, said only when this device shows another time.
+  const timeNote =
+    hospital?.timeZone && !open.sameClock
+      ? fill(u.timeNote, { zone: zoneLabel(lang, hospital.timeZone) })
+      : null;
 
   return (
     // No language links while a report is open: changing language leaves
@@ -310,6 +329,7 @@ export function FollowUp({
             isSentinel={open.view.isSentinel}
           />
           <p className="text-base text-muted">{u.viewHelp}</p>
+          {timeNote && <p className="text-sm text-muted">{timeNote}</p>}
         </div>
         <IncidentReport {...view} />
         <IncidentTimeline {...view} />

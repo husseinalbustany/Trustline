@@ -10,14 +10,25 @@ export type Notification = {
   kind: string;
   createdAt: string;
   readAt: string | null;
+  /**
+   * Null for one about the organization itself, not an incident
+   * (`public_form_paused`).
+   */
   incident: {
     id: string;
     reference: string;
     /** False once the reader can no longer see the incident. */
     canOpen: boolean;
-  };
+  } | null;
   data: {
     reference?: string;
+    /**
+     * About severe harm, a death or a sentinel event. Missing from those
+     * written before the API said so: read as not serious.
+     */
+    serious?: boolean;
+    /** With `public_form_paused`: the reports an hour the form takes. */
+    limit?: number;
     /** With `due_soon` and `overdue`. */
     deadline?: string;
     /** With `sign_off_decided`. */

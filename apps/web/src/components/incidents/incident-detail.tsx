@@ -9,7 +9,7 @@ import { Field } from "@/components/ui/field";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/panel";
 import { api, statusOf } from "@/lib/api";
-import { dateTimeFormat, fill } from "@/lib/format";
+import { dateTimeFormat, fill, numberFormat } from "@/lib/format";
 import type { OrgUnit } from "@/lib/identity";
 import type {
   AssignableUser,
@@ -183,11 +183,28 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
       )}
 
       {requested && (
-        <p
+        <div
           role="status"
-          className="mt-4 rounded-md bg-accent-soft px-3 py-2 text-sm"
+          className="mt-4 flex flex-col gap-1 rounded-md bg-accent-soft px-3 py-2 text-sm"
         >
-          {requested}
+          <p>{requested}</p>
+          {/* Who else could give the second signature, for those handling
+              it: said plainly when nobody can. */}
+          {incident.signOff && incident.signOff.others > 0 && (
+            <p>
+              {fill(t.signOff.others, {
+                count: numberFormat(lang).format(incident.signOff.others),
+              })}
+            </p>
+          )}
+        </div>
+      )}
+      {requested && incident.signOff?.others === 0 && (
+        <p
+          role="alert"
+          className="mt-2 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger"
+        >
+          {t.signOff.nobody}
         </p>
       )}
 

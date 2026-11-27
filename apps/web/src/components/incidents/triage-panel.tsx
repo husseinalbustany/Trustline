@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
 import { Panel } from "@/components/ui/panel";
 import { api, codeOf } from "@/lib/api";
-import { fill } from "@/lib/format";
+import { fill, numberFormat } from "@/lib/format";
 import type { OrgUnit } from "@/lib/identity";
 import {
   harmLevels,
@@ -20,12 +20,7 @@ import {
 } from "@/lib/incidents";
 import { pick, readForm, type Localized } from "@/lib/localized";
 import { unitOptions } from "@/lib/org-units";
-import {
-  explain,
-  textareaClass,
-  whoReads,
-  type IncidentsProps,
-} from "./types";
+import { explain, textareaClass, whoReads, type IncidentsProps } from "./types";
 
 /**
  * What a triage or a status change answered. A "saved" note belongs to the
@@ -51,6 +46,9 @@ const isStale = (err: unknown) =>
     "same_person",
     "kind_required",
     "revision_required",
+    // It has become serious, or needed a second signature, since the page
+    // offered to set it aside.
+    "serious_cannot_be_rejected",
   ].includes(codeOf(err) ?? "");
 
 function Note({ message }: { message: Message | null | false }) {
@@ -389,7 +387,15 @@ function TriageForm({
 }
 
 /** The status changes the API offers this user for this incident now. */
-function StatusActions({ t, incident, onChange, onStale, message, say }: Part) {
+function StatusActions({
+  lang,
+  t,
+  incident,
+  onChange,
+  onStale,
+  message,
+  say,
+}: Part) {
   // Which of the offered moves was picked, by its place in the list.
   const [chosen, setChosen] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -420,6 +426,10 @@ function StatusActions({ t, incident, onChange, onStale, message, say }: Part) {
   // A closure summary or a reason for not taking it forward may be read by
   // whoever holds the follow-up code of an anonymous report.
   const reader = whoReads(t, incident);
+  // Before asking for sign-off: who else could give it. Asking when nobody
+  // can leaves the incident waiting, so that is said first.
+  const others =
+    move?.kind === "request_sign_off" ? incident.signOff?.others : undefined;
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -492,6 +502,21 @@ function StatusActions({ t, incident, onChange, onStale, message, say }: Part) {
               {move.revisionRequired && (
                 <p className="mt-1 text-sm text-muted">{a.revisionHelp}</p>
               )}
+              {others !== undefined &&
+                (others === 0 ? (
+                  <p
+                    role="alert"
+                    className="mt-2 rounded-md bg-danger-soft px-3 py-2 text-sm text-danger"
+                  >
+                    {t.signOff.nobodyBefore}
+                  </p>
+                ) : (
+                  <p className="mt-1 text-sm">
+                    {fill(t.signOff.othersBefore, {
+                      count: numberFormat(lang).format(others),
+                    })}
+                  </p>
+                ))}
             </div>
             <Field
               label={noteLabel(move)}

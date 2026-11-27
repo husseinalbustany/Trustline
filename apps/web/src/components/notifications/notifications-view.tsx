@@ -1,10 +1,12 @@
 "use client";
 
+import { TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { useSession, useUnread } from "@/components/shell/session";
 import { Button } from "@/components/ui/button";
+import { Pill } from "@/components/ui/pill";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Panel } from "@/components/ui/panel";
 import type { Locale } from "@/i18n/config";
@@ -78,6 +80,12 @@ export function NotificationsView({
   // On the hospital's clock, like every date its staff see.
   const dates = dateTimeFormat(lang, session.tenant.timeZone);
   const path = `/${lang}/notifications`;
+  // Where the form for reporting without sign-in is switched, for whoever
+  // may switch it: a notification that it is paused leads there.
+  const settingsPath =
+    session.scope?.["settings.manage"] === "all"
+      ? `/${lang}/admin/settings`
+      : null;
 
   useEffect(() => {
     let current = true;
@@ -171,11 +179,18 @@ export function NotificationsView({
     (unreadCount ?? 0) > 0 || !!data?.items.some((n) => !n.readAt);
 
   const row = (n: Notification, at: Date) => {
-    const reference = n.data?.reference ?? n.incident.reference;
+    const reference = n.data?.reference ?? n.incident?.reference ?? "";
+    // About the organization rather than an incident: nothing to open,
+    // except the settings, for whoever may change them.
+    const about = n.incident;
+    const opens = about?.canOpen ? `/${lang}/incidents/${about.id}` : null;
+    const serious = n.data?.serious === true;
     // The reference is one piece, left to right and never broken at its
     // hyphens: put in with the words, it would wrap as "INC-2026-" and
     // "00042", and in Arabic its parts would be reordered across the lines.
-    const sentence = sentenceFor(t.kinds, n)
+    const sentence = fill(sentenceFor(t.kinds, n), {
+      limit: numbers.format(n.data?.limit ?? 0),
+    })
       .split("{reference}")
       .flatMap((words, i) =>
         i === 0
@@ -200,9 +215,25 @@ export function NotificationsView({
         <div className="min-w-0 flex-1">
           <p className={`text-sm ${unread ? "font-medium" : ""}`}>
             {unread && <span className="sr-only">{t.unreadMark} </span>}
-            {n.incident.canOpen ? (
+            {/* Severe harm, a death or a sentinel event: marked in words
+                and solid, at the start of the line, so it is seen when
+                scanning the list. */}
+            {serious && (
+              <span className="me-1 inline-block align-middle">
+                <Pill
+                  tone="alert"
+                  icon={
+                    <TriangleAlert className="size-3 shrink-0" aria-hidden />
+                  }
+                >
+                  {t.serious}
+                </Pill>
+              </span>
+            )}
+            {serious && " "}
+            {opens ? (
               <Link
-                href={`/${lang}/incidents/${n.incident.id}`}
+                href={opens}
                 onClick={() => {
                   if (unread) void markRead(n.id);
                 }}
@@ -214,8 +245,21 @@ export function NotificationsView({
               sentence
             )}
           </p>
-          {!n.incident.canOpen && (
+          {about && !about.canOpen && (
             <p className="mt-0.5 text-sm text-muted">{t.unavailable}</p>
+          )}
+          {!about && settingsPath && (
+            <p className="mt-1 text-sm">
+              <Link
+                href={settingsPath}
+                onClick={() => {
+                  if (unread) void markRead(n.id);
+                }}
+                className="text-accent hover:underline"
+              >
+                {t.openSettings}
+              </Link>
+            </p>
           )}
           {created && (
             <p className="mt-1 text-xs text-muted">
@@ -228,7 +272,7 @@ export function NotificationsView({
           )}
         </div>
         {/* One that leads nowhere can still be put away. */}
-        {unread && !n.incident.canOpen && (
+        {unread && !opens && (
           <Button
             variant="secondary"
             className="shrink-0"
@@ -257,22 +301,25 @@ export function NotificationsView({
         }
       />
 
-      <div
-        role="group"
-        aria-label={t.filterLabel}
-        className="mt-6 flex flex-wrap gap-2"
-      >
-        {[false, true].map((unread) => (
-          <button
-            key={String(unread)}
-            type="button"
-            aria-pressed={asked.unread === unread}
-            onClick={() => show(unread)}
-            className={`${chip} ${chipTone(asked.unread === unread)}`}
-          >
-            {unread ? t.unread : t.all}
-          </button>
-        ))}
+      <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2">
+        <div
+          role="group"
+          aria-label={t.filterLabel}
+          className="flex flex-wrap gap-2"
+        >
+          {[false, true].map((unread) => (
+            <button
+              key={String(unread)}
+              type="button"
+              aria-pressed={asked.unread === unread}
+              onClick={() => show(unread)}
+              className={`${chip} ${chipTone(asked.unread === unread)}`}
+            >
+              {unread ? t.unread : t.all}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-muted">{t.seriousNote}</p>
       </div>
 
       {actionFailed && (

@@ -28,6 +28,13 @@ export type IncidentFilters = {
   sentinel: "true" | "false" | "";
   /** Where it happened, or the department handling it. */
   orgUnitId: string;
+  categoryId: string;
+  /**
+   * How it arrived: signed in, or through the public link. Only for those
+   * who may see who reported something, and it finds only the incidents
+   * whose reporter they are told of.
+   */
+  channel: "app" | "public" | "";
   /**
    * Days of reporting, `2026-11-25`, both included. They are days on the
    * hospital's calendar: the API counts them in the hospital's time zone.
@@ -51,6 +58,8 @@ export const noFilters: IncidentFilters = {
   harmLevel: "",
   sentinel: "",
   orgUnitId: "",
+  categoryId: "",
+  channel: "",
   from: "",
   to: "",
   reference: "",
@@ -67,6 +76,8 @@ const oneOf = <T extends string>(
   (allowed as readonly string[]).includes(value ?? "") ? (value as T) : "";
 
 const uuid = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+const idOrNothing = (value: string | null) =>
+  value && uuid.test(value) ? value : "";
 
 /** A real day written `YYYY-MM-DD`, or nothing. */
 const day = (value: string | null) => {
@@ -98,9 +109,9 @@ export function readFilters(params: {
     type: oneOf(incidentTypes, params.get("type")),
     harmLevel: oneOf(harmLevels, params.get("harmLevel")),
     sentinel: oneOf(["true", "false"] as const, params.get("sentinel")),
-    orgUnitId: uuid.test(params.get("orgUnitId") ?? "")
-      ? (params.get("orgUnitId") as string)
-      : "",
+    orgUnitId: idOrNothing(params.get("orgUnitId")),
+    categoryId: idOrNothing(params.get("categoryId")),
+    channel: oneOf(["app", "public"] as const, params.get("channel")),
     from: day(params.get("from")),
     to: day(params.get("to")),
     reference: (params.get("reference") ?? "").trim().slice(0, 20),
@@ -148,6 +159,8 @@ export const moreFiltersInUse = (filters: IncidentFilters) =>
     filters.harmLevel,
     filters.sentinel,
     filters.orgUnitId,
+    filters.categoryId,
+    filters.channel,
     filters.from,
     filters.to,
   ].filter(Boolean).length;
