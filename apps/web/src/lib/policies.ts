@@ -462,6 +462,24 @@ export function shownLanguage(
   return languages[0] ?? null;
 }
 
+export type NotInForce = "retired" | "superseded" | "withdrawn" | "unpublished";
+
+/**
+ * Why a version is not the one in force, as its statuses say, or null for
+ * the published version of a current document. A retired document's
+ * versions are all out of force, whatever each one's own status.
+ */
+export function notInForce(
+  document: Pick<PolicyDocument, "status">,
+  version: Pick<DocumentVersion, "status">,
+): NotInForce | null {
+  if (document.status === "retired") return "retired";
+  if (version.status === "published") return null;
+  if (version.status === "superseded") return "superseded";
+  if (version.status === "withdrawn") return "withdrawn";
+  return "unpublished";
+}
+
 /** Today on the client's calendar, as the API writes a day. */
 export function todayIn(timeZone: string): string {
   const parts = new Intl.DateTimeFormat("en-CA", {

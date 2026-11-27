@@ -19,7 +19,7 @@ import { LocalizedField } from "@/components/ui/localized-field";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Panel } from "@/components/ui/panel";
 import { api, codeOf, statusOf } from "@/lib/api";
-import { fill } from "@/lib/format";
+import { durationFormat, fill } from "@/lib/format";
 import type { OrgUnit, Role } from "@/lib/identity";
 import { pick, readForm, type Localized } from "@/lib/localized";
 import { unitOptions } from "@/lib/org-units";
@@ -112,7 +112,19 @@ export function EditDocument({ lang, t }: PoliciesProps) {
   const shown = loaded?.doc.id === id ? loaded : null;
   if (problem || !shown) return <EmptyState>{problem ?? t.loading}</EmptyState>;
   if (!shown.doc.moves.includes("edit")) {
-    return <EmptyState>{t.form.notEditable}</EmptyState>;
+    return (
+      <>
+        <EmptyState>{t.form.notEditable}</EmptyState>
+        <p className="text-center text-sm">
+          <Link
+            href={documentPath(lang, shown.doc.id)}
+            className="text-accent hover:underline"
+          >
+            {t.review.backToDocument}
+          </Link>
+        </p>
+      </>
+    );
   }
   return (
     <>
@@ -478,7 +490,7 @@ function DocumentForm({
                 label={f.reviewMonths}
                 help={
                   type
-                    ? fill(f.reviewMonthsHelp, { months: String(type.defaultReviewMonths) })
+                    ? fill(f.reviewMonthsHelp, { months: durationFormat(lang)(type.defaultReviewMonths, "month") })
                     : f.reviewMonthsHelpNoType
                 }
               >

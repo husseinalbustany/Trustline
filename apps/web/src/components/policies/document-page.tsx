@@ -20,7 +20,13 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
 import { api, statusOf } from "@/lib/api";
-import { dateTimeFormat, dayFormat, fill, numberFormat } from "@/lib/format";
+import {
+  dateTimeFormat,
+  dayFormat,
+  durationFormat,
+  fill,
+  numberFormat,
+} from "@/lib/format";
 import { pick, type Localized } from "@/lib/localized";
 import {
   documentPath,
@@ -474,7 +480,7 @@ function Details({ lang, t, doc }: PoliciesProps & { doc: PolicyDocument }) {
   rows.push([d.confidentialityLabel, t.confidentiality[doc.confidentiality]]);
   rows.push([
     d.reviewPeriod,
-    fill(d.months, { months: numberFormat(lang).format(doc.reviewMonths) }),
+    durationFormat(lang)(doc.reviewMonths, "month"),
   ]);
   if (doc.lastReviewedOn) {
     rows.push([d.lastReviewedOn, day(doc.lastReviewedOn) ?? ""]);

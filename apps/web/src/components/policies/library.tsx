@@ -230,7 +230,9 @@ export function Library({ lang, t }: PoliciesProps) {
                   autoComplete="off"
                   defaultValue={filters.q}
                   placeholder={l.searchExample}
-                  className={inputClass}
+                  // Empty, it takes the page's direction, so the example
+                  // starts where the reader starts; typed in, its own.
+                  className={`${inputClass} placeholder-shown:[direction:inherit]`}
                 />
               </Field>
             </div>

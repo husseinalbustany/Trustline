@@ -40,6 +40,59 @@ export const numberFormat = (lang: string) =>
   new Intl.NumberFormat(withWesternDigits(lang));
 
 /**
+ * A counted length of time, with its unit in the reader's language and
+ * its plural form: "1 day", "36 months", «7 أيام», «36 شهرًا», « 36 mois ».
+ * The dictionary writes its sentence around the whole phrase.
+ */
+export function durationFormat(lang: string) {
+  const formats = {
+    day: new Intl.NumberFormat(withWesternDigits(lang), {
+      style: "unit",
+      unit: "day",
+      unitDisplay: "long",
+    }),
+    month: new Intl.NumberFormat(withWesternDigits(lang), {
+      style: "unit",
+      unit: "month",
+      unitDisplay: "long",
+    }),
+  };
+  return (count: number, unit: keyof typeof formats) =>
+    formats[unit].format(count);
+}
+
+/**
+ * A language's name as the reader's language writes it inside a sentence:
+ * "Arabic", « anglais », «الفرنسية». The buttons that choose a language
+ * keep each language's own name (`localeNames`).
+ */
+export function languageNameIn(lang: string) {
+  let names: Intl.DisplayNames | null = null;
+  try {
+    names = new Intl.DisplayNames([lang], { type: "language" });
+  } catch {
+    names = null;
+  }
+  return (locale: string) => {
+    try {
+      return names?.of(locale) ?? locale;
+    } catch {
+      return locale;
+    }
+  };
+}
+
+/**
+ * Several languages named in one phrase, in the reader's language:
+ * "English and Arabic", «الإنجليزية والعربية», « anglais et arabe ».
+ */
+export function languageListIn(lang: string) {
+  const name = languageNameIn(lang);
+  const list = new Intl.ListFormat(lang, { type: "conjunction" });
+  return (locales: string[]) => list.format(locales.map(name));
+}
+
+/**
  * How long ago a moment was, in the reader's words: "3 days ago". Counted in
  * days for the first three months, because that is how a waiting report is
  * talked about; then in months and years. Null for less than a minute ago:

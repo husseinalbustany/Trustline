@@ -30,7 +30,7 @@ import { EmptyState, Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
 import { direction, hasLocale, localeNames } from "@/i18n/config";
 import { api, codeOf, detailsOf, statusOf } from "@/lib/api";
-import { fill, numberFormat } from "@/lib/format";
+import { fill, languageNameIn, numberFormat } from "@/lib/format";
 import { pick, type Localized } from "@/lib/localized";
 import { styleLines, toggleBold, type LineStyle } from "@/lib/markup";
 import {
@@ -49,6 +49,7 @@ import { useExplain } from "./use-explain";
 
 type Loaded = { doc: PolicyDocument; version: DocumentVersion };
 
+/** On a button or a field for one language: the language's own name. */
 const languageName = (locale: string) =>
   hasLocale(locale) ? localeNames[locale] : locale;
 
@@ -430,7 +431,7 @@ function Editor({
       )}
 
       <p className="mt-4 max-w-3xl text-sm text-muted">
-        {fill(e.intro, { language: languageName(defaultLocale) })}
+        {fill(e.intro, { language: languageNameIn(lang)(defaultLocale) })}
       </p>
 
       <ReadOnlyFieldset>

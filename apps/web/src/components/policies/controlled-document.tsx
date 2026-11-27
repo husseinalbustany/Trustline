@@ -1,15 +1,31 @@
 "use client";
 
-import type { ReactNode } from "react";
+import Link from "next/link";
+import { QRCodeSVG } from "qrcode.react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useSession } from "@/components/shell/session";
 import { direction, hasLocale, localeNames } from "@/i18n/config";
-import { dateTimeFormat, dayFormat, fill } from "@/lib/format";
+import {
+  dateTimeFormat,
+  dayFormat,
+  fill,
+  languageNameIn,
+  numberFormat,
+} from "@/lib/format";
 import { pick, type Localized } from "@/lib/localized";
-import type { DocumentVersion, Named, PolicyDocument } from "@/lib/policies";
+import {
+  documentPath,
+  notInForce,
+  type DocumentVersion,
+  type Named,
+  type PolicyDocument,
+} from "@/lib/policies";
 import { Markup } from "./markup";
+import { Words } from "./sentence";
 import type { PoliciesText } from "./types";
 
-const languageName = (locale: string) =>
+/** On a button that chooses a language: the language's own name. */
+const ownName = (locale: string) =>
   hasLocale(locale) ? localeNames[locale] : locale;
 
 /**
@@ -48,7 +64,7 @@ export function LanguageSwitch({
               : "border-line text-muted hover:bg-surface hover:text-foreground"
           }`}
         >
-          {languageName(locale)}
+          {ownName(locale)}
         </button>
       ))}
     </div>
@@ -57,10 +73,16 @@ export function LanguageSwitch({
 
 /**
  * A version laid out as a controlled document: the control block (number,
- * version, owner, dates, who reviewed and approved it and when), then the
- * sections in order, numbered, in the language chosen. The control block
- * is in the reader's language; the text in its own, with its own
+ * version, owner, dates, who prepared, reviewed and approved it and when),
+ * then the sections in order, numbered, in the language chosen. The control
+ * block is in the reader's language; the text in its own, with its own
  * direction, so an Arabic text reads right to left whatever the page is.
+ *
+ * A section not written in the language chosen is shown in the client's
+ * main language, in its place and with a note, so the numbering is the
+ * same in every language. A version that is not in force says so at the
+ * top, in its control block and across every printed page; every printed
+ * page carries what identifies it (see `PrintedPages`).
  */
 export function ControlledDocument({
   lang,
@@ -85,24 +107,79 @@ export function ControlledDocument({
     pick(text, lang, fallback);
   const name = (person: Named | null | undefined) =>
     (person && inLang(person.name)) || t.document.unknownPerson;
+  const languageName = languageNameIn(lang);
   const day = dayFormat(lang);
   const moment = dateTimeFormat(lang, session.tenant.timeZone);
+  const dayOf = dateTimeFormat(lang, session.tenant.timeZone, {
+    dateStyle: "medium",
+  });
   const d = t.document;
   const c = version.control;
   const textLang = shown ?? fallback;
-  const sections = version.sections.filter(
-    (s) => !!version.content[textLang]?.[s.key]?.trim(),
-  );
+  const standing = notInForce(document, version);
+
+  // Every section written in some language, each in the language chosen
+  // when it is written there, else in the main language (or the first that
+  // has it), so that section 4 is section 4 in every language.
+  const written = (locale: string, key: string) =>
+    !!version.content[locale]?.[key]?.trim();
+  const sections = version.sections.flatMap((section) => {
+    if (written(textLang, section.key)) {
+      return [{ section, locale: textLang }];
+    }
+    const other = [fallback, ...version.languages].find((l) =>
+      written(l, section.key),
+    );
+    return other ? [{ section, locale: other }] : [];
+  });
   const notInMine = shown !== null && shown !== lang;
 
+  const ended =
+    standing === "retired"
+      ? document.retiredAt
+      : standing === "superseded"
+        ? version.supersededAt
+        : null;
   const rows: [string, ReactNode][] = [
     [d.number, <bdi key="n" dir="ltr">{c.number}</bdi>],
-    [d.version, String(c.version)],
+    [d.version, numberFormat(lang).format(c.version)],
     [d.type, <bdi key="t">{inLang(document.type.name)}</bdi>],
     [d.ownerUnit, <bdi key="u">{inLang(document.ownerUnit.name)}</bdi>],
     [d.owner, <bdi key="o">{name(c.owner)}</bdi>],
     [d.effectiveOn, day(c.effectiveOn) ?? d.notYet],
-    [d.nextReviewOn, day(c.nextReviewOn) ?? d.notSet],
+  ];
+  if (ended) {
+    rows.push([d.notInForceSince, dayOf.format(new Date(ended))]);
+  }
+  if (!standing) {
+    rows.push([d.nextReviewOn, day(c.nextReviewOn) ?? d.notSet]);
+  }
+
+  // Who prepared it, then each signature: one line each, the date and time
+  // kept together.
+  const when = (iso: string | null) =>
+    iso ? (
+      <span className="whitespace-nowrap">{moment.format(new Date(iso))}</span>
+    ) : (
+      ""
+    );
+  const signedLines = [
+    ...(version.preparedBy
+      ? [
+          {
+            key: "prepared",
+            text: d.preparedBy,
+            person: version.preparedBy,
+            at: version.preparedAt,
+          },
+        ]
+      : []),
+    ...c.approvals.map((a) => ({
+      key: `step-${a.position}`,
+      text: a.kind === "review" ? d.reviewedBy : d.approvedBy,
+      person: a.signedBy,
+      at: a.signedAt,
+    })),
   ];
 
   const notControlled = (
@@ -117,10 +194,39 @@ export function ControlledDocument({
 
   return (
     <article className="flex flex-col gap-6 print:gap-4">
+      {standing && (
+        <div
+          role="note"
+          className="flex flex-col gap-1 rounded-lg border-2 border-danger bg-danger-soft px-4 py-3 text-sm"
+        >
+          <p className="text-base font-semibold text-danger">
+            {t.notInForce[standing]}
+          </p>
+          <p>
+            {fill(t.notInForce[`${standing}Help`], {
+              date: ended ? dayOf.format(new Date(ended)) : "",
+            })}
+          </p>
+          {standing === "superseded" && document.published && (
+            <p className="print:hidden">
+              <Link
+                href={documentPath(lang, document.id)}
+                className="text-accent hover:underline"
+              >
+                {t.notInForce.openCurrent}
+              </Link>
+            </p>
+          )}
+        </div>
+      )}
       {notControlled}
       <header className="rounded-lg border border-line print:rounded-none">
         <div className="border-b border-line px-4 py-3">
-          <p className="text-xs text-muted">{d.controlBlock}</p>
+          <p
+            className={`text-xs ${standing ? "font-semibold text-danger" : "text-muted"}`}
+          >
+            {standing ? t.notInForce[standing] : d.controlBlock}
+          </p>
           <h2
             lang={textLang}
             dir={direction(textLang)}
@@ -139,20 +245,19 @@ export function ControlledDocument({
         </dl>
         <div className="border-t border-line px-4 py-3">
           <p className="text-sm font-medium">{d.approvals}</p>
-          {c.approvals.length === 0 ? (
-            <p className="mt-1 text-sm text-muted">{d.noApprovals}</p>
-          ) : (
-            <ul className="mt-1 flex flex-col gap-1 text-sm">
-              {c.approvals.map((a) => (
-                <li key={a.position}>
-                  {fill(a.kind === "review" ? d.reviewedBy : d.approvedBy, {
-                    name: name(a.signedBy),
-                    date: a.signedAt ? moment.format(new Date(a.signedAt)) : "",
-                  })}
-                </li>
-              ))}
-            </ul>
-          )}
+          <ul className="mt-1 flex flex-col gap-1 text-sm">
+            {signedLines.map((line) => (
+              <li key={line.key}>
+                <Words
+                  text={line.text}
+                  values={{ name: name(line.person), date: when(line.at) }}
+                />
+              </li>
+            ))}
+            {c.approvals.length === 0 && (
+              <li className="text-muted">{d.noApprovals}</li>
+            )}
+          </ul>
         </div>
       </header>
 
@@ -175,20 +280,170 @@ export function ControlledDocument({
           dir={direction(textLang)}
           className="flex max-w-3xl flex-col gap-6 text-start"
         >
-          {sections.map((section, i) => (
+          {sections.map(({ section, locale }, i) => (
             <section key={section.key} className="flex flex-col gap-2">
-              <h3 className="text-base font-semibold">
+              <h3 className="text-base font-semibold break-after-avoid">
                 {/* The number and the name in the text's own language and
                     direction: "1. Purpose", «1. الغرض». */}
                 {`${i + 1}. `}
                 {pick(section.name, textLang, fallback)}
               </h3>
-              <Markup text={version.content[textLang][section.key]} />
+              {locale === textLang ? (
+                <Markup text={version.content[textLang][section.key]} />
+              ) : (
+                <>
+                  <p
+                    lang={lang}
+                    dir={direction(lang)}
+                    className="rounded-md border border-warn bg-warn-soft px-3 py-1.5 text-xs text-warn"
+                  >
+                    {fill(d.sectionInOther, {
+                      language: languageName(textLang),
+                      other: languageName(locale),
+                    })}
+                  </p>
+                  <div lang={locale} dir={direction(locale)}>
+                    <Markup text={version.content[locale][section.key]} />
+                  </div>
+                </>
+              )}
             </section>
           ))}
         </div>
       )}
       {printed && notControlled}
+      <PrintedPages
+        lang={lang}
+        t={t}
+        document={document}
+        version={version}
+        title={pick(document.title, textLang, fallback)}
+        mark={standing ? t.notInForce[standing] : null}
+      />
     </article>
+  );
+}
+
+/** A sentence for a CSS `content`: quoted, and safe inside a style sheet. */
+const cssString = (text: string) =>
+  `"${text
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\A ")
+    .replace(/</g, "\\3C ")}"`;
+
+/** "Page {page} of {pages}" as a CSS `content`, with the page counters. */
+const pageCounter = (text: string) =>
+  text
+    .split(/(\{pages?\})/)
+    .filter(Boolean)
+    .map((part) =>
+      part === "{page}"
+        ? "counter(page)"
+        : part === "{pages}"
+          ? "counter(pages)"
+          : cssString(part),
+    )
+    .join(" ");
+
+const LONGEST_TITLE = 140;
+
+/**
+ * What every printed page carries, in the page's margins: the number,
+ * version and title at the head, with a QR code to the document's page
+ * (which always shows the version in force); at the foot, the day it was
+ * printed, valid that day only, and "page x of y". A version not in force
+ * is printed across every page with what it is ("Retired, not in force").
+ *
+ * The margins are `@page` margin boxes, which Chromium-based browsers draw;
+ * the rules are added while the document is on screen and taken away with
+ * it, so no other page prints with them. The day is read again just
+ * before printing.
+ */
+function PrintedPages({
+  lang,
+  t,
+  document,
+  version,
+  title,
+  mark,
+}: {
+  lang: string;
+  t: PoliciesText;
+  document: PolicyDocument;
+  version: DocumentVersion;
+  title: string;
+  mark: string | null;
+}) {
+  const session = useSession();
+  const qr = useRef<HTMLDivElement>(null);
+  const d = t.document;
+  const timeZone = session.tenant.timeZone;
+  const rtl = direction(lang) === "rtl";
+  const start = rtl ? "right" : "left";
+  const end = rtl ? "left" : "right";
+  const shortTitle =
+    title.length > LONGEST_TITLE ? `${title.slice(0, LONGEST_TITLE)}…` : title;
+  const head = fill(d.printHeader, {
+    number: document.number,
+    version: numberFormat(lang).format(version.version),
+    title: shortTitle,
+  });
+  const link =
+    typeof window === "undefined"
+      ? ""
+      : `${window.location.origin}/policies/${document.id}`;
+
+  useEffect(() => {
+    const sheet = window.document.createElement("style");
+    const svg = qr.current?.querySelector("svg");
+    const image = svg
+      ? `url("data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+          new XMLSerializer().serializeToString(svg),
+        )}")`
+      : "none";
+    const box = `font-family: ui-sans-serif, system-ui, "Segoe UI", "Noto Sans Arabic", Tahoma, sans-serif; font-size: 8pt; line-height: 1.35; color: #000; direction: ${rtl ? "rtl" : "ltr"};`;
+    const write = () => {
+      const today = dateTimeFormat(lang, timeZone, {
+        dateStyle: "medium",
+      }).format(new Date());
+      sheet.textContent = `@media print {
+@page {
+  margin: 26mm 14mm 20mm;
+  @top-${start} { content: ${cssString(head)}; ${box} text-align: start; vertical-align: middle; }
+  @top-${end} { content: ${image}; vertical-align: middle; text-align: ${end}; width: 22mm; }
+  @bottom-${start} { content: ${cssString(fill(d.printedOn, { date: today }))}; ${box} text-align: start; vertical-align: top; }
+  @bottom-${end} { content: ${pageCounter(d.pageOf)}; ${box} text-align: ${end}; vertical-align: top; white-space: nowrap; }
+}
+}`;
+    };
+    write();
+    window.document.head.append(sheet);
+    window.addEventListener("beforeprint", write);
+    return () => {
+      window.removeEventListener("beforeprint", write);
+      sheet.remove();
+    };
+  }, [lang, timeZone, rtl, start, end, head, link, d.printedOn, d.pageOf]);
+
+  return (
+    <>
+      {/* Drawn once, out of sight, to be copied into the page margins. Black
+          on white whatever the screen is set to: a camera needs the
+          contrast. */}
+      <div ref={qr} hidden>
+        {link && <QRCodeSVG value={link} size={80} marginSize={1} level="M" />}
+      </div>
+      {mark && (
+        <div
+          aria-hidden
+          className="pointer-events-none fixed inset-0 z-50 hidden items-center justify-center print:flex"
+        >
+          <p className="-rotate-30 rounded-lg border-8 border-danger/30 px-8 py-4 text-center text-5xl font-bold text-danger/30">
+            {mark}
+          </p>
+        </div>
+      )}
+    </>
   );
 }

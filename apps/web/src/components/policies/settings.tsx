@@ -22,7 +22,7 @@ import { EmptyState, Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
 import { direction, hasLocale, localeNames } from "@/i18n/config";
 import { api, codeOf } from "@/lib/api";
-import { fill, numberFormat } from "@/lib/format";
+import { durationFormat, fill } from "@/lib/format";
 import type { Role } from "@/lib/identity";
 import { pick, type Localized } from "@/lib/localized";
 import {
@@ -258,7 +258,7 @@ function Types({ lang, t, lists, reload }: PartProps) {
               </div>
               <p className="mt-1 text-xs text-muted">
                 {fill(s.typeLine, {
-                  months: numberFormat(lang).format(type.defaultReviewMonths),
+                  months: durationFormat(lang)(type.defaultReviewMonths, "month"),
                   sections: type.sections
                     .map((x) => inLang(x.name))
                     .join(" · "),
@@ -802,7 +802,7 @@ function Routes({ lang, t, lists, reload }: PartProps) {
                         position: String(step.position),
                         kind: t.stepKind[step.kind],
                         who: assigneeLabel(t, inLang, step.assignee),
-                        days: numberFormat(lang).format(step.dueInDays),
+                        days: durationFormat(lang)(step.dueInDays, "day"),
                       })}
                     </li>
                   ))}

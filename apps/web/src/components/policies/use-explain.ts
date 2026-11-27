@@ -3,7 +3,7 @@
 import { useCallback } from "react";
 import { useSession } from "@/components/shell/session";
 import { useSubscriptionRefusal } from "@/components/shell/subscription";
-import { hasLocale, localeNames } from "@/i18n/config";
+import { languageNameIn } from "@/lib/format";
 import { pick } from "@/lib/localized";
 import type { Section } from "@/lib/policies";
 import { explain, type PoliciesText } from "./types";
@@ -30,8 +30,8 @@ export function useExplain(
             ? pick(found.name, lang, session.tenant.defaultLocale)
             : key;
         },
-        language: (locale) =>
-          hasLocale(locale) ? localeNames[locale] : locale,
+        // Inside a sentence, in the reader's language: "in Arabic".
+        language: languageNameIn(lang),
       }),
     [refusal, t, sections, lang, session.tenant.defaultLocale],
   );

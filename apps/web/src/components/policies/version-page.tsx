@@ -19,7 +19,14 @@ import { EmptyState, Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
 import { direction } from "@/i18n/config";
 import { api, statusOf } from "@/lib/api";
-import { dateTimeFormat, dayFormat, fill, numberFormat } from "@/lib/format";
+import {
+  dateTimeFormat,
+  dayFormat,
+  durationFormat,
+  fill,
+  languageListIn,
+  numberFormat,
+} from "@/lib/format";
 import { pick, type Localized } from "@/lib/localized";
 import {
   documentPath,
@@ -327,7 +334,7 @@ function VersionView({
                 <dd>
                   {version.acknowledgementRequired
                     ? fill(r.acknowledgementWithin, {
-                        days: numbers.format(version.acknowledgeWithinDays),
+                        days: durationFormat(lang)(version.acknowledgeWithinDays, "day"),
                       })
                     : r.noAcknowledgement}
                 </dd>
@@ -669,7 +676,12 @@ function VersionActions({
                   <Sentence
                     text={version.myStep.kind === "review" ? r.signReview : r.signApprove}
                     number={doc.number}
-                    values={{ version: numbers.format(version.version) }}
+                    values={{
+                      version: numbers.format(version.version),
+                      // A signature covers every language the version is
+                      // written in, so the prompt names them all.
+                      languages: languageListIn(lang)(version.languages),
+                    }}
                   />
                 }
                 confirm={version.myStep.kind === "review" ? r.confirmReviewed : r.confirmApproved}
@@ -777,7 +789,7 @@ function VersionActions({
               {version.acknowledgementRequired && (
                 <p className="text-xs text-muted">
                   {fill(x.publishAcknowledge, {
-                    days: numbers.format(version.acknowledgeWithinDays),
+                    days: durationFormat(lang)(version.acknowledgeWithinDays, "day"),
                   })}
                 </p>
               )}
