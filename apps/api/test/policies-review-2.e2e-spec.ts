@@ -311,6 +311,35 @@ describe('policies after review 2', () => {
       // Back to the default for the rest of these tests.
       await patch(writer.cookie, '/settings', { maxReviewMonths: 36, revision: 2 }).expect(200);
     });
+
+    it('does not switch a type back on with a review period above the maximum', async () => {
+      const sections = [{ key: 'items', name: { en: 'Items' }, required: true }];
+      const code = `long${run}`;
+      let settings = (await get(writer.cookie, '/settings').expect(200)).body;
+      settings = (await patch(writer.cookie, '/settings', { maxReviewMonths: 48, revision: settings.revision }).expect(200)).body;
+      let type = (
+        await post(writer.cookie, '/types', { code, name: { en: 'Long' }, numberPrefix: 'LNG', sections, defaultReviewMonths: 48 }).expect(201)
+      ).body;
+      type = (await patch(writer.cookie, `/types/${type.id}`, { active: false, revision: type.revision }).expect(200)).body;
+      // Off, it does not hold the maximum up.
+      settings = (await patch(writer.cookie, '/settings', { maxReviewMonths: 36, revision: settings.revision }).expect(200)).body;
+      await http().patch(`/policies/types/${type.id}`).send({ active: true, revision: type.revision }).expect(401);
+      await patch(reader.cookie, `/types/${type.id}`, { active: true, revision: type.revision }).expect(403);
+      await patch(bWriter.cookie, `/types/${type.id}`, { active: true, revision: type.revision }).expect(404);
+      await patch(writer.cookie, `/types/${type.id}`, { active: 'yes', revision: type.revision }).expect(400);
+      // Back on with its 48 months: refused, and nothing changed.
+      expect((await patch(writer.cookie, `/types/${type.id}`, { active: true, revision: type.revision }).expect(400)).body).toEqual({
+        code: 'review_period_too_long',
+        max: 36,
+      });
+      const still = (await get(writer.cookie, '/types?includeInactive=true').expect(200)).body.find((t: { id: string }) => t.id === type.id);
+      expect(still).toMatchObject({ active: false, defaultReviewMonths: 48, revision: type.revision });
+      // Changed while off, still off: no check needed.
+      type = (await patch(writer.cookie, `/types/${type.id}`, { name: { en: 'Longer' }, revision: type.revision }).expect(200)).body;
+      // Back on with a period within the maximum, in the same change.
+      const on = (await patch(writer.cookie, `/types/${type.id}`, { active: true, defaultReviewMonths: 24, revision: type.revision }).expect(200)).body;
+      expect(on).toMatchObject({ active: true, defaultReviewMonths: 24 });
+    });
   });
 
   describe("a document's history of changes", () => {
@@ -352,7 +381,8 @@ describe('policies after review 2', () => {
       await get(deptManager.cookie, `/documents/${doc.id}/changes`).expect(200);
       const history = (await get(auditor.cookie, `/documents/${doc.id}/changes`).expect(200)).body;
       expect(history.total).toBe(3);
-      const [period, people, title] = history.items;
+      // Newest first.
+      const [title, people, period] = history.items;
       expect(period).toMatchObject({
         by: { id: writer.id, name: { en: 'Person writer' } },
         reason: 'Checked every year, as the ward asks.',
@@ -382,6 +412,20 @@ describe('policies after review 2', () => {
         from: { id: dept, name: { en: 'Unit NUR' } },
         to: { id: ward, name: { en: 'Unit WARD' } },
       });
+
+      // A page at a time, the total counting every change, not the page.
+      const first = (await get(auditor.cookie, `/documents/${doc.id}/changes?pageSize=2`).expect(200)).body;
+      expect(first.total).toBe(3);
+      expect(first.items.map((i: { id: string }) => i.id)).toEqual([title.id, people.id]);
+      const second = (await get(auditor.cookie, `/documents/${doc.id}/changes?page=2&pageSize=2`).expect(200)).body;
+      expect(second).toMatchObject({ total: 3, items: [{ id: period.id }] });
+      expect((await get(auditor.cookie, `/documents/${doc.id}/changes?page=3&pageSize=2`).expect(200)).body).toEqual({ items: [], total: 3 });
+      for (const bad of ['pageSize=0', 'pageSize=201', 'page=0', 'page=x', 'order=asc']) {
+        await get(auditor.cookie, `/documents/${doc.id}/changes?${bad}`).expect(400);
+      }
+      await http().get(`/policies/documents/${doc.id}/changes?pageSize=2`).expect(401);
+      await get(reader.cookie, `/documents/${doc.id}/changes?pageSize=2`).expect(403);
+      await get(bWriter.cookie, `/documents/${doc.id}/changes?pageSize=2`).expect(404);
     });
   });
 
@@ -551,7 +595,17 @@ describe('policies after review 2', () => {
         .where(and(eq(auditLog.tenantId, a.id), eq(auditLog.action, 'documents_exported')))
         .orderBy(auditLog.occurredAt)
         .limit(1);
-      expect(entry).toMatchObject({ actorId: writer.id, changes: { locale: 'ar' } });
+      expect(entry).toMatchObject({ actorId: writer.id, changes: { locale: 'ar', filters: { search: { used: false } } } });
+      // Whether a search was used, and how long it was: not what it was.
+      const searched = await bench.owner.db
+        .select({ changes: auditLog.changes })
+        .from(auditLog)
+        .where(and(eq(auditLog.tenantId, a.id), eq(auditLog.action, 'documents_exported')))
+        .orderBy(auditLog.occurredAt);
+      const withSearch = searched.find((e) => (e.changes as { locale: string }).locale === 'en')!;
+      expect(withSearch.changes).toMatchObject({ filters: { search: { used: true, length: 5 }, sort: 'number' } });
+      expect((withSearch.changes as { filters: Record<string, unknown> }).filters).not.toHaveProperty('q');
+      expect(JSON.stringify(withSearch.changes)).not.toContain('spill');
     });
 
     it('holds for a reader only what they may read, and nothing of another client', async () => {
@@ -645,6 +699,34 @@ describe('policies after review 2', () => {
       expect(entry.changes).toMatchObject({ versionId: v1.id, version: 1 });
     });
 
+    it("fills in employee numbers only for the people whose accounts the caller manages", async () => {
+      // A manager of the department's documents and staff, and the
+      // department's manager, who manages no accounts.
+      await bench.createRole(a, 'staffadmin', ['policies.view_all', 'users.manage']);
+      const staffAdmin = await staff(a, 'staffadmin', 'staffadmin', dept, dept);
+      const numbers = { [reader.id]: `R-${run}`, [phaWriter.id]: `P-${run}`, [quality.id]: `Q-${run}` };
+      for (const [id, employeeNumber] of Object.entries(numbers)) {
+        await http().patch(`/users/${id}`).set('Cookie', a.cookie).send({ employeeNumber }).expect(200);
+      }
+      // The document is for the whole organization, and the department's.
+      const url = `/documents/${doc.id}/versions/${v1.id}/acknowledgements/export`;
+      const numberOf = async (who: Staff) => {
+        const rows = readCsv((await get(who.cookie, url).expect(200)).text);
+        expect(rows[0][4]).toBe('Employee number');
+        const cell = (name: string) => rows.find((r) => r[3] === name)![4];
+        return { reader: cell('Person reader'), pharmacy: cell('Person phawriter'), quality: cell('Person quality') };
+      };
+      // The department's manager sees the document in full, and its people,
+      // but not the staff register: no employee number at all.
+      expect(await numberOf(deptManager)).toEqual({ reader: '', pharmacy: '', quality: '' });
+      // Nor does someone who sees every document and manages no accounts.
+      expect(await numberOf(auditor)).toEqual({ reader: '', pharmacy: '', quality: '' });
+      // Accounts of the department: the ward's reader only.
+      expect(await numberOf(staffAdmin)).toEqual({ reader: `R-${run}`, pharmacy: '', quality: '' });
+      // Accounts everywhere: everyone's.
+      expect(await numberOf(approver)).toEqual({ reader: `R-${run}`, pharmacy: `P-${run}`, quality: `Q-${run}` });
+    });
+
     it('is there for a version no longer in force, and on screen the leavers show only when asked', async () => {
       const v2 = await nextVersion(doc, { en: { steps: '1. Mark it.' } });
       const r = await act(quality, doc, v2, 'approve');
@@ -722,6 +804,10 @@ describe('policies after review 2', () => {
       let cManager: Staff;
       let onWard: Staff;
       let noUnit: Staff;
+      let cQuality: Staff;
+      let cApprover: Staff;
+      let cFacility: string;
+      let cWard: string;
 
       beforeAll(async () => {
         c = await bench.createHospital('c');
@@ -732,6 +818,10 @@ describe('policies after review 2', () => {
         cWriter = await staff(c, 'cwriter', 'writer', null, f);
         const q = await staff(c, 'cquality', 'quality_officer', null, f);
         const ap = await staff(c, 'capprover', 'administrator', null, f);
+        cQuality = q;
+        cApprover = ap;
+        cFacility = f;
+        cWard = u;
         cManager = await staff(c, 'cmanager', 'department_manager', d, d);
         onWard = await staff(c, 'onward', 'reporter', null, u);
         noUnit = await staff(c, 'nounit', 'reporter', null, null);
@@ -822,6 +912,71 @@ describe('policies after review 2', () => {
         const theirs = (await get(writer.cookie, '/acknowledgements/overdue?pageSize=500').expect(200)).body;
         expect(theirs.items.map((i: { user: { id: string } }) => i.user.id)).not.toContain(onWard.id);
       });
+
+      it('names no document the caller may not open: not its number, id or version', async () => {
+        // A restricted document of another department, for the ward.
+        const lab = await bench.createUnit(c, 'department', 'LAB', cFacility);
+        const t = Object.fromEntries((await get(c.cookie, '/types').expect(200)).body.map((x: { code: string; id: string }) => [x.code, x.id]));
+        const cat = Object.fromEntries((await get(c.cookie, '/categories').expect(200)).body.map((x: { code: string; id: string }) => [x.code, x.id]));
+        const created = (
+          await post(cWriter.cookie, '/documents', {
+            typeId: t.procedure,
+            categoryId: cat.SAF,
+            title: { en: 'Laboratory only' },
+            ownerId: cWriter.id,
+            ownerUnitId: lab,
+            confidentiality: 'restricted',
+            audience: { orgUnitIds: [cWard], roleIds: [] },
+            acknowledgementRequired: true,
+          }).expect(201)
+        ).body as Doc;
+        let v = (await get(cWriter.cookie, `/documents/${created.id}/versions/${created.inProgress!.id}`).expect(200)).body as Version;
+        v = (await patch(cWriter.cookie, `/documents/${created.id}/versions/${v.id}`, { content: { en: FULL_EN }, revision: v.revision }).expect(200)).body;
+        for (const [who, action] of [[cWriter, 'submit'], [cQuality, 'approve'], [cApprover, 'approve'], [cWriter, 'publish']] as const) {
+          v = (
+            await post(who.cookie, `/documents/${created.id}/versions/${v.id}/${action}`, {
+              revision: v.revision,
+              ...(action === 'approve' && { password }),
+            }).expect(200)
+          ).body;
+        }
+        // The one on the ward is overdue on it, five days.
+        await bench.owner.db
+          .update(documentAcknowledgements)
+          .set({ dueOn: shiftDay(dayOf(new Date(), 'UTC'), -5) })
+          .where(and(eq(documentAcknowledgements.versionId, v.id), eq(documentAcknowledgements.userId, onWard.id)));
+        // The department's manager may not open it.
+        await get(cManager.cookie, `/documents/${created.id}`).expect(404);
+
+        const list = (await get(cManager.cookie, '/acknowledgements/overdue').expect(200)).body;
+        // Counted, and the person and the due date shown.
+        expect(list.total).toBe(2);
+        expect(list.items).toHaveLength(2);
+        const hidden = list.items.find((i: { daysOverdue: number }) => i.daysOverdue === 5);
+        expect(hidden).toEqual({
+          user: { id: onWard.id, name: { en: 'Person onward' } },
+          orgUnit: { id: cWard, name: { en: 'Unit U' } },
+          document: null,
+          version: null,
+          dueOn: shiftDay(dayOf(new Date(), 'UTC'), -5),
+          daysOverdue: 5,
+        });
+        expect(JSON.stringify(list)).not.toContain(created.number);
+        expect(JSON.stringify(list)).not.toContain(created.id);
+        expect(JSON.stringify(list)).not.toContain(v.id);
+        // The one the manager may open is named in full, as before.
+        const shown = list.items.find((i: { daysOverdue: number }) => i.daysOverdue === 3);
+        expect(shown.document).toEqual({ id: expect.any(String), number: expect.any(String), title: { en: 'Everyone reads this' }, canOpen: true });
+        expect(shown.version).toEqual({ id: expect.any(String), version: 1 });
+        // Whoever may open it sees it named.
+        const all = (await get(cWriter.cookie, '/acknowledgements/overdue').expect(200)).body;
+        const named = all.items.find((i: { document: { id: string } | null }) => i.document?.id === created.id);
+        expect(named).toMatchObject({
+          user: { id: onWard.id },
+          document: { number: created.number, title: { en: 'Laboratory only' }, canOpen: true },
+          version: { id: v.id, version: 1 },
+        });
+      }, 120_000);
     });
   });
 });

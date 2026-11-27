@@ -35,6 +35,7 @@ import {
 import { TenantDb } from '../database/tenant-db.service.js';
 import type { AuthContext } from '../identity/auth.service.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
+import { covers } from '../identity/scope.js';
 import {
   pickText,
   SUPPORTED_LOCALES,
@@ -69,6 +70,14 @@ import {
   within,
   type Viewer,
 } from './visibility.js';
+
+/**
+ * The library's filters as the audit log keeps them: all but the free-text
+ * search, which is reduced to whether there was one and its length.
+ */
+export function auditedFilters({ q, ...rest }: LibraryFilters) {
+  return { ...rest, search: q ? { used: true, length: q.length } : { used: false } };
+}
 
 /** The business's measures (docs/specs/policies-and-procedures.md). */
 export const MEASURES = {
@@ -400,7 +409,14 @@ export class LibraryService {
         'documents_exported',
         'tenant',
         auth.tenant.id,
-        { filters, locale, rows: rows.length },
+        {
+          // The search text itself is not kept: it may name a person or a
+          // patient, and the audit log is kept for ever (security review,
+          // finding 4). Only that there was one, and how long.
+          filters: auditedFilters(filters),
+          locale,
+          rows: rows.length,
+        },
       );
       return { body, fileName: csvFileName('documents', today) };
     });
@@ -828,7 +844,8 @@ export class LibraryService {
    * did, as a CSV file: any version of the document (one in force on a
    * given day included), and everyone asked, those who have left included
    * and marked. Only with full sight of the document (403 otherwise, 404
-   * for one the caller may not see at all). Audited.
+   * for one the caller may not see at all). The employee number is filled
+   * only for people within the caller's `users.manage`. Audited.
    */
   exportAcknowledgements(
     auth: AuthContext,
@@ -868,6 +885,7 @@ export class LibraryService {
         .select({
           name: users.name,
           employeeNumber: users.employeeNumber,
+          orgUnitId: users.orgUnitId,
           account: users.status,
           unitName: unit.name,
           assignedAt: documentAcknowledgements.assignedAt,
@@ -913,7 +931,10 @@ export class LibraryService {
           version.version,
           words[`version.${version.status}`],
           name(r.name),
-          r.employeeNumber,
+          // The employee number only for people whose accounts the caller
+          // manages: full sight of a document is not sight of the staff
+          // register (security review, finding 1).
+          covers(auth, 'users.manage', r.orgUnitId) ? r.employeeNumber : null,
           r.unitName ? name(r.unitName) : null,
           words[
             r.account === 'active'
@@ -959,8 +980,9 @@ export class LibraryService {
    * figures for (their own unit within the reach of the caller's
    * `policies.manage` or `policies.view_all`), on the version in force of
    * each active document: where the weekly digest leads. Most overdue
-   * first. Each names its document by number, and by title only while the
-   * caller may open it, as notifications do.
+   * first. Each names its document and version only while the caller may
+   * open it; otherwise both are `null`, and the row keeps the person, the
+   * due date and its place in the count.
    */
   overdueAcknowledgements(
     auth: AuthContext,
@@ -1019,18 +1041,25 @@ export class LibraryService {
         .where(where)
         .orderBy(
           asc(documentAcknowledgements.dueOn),
-          asc(documents.number),
+          // Documents the caller may not open sort after the others of the
+          // same day, by nothing of theirs: the order tells no number.
+          sql`case when ${canOpen} then ${documents.number} end nulls last`,
           sql`${users.name} ->> ${auth.tenant.defaultLocale}`,
           asc(users.id),
+          asc(documentAcknowledgements.id),
         )
         .limit(input.pageSize)
         .offset((input.page - 1) * input.pageSize);
       return {
         today,
-        items: rows.map(({ title, canOpen: open, ...r }) => ({
+        items: rows.map(({ title, canOpen: open, document, version, ...r }) => ({
           ...r,
           orgUnit: r.orgUnit?.id ? r.orgUnit : null,
-          document: { ...r.document, title: open ? title : null, canOpen: open },
+          // A document the caller may not open is not named at all: not its
+          // number, id or version (security review, finding 2). The person,
+          // the due date and the count stay, so the figures still add up.
+          document: open ? { ...document, title, canOpen: true } : null,
+          version: open ? version : null,
           daysOverdue: daysBetween(r.dueOn, today),
         })),
         total,

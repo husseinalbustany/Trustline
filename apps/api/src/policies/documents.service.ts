@@ -520,10 +520,15 @@ export class DocumentsService {
    * owning unit, audience, confidentiality, review period and the next
    * review date it moved, keywords, references): who changed what, when,
    * from what to what, and why where a reason was given. From the audit
-   * log, oldest first, with names as they are now. For those with full
-   * sight; anyone else who may see the document is refused with 403.
+   * log, newest first, a page at a time, with the number of changes in all,
+   * and names as they are now. For those with full sight; anyone else who
+   * may see the document is refused with 403.
    */
-  changes(auth: AuthContext, id: string) {
+  changes(
+    auth: AuthContext,
+    id: string,
+    paging: { page: number; pageSize: number },
+  ) {
     return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
       const viewer = await viewerOf(tx, auth, this.engine);
       const doc = await this.find(tx, viewer, id);
@@ -533,9 +538,13 @@ export class DocumentsService {
           permission: 'policies.view_all',
         });
       }
-      const entries = await this.provisioning.trailOf(tx, 'document', doc.id, [
-        'document_updated',
-      ]);
+      const { items: entries, total } = await this.provisioning.trailOf(
+        tx,
+        'document',
+        doc.id,
+        ['document_updated'],
+        paging,
+      );
       type Audience = {
         orgUnitIds?: string[];
         roleIds?: string[];
@@ -651,7 +660,7 @@ export class DocumentsService {
           }),
         };
       });
-      return { items, total: items.length };
+      return { items, total };
     });
   }
 

@@ -573,7 +573,7 @@ else), 404 for a record of another client or one the caller may not see.
 | `PATCH /documents/:id` | manager | metadata fields, `reason?` (required when `reviewMonths` changes), `revision` | document |
 | `POST /documents/:id/retire` | manager (open while suspended) | `reason, revision` | document |
 | `POST /documents/:id/review` | owner or manager | `password, comment, revision` | document |
-| `GET /documents/:id/changes` | full sight | | `{ items, total }` |
+| `GET /documents/:id/changes` | full sight | `page, pageSize` (50, at most 200) | `{ items, total }`, newest first |
 | `GET /documents/:id/versions` | any | | `{ versions, reviews }` |
 | `POST /documents/:id/versions` | manager | `{}` | 201 version |
 | `GET /documents/:id/versions/:versionId` | any | | version |
@@ -660,15 +660,19 @@ or one the caller may not see, and 400 for anything but its strict input.
 
 - CSV, UTF-8 with a byte-order mark, every cell quoted, CRLF lines, and
   every cell that a spreadsheet would run as a formula (starting, after
-  any spaces, with `=`, `+`, `-`, `@`, their full-width forms, a tab or a
-  carriage return) given a leading apostrophe. `Content-Disposition:
+  any spaces, with `=`, `+`, `-`, `@`, their full-width forms, the small
+  `﹢` (U+FE62) and `﹦` (U+FE66), `|`, a tab or a carriage return, or with
+  an invisible mark that can hide one: the direction marks U+200E, U+200F
+  and U+061C, or the zero-width space U+200B) given a leading apostrophe. `Content-Disposition:
   attachment`, `Cache-Control: no-store`. Headings and values (statuses,
   yes and no) in the caller's language: `locale` if given (one of the
   client's, 400 `language_mismatch` otherwise), else their own language if
   the client has it, else the client's default (`export-wording.ts`).
   Names and titles in that language, else the default. At most 50,000
   rows. Every export is audited (`documents_exported`,
-  `acknowledgements_exported`).
+  `acknowledgements_exported`). The audit entry of the library's export
+  keeps its filters but not the search text, which may name a person and
+  would be kept for ever: only `search: { used, length }`.
 - `GET /exports/documents`: the library as the caller sees it (the same
   `visible()` and filters as `GET /documents`, every page): number, title,
   type, category, responsible area, owner, status, who can read it,
@@ -681,7 +685,11 @@ or one the caller may not see, and 400 for anything but its strict input.
   active included and marked: document number, version and its status,
   person, employee number, their area, account (active, no longer active,
   invited), asked on, due on, where it stands, acknowledged at (the
-  client's time), and the fingerprint of what was signed.
+  client's time), and the fingerprint of what was signed. The employee
+  number is filled in only for the people whose accounts the caller
+  manages (`users.manage` covering the person's unit), and left empty for
+  everyone else: full sight of a document is not sight of the staff
+  register.
 - On screen, `GET …/acknowledgements?includeLeft=true` lists those no
   longer active too (`left: true`, `account`); the counts stay over active
   people.
@@ -700,13 +708,18 @@ See "Acknowledgement" above: only acknowledgements past their due date.
   (`document_settings_updated`).
 - A document's review period, on creating it (its own or its type's) or
   changing it, and a type's period, are refused past the maximum (400
-  `review_period_too_long`, with `max`). A document set longer before the
+  `review_period_too_long`, with `max`), as is switching a type back on
+  whose period is past a maximum lowered while it was off (lower it in
+  the same `PATCH`). Checking a type's period holds the maximum
+  (`for share`) until the change is written, so the two cannot cross. A document set longer before the
   maximum was lowered keeps its period until it is next changed.
 - Changing a document's review period needs `reason` in the same `PATCH`
   (400 `reason_required`, `field: "reviewMonths"`); the reason is kept in
   the audit entry.
 - `GET /documents/:id/changes` (full sight; 403 for anyone else who may
-  see it): the audit entries `document_updated`, oldest first: `{ id, at,
+  see it): the audit entries `document_updated`, newest first, a page at a
+  time (`page`, `pageSize`: 50 by default, at most 200), with `total` the
+  number of every change, not of the page: `{ id, at,
   by, reason, changes: [{ field, from, to }] }`, `field` one of `title`,
   `category`, `owner`, `ownerUnit`, `audience`, `confidentiality`,
   `reviewMonths`, `nextReviewOn`, `keywords`, `references`, with people,
@@ -735,8 +748,11 @@ See "Acknowledgement" above: only acknowledgements past their due date.
   person. It leads to `GET /acknowledgements/overdue`: the overdue
   acknowledgements of the people in the caller's reach (`policies.manage`
   or `policies.view_all`), most overdue first, each `{ user, orgUnit,
-  document: { id, number, title, canOpen }, version, dueOn, daysOverdue }`,
-  the title only while the caller may open the document. In the app only
+  document: { id, number, title, canOpen }, version, dueOn, daysOverdue }`.
+  A row of a document the caller may not open has `document: null` and
+  `version: null`: nothing of the document, not its number or id, only the
+  person, the due date and its place in `total`; within a day such rows
+  come after the others, in no order of theirs. In the app only
   until the mail decision.
 
 ### Notifications

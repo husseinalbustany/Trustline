@@ -7,8 +7,11 @@
  *   UTF-8, so that Arabic and accented French come out as written;
  * - every cell quoted, a quote inside doubled, lines ended CRLF (RFC 4180);
  * - no cell that a spreadsheet would run as a formula (CSV injection): one
- *   that starts with `=`, `+`, `-`, `@` (or their full-width forms), a tab
- *   or a carriage return, after any spaces, is given a leading apostrophe,
+ *   that starts with `=`, `+`, `-`, `@` (or their full-width forms, or the
+ *   small `﹢` and `﹦`), `|`, a tab or a carriage return, or with an
+ *   invisible mark that can hide one (the direction marks U+200E, U+200F
+ *   and U+061C, the zero-width space U+200B), after any spaces, is given a
+ *   leading apostrophe,
  *   which spreadsheets show as text and do not run. Every cell is
  *   neutralised, whoever wrote it, since a title or a person's name is
  *   written by someone other than whoever opens the file.
@@ -19,7 +22,8 @@ export const CSV_CONTENT_TYPE = 'text/csv; charset=utf-8';
 const BOM = '﻿';
 
 // eslint-disable-next-line no-control-regex
-const FORMULA_START = /^[\s\u00a0]*[=+\-@\uff1d\uff0b\uff0d\uff20\t\r]/;
+const FORMULA_START =
+  /^[\s\u00a0]*[=+\-@|\uff1d\uff0b\uff0d\uff20\ufe62\ufe66\u200e\u200f\u061c\u200b\t\r]/;
 
 export type Cell = string | number | boolean | null | undefined;
 

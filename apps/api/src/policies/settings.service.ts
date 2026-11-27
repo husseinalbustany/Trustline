@@ -118,7 +118,7 @@ export class PolicySettingsService {
     this.assertSections(auth, input.sections);
     try {
       return await this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
-        await assertReviewPeriod(tx, input.defaultReviewMonths);
+        await assertReviewPeriod(tx, input.defaultReviewMonths, true);
         const [created] = await tx
           .insert(documentTypes)
           .values({ ...input, tenantId: auth.tenant.id })
@@ -142,7 +142,9 @@ export class PolicySettingsService {
 
   /**
    * Changes a type, given the revision the caller read (409 `stale_type`
-   * otherwise). Its review period stays within the client's maximum.
+   * otherwise). Its review period stays within the client's maximum, and a
+   * type is not switched back on with a longer one (400
+   * `review_period_too_long`, with the `max`).
    */
   updateType(
     auth: AuthContext,
@@ -171,8 +173,15 @@ export class PolicySettingsService {
       const { revision: _revision, ...fields } = input;
       const changes = changesOf(before, fields);
       if (Object.keys(changes).length === 0) return before;
-      if (changes.defaultReviewMonths) {
-        await assertReviewPeriod(tx, fields.defaultReviewMonths!);
+      // A type switched back on must be within today's maximum as well,
+      // which may have been lowered while it was off (security review).
+      const reactivated = changes.active !== undefined && fields.active === true;
+      if (changes.defaultReviewMonths || reactivated) {
+        await assertReviewPeriod(
+          tx,
+          fields.defaultReviewMonths ?? before.defaultReviewMonths,
+          true,
+        );
       }
       const [after] = await tx
         .update(documentTypes)

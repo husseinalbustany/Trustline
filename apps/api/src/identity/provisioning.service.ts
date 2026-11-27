@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { and, asc, count, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import type { Transaction } from '../database/client.js';
 import {
   approvalRoutes,
@@ -348,18 +348,28 @@ export class ProvisioningService {
   }
 
   /**
-   * The audit entries of one record, of these actions, oldest first: for a
-   * history shown on the record itself (a document's changes). At most
-   * `limit` of them. In the caller's transaction, so within its client.
+   * The audit entries of one record, of these actions, newest first, one
+   * page of them, with how many there are in all: for a history shown on
+   * the record itself (a document's changes). In the caller's transaction,
+   * so within its client.
    */
-  trailOf(
+  async trailOf(
     tx: Transaction,
     entityType: string,
     entityId: string,
     actions: string[],
-    limit = 500,
+    paging: { page: number; pageSize: number },
   ) {
-    return tx
+    const where = and(
+      eq(auditLog.entityType, entityType),
+      eq(auditLog.entityId, entityId),
+      inArray(auditLog.action, actions),
+    );
+    const [{ total }] = await tx
+      .select({ total: count() })
+      .from(auditLog)
+      .where(where);
+    const items = await tx
       .select({
         id: auditLog.id,
         action: auditLog.action,
@@ -368,15 +378,11 @@ export class ProvisioningService {
         occurredAt: auditLog.occurredAt,
       })
       .from(auditLog)
-      .where(
-        and(
-          eq(auditLog.entityType, entityType),
-          eq(auditLog.entityId, entityId),
-          inArray(auditLog.action, actions),
-        ),
-      )
-      .orderBy(asc(auditLog.occurredAt), asc(auditLog.id))
-      .limit(limit);
+      .where(where)
+      .orderBy(desc(auditLog.occurredAt), desc(auditLog.id))
+      .limit(paging.pageSize)
+      .offset((paging.page - 1) * paging.pageSize);
+    return { items, total };
   }
 
   /**

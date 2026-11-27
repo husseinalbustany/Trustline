@@ -33,6 +33,7 @@ import {
   approveSchema,
   categoryCreateSchema,
   categoryUpdateSchema,
+  changesQuery,
   createSchema,
   documentExportQuery,
   editVersionSchema,
@@ -264,9 +265,18 @@ export class PoliciesController {
 
   /** The history of a document's details: for those with full sight. */
   @Get('documents/:id/changes')
-  changes(@Param('id') id: string, @Req() req: AuthedRequest) {
+  changes(
+    @Param('id') id: string,
+    @Query() query: unknown,
+    @Req() req: AuthedRequest,
+  ) {
     requireAnyOf(req, FIGURES);
-    return this.documents.changes(req.auth, parseId(id));
+    const documentId = parseId(id);
+    return this.documents.changes(
+      req.auth,
+      documentId,
+      parse(changesQuery, query),
+    );
   }
 
   @Post('documents/:id/versions')

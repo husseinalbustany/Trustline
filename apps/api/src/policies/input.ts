@@ -217,6 +217,15 @@ export const overdueQuery = z.preprocess(
   }),
 );
 
+/** A document's history of changes, newest first, a page at a time. */
+export const changesQuery = z.preprocess(
+  blankAsUnset,
+  z.strictObject({
+    ...page,
+    pageSize: z.coerce.number().int().min(1).max(200).default(50),
+  }),
+);
+
 export const settingsSchema = z.strictObject({
   maxReviewMonths: z.number().int().min(1).max(120),
   revision,
