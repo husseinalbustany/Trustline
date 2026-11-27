@@ -39,6 +39,7 @@
       "users": "Utilisateurs et rôles",
       "settings": "Paramètres",
       "policiesAwaiting": "À traiter",
+      "policiesOverdue": "Confirmations en retard",
       "policiesSettings": "Paramètres des documents"
     }
   },
@@ -80,7 +81,7 @@
     "pastReviewHelp": "{percent} des documents en vigueur ({of})",
     "pastReviewTarget": "Objectif : moins de {target}",
     "policiesDueHelp": "Révision à faire dans les 30 prochains jours",
-    "acknowledgementHelp": "Ont confirmé : {acknowledged} sur {targeted}, pour les versions en vigueur",
+    "acknowledgementHelp": "Ont confirmé : {acknowledged} sur {targeted} dont l’échéance est passée. Aujourd’hui, sur toutes les personnes sollicitées : {live}.",
     "acknowledgementTarget": "Objectif : {target} ou plus",
     "measureMet": "Objectif atteint",
     "measureMissed": "Objectif non atteint",
@@ -554,12 +555,19 @@
         "approve": "La version {version} du document {reference} attend votre approbation.",
         "other": "La version {version} du document {reference} attend votre décision."
       },
+      "document_step_overdue": {
+        "review": "La vérification de la version {version} du document {reference} est en retard (étape {position}).",
+        "approve": "L’approbation de la version {version} du document {reference} est en retard (étape {position}).",
+        "other": "L’étape {position} de la version {version} du document {reference} est en retard."
+      },
       "document_returned": "La version {version} du document {reference} a été renvoyée avec des remarques.",
       "document_approved": "La version {version} du document {reference} a été approuvée et peut être publiée.",
       "document_published": "La version {version} du document {reference} a été publiée. Merci de la lire et de confirmer en avoir pris connaissance au plus tard le {date}.",
+      "document_publish_failed": "La version {version} du document {reference} n’a pas été publiée le {date} : son texte ne correspond plus à ce qui a été signé. Soumettez-la de nouveau à vérification.",
       "acknowledgement_assigned": "Merci de lire la version {version} du document {reference} et de confirmer en avoir pris connaissance au plus tard le {date}.",
       "acknowledgement_due": "Rappel : confirmez avoir pris connaissance de la version {version} du document {reference} au plus tard le {date}.",
       "acknowledgement_overdue": "Votre prise de connaissance de la version {version} du document {reference} était attendue le {date}.",
+      "acknowledgements_overdue_digest": "Récapitulatif hebdomadaire des prises de connaissance en retard dans les entités que vous suivez : {overdue} en retard, personnes concernées : {people}.",
       "review_due": {
         "60": "La révision périodique du document {reference} est prévue le {date}, dans deux mois environ.",
         "30": "La révision périodique du document {reference} est prévue le {date}, dans un mois environ.",
@@ -1293,6 +1301,14 @@
       "unpublishedHelp": "Cette version n’a pas été publiée. Ne l’utilisez pas avant son entrée en vigueur.",
       "openCurrent": "Ouvrir la version en vigueur"
     },
+    "export": {
+      "list": "Exporter la liste (CSV)",
+      "listHelp": "Tous les documents correspondant à ces filtres, en {language}, dans un fichier pour tableur.",
+      "acknowledgements": "Exporter les prises de connaissance de cette version (CSV)",
+      "acknowledgementsHelp": "Toutes les personnes sollicitées, y compris celles qui sont parties, signalées comme telles, en {language}.",
+      "preparing": "Préparation du fichier…",
+      "done": "Le fichier est téléchargé."
+    },
     "stepKind": {
       "review": "Vérification",
       "approve": "Approbation"
@@ -1347,6 +1363,7 @@
       "ownerUnit": "Entité responsable",
       "owner": "Responsable",
       "effectiveOn": "En vigueur à compter du",
+      "authoritative": "Langue qui fait foi",
       "nextReviewOn": "Prochaine révision",
       "notInForceSince": "Fin de validité",
       "notYet": "Pas encore",
@@ -1362,6 +1379,10 @@
       "shownIn": "Affiché en {language}.",
       "notInYourLanguage": "Ce document n’est pas rédigé en {mine}. Il est affiché en {language}.",
       "sectionInOther": "Cette section n’est pas rédigée en {language} : elle est affichée ici en {other}.",
+      "laggingSummary": "Sections non mises à jour en {language} depuis la modification du texte en {authoritative} : {count}. En cas de différence, le texte en {authoritative} fait foi.",
+      "sectionLagging": "Cette section n’a pas été mise à jour en {language} après la modification du texte en {authoritative}. En cas de différence, le texte en {authoritative} fait foi.",
+      "showAuthoritative": "Afficher le texte en {language}",
+      "authoritativeText": "Le texte en {language}, qui fait foi :",
       "noText": "Cette version n’a pas encore de texte.",
       "notPublished": "Aucune version de ce document n’a encore été publiée.",
       "print": "Version imprimable",
@@ -1402,7 +1423,13 @@
         "other": "Révisé"
       },
       "reviewedOnBy": "{name}, {date}",
-      "nextReviewSet": "Prochaine révision fixée au {date}"
+      "nextReviewSet": "Prochaine révision fixée au {date}",
+      "changesTitle": "Historique des modifications des informations",
+      "noChanges": "Les informations n’ont pas été modifiées depuis la création du document.",
+      "changeLine": "{field} : {from} → {to}",
+      "changeReason": "Motif :",
+      "none": "aucun",
+      "otherDetail": "Autre information"
     },
     "acknowledge": {
       "title": "Confirmer la prise de connaissance",
@@ -1431,7 +1458,8 @@
       "periodicReviewOwnerHelp": "Confirmez qu’il ne nécessite toujours aucune modification. S’il doit changer ou être retiré, prévenez une personne qui gère les documents.",
       "confirmReview": "Confirmer sans modification",
       "confirmReviewIntro": "Vous confirmez, avec votre mot de passe, que le document {number} a été révisé et ne nécessite aucune modification. La date de la prochaine révision est alors recalculée à partir d’aujourd’hui.",
-      "reviewComment": "Commentaire (facultatif)",
+      "reviewComment": "Commentaire",
+      "reviewCommentHelp": "Obligatoire. Indiquez ce qui a été vérifié ; il est conservé avec la révision.",
       "reviewConfirmed": "La révision est enregistrée.",
       "retire": "Retirer ce document",
       "retireReason": "Pourquoi est-il retiré ?",
@@ -1457,7 +1485,7 @@
       "recallYes": "Oui, la remettre en brouillon",
       "recalled": "Remise en brouillon.",
       "withdraw": "Abandonner cette version",
-      "withdrawReason": "Pourquoi est-elle abandonnée ? (facultatif)",
+      "withdrawReason": "Pourquoi est-elle abandonnée ?",
       "withdrawConfirm": "Abandonner la version {version} ? Elle ne sera pas publiée. Elle reste dans l’historique.",
       "withdrawYes": "Oui, l’abandonner",
       "withdrawn": "La version est abandonnée."
@@ -1469,18 +1497,38 @@
       "changeSummary": "Ce qui change dans cette version",
       "viewLabel": "Affichage de cette version",
       "showChanges": "Modifications depuis la version publiée",
+      "sinceReturned": "Modifications depuis le renvoi",
+      "sinceReturnedHelp": "Comparée à son contenu lors du renvoi avec remarques le {date}.",
+      "summaryChanged": "Le résumé des modifications a aussi été modifié.",
+      "summaryUnchanged": "Le résumé des modifications n’a pas été modifié.",
       "showDocument": "Lire comme un document",
       "firstVersion": "C’est la première version : il n’y a pas de version publiée à laquelle la comparer.",
       "noChanges": "Aucune section n’a changé dans cette langue.",
       "changedCount": "Sections modifiées dans cette langue : {count} sur {total}.",
       "changed": "Modifiée",
       "unchanged": "Inchangée",
+      "lagging": "Non mise à jour",
+      "laggingHere": "Modifiée en {authoritative}, non mise à jour en {language}.",
+      "laggingCount": "Modifiées en {authoritative} et non mises à jour dans cette langue : {count}.",
+      "notUpdatedTitle": "Toutes les langues n’ont pas été mises à jour",
+      "notUpdatedLine": "Sections non mises à jour en {language} : {count}",
+      "notUpdatedHelp": "En cas de différence, le texte en {authoritative} fait foi. La signature couvre toutes les langues telles qu’elles sont.",
       "empty": "Vide",
       "emptyHere": "Pas de texte dans cette langue.",
       "addedLine": "Ajouté :",
       "removedLine": "Supprimé :",
       "showText": "Afficher le texte",
       "steps": "Étapes d’approbation",
+      "rounds": "Cycles de vérification précédents",
+      "roundTitle": "Cycle {number}",
+      "roundStarted": "Commencé le {date}",
+      "roundStatus": {
+        "in_progress": "En cours",
+        "approved": "Approuvé",
+        "returned": "Renvoyé avec remarques",
+        "cancelled": "Interrompu",
+        "other": "Terminé"
+      },
       "stepTitle": "Étape {position} : {kind}",
       "stepStatus": {
         "waiting": "Pas encore ouverte",
@@ -1600,6 +1648,9 @@
       "reviewMonths": "Périodicité de révision (en mois)",
       "reviewMonthsHelp": "Laissez vide pour reprendre celle du type ({months}).",
       "reviewMonthsHelpNoType": "Laissez vide pour reprendre celle du type.",
+      "reviewMonthsMax": "Au plus {months}, le maximum fixé par votre établissement.",
+      "reason": "Pourquoi la périodicité de révision change-t-elle ?",
+      "reasonHelp": "Obligatoire quand la périodicité change. Le motif est conservé dans l’historique du document.",
       "keywords": "Mots-clés",
       "keywordsHelp": "Séparés par des virgules. Ils aident à le retrouver.",
       "references": "Références",
@@ -1619,8 +1670,18 @@
       "noReviews": "Aucune révision périodique à venir.",
       "youOwn": "Vous en êtes responsable"
     },
+    "overdue": {
+      "title": "Prises de connaissance en retard",
+      "description": "Les personnes des entités dont vous voyez les chiffres qui n’ont pas confirmé avoir pris connaissance d’un document en vigueur à l’échéance. Les plus en retard d’abord.",
+      "empty": "Aucune prise de connaissance en retard.",
+      "noAccess": "Cette liste est réservée aux personnes qui gèrent les documents ou peuvent tous les lire.",
+      "late": "Échéance : {date} · {days} de retard",
+      "documentHidden": "Un document que vous ne pouvez pas ouvrir"
+    },
     "acknowledgements": {
       "title": "Prises de connaissance",
+      "versionLabel": "Version",
+      "versionOption": "Version {version} · {status}",
       "noAccess": "Les chiffres de prise de connaissance ne sont affichés qu’aux personnes qui gèrent ce document ou peuvent lire tous les documents.",
       "notPublished": "Rien n’a encore été publié : personne n’a donc été sollicité.",
       "notRequired": "La version publiée ne demande pas de prise de connaissance.",
@@ -1636,6 +1697,9 @@
       "nobody": "Personne n’a encore été sollicité.",
       "people": "Par personne",
       "filterLabel": "Afficher les personnes selon leur situation",
+      "includeLeft": "Afficher les personnes parties",
+      "leftHelp": "Les personnes parties figurent pour mémoire, sans être comptées dans les chiffres.",
+      "left": "A quitté l’établissement",
       "all": "Toutes",
       "states": {
         "pending": "Pas encore",
@@ -1655,11 +1719,13 @@
       "tabs": {
         "types": "Types",
         "categories": "Catégories",
-        "routes": "Circuits d’approbation"
+        "routes": "Circuits d’approbation",
+        "general": "Général"
       },
       "inactive": "Plus en usage",
       "edit": "Modifier",
       "save": "Enregistrer",
+      "saved": "Enregistré.",
       "create": "Ajouter",
       "active": "En usage",
       "code": "Code",
@@ -1675,6 +1741,8 @@
       "prefixHelp": "De 2 à 6 lettres majuscules ou chiffres, par exemple POL. Une modification s’applique aux documents créés ensuite.",
       "reviewMonths": "Périodicité de révision (en mois)",
       "reviewMonthsHelp": "Pour les nouveaux documents de ce type ; chaque document peut fixer la sienne.",
+      "maxReviewMonths": "Périodicité de révision maximale, en mois",
+      "maxReviewMonthsHelp": "Aucun type ni document ne peut fixer une périodicité plus longue. Un document réglé plus long auparavant la garde jusqu’à sa prochaine modification.",
       "sections": "Sections",
       "sectionsHelp": "Dans l’ordre de lecture. Les sections obligatoires doivent être rédigées dans la langue principale avant la soumission d’une version à vérification.",
       "sectionNumber": "Section {position}",
@@ -1787,7 +1855,14 @@
       "role_cannot_approve": "Ce rôle ne permet pas d’approuver des documents. Choisissez un rôle qui comprend « Vérifier et approuver des documents lorsqu’on est désigné dans une étape d’un circuit d’approbation ».",
       "user_cannot_approve": "Cette personne ne peut pas approuver de documents : son compte n’est pas actif, ou aucun de ses rôles ne le permet.",
       "last_step_must_approve": "La dernière étape d’un circuit doit être une approbation.",
-      "route_exists": "Un circuit actif existe déjà pour ce type. Désactivez-le, ou modifiez-le."
+      "route_exists": "Un circuit actif existe déjà pour ce type. Désactivez-le, ou modifiez-le.",
+      "reason_required": "Indiquez pourquoi la périodicité de révision change.",
+      "review_period_too_long": "La périodicité de révision ne peut pas dépasser {max}, le maximum de votre établissement.",
+      "type_exceeds_max": "Ce maximum est plus court que la périodicité de ces types : {types}. Raccourcissez-la d’abord.",
+      "same_person_in_two_steps": "La même personne est désignée aux étapes {positions}. Personne ne peut décider de deux étapes d’une même vérification : choisissez quelqu’un d’autre pour l’une d’elles.",
+      "stale_type": "Quelqu’un d’autre a modifié ce type entre-temps. Rechargez la page puis réessayez.",
+      "stale_category": "Quelqu’un d’autre a modifié cette catégorie entre-temps. Rechargez la page puis réessayez.",
+      "stale_settings": "Quelqu’un d’autre a modifié ces paramètres entre-temps. Rechargez la page puis réessayez."
     }
   }
 }

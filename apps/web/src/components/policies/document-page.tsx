@@ -52,8 +52,6 @@ import { useExplain } from "./use-explain";
 type Loaded = {
   doc: PolicyDocument;
   history: History | null;
-  /** The history of its details, for those with full sight. */
-  changes: { items: DocumentChange[]; total: number } | null;
   published: DocumentVersion | null;
   inProgress: DocumentVersion | null;
 };
@@ -61,13 +59,8 @@ type Loaded = {
 /** Reads a document with its published version, its history and what is in progress. */
 export async function loadDocument(id: string): Promise<Loaded> {
   const doc = await api<PolicyDocument>(`/policies/documents/${id}`);
-  const [history, changes, published, inProgress] = await Promise.all([
+  const [history, published, inProgress] = await Promise.all([
     api<History>(`/policies/documents/${id}/versions`).catch(() => null),
-    doc.access === "full"
-      ? api<{ items: DocumentChange[]; total: number }>(
-          `/policies/documents/${id}/changes`,
-        ).catch(() => null)
-      : null,
     doc.published
       ? api<DocumentVersion>(
           `/policies/documents/${id}/versions/${doc.published.id}`,
@@ -79,7 +72,7 @@ export async function loadDocument(id: string): Promise<Loaded> {
         ).catch(() => null)
       : null,
   ]);
-  return { doc, history, changes, published, inProgress };
+  return { doc, history, published, inProgress };
 }
 
 /**
@@ -166,7 +159,7 @@ function DocumentView({
   refresh: () => Promise<void>;
 }) {
   const session = useSession();
-  const { doc, history, changes, published, inProgress } = loaded;
+  const { doc, history, published, inProgress } = loaded;
   const [asked, setAsked] = useState<string | null>(null);
   const inLang = (text: Localized | null | undefined) =>
     pick(text, lang, session.tenant.defaultLocale);
@@ -405,9 +398,10 @@ function DocumentView({
         </div>
       )}
 
-      {changes && (
+      {doc.access === "full" && (
         <div className="mt-6 print:hidden">
-          <DetailChanges lang={lang} t={t} changes={changes.items} />
+          {/* Read again from its first page whenever the details change. */}
+          <DetailChanges key={doc.revision} lang={lang} t={t} documentId={doc.id} />
         </div>
       )}
 
@@ -420,17 +414,55 @@ function DocumentView({
   );
 }
 
+const CHANGES_PAGE = 10;
+
 /**
- * What was changed in the document's details since it was created: by
- * whom, when, why (a change of review period always says why), and each
- * field from what to what.
+ * What was changed in the document's details since it was created, newest
+ * first, a page at a time: by whom, when, why (a change of review period
+ * always says why), and each field from what to what. For those with full
+ * sight of the document.
  */
 function DetailChanges({
   lang,
   t,
-  changes,
-}: PoliciesProps & { changes: DocumentChange[] }) {
+  documentId,
+}: PoliciesProps & { documentId: string }) {
   const session = useSession();
+  const [page, setPage] = useState(1);
+  const [answer, setAnswer] = useState<{
+    page: number;
+    items: DocumentChange[];
+    total: number;
+  } | null>(null);
+  const [failed, setFailed] = useState<{ page: number; text: string } | null>(
+    null,
+  );
+  useEffect(() => {
+    let current = true;
+    api<{ items: DocumentChange[]; total: number }>(
+      `/policies/documents/${documentId}/changes?${new URLSearchParams({
+        page: String(page),
+        pageSize: String(CHANGES_PAGE),
+      })}`,
+    )
+      .then((r) => current && setAnswer({ page, ...r }))
+      .catch(
+        (err) =>
+          current &&
+          setFailed({
+            page,
+            text: statusOf(err) === 403 ? t.errors.missing_permission : t.loadError,
+          }),
+      );
+    return () => {
+      current = false;
+    };
+  }, [documentId, page, t]);
+  const here = answer?.page === page ? answer : null;
+  const problem = !here && failed?.page === page ? failed.text : null;
+  const changes = here?.items ?? [];
+  const pages = here ? Math.max(1, Math.ceil(here.total / CHANGES_PAGE)) : 1;
+  const numbers = numberFormat(lang);
   const inLang = (text: Localized | null | undefined) =>
     pick(text, lang, session.tenant.defaultLocale);
   const moments = dateTimeFormat(lang, session.tenant.timeZone);
@@ -494,7 +526,11 @@ function DetailChanges({
   };
   return (
     <Panel title={d.changesTitle}>
-      {changes.length === 0 ? (
+      {problem ? (
+        <EmptyState>{problem}</EmptyState>
+      ) : !here ? (
+        <EmptyState>{t.loading}</EmptyState>
+      ) : changes.length === 0 ? (
         <EmptyState>{d.noChanges}</EmptyState>
       ) : (
         <ul>
@@ -534,6 +570,32 @@ function DetailChanges({
             </li>
           ))}
         </ul>
+      )}
+      {here && pages > 1 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line px-4 py-3 text-sm text-muted">
+          <span>
+            {fill(t.list.page, {
+              page: numbers.format(page),
+              pages: numbers.format(pages),
+            })}
+          </span>
+          <span className="flex gap-2">
+            <Button
+              variant="secondary"
+              disabled={page <= 1}
+              onClick={() => setPage(page - 1)}
+            >
+              {t.list.previous}
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={page >= pages}
+              onClick={() => setPage(page + 1)}
+            >
+              {t.list.next}
+            </Button>
+          </span>
+        </div>
       )}
     </Panel>
   );

@@ -39,6 +39,7 @@
       "users": "Users and roles",
       "settings": "Settings",
       "policiesAwaiting": "Awaiting me",
+      "policiesOverdue": "Late acknowledgements",
       "policiesSettings": "Document settings"
     }
   },
@@ -80,7 +81,7 @@
     "pastReviewHelp": "{percent} of current documents ({of})",
     "pastReviewTarget": "Target: under {target}",
     "policiesDueHelp": "Review due within the next 30 days",
-    "acknowledgementHelp": "{acknowledged} of {targeted} people asked, across the current versions",
+    "acknowledgementHelp": "{acknowledged} of {targeted} whose due date has passed. Today, over everyone asked: {live}.",
     "acknowledgementTarget": "Target: {target} or more",
     "measureMet": "Target met",
     "measureMissed": "Target not met",
@@ -554,12 +555,19 @@
         "approve": "{reference} version {version} is waiting for your approval.",
         "other": "{reference} version {version} is waiting for your decision."
       },
+      "document_step_overdue": {
+        "review": "{reference} version {version}: the review at step {position} is overdue.",
+        "approve": "{reference} version {version}: the approval at step {position} is overdue.",
+        "other": "{reference} version {version}: step {position} is overdue."
+      },
       "document_returned": "{reference} version {version} was returned with comments.",
       "document_approved": "{reference} version {version} has been approved and can be published.",
       "document_published": "{reference} version {version} has been published. Please read and acknowledge it by {date}.",
+      "document_publish_failed": "{reference} version {version} was not published on {date}: its text no longer matches what was signed. Send it for review again.",
       "acknowledgement_assigned": "Please read and acknowledge {reference} version {version} by {date}.",
       "acknowledgement_due": "Reminder: acknowledge {reference} version {version} by {date}.",
       "acknowledgement_overdue": "Your acknowledgement of {reference} version {version} was due on {date}.",
+      "acknowledgements_overdue_digest": "Weekly summary of overdue acknowledgements in the areas you follow: {overdue} overdue, people concerned: {people}.",
       "review_due": {
         "60": "{reference} is due for its periodic review on {date}, in about two months.",
         "30": "{reference} is due for its periodic review on {date}, in about a month.",
@@ -1293,6 +1301,14 @@
       "unpublishedHelp": "This version has not been published. Do not use it until it is in force.",
       "openCurrent": "Open the version in force"
     },
+    "export": {
+      "list": "Export the list (CSV)",
+      "listHelp": "Every document matching these filters, in {language}, as a file for a spreadsheet.",
+      "acknowledgements": "Export this version's acknowledgements (CSV)",
+      "acknowledgementsHelp": "Everyone asked, people who have left included and marked, in {language}.",
+      "preparing": "Preparing the file…",
+      "done": "The file is downloaded."
+    },
     "stepKind": {
       "review": "Review",
       "approve": "Approval"
@@ -1347,6 +1363,7 @@
       "ownerUnit": "Responsible area",
       "owner": "Owner",
       "effectiveOn": "In force from",
+      "authoritative": "Language that applies",
       "nextReviewOn": "Next review",
       "notInForceSince": "Not in force since",
       "notYet": "Not yet",
@@ -1362,6 +1379,10 @@
       "shownIn": "Shown in {language}.",
       "notInYourLanguage": "This document is not written in {mine}. It is shown in {language}.",
       "sectionInOther": "This section is not written in {language}. It is shown here in {other}.",
+      "laggingSummary": "Sections not updated in {language} since the {authoritative} text changed: {count}. Where they differ, the {authoritative} text applies.",
+      "sectionLagging": "This section was not updated in {language} after the {authoritative} text changed. Where they differ, the {authoritative} text applies.",
+      "showAuthoritative": "Show the {language} text",
+      "authoritativeText": "The {language} text, which applies:",
       "noText": "This version has no text yet.",
       "notPublished": "No version of this document has been published yet.",
       "print": "Print view",
@@ -1402,7 +1423,13 @@
         "other": "Reviewed"
       },
       "reviewedOnBy": "{name}, {date}",
-      "nextReviewSet": "Next review set for {date}"
+      "nextReviewSet": "Next review set for {date}",
+      "changesTitle": "Changes to the details",
+      "noChanges": "The details have not been changed since the document was created.",
+      "changeLine": "{field}: {from} → {to}",
+      "changeReason": "Reason:",
+      "none": "none",
+      "otherDetail": "Another detail"
     },
     "acknowledge": {
       "title": "Acknowledge this document",
@@ -1431,7 +1458,8 @@
       "periodicReviewOwnerHelp": "Confirm that it still needs no change. If it should change or be retired, tell someone who manages documents.",
       "confirmReview": "Confirm no change",
       "confirmReviewIntro": "You are confirming, with your password, that {number} has been reviewed and needs no change. The next review date is then counted again from today.",
-      "reviewComment": "Comment (optional)",
+      "reviewComment": "Comment",
+      "reviewCommentHelp": "Required. Say what was checked; it is kept with the review.",
       "reviewConfirmed": "The review is recorded.",
       "retire": "Retire this document",
       "retireReason": "Why is it retired?",
@@ -1457,7 +1485,7 @@
       "recallYes": "Yes, take it back",
       "recalled": "Taken back to draft.",
       "withdraw": "Withdraw this version",
-      "withdrawReason": "Why is it withdrawn? (optional)",
+      "withdrawReason": "Why is it withdrawn?",
       "withdrawConfirm": "Withdraw version {version}? It will not be published. It stays in the history.",
       "withdrawYes": "Yes, withdraw it",
       "withdrawn": "The version is withdrawn."
@@ -1469,18 +1497,38 @@
       "changeSummary": "What changed in this version",
       "viewLabel": "How to show this version",
       "showChanges": "Changes since the published version",
+      "sinceReturned": "Changes since it was returned",
+      "sinceReturnedHelp": "Compared with what it held when it was returned with comments on {date}.",
+      "summaryChanged": "The summary of what changed was edited too.",
+      "summaryUnchanged": "The summary of what changed was not edited.",
       "showDocument": "Read as a document",
       "firstVersion": "This is the first version: there is no published version to compare it with.",
       "noChanges": "No section has changed in this language.",
       "changedCount": "{count} of {total} sections changed in this language.",
       "changed": "Changed",
       "unchanged": "No change",
+      "lagging": "Not updated",
+      "laggingHere": "Changed in {authoritative}, not updated in {language}.",
+      "laggingCount": "Changed in {authoritative} and not updated in this language: {count}.",
+      "notUpdatedTitle": "Not every language was updated",
+      "notUpdatedLine": "Sections not updated in {language}: {count}",
+      "notUpdatedHelp": "Where they differ, the {authoritative} text applies. A signature covers every language as it stands.",
       "empty": "Empty",
       "emptyHere": "No text in this language.",
       "addedLine": "Added:",
       "removedLine": "Removed:",
       "showText": "Show the text",
       "steps": "Approval steps",
+      "rounds": "Earlier review rounds",
+      "roundTitle": "Round {number}",
+      "roundStarted": "Started {date}",
+      "roundStatus": {
+        "in_progress": "In progress",
+        "approved": "Approved",
+        "returned": "Returned with comments",
+        "cancelled": "Stopped",
+        "other": "Ended"
+      },
       "stepTitle": "Step {position}: {kind}",
       "stepStatus": {
         "waiting": "Not open yet",
@@ -1600,6 +1648,9 @@
       "reviewMonths": "Review period in months",
       "reviewMonthsHelp": "Leave empty to use the period of the type ({months}).",
       "reviewMonthsHelpNoType": "Leave empty to use the period of the type.",
+      "reviewMonthsMax": "At most {months}, your organization's maximum.",
+      "reason": "Why does the review period change?",
+      "reasonHelp": "Required when the review period changes. It is kept in the document's history.",
       "keywords": "Keywords",
       "keywordsHelp": "Separated by commas. They help people find it.",
       "references": "References",
@@ -1619,8 +1670,18 @@
       "noReviews": "No periodic review is coming up.",
       "youOwn": "You are the owner"
     },
+    "overdue": {
+      "title": "Overdue acknowledgements",
+      "description": "People in the areas whose figures you see who have not acknowledged a document in force by its due date. Most overdue first.",
+      "empty": "No acknowledgement is overdue.",
+      "noAccess": "This list is for those who manage documents or may read them all.",
+      "late": "Due {date} · {days} late",
+      "documentHidden": "A document you cannot open"
+    },
     "acknowledgements": {
       "title": "Acknowledgements",
+      "versionLabel": "Version",
+      "versionOption": "Version {version} · {status}",
       "noAccess": "Acknowledgement figures are shown only to those who manage this document or may read all documents.",
       "notPublished": "Nothing has been published yet, so no one has been asked to acknowledge it.",
       "notRequired": "The published version does not ask for acknowledgement.",
@@ -1636,6 +1697,9 @@
       "nobody": "No one has been asked yet.",
       "people": "By person",
       "filterLabel": "Show people by where they stand",
+      "includeLeft": "Show people who have left",
+      "leftHelp": "People who have left are listed as evidence, but not counted in the figures.",
+      "left": "Has left",
       "all": "All",
       "states": {
         "pending": "Not yet",
@@ -1655,11 +1719,13 @@
       "tabs": {
         "types": "Types",
         "categories": "Categories",
-        "routes": "Approval routes"
+        "routes": "Approval routes",
+        "general": "General"
       },
       "inactive": "Switched off",
       "edit": "Edit",
       "save": "Save",
+      "saved": "Saved.",
       "create": "Add",
       "active": "In use",
       "code": "Code",
@@ -1675,6 +1741,8 @@
       "prefixHelp": "2 to 6 capital letters or digits, for example POL. A change numbers documents created from then on.",
       "reviewMonths": "Review period in months",
       "reviewMonthsHelp": "For new documents of this type; each document can set its own.",
+      "maxReviewMonths": "Longest review period, in months",
+      "maxReviewMonthsHelp": "No type or document may set a longer period. A document set longer before keeps its period until it is next changed.",
       "sections": "Sections",
       "sectionsHelp": "In the order they are read. Required sections must be written in the main language before a version is sent for review.",
       "sectionNumber": "Section {position}",
@@ -1787,7 +1855,14 @@
       "role_cannot_approve": "This role cannot approve documents. Choose a role that includes “Review and approve documents when named in a step of an approval route”.",
       "user_cannot_approve": "This person cannot approve documents: their account is not active, or no role of theirs allows it.",
       "last_step_must_approve": "The last step of a route must be an approval.",
-      "route_exists": "There is already an active route for this type. Switch that one off, or change it."
+      "route_exists": "There is already an active route for this type. Switch that one off, or change it.",
+      "reason_required": "Say why the review period changes.",
+      "review_period_too_long": "The review period can be at most {max}, your organization's maximum.",
+      "type_exceeds_max": "This maximum is shorter than the review period of these types: {types}. Shorten their period first.",
+      "same_person_in_two_steps": "The same person is named in steps {positions}. No one may decide two steps of one review: choose someone else for one of them.",
+      "stale_type": "Someone else changed this type in the meantime. Reload the page and try again.",
+      "stale_category": "Someone else changed this category in the meantime. Reload the page and try again.",
+      "stale_settings": "Someone else changed these settings in the meantime. Reload the page and try again."
     }
   }
 }

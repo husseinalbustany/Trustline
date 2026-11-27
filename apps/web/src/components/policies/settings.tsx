@@ -21,7 +21,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
 import { direction, hasLocale, localeNames } from "@/i18n/config";
-import { api, codeOf } from "@/lib/api";
+import { api, codeOf, detailsOf } from "@/lib/api";
 import { durationFormat, fill } from "@/lib/format";
 import { pick, type Localized } from "@/lib/localized";
 import {
@@ -225,7 +225,31 @@ const iconButton =
 
 /** The longest review period any type or document may set. */
 function General({ lang, t, lists, reload }: PartProps) {
+  const session = useSession();
   const explainError = useExplain(t, lang);
+  const inLang = (text: Localized | null | undefined) =>
+    pick(text, lang, session.tenant.defaultLocale);
+  // The types in the way, by their names, not their codes.
+  const explain = (err: unknown) => {
+    const over = detailsOf(err).types;
+    if (codeOf(err) !== "type_exceeds_max" || !Array.isArray(over)) {
+      return explainError(err);
+    }
+    const months = durationFormat(lang);
+    return fill(t.errors.type_exceeds_max, {
+      types: new Intl.ListFormat(lang, { type: "conjunction" }).format(
+        (over as { id?: string; code?: string; defaultReviewMonths?: number }[]).map(
+          (x) => {
+            const type = lists.types.find((y) => y.id === x.id);
+            const name = type ? inLang(type.name) : (x.code ?? "");
+            return typeof x.defaultReviewMonths === "number"
+              ? `${name} (${months(x.defaultReviewMonths, "month")})`
+              : name;
+          },
+        ),
+      ),
+    });
+  };
   const s = t.settings;
   const settings = lists.settings;
   const [busy, setBusy] = useState(false);
@@ -245,7 +269,7 @@ function General({ lang, t, lists, reload }: PartProps) {
       await reload();
       say({ ok: true, text: s.saved });
     } catch (err) {
-      say({ ok: false, text: explainError(err) });
+      say({ ok: false, text: explain(err) });
     }
     setBusy(false);
   }

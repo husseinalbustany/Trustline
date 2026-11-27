@@ -77,9 +77,9 @@ export function OverdueAcknowledgements({ lang, t }: PoliciesProps) {
         ) : (
           <Panel>
             <ul>
-              {list.items.map((item) => (
+              {list.items.map((item, i) => (
                 <li
-                  key={`${item.user.id}:${item.version.id}`}
+                  key={`${item.user.id}:${item.version?.id ?? `hidden-${i}`}`}
                   className="flex flex-col gap-1 border-b border-line px-4 py-3 text-sm last:border-b-0"
                 >
                   <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
@@ -101,35 +101,44 @@ export function OverdueAcknowledgements({ lang, t }: PoliciesProps) {
                       })}
                     </Pill>
                   </div>
-                  <p>
-                    {item.document.canOpen ? (
-                      <Link
-                        href={documentPath(lang, item.document.id)}
-                        className="text-accent hover:underline"
-                      >
-                        <bdi dir="ltr" className="whitespace-nowrap">
-                          {item.document.number}
-                        </bdi>
-                      </Link>
-                    ) : (
-                      <bdi dir="ltr" className="whitespace-nowrap">
-                        {item.document.number}
-                      </bdi>
-                    )}
-                    <span className="inline-block text-muted">
-                      {" · "}
-                      {fill(t.versionNumber, {
-                        version: numbers.format(item.version.version),
-                      })}
-                    </span>
-                  </p>
-                  <p className="text-muted">
-                    {item.document.title ? (
-                      <bdi>{inLang(item.document.title)}</bdi>
-                    ) : (
-                      o.documentHidden
-                    )}
-                  </p>
+                  {item.document ? (
+                    <>
+                      <p>
+                        {item.document.canOpen ? (
+                          <Link
+                            href={documentPath(lang, item.document.id)}
+                            className="text-accent hover:underline"
+                          >
+                            <bdi dir="ltr" className="whitespace-nowrap">
+                              {item.document.number}
+                            </bdi>
+                          </Link>
+                        ) : (
+                          <bdi dir="ltr" className="whitespace-nowrap">
+                            {item.document.number}
+                          </bdi>
+                        )}
+                        {item.version && " "}
+                        {item.version && (
+                          <span className="inline-block text-muted">
+                            {"· "}
+                            {fill(t.versionNumber, {
+                              version: numbers.format(item.version.version),
+                            })}
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-muted">
+                        {item.document.title ? (
+                          <bdi>{inLang(item.document.title)}</bdi>
+                        ) : (
+                          o.documentHidden
+                        )}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-muted">{o.documentHidden}</p>
+                  )}
                 </li>
               ))}
             </ul>

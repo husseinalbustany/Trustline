@@ -431,13 +431,14 @@ export type OverdueList = {
   items: {
     user: Named;
     orgUnit: Named | null;
+    /** Null, with the version, for a document the reader may not open. */
     document: {
       id: string;
       number: string;
       title: Localized | null;
       canOpen: boolean;
-    };
-    version: { id: string; version: number };
+    } | null;
+    version: { id: string; version: number } | null;
     dueOn: string;
     daysOverdue: number;
   }[];

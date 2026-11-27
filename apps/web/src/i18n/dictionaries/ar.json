@@ -39,6 +39,7 @@
       "users": "المستخدمون والأدوار",
       "settings": "الإعدادات",
       "policiesAwaiting": "بانتظاري",
+      "policiesOverdue": "الإقرارات المتأخرة",
       "policiesSettings": "إعدادات الوثائق"
     }
   },
@@ -80,7 +81,7 @@
     "pastReviewHelp": "{percent} من الوثائق السارية ({of})",
     "pastReviewTarget": "المستهدف: أقل من {target}",
     "policiesDueHelp": "تستحق مراجعتها الدورية خلال الثلاثين يومًا القادمة",
-    "acknowledgementHelp": "{acknowledged} من أصل {targeted} ممن طُلب منهم، في الإصدارات السارية",
+    "acknowledgementHelp": "{acknowledged} من أصل {targeted} ممن انقضى موعدهم. واليوم، من بين كل من طُلب منهم: {live}.",
     "acknowledgementTarget": "المستهدف: {target} أو أكثر",
     "measureMet": "تحقق المستهدف",
     "measureMissed": "لم يتحقق المستهدف",
@@ -554,12 +555,19 @@
         "approve": "الوثيقة {reference}: الإصدار {version} بانتظار اعتمادك.",
         "other": "الوثيقة {reference}: الإصدار {version} بانتظار قرارك."
       },
+      "document_step_overdue": {
+        "review": "الوثيقة {reference}: تأخرت المراجعة في الخطوة {position} من الإصدار {version}.",
+        "approve": "الوثيقة {reference}: تأخر الاعتماد في الخطوة {position} من الإصدار {version}.",
+        "other": "الوثيقة {reference}: تأخرت الخطوة {position} من الإصدار {version}."
+      },
       "document_returned": "الوثيقة {reference}: أُعيد الإصدار {version} مع ملاحظات.",
       "document_approved": "الوثيقة {reference}: اعتُمد الإصدار {version} ويمكن نشره.",
       "document_published": "الوثيقة {reference}: نُشر الإصدار {version}. يُرجى قراءته والإقرار بالاطلاع عليه في موعد أقصاه {date}.",
+      "document_publish_failed": "الوثيقة {reference}: لم يُنشر الإصدار {version} في {date}، لأن نصه لم يعد مطابقًا لما وُقِّع عليه. أرسله للمراجعة من جديد.",
       "acknowledgement_assigned": "الوثيقة {reference}: يُرجى قراءة الإصدار {version} والإقرار بالاطلاع عليه في موعد أقصاه {date}.",
       "acknowledgement_due": "الوثيقة {reference}: تذكير بالإقرار بالاطلاع على الإصدار {version} في موعد أقصاه {date}.",
       "acknowledgement_overdue": "الوثيقة {reference}: انتهى في {date} موعد إقرارك بالاطلاع على الإصدار {version}.",
+      "acknowledgements_overdue_digest": "الملخص الأسبوعي للإقرارات المتأخرة في الجهات التي تتابعها: عدد الإقرارات المتأخرة {overdue}، وعدد الأشخاص المعنيين {people}.",
       "review_due": {
         "60": "الوثيقة {reference}: تستحق مراجعتها الدورية في {date}، بعد شهرين تقريبًا.",
         "30": "الوثيقة {reference}: تستحق مراجعتها الدورية في {date}، بعد شهر تقريبًا.",
@@ -1293,6 +1301,14 @@
       "unpublishedHelp": "لم يُنشر هذا الإصدار بعد. لا تستخدمه قبل أن يصبح ساريًا.",
       "openCurrent": "فتح الإصدار الساري"
     },
+    "export": {
+      "list": "تصدير القائمة (CSV)",
+      "listHelp": "كل الوثائق المطابقة لعوامل التصفية هذه، باللغة {language}، في ملف لجداول البيانات.",
+      "acknowledgements": "تصدير إقرارات هذا الإصدار (CSV)",
+      "acknowledgementsHelp": "كل من طُلب منهم، بمن فيهم من غادروا مع تمييزهم، باللغة {language}.",
+      "preparing": "جارٍ إعداد الملف…",
+      "done": "نُزِّل الملف."
+    },
     "stepKind": {
       "review": "مراجعة",
       "approve": "اعتماد"
@@ -1347,6 +1363,7 @@
       "ownerUnit": "الجهة المسؤولة",
       "owner": "المسؤول عن الوثيقة",
       "effectiveOn": "تاريخ السريان",
+      "authoritative": "اللغة المعتمدة",
       "nextReviewOn": "المراجعة القادمة",
       "notInForceSince": "تاريخ انتهاء السريان",
       "notYet": "ليس بعد",
@@ -1362,6 +1379,10 @@
       "shownIn": "معروضة باللغة {language}.",
       "notInYourLanguage": "هذه الوثيقة غير مكتوبة باللغة {mine}، وهي معروضة باللغة {language}.",
       "sectionInOther": "هذا القسم غير مكتوب باللغة {language}، وهو معروض هنا باللغة {other}.",
+      "laggingSummary": "أقسام لم تُحدَّث باللغة {language} منذ تعديل النص باللغة {authoritative}: {count}. وحيث يختلف النصان، يُعتمد النص باللغة {authoritative}.",
+      "sectionLagging": "لم يُحدَّث هذا القسم باللغة {language} بعد تعديل نصه باللغة {authoritative}. وحيث يختلف النصان، يُعتمد النص باللغة {authoritative}.",
+      "showAuthoritative": "عرض النص باللغة {language}",
+      "authoritativeText": "النص باللغة {language}، وهو المعتمد:",
       "noText": "لا يوجد نص في هذا الإصدار بعد.",
       "notPublished": "لم يُنشر أي إصدار من هذه الوثيقة بعد.",
       "print": "عرض الطباعة",
@@ -1402,7 +1423,13 @@
         "other": "رُوجعت"
       },
       "reviewedOnBy": "{name}، {date}",
-      "nextReviewSet": "حُدِّدت المراجعة القادمة في {date}"
+      "nextReviewSet": "حُدِّدت المراجعة القادمة في {date}",
+      "changesTitle": "سجل تعديل البيانات",
+      "noChanges": "لم تُعدَّل بيانات الوثيقة منذ إنشائها.",
+      "changeLine": "{field}: من {from} إلى {to}",
+      "changeReason": "السبب:",
+      "none": "لا شيء",
+      "otherDetail": "بيان آخر"
     },
     "acknowledge": {
       "title": "الإقرار بالاطلاع على هذه الوثيقة",
@@ -1431,7 +1458,8 @@
       "periodicReviewOwnerHelp": "أكّد أنها ما زالت لا تحتاج إلى تغيير. إذا كان يجب تغييرها أو إيقاف العمل بها، فأبلغ أحد من يديرون الوثائق.",
       "confirmReview": "تأكيد عدم الحاجة إلى تغيير",
       "confirmReviewIntro": "تؤكد بكلمة المرور أن الوثيقة {number} رُوجعت ولا تحتاج إلى تغيير. يُحتسب موعد المراجعة القادمة من جديد ابتداءً من اليوم.",
-      "reviewComment": "تعليق (اختياري)",
+      "reviewComment": "تعليق",
+      "reviewCommentHelp": "مطلوب. اذكر ما رُوجع، ويُحفظ مع المراجعة.",
       "reviewConfirmed": "سُجِّلت المراجعة.",
       "retire": "إيقاف العمل بهذه الوثيقة",
       "retireReason": "سبب إيقاف العمل بها",
@@ -1457,7 +1485,7 @@
       "recallYes": "نعم، استعِده للتعديل",
       "recalled": "استُعيد الإصدار للتعديل.",
       "withdraw": "سحب هذا الإصدار",
-      "withdrawReason": "سبب السحب (اختياري)",
+      "withdrawReason": "سبب السحب",
       "withdrawConfirm": "سحب الإصدار {version}؟ لن يُنشر، ويبقى في السجل.",
       "withdrawYes": "نعم، اسحبه",
       "withdrawn": "سُحب الإصدار."
@@ -1469,18 +1497,38 @@
       "changeSummary": "ما الذي تغيّر في هذا الإصدار",
       "viewLabel": "طريقة عرض هذا الإصدار",
       "showChanges": "التغييرات منذ الإصدار المنشور",
+      "sinceReturned": "التغييرات منذ إعادته",
+      "sinceReturnedHelp": "مقارنة بما كان عليه عند إعادته مع ملاحظات في {date}.",
+      "summaryChanged": "وعُدِّل أيضًا ملخص التغييرات.",
+      "summaryUnchanged": "ولم يُعدَّل ملخص التغييرات.",
       "showDocument": "القراءة كوثيقة",
       "firstVersion": "هذا هو الإصدار الأول: لا يوجد إصدار منشور لمقارنته به.",
       "noChanges": "لم يتغيّر أي قسم بهذه اللغة.",
       "changedCount": "الأقسام التي تغيّرت بهذه اللغة: {count} من {total}.",
       "changed": "تغيّر",
       "unchanged": "دون تغيير",
+      "lagging": "لم يُحدَّث",
+      "laggingHere": "عُدِّل باللغة {authoritative} ولم يُحدَّث باللغة {language}.",
+      "laggingCount": "عُدِّلت باللغة {authoritative} ولم تُحدَّث بهذه اللغة: {count}.",
+      "notUpdatedTitle": "لم تُحدَّث كل اللغات",
+      "notUpdatedLine": "أقسام لم تُحدَّث باللغة {language}: {count}",
+      "notUpdatedHelp": "وحيث تختلف النصوص، يُعتمد النص باللغة {authoritative}. ويشمل التوقيع كل اللغات كما هي.",
       "empty": "فارغ",
       "emptyHere": "لا يوجد نص بهذه اللغة.",
       "addedLine": "أُضيف:",
       "removedLine": "حُذف:",
       "showText": "عرض النص",
       "steps": "خطوات الاعتماد",
+      "rounds": "جولات المراجعة السابقة",
+      "roundTitle": "الجولة {number}",
+      "roundStarted": "بدأت في {date}",
+      "roundStatus": {
+        "in_progress": "جارية",
+        "approved": "انتهت بالاعتماد",
+        "returned": "انتهت بالإعادة مع ملاحظات",
+        "cancelled": "أُوقفت",
+        "other": "انتهت"
+      },
       "stepTitle": "الخطوة {position}: {kind}",
       "stepStatus": {
         "waiting": "لم يحن دورها بعد",
@@ -1600,6 +1648,9 @@
       "reviewMonths": "دورة المراجعة بالأشهر",
       "reviewMonthsHelp": "اتركها فارغة لاستخدام دورة النوع ({months}).",
       "reviewMonthsHelpNoType": "اتركها فارغة لاستخدام دورة النوع.",
+      "reviewMonthsMax": "{months} كحد أقصى، وهو الحد الذي حددته منشأتك.",
+      "reason": "لماذا تتغيّر دورة المراجعة؟",
+      "reasonHelp": "مطلوب عند تغيير دورة المراجعة، ويُحفظ في سجل الوثيقة.",
       "keywords": "الكلمات المفتاحية",
       "keywordsHelp": "افصل بينها بفواصل. تساعد في العثور على الوثيقة.",
       "references": "المراجع",
@@ -1619,8 +1670,18 @@
       "noReviews": "لا توجد مراجعة دورية قادمة.",
       "youOwn": "أنت المسؤول عنها"
     },
+    "overdue": {
+      "title": "الإقرارات المتأخرة",
+      "description": "الأشخاص في الجهات التي تطّلع على أرقامها ممن لم يُقرّوا بالاطلاع على وثيقة سارية في موعدها. الأكثر تأخرًا أولًا.",
+      "empty": "لا يوجد إقرار متأخر.",
+      "noAccess": "هذه القائمة لمن يديرون الوثائق أو يحق لهم قراءتها كلها.",
+      "late": "انتهى الموعد في {date} · منذ {days}",
+      "documentHidden": "وثيقة لا يمكنك فتحها"
+    },
     "acknowledgements": {
       "title": "الإقرار بالاطلاع",
+      "versionLabel": "الإصدار",
+      "versionOption": "الإصدار {version} · {status}",
       "noAccess": "أرقام الإقرار بالاطلاع لا تُعرض إلا لمن يدير هذه الوثيقة أو يحق له قراءة كل الوثائق.",
       "notPublished": "لم يُنشر شيء بعد، فلم يُطلب من أحد الإقرار بالاطلاع.",
       "notRequired": "الإصدار المنشور لا يطلب الإقرار بالاطلاع.",
@@ -1636,6 +1697,9 @@
       "nobody": "لم يُطلب من أحد بعد.",
       "people": "حسب الشخص",
       "filterLabel": "عرض الأشخاص حسب وضعهم",
+      "includeLeft": "عرض من غادروا",
+      "leftHelp": "يُدرَج من غادروا للتوثيق، ولا يُحتسبون في الأرقام.",
+      "left": "خارج المنشأة",
       "all": "الكل",
       "states": {
         "pending": "لم يُقرّوا بعد",
@@ -1655,11 +1719,13 @@
       "tabs": {
         "types": "الأنواع",
         "categories": "الفئات",
-        "routes": "مسارات الاعتماد"
+        "routes": "مسارات الاعتماد",
+        "general": "عام"
       },
       "inactive": "خارج الاستخدام",
       "edit": "تعديل",
       "save": "حفظ",
+      "saved": "حُفظ.",
       "create": "إضافة",
       "active": "قيد الاستخدام",
       "code": "الرمز",
@@ -1675,6 +1741,8 @@
       "prefixHelp": "من 2 إلى 6 حروف لاتينية كبيرة أو أرقام، مثل POL. يسري التغيير على الوثائق التي تُنشأ بعده.",
       "reviewMonths": "دورة المراجعة بالأشهر",
       "reviewMonthsHelp": "للوثائق الجديدة من هذا النوع، ولكل وثيقة أن تحدد دورتها.",
+      "maxReviewMonths": "أطول دورة مراجعة، بالأشهر",
+      "maxReviewMonthsHelp": "لا يجوز لأي نوع أو وثيقة تحديد دورة أطول. وتحتفظ الوثيقة المحددة بدورة أطول من قبل بدورتها إلى أن تُعدَّل.",
       "sections": "الأقسام",
       "sectionsHelp": "بترتيب قراءتها. يجب أن تُكتب الأقسام المطلوبة باللغة الرئيسية قبل إرسال أي إصدار للمراجعة.",
       "sectionNumber": "القسم {position}",
@@ -1787,7 +1855,14 @@
       "role_cannot_approve": "هذا الدور لا يحق له اعتماد الوثائق. اختر دورًا يتضمن «مراجعة الوثائق واعتمادها عند التكليف بخطوة في مسار الاعتماد».",
       "user_cannot_approve": "لا يحق لهذا الشخص اعتماد الوثائق: حسابه غير نشط، أو لا يسمح له أي من أدواره بذلك.",
       "last_step_must_approve": "يجب أن تكون الخطوة الأخيرة في المسار اعتمادًا.",
-      "route_exists": "يوجد بالفعل مسار نشط لهذا النوع. ألغِ تفعيله أو عدّله."
+      "route_exists": "يوجد بالفعل مسار نشط لهذا النوع. ألغِ تفعيله أو عدّله.",
+      "reason_required": "اذكر سبب تغيير دورة المراجعة.",
+      "review_period_too_long": "لا يمكن أن تتجاوز دورة المراجعة {max}، وهو الحد الأقصى في منشأتك.",
+      "type_exceeds_max": "هذا الحد الأقصى أقصر من دورة المراجعة لهذه الأنواع: {types}. قصّر دورتها أولًا.",
+      "same_person_in_two_steps": "الشخص نفسه مسمّى في الخطوات {positions}. لا يجوز أن يقرر شخص واحد خطوتين في مراجعة واحدة: اختر شخصًا آخر لإحداهما.",
+      "stale_type": "عدّل شخص آخر هذا النوع في الأثناء. أعد تحميل الصفحة ثم حاول مرة أخرى.",
+      "stale_category": "عدّل شخص آخر هذه الفئة في الأثناء. أعد تحميل الصفحة ثم حاول مرة أخرى.",
+      "stale_settings": "عدّل شخص آخر هذه الإعدادات في الأثناء. أعد تحميل الصفحة ثم حاول مرة أخرى."
     }
   }
 }
