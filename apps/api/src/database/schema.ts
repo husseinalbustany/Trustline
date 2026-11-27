@@ -479,14 +479,26 @@ export const incidents = pgTable(
     closureRequestedAt: timestamp({ withTimezone: true }),
     // When it should have been triaged by, and closed by: the reported time
     // plus what the hospital's response rules allowed when the report was
-    // made. The first never moves. The second is counted again, still from
-    // the reported time, when triage changes the harm level or the sentinel
-    // flag. A later change to the rules moves neither. Whether an incident
-    // is overdue is worked out from these when it is read, never stored.
+    // made. Triage never moves the first. The second is counted again, still
+    // from the reported time, when triage changes the harm level or the
+    // sentinel flag. A later change to the rules moves neither. A reopening
+    // gives new ones, counted from the reopening (the `*_due_from` columns):
+    // a closing deadline always, a triage deadline when the report goes
+    // back to `new`. Whether an incident is overdue is worked out from these
+    // when it is read, never stored.
     // Nullable only so that a release still running during a deployment can
     // go on storing reports: the deadline check fills in any it left empty.
     triageDueAt: timestamp({ withTimezone: true }),
     closeDueAt: timestamp({ withTimezone: true }),
+    // When the time to triage it started to run: the reopening, for a report
+    // set aside before triage and reopened, which goes back to `new` with a
+    // new triage deadline counted from then. Null means from the report.
+    triageDueFrom: timestamp({ withTimezone: true }),
+    // The triage deadline its first triage (or setting aside) was measured
+    // against, kept here when a reopening replaces `triage_due_at`, so that
+    // "triaged on time" goes on judging that first decision by the deadline
+    // it was made under. Null while `triage_due_at` is still that deadline.
+    firstTriageDueAt: timestamp({ withTimezone: true }),
     // When the time to close it started to run: the reopening, for an
     // incident that was reopened, which gives it a new deadline counted from
     // then. Null means from the report. The deadline it had before stays on

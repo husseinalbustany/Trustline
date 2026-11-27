@@ -41,10 +41,15 @@ const downgraded = {
   signOffNeeded: true,
   graded: true,
 } as const;
-const at = <T extends object>(incident: T, status: IncidentStatus) => ({
-  ...incident,
-  status,
-});
+/**
+ * The incident in this status. Triaged at some point unless it is `new`, or
+ * `triagedAt` says otherwise (a report set aside before triage).
+ */
+const at = <T extends object>(
+  incident: T,
+  status: IncidentStatus,
+  triagedAt: Date | null = status === 'new' ? null : new Date(0),
+) => ({ ...incident, status, triagedAt });
 
 const offered = (
   incident: Parameters<typeof movesFor>[0],
@@ -343,5 +348,41 @@ describe('incident status rules', () => {
     expect(needsSignOff({ ...sent, graded: true })).toBe(true);
     // Once raised, the flag decides, whoever graded it.
     expect(needsSignOff({ ...sent, signOffNeeded: true })).toBe(true);
+  });
+
+  it('reopens a closed incident to work on, and a set-aside report to where the setting aside took it from', () => {
+    // Closed: worked on again, as before.
+    expect(offered(at(ordinary, 'closed'), triager)).toEqual([
+      'reopen>in_progress',
+    ]);
+    // Set aside before anyone triaged it: to be triaged like a new report.
+    const asideUntriaged = at(ordinary, 'rejected', null);
+    expect(offered(asideUntriaged, triager)).toEqual(['reopen>new']);
+    expect(chooseMove(asideUntriaged, 'new', triager)).toMatchObject({
+      kind: 'reopen',
+      event: 'reopened',
+      note: 'required',
+    });
+    // Not straight to work, nor to "triaged" with no triage behind it.
+    expect(chooseMove(asideUntriaged, 'in_progress', triager, 'reopen')).toBe(
+      'invalid_transition',
+    );
+    expect(chooseMove(asideUntriaged, 'triaged', triager)).toBe(
+      'invalid_transition',
+    );
+    // Set aside after triage: the triage stands, so back to triaged.
+    const asideTriaged = at(ordinary, 'rejected');
+    expect(offered(asideTriaged, triager)).toEqual(['reopen>triaged']);
+    expect(chooseMove(asideTriaged, 'new', triager)).toBe('invalid_transition');
+    expect(chooseMove(asideTriaged, 'in_progress', triager)).toBe(
+      'invalid_transition',
+    );
+    // Only for whoever may triage it.
+    for (const incident of [asideUntriaged, asideTriaged]) {
+      expect(offered(incident, signer)).toEqual([]);
+      expect(chooseMove(incident, 'new', signer)).not.toHaveProperty('kind');
+    }
+    // Back in new, it is triaged or set aside again like any new report.
+    expect(offered(at(ordinary, 'new'), triager)).toEqual(['reject>rejected']);
   });
 });

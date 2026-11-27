@@ -83,7 +83,7 @@ type Stage = {
   /** The deadline itself. */
   dueAt: 'triageDueAt' | 'closeDueAt';
   /** When the time allowed for it started to run, if not at the report. */
-  from?: 'closeDueFrom';
+  from: 'triageDueFrom' | 'closeDueFrom';
   /** Where it is recorded that this was announced. */
   announced: Mark;
   /** For "overdue": where "due soon" is recorded, which it makes pointless. */
@@ -100,6 +100,7 @@ const STAGES: Stage[] = [
     deadline: 'triage',
     kind: 'overdue',
     dueAt: 'triageDueAt',
+    from: 'triageDueFrom',
     announced: { at: 'triageOverdueAt' },
     supersedes: TRIAGE_SOON,
   },
@@ -107,6 +108,7 @@ const STAGES: Stage[] = [
     deadline: 'triage',
     kind: 'due_soon',
     dueAt: 'triageDueAt',
+    from: 'triageDueFrom',
     announced: TRIAGE_SOON,
   },
   {
@@ -129,9 +131,10 @@ const STAGES: Stage[] = [
 /**
  * Whether the incident's deadline, where it now is, is still to be
  * announced at this mark: nothing was, or what was was for an earlier
- * deadline. The triage deadline never moves, so once is once. A time set
- * without the deadline it was for (by a release that did not record it)
- * counts as set for the deadline the incident has.
+ * deadline. The triage deadline moves only when a report set aside before
+ * triage is reopened, which clears what was announced of it: once is once
+ * per deadline. A time set without the deadline it was for (by a release
+ * that did not record it) counts as set for the deadline the incident has.
  */
 const unannounced = (mark: Mark, dueAt: SQLWrapper) =>
   mark.for
@@ -353,9 +356,7 @@ export class DeadlineCheck implements OnModuleDestroy {
     const dueAt = incidents[stage.dueAt];
     // When to announce: at the deadline, or a quarter of the allowed time
     // (from the report, or the reopening, to the deadline) before it.
-    const from = stage.from
-      ? sql`coalesce(${incidents[stage.from]}, ${incidents.reportedAt})`
-      : sql`${incidents.reportedAt}`;
+    const from = sql`coalesce(${incidents[stage.from]}, ${incidents.reportedAt})`;
     const moment: SQL =
       stage.kind === 'overdue'
         ? sql`${dueAt}`
@@ -484,8 +485,8 @@ export class DeadlineCheck implements OnModuleDestroy {
    * Gives its deadlines to any incident stored without them. Every report
    * gets them when it is made; this is for one stored by a release that did
    * not know of deadlines yet, still running while a new one is deployed.
-   * Counted from when it was reported, under the rules as they are now.
-   * Returns how many it filled in.
+   * Counted from when it was reported (or reopened), under the rules as they
+   * are now. Returns how many it filled in.
    */
   private async fillMissingDeadlines(hospital: {
     id: string;
@@ -500,6 +501,7 @@ export class DeadlineCheck implements OnModuleDestroy {
           isSentinel: incidents.isSentinel,
           triageDueAt: incidents.triageDueAt,
           closeDueAt: incidents.closeDueAt,
+          triageDueFrom: incidents.triageDueFrom,
           closeDueFrom: incidents.closeDueFrom,
         })
         .from(incidents)
@@ -511,7 +513,11 @@ export class DeadlineCheck implements OnModuleDestroy {
       for (const incident of missing) {
         const set = {
           ...(incident.triageDueAt === null && {
-            triageDueAt: triageDueAt(incident.reportedAt, incident, rules),
+            triageDueAt: triageDueAt(
+              incident.triageDueFrom ?? incident.reportedAt,
+              incident,
+              rules,
+            ),
           }),
           ...(incident.closeDueAt === null && {
             closeDueAt: closeDueAt(

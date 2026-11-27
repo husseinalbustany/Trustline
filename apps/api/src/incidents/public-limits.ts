@@ -35,12 +35,18 @@ export const FOLLOW_UP_COMMENTS_PER_INCIDENT_PER_DAY = 10;
  */
 export const BUSY_RETRY_SECONDS = 1;
 
+/**
+ * A wait as the public routes tell it: whole seconds, rounded up, one at the
+ * least. `Retry-After` takes nothing finer, and nothing finer is said
+ * anywhere else either: how long is left to the millisecond would date the
+ * report that holds the hour to the millisecond.
+ */
+export const wholeSeconds = (seconds: number) =>
+  Math.max(Math.ceil(seconds), 1);
+
 /** What every limit on the public routes answers when it is reached. */
 export function tooManyRequests(res: Response, retryAfterSeconds: number) {
-  res.setHeader(
-    'Retry-After',
-    String(Math.max(Math.ceil(retryAfterSeconds), 1)),
-  );
+  res.setHeader('Retry-After', String(wholeSeconds(retryAfterSeconds)));
   return new HttpException(
     { statusCode: 429, code: 'too_many_requests' },
     HttpStatus.TOO_MANY_REQUESTS,

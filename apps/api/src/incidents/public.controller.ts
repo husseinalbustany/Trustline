@@ -112,6 +112,11 @@ export class PublicReportingController {
    * hospital does not exist, is suspended or has the form off: otherwise
    * this route would say, to anyone going through a list of names, which of
    * them are hospitals here.
+   *
+   * It also says whether the hospital's hourly ceiling is reached (`paused`,
+   * and `retryAfterSeconds` until a place frees, else null), so that a
+   * sender is told before writing, not after. Only once the hospital is
+   * found and takes reports: every refusal is the same 404 as before.
    */
   @Get('reporting/:slug')
   form(

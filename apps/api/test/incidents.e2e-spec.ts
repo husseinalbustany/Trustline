@@ -1207,7 +1207,11 @@ describe('incident reporting', () => {
       // not an incident (second quality review, D1).
       'triaged>rejected',
       'closed>in_progress',
-      'rejected>in_progress',
+      // Set aside before triage, a report is reopened to be triaged like a
+      // new one, not sent straight on to work with no handling department
+      // (regression after the second quality review). One set aside after
+      // triage goes back to triaged: test/incident-reopen-and-pause.e2e-spec.ts.
+      'rejected>new',
     ]);
 
     for (const from of STATUSES) {
@@ -1245,7 +1249,7 @@ describe('incident reporting', () => {
       const closed = await incidentIn('closed');
       await move(quality.cookie, closed, 'in_progress').expect(400);
       const rejected = await incidentIn('rejected');
-      await move(quality.cookie, rejected, 'in_progress').expect(400);
+      await move(quality.cookie, rejected, 'new').expect(400);
     });
 
     it('keeps the note where it belongs', async () => {

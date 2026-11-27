@@ -1302,6 +1302,8 @@ describe('incident safeguards', () => {
         'locales',
         'name',
         'orgUnits',
+        'paused',
+        'retryAfterSeconds',
         'timeZone',
       ]);
       expect(res.body).toMatchObject({
@@ -1309,6 +1311,9 @@ describe('incident safeguards', () => {
         locales: ['en'],
         defaultLocale: 'en',
         timeZone: 'UTC',
+        // Taking reports: the ceiling is not reached.
+        paused: false,
+        retryAfterSeconds: null,
       });
       const units = res.body.orgUnits as Record<string, unknown>[];
       for (const unit of units) {
@@ -2013,7 +2018,15 @@ describe('incident safeguards', () => {
             }),
           )
           .expect(201);
-        await http().get(`/public/reporting/${lim.slug}`).expect(200);
+        // Its form's page does not say that a report is being stored at
+        // this moment either: being busy is not being paused.
+        const page = await http()
+          .get(`/public/reporting/${lim.slug}`)
+          .expect(200);
+        expect(page.body).toMatchObject({
+          paused: false,
+          retryAfterSeconds: null,
+        });
         await followUp(lim.slug, 'x', '203.0.113.152').expect(404);
         // Nothing was stored for those turned away, and being busy is not
         // the ceiling: nothing says the form was shut.
@@ -2112,6 +2125,25 @@ describe('incident safeguards', () => {
           )
         ).rows;
       expect(await shut()).toEqual([]);
+      // The form's page says so before anyone writes a report: paused, and
+      // for how long, in whole seconds. Reading it is not a refusal: it
+      // writes nothing to the audit log and tells nobody.
+      const page = async () =>
+        (await http().get(`/public/reporting/${cap.slug}`).expect(200))
+          .body as { paused: boolean; retryAfterSeconds: number | null };
+      const before = await page();
+      expect(before.paused).toBe(true);
+      expect(Number.isInteger(before.retryAfterSeconds)).toBe(true);
+      expect(before.retryAfterSeconds).toBeGreaterThan(3500);
+      expect(before.retryAfterSeconds).toBeLessThanOrEqual(3600);
+      expect(await shut()).toEqual([]);
+      expect(
+        (
+          await owner.db.execute(
+            sql`select 1 from notifications where tenant_id = ${cap.id} and kind = 'public_form_paused'`,
+          )
+        ).rows,
+      ).toEqual([]);
       const warned: string[] = [];
       const warn = vi
         .spyOn(Logger.prototype, 'warn')
@@ -2134,6 +2166,12 @@ describe('incident safeguards', () => {
         });
         expect(Number(res.headers['retry-after'])).toBeGreaterThan(0);
         expect(Number(res.headers['retry-after'])).toBeLessThanOrEqual(3600);
+        // The page and the refusal tell the same wait, from the same count
+        // (a second apart at most, as time moves on between the two).
+        const said = (await page()).retryAfterSeconds!;
+        expect(
+          Math.abs(said - Number(res.headers['retry-after'])),
+        ).toBeLessThanOrEqual(1);
       }
       // Many at once do not slip through together either.
       const burst = await Promise.all(
@@ -2211,6 +2249,10 @@ describe('incident safeguards', () => {
         sql`update incidents set reported_at = reported_at - interval '61 minutes'
             where id in (select id from incidents where tenant_id = ${cap.id} and channel = 'public' order by reported_at limit 2)`,
       );
+      expect(await page()).toMatchObject({
+        paused: false,
+        retryAfterSeconds: null,
+      });
       await toCap('198.51.99.3').expect(201);
       await toCap('198.51.99.4').expect(201);
       await toCap('198.51.99.5').expect(429);
@@ -3207,12 +3249,10 @@ describe('incident safeguards', () => {
         expect(
           (await followUp(a.slug, aside.code).expect(200)).body.status,
         ).toBe('rejected');
-        await move(
-          quality.cookie,
-          aside.id,
-          'in_progress',
-          'Looked again.',
-        ).expect(200);
+        // Reopened, it is back to be triaged, and takes comments again.
+        await move(quality.cookie, aside.id, 'new', 'Looked again.').expect(
+          200,
+        );
         await followUpComment(a.slug, aside.code, 'Thank you.').expect(201);
       });
 
@@ -3884,9 +3924,16 @@ describe('incident safeguards', () => {
       await follow(quality, id, 'request_sign_off');
       await follow(signOnly, id, 'sign_off');
       await follow(quality, id, 'reopen');
+      // Set aside before triage, it reopens to be triaged; set aside after
+      // triage, back to triaged. Each offered and followed as named.
       const other = await report(reporter);
       await follow(quality, other.id, 'reject');
       await follow(quality, other.id, 'reopen');
+      expect((await stored(other.id)).status).toBe('new');
+      await triage(quality.cookie, other.id).expect(200);
+      await follow(quality, other.id, 'reject');
+      await follow(quality, other.id, 'reopen');
+      expect((await stored(other.id)).status).toBe('triaged');
       await follow(quality, other.id, 'close');
       expect([...followed].sort()).toEqual([
         'close',

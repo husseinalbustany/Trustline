@@ -70,6 +70,11 @@ that never opens the public form.
   units (id, parent, type, name) and active categories. 404 if the hospital
   does not exist, is suspended, or has public reporting off: the three cases
   must look the same, and take the same time (see "Protection").
+  > **Added after the browser regression (API engineer).** It also carries
+  > `paused: boolean` and `retryAfterSeconds: number | null`: whether the
+  > hospital's hourly ceiling of public reports is reached, and if so how
+  > long until it frees a place, so that the form can say so before a sender
+  > writes a whole report. See "Decided after the browser regression".
 - `POST /public/reporting/:slug` → the same body as `POST /incidents` without
   `anonymous` (a public report is always anonymous). Stored with
   `reported_by` NULL and `channel = 'public'`. Answers 201 `{ followUpCode }`
@@ -208,7 +213,8 @@ code alone, are written into the sections above. The rest:
 - **The address limit is not the only limit.** Each hospital also has a
   ceiling of 60 public reports an hour whatever addresses they come from; when
   it is reached the public form answers 429 until the hour moves on, and the
-  quality office is not buried. The limiter only accepts a real IP address as
+  quality office is not buried. (Since the browser regression the form's
+  page says so before anything is written: `paused`, above.) The limiter only accepts a real IP address as
   a key. The README states what must sit in front of the web app for the
   address limit to mean anything.
 
@@ -367,6 +373,14 @@ browser's. The client is never asked for an offset.
   > everyone who triages for the whole organization, as often as they
   > changed its harm level. If nothing was announced yet (the old deadline
   > had not passed), the next check announces the missed one, once.
+  >
+  > **Changed after the browser regression.** Triage still never moves
+  > `triage_due_at`. A reopening does, for a report set aside before triage,
+  > which goes back to `new`: it gets a triage deadline counted from the
+  > reopening. The one its setting aside was judged by is kept for "triaged
+  > on time" (`incidents.first_triage_due_at`), so that reopening can neither
+  > excuse a late decision nor spoil a timely one. See "Decided after the
+  > browser regression".
 - `triage_due_at` stops mattering once the incident leaves `new`.
   `close_due_at` stops mattering once it is `closed` or `rejected`.
   > **Changed after the second quality review: reopening gives a new
@@ -376,6 +390,10 @@ browser's. The client is never asked for an offset.
   > had stays on the timeline: the `reopened` entry's details carry
   > `closeDueAt: { from, to }`, as does its audit entry. Someone who sees the
   > incident only as its reporter does not get that part of the details.
+  > (Since the browser regression a report set aside before triage also
+  > gets a new triage deadline when reopened, carried the same way as
+  > `triageDueAt: { from, to }`, and counted from
+  > `incidents.triage_due_from`.)
 - An incident is **overdue for triage** when it is `new` and past
   `triage_due_at`; **overdue for closure** when it is `triaged`,
   `in_progress` or `awaiting_sign_off` and past `close_due_at`. This is
@@ -398,6 +416,15 @@ browser's. The client is never asked for an offset.
   > `first_triaged_at` at that moment; migration 0030 records it for those
   > set aside before), or are still `new` past their triage deadline, which
   > count as late. On time: first triage no later than the deadline.
+  >
+  > **Changed after the browser regression.** "The deadline" is the one the
+  > first decision was made under: `first_triage_due_at` where a reopening
+  > replaced it, `triage_due_at` otherwise. `first_triaged_at` is set once,
+  > by the first triage or setting aside, and a report reopened to `new` and
+  > triaged again keeps it. Such a report is counted by that first decision,
+  > not as one still waiting; while it waits again it is counted, like any
+  > report in `new`, in `awaitingTriage` and, past its new deadline, in
+  > `overdue`.
   > - `overdue`, `triagedOnTime`, the `overdue=true` filter and `sort=due`
   >   count only incidents the caller sees in full. Otherwise a reporter
   >   would learn their own report's deadlines from a count or an order.
@@ -467,6 +494,13 @@ description, no comment text, no names of people).
   > - A suspended hospital is skipped; its deadlines are announced, once,
   >   when it is active again.
   >
+  > **Changed after the browser regression.** A report reopened to `new` has
+  > a new triage deadline, so what was announced of the old one
+  > (`triage_due_soon_at`, `triage_overdue_at`) is cleared with the
+  > reopening, as the closing marks are; "due soon" counts its quarter from
+  > the reopening (`triage_due_from`). The new deadline is at least an hour
+  > away, so no reopening can have an overdue announced at once.
+  >
   > **Added after the third security review.**
   > - A run that did something writes one line to the server log (how many
   >   notifications, how many hospitals failed); a hospital whose check
@@ -529,6 +563,9 @@ Where a rule above changed, it says so in its place. The rest:
   is called now: one person would otherwise end it without the second
   signature (409 `serious_cannot_be_rejected`). From `new` it records
   `first_triaged_at`.
+  > **Changed after the browser regression:** a report set aside is no
+  > longer reopened to `in_progress`. See "Decided after the browser
+  > regression".
 - **The channel filter.** `GET /incidents?channel=app|public`. Refused with
   403 `missing_permission` (`incidents.see_reporter`) to a caller who holds
   that right nowhere. For one who holds it somewhere it matches only the
@@ -573,3 +610,89 @@ Where a rule above changed, it says so in its place. The rest:
   `incident_deadlines_filled`, no actor, `changes` the deadlines given
   (`{ from: null, to }`).
 - **Changing the harm level back and forth repeats nothing**: see section 4.
+
+## Decided after the browser regression
+
+The browser regression of incident reporting (HEAD a244e5b) left two points
+for a decision. Where a rule above changed, it says so in its place.
+
+### The public form says it is paused before anything is written
+
+`GET /public/reporting/:slug` answers, besides what it gave before, either
+`"paused": false, "retryAfterSeconds": null` or, for example,
+`"paused": true, "retryAfterSeconds": 587`.
+
+- `paused` is true when the hospital's hourly ceiling of public reports is
+  reached, by the same count `POST /public/reporting/:slug` refuses with
+  (the newest-but-59 public report of the last hour exists). Then
+  `retryAfterSeconds` is the time until that report is an hour old, in
+  whole seconds rounded up and never less than 1, as the POST's
+  `Retry-After` gives it.
+- It says nothing the POST's 429 does not: not how many reports came, not
+  how close a hospital is to its ceiling while it is not paused, and not
+  that another report is being stored at this moment (the 429 with
+  `Retry-After: 1` of "Nobody queues": the GET does not ask for that turn,
+  so it stays `paused: false` then). Nothing finer than whole seconds, so
+  the report that holds the hour is not dated to the millisecond.
+- Reading it writes nothing: the audit entry `public_reporting_limit_reached`
+  and the `public_form_paused` notification still come from the first
+  report turned away in an hour, not from a page being opened.
+- Every 404 is unchanged in shape (`{ statusCode: 404, message: "Not Found" }`)
+  and in time: the hospital is looked up and refused before the count is
+  read, so a hospital with its form off, a suspended one and one that does
+  not exist are refused on the same step whether or not their hour is full.
+- The POST is unchanged. A form opened just before the ceiling was reached
+  still gets the 429 when it is sent, and must keep what was typed.
+
+### Reopening a report that was set aside
+
+Reopening a `rejected` report returns it to where the setting aside took it
+from:
+
+| Set aside from | Reopened to | Deadlines |
+|---|---|---|
+| `new` (nobody had triaged it) | `new` | triage and closing deadlines, both counted from the reopening |
+| `triaged` | `triaged` | a closing deadline counted from the reopening; the triage deadline it had |
+| (a closed incident, unchanged) | `in_progress` | a closing deadline counted from the reopening |
+
+- **Back to `new`** it is triaged like any new report: it waits in
+  "awaiting triage", has no handling department, and is triaged or set
+  aside again. `moves` offers it `reject` only, and `canRetriage` is true.
+- **Decided: a report triaged before it was set aside returns to
+  `triaged`, not `new`.** Its triage was a decision on its merits, with a
+  handling department, a grade and perhaps an assignee, and setting it
+  aside did not undo any of that (all of it is kept on the record). Only
+  the setting aside is taken back. Sending it to `new` would put a report
+  that already has a department back in the triage queue, under a second
+  triage deadline for work already done. Whether a report "had been
+  triaged" is `triaged_at`, which only triage sets and nothing clears; so a
+  report in `new` has never been triaged, whether or not it was reopened.
+- `POST /incidents/:id/status` with `to: "new"` or `to: "triaged"` (kind
+  `reopen`), note required. A move to `in_progress` from `rejected`, or to
+  whichever of the two does not apply, is 409 `invalid_transition`: the
+  screen follows `moves`, which offers the one that applies.
+- The `reopened` timeline entry and the audit entry carry the deadlines it
+  had beside the new ones: `closeDueAt: { from, to }` always, and
+  `triageDueAt: { from, to }` when it goes back to `new`. Someone who sees
+  the incident only as its reporter gets neither. The named reporter and
+  the assignee are told `status_changed` with `change: "reopened"`, as for
+  a closed incident.
+- **"Triaged on time"** judges the first decision (the first triage or
+  setting aside, `first_triaged_at`) by the deadline it was made under: a
+  reopening keeps that deadline in `first_triage_due_at` (the first time
+  only), and a later triage does not move `first_triaged_at`. A late
+  setting aside stays late after reopening; a timely one stays timely even
+  if the reopened report then misses its new deadline.
+- **Deadlines** of a report back in `new`: overdue for triage past the new
+  `triage_due_at` (the summary's `overdue`, `overdue=true`, `sort=due`);
+  the deadline check announces the new deadline in its turn (section 5).
+- **Sign-off.** A report can only be set aside while it is not serious and
+  has never needed sign-off, so a reopened one starts without the flag. A
+  triage after the reopening that makes it a sentinel event or a death
+  raises `sign_off_needed` as any triage does; from then on it needs the
+  second signature and cannot be set aside again, whatever it is called
+  later. A report through the public link that was set aside has
+  `first_triaged_at`, so its grade counts as a member of staff's; that
+  grade was not serious, or it could not have been set aside.
+- Migration 0031 adds `incidents.triage_due_from` and
+  `incidents.first_triage_due_at`, both nullable; nothing existing changes.

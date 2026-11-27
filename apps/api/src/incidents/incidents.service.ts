@@ -57,6 +57,7 @@ import {
   BUSY_RETRY_SECONDS,
   FOLLOW_UP_COMMENTS_PER_INCIDENT_PER_DAY,
   PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR,
+  wholeSeconds,
 } from './public-limits.js';
 import { nextReference } from './reference.js';
 import { closeDueAt, triageDueAt } from './response-rules.js';
@@ -433,12 +434,51 @@ export class IncidentsService {
   /**
    * What the public report form offers: where it can have happened and what
    * kind of thing it was. Nothing else about the hospital.
+   *
+   * And whether the hospital's hourly ceiling is reached (`paused`), so that
+   * nobody writes a whole report to be refused at the end: then
+   * `retryAfterSeconds` is how long until a place frees, from the same
+   * count as the report itself is refused by, in the same whole seconds as
+   * the `Retry-After` of that refusal. Nothing more than that refusal says:
+   * not how many reports came, not how close a hospital that is not paused
+   * is to its ceiling, and not, as only the report's own turn can, that
+   * another report is being stored at that moment (the turn is not asked
+   * for here). Reading it writes nothing: the audit entry and the
+   * notification of a pause come from a report turned away, as before.
    */
   publicForm(tenantId: string) {
-    return this.tenantDb.withTenant(tenantId, async (tx) => ({
-      orgUnits: await this.orgUnits.choosable(tx),
-      categories: await this.activeCategories(tx),
-    }));
+    return this.tenantDb.withTenant(tenantId, async (tx) => {
+      const now = Date.now();
+      const filling = await this.fillingThisHour(tx, now);
+      return {
+        orgUnits: await this.orgUnits.choosable(tx),
+        categories: await this.activeCategories(tx),
+        paused: filling !== null,
+        retryAfterSeconds:
+          filling && wholeSeconds((filling.getTime() + HOUR_MS - now) / 1000),
+      };
+    });
+  }
+
+  /**
+   * When the public report that fills this hospital's hour was made, if the
+   * hour is full: the newest but fifty-nine of the last hour. When it is an
+   * hour old there is room again. Null while there is room.
+   */
+  private async fillingThisHour(tx: Transaction, now: number) {
+    const [filling] = await tx
+      .select({ at: incidents.reportedAt })
+      .from(incidents)
+      .where(
+        and(
+          eq(incidents.channel, 'public'),
+          gt(incidents.reportedAt, new Date(now - HOUR_MS)),
+        ),
+      )
+      .orderBy(desc(incidents.reportedAt))
+      .offset(PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR - 1)
+      .limit(1);
+    return filling?.at ?? null;
   }
 
   /**
@@ -541,20 +581,7 @@ export class IncidentsService {
         if (!turn.rows[0].mine) return { retryAfter: BUSY_RETRY_SECONDS };
         const now = Date.now();
         const anHourAgo = new Date(now - HOUR_MS);
-        // The report that fills the hour, if the hour is full: the newest but
-        // fifty-nine. When it is an hour old there is room again.
-        const [filling] = await tx
-          .select({ at: incidents.reportedAt })
-          .from(incidents)
-          .where(
-            and(
-              eq(incidents.channel, 'public'),
-              gt(incidents.reportedAt, anHourAgo),
-            ),
-          )
-          .orderBy(desc(incidents.reportedAt))
-          .offset(PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR - 1)
-          .limit(1);
+        const filling = await this.fillingThisHour(tx, now);
         if (filling) {
           // Said once an hour. Under the lock, so two refusals at the same
           // moment do not both say it.
@@ -595,7 +622,7 @@ export class IncidentsService {
             );
           }
           return {
-            retryAfter: (filling.at.getTime() + HOUR_MS - now) / 1000,
+            retryAfter: (filling.getTime() + HOUR_MS - now) / 1000,
             firstThisHour: !said,
           };
         }
@@ -868,7 +895,11 @@ export class IncidentsService {
     const inFull = seenInFull(auth);
     // Measured against its deadline: triaged, or set aside, for the first
     // time; or still waiting for that past its deadline, which is late
-    // already whenever it comes.
+    // already whenever it comes. A report set aside and reopened is
+    // measured by that first decision, against the deadline it was made
+    // under: reopening it can neither excuse a late one nor spoil a timely
+    // one.
+    const firstDue = sql`coalesce(${incidents.firstTriageDueAt}, ${incidents.triageDueAt})`;
     const measured = and(
       inFull,
       recent,
@@ -895,7 +926,7 @@ export class IncidentsService {
           // percentage. Null when there is none of either.
           triagedOnTime: sql<
             number | null
-          >`round(100.0 * count(*) filter (where ${measured} and ${incidents.firstTriagedAt} <= ${incidents.triageDueAt}) / nullif(count(*) filter (where ${measured}), 0))::int`,
+          >`round(100.0 * count(*) filter (where ${measured} and ${incidents.firstTriagedAt} <= ${firstDue}) / nullif(count(*) filter (where ${measured}), 0))::int`,
           // The middle value, in whole seconds, over the reports of the last
           // 30 days that carry a start time. Null when there are none.
           medianSecondsToReport: sql<
@@ -1250,9 +1281,9 @@ export class IncidentsService {
     const details = event.details as Record<string, unknown> | null;
     if (details?.withdrawn === true) return { withdrawn: true };
     // Deadlines are for those handling it: a reopening says it happened,
-    // and why, but not by when it is now to be closed.
-    if (details && 'closeDueAt' in details) {
-      const { closeDueAt: _deadline, ...rest } = details;
+    // and why, but not by when it is now to be triaged or closed.
+    if (details && ('closeDueAt' in details || 'triageDueAt' in details)) {
+      const { closeDueAt: _closing, triageDueAt: _triage, ...rest } = details;
       return rest;
     }
     return event.details;
@@ -1360,6 +1391,9 @@ export class IncidentsService {
         channel: incidents.channel,
         firstTriagedAt: incidents.firstTriagedAt,
         triagedBy: incidents.triagedBy,
+        triagedAt: incidents.triagedAt,
+        triageDueAt: incidents.triageDueAt,
+        firstTriageDueAt: incidents.firstTriageDueAt,
         closeDueAt: incidents.closeDueAt,
         closeDueFrom: incidents.closeDueFrom,
         closureRequestedBy: incidents.closureRequestedBy,
@@ -1478,7 +1512,10 @@ export class IncidentsService {
             (incident.graded && callsForSignOff(incident)) ||
             callsForSignOff(next),
           ...(decided && { triagedBy: user.id, triagedAt: now }),
-          ...(incident.status === 'new' && { firstTriagedAt: now }),
+          // The first decision on it only. A report set aside and reopened
+          // was decided on once already, when it was set aside.
+          ...(incident.status === 'new' &&
+            incident.firstTriagedAt === null && { firstTriagedAt: now }),
           ...(moved && { closeDueAt: closeDue }),
           ...(moved &&
             past && {
@@ -1682,18 +1719,17 @@ export class IncidentsService {
       const now = new Date();
       const noRequest = { closureRequestedBy: null, closureRequestedAt: null };
       // Reopened, it has a new deadline to close by, counted from now under
-      // the rules as they are now, as a new report would be. The one it had
-      // stays on the timeline, in the entry written below. Nothing was
-      // announced about the new one yet.
+      // the rules as they are now, as a new report would be. Back in `new`
+      // (set aside before anyone triaged it), it has a new deadline to be
+      // triaged by too, counted the same way. The ones it had stay on the
+      // timeline, in the entry written below. Nothing was announced about
+      // the new ones yet.
+      const rules =
+        move.kind === 'reopen' ? await this.rules.inForce(tx) : null;
       const reopenedDue =
-        move.kind === 'reopen'
-          ? closeDueAt(
-              now,
-              incident,
-              await this.rules.inForce(tx),
-              tenant.timeZone,
-            )
-          : null;
+        rules && closeDueAt(now, incident, rules, tenant.timeZone);
+      const retriageDue =
+        rules && move.to === 'new' ? triageDueAt(now, incident, rules) : null;
       const fields: Record<MoveKind, Partial<typeof incidents.$inferInsert>> = {
         start: {},
         close: { closedBy: user.id, closedAt: now, closureSummary: note },
@@ -1710,10 +1746,12 @@ export class IncidentsService {
         send_back: { closureSummary: null, ...noRequest },
         withdraw: { closureSummary: null, ...noRequest },
         // Set aside before triage, it was decided on as much as by a
-        // triage, and counts as triaged at this moment for "triaged on time".
+        // triage, and counts as triaged at this moment for "triaged on time";
+        // unless it was decided on before (set aside, then reopened).
         reject: {
           rejectionReason: note,
-          ...(incident.status === 'new' && { firstTriagedAt: now }),
+          ...(incident.status === 'new' &&
+            incident.firstTriagedAt === null && { firstTriagedAt: now }),
         },
         // Open again: the earlier ending stays on the timeline only.
         reopen: {
@@ -1728,6 +1766,16 @@ export class IncidentsService {
           closeDueSoonFor: null,
           closeOverdueAt: null,
           closeOverdueFor: null,
+          // To be triaged again by a new deadline. Its first decision, the
+          // setting aside, keeps the deadline it was made under for
+          // "triaged on time" (the first one, if it was reopened before).
+          ...(retriageDue && {
+            triageDueAt: retriageDue,
+            triageDueFrom: now,
+            firstTriageDueAt: incident.firstTriageDueAt ?? incident.triageDueAt,
+            triageDueSoonAt: null,
+            triageOverdueAt: null,
+          }),
         },
       };
       await tx
@@ -1739,9 +1787,12 @@ export class IncidentsService {
           ...fields[move.kind],
         })
         .where(eq(incidents.id, id));
-      // A reopening keeps the deadline it had next to the one it now has.
-      // Neither is shown to someone who sees it only as its reporter.
+      // A reopening keeps the deadlines it had next to the ones it now has.
+      // None is shown to someone who sees it only as its reporter.
       const newDeadline = reopenedDue && {
+        ...(retriageDue && {
+          triageDueAt: { from: incident.triageDueAt, to: retriageDue },
+        }),
         closeDueAt: { from: incident.closeDueAt, to: reopenedDue },
       };
       const details = {

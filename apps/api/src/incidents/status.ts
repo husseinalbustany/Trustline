@@ -126,10 +126,22 @@ export type Move = {
    */
   revision: 'required' | 'optional';
   /** Whether this incident can take the move at all. */
-  fits: (incident: Weighed) => boolean;
+  fits: (incident: Standing) => boolean;
   /** Whether this person may make it. */
   by: (caller: Caller) => boolean;
 };
+
+/**
+ * An incident as status moves see it: how serious it is and has been, where
+ * it stands, and whether a triager has ever decided on it. `triagedAt` is set
+ * by triage only, never by setting a report aside, and is never cleared; so
+ * a report in `new` has never been triaged, and stays that way when it goes
+ * back there.
+ */
+type Standing = Weighed & { status: IncidentStatus; triagedAt: Date | null };
+
+/** Whether a triager has decided on it at some point. */
+const wasTriaged = (incident: Standing) => incident.triagedAt !== null;
 
 const always = () => true;
 const triager = (caller: Caller) => caller.canTriage;
@@ -222,8 +234,9 @@ const MOVES: Move[] = [
     by: triager,
   },
   {
+    // A closed incident is worked on again.
     kind: 'reopen',
-    from: ['closed', 'rejected'],
+    from: ['closed'],
     to: 'in_progress',
     event: 'reopened',
     note: 'required',
@@ -231,9 +244,34 @@ const MOVES: Move[] = [
     fits: always,
     by: triager,
   },
+  {
+    // Set aside before anyone triaged it: it goes back to be triaged like
+    // any new report, with a triage deadline counted from the reopening.
+    // Sent on to `in_progress`, it would be worked on with no handling
+    // department, no grade a triager gave, and nobody answerable for it.
+    kind: 'reopen',
+    from: ['rejected'],
+    to: 'new',
+    event: 'reopened',
+    note: 'required',
+    revision: 'optional',
+    fits: (incident) => !wasTriaged(incident),
+    by: triager,
+  },
+  {
+    // Set aside after triage: the triage stands (its handling department,
+    // grade and assignee were kept), so it goes back to where the setting
+    // aside took it from. Only that decision is undone.
+    kind: 'reopen',
+    from: ['rejected'],
+    to: 'triaged',
+    event: 'reopened',
+    note: 'required',
+    revision: 'optional',
+    fits: wasTriaged,
+    by: triager,
+  },
 ];
-
-type Standing = Weighed & { status: IncidentStatus };
 
 /** The moves this person may make on this incident now. */
 export const movesFor = (incident: Standing, caller: Caller): Move[] =>
@@ -310,7 +348,9 @@ export type Deadline = (typeof DEADLINES)[number];
  * The statuses in which each deadline is live. The triage deadline stops
  * mattering once the incident leaves `new`, by triage or by being set aside;
  * the closure deadline once it is `closed` or `rejected`. Reopening gives a
- * new closure deadline, counted from the reopening (`closeDueFrom`).
+ * new closure deadline, counted from the reopening (`closeDueFrom`), and a
+ * report set aside before triage goes back to `new` with a new triage
+ * deadline counted from it too (`triageDueFrom`).
  */
 export const DEADLINE_LIVE_IN: Record<Deadline, IncidentStatus[]> = {
   triage: ['new'],
