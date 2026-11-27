@@ -803,6 +803,10 @@ export class IncidentsService {
           isSentinel: incidents.isSentinel,
           status: incidents.status,
           assignedToMe: sql<boolean>`coalesce(${incidents.assignedTo} = ${auth.user.id}, false)`,
+          // As the detail says it: all of it, or what its reporter sees.
+          access: sql<
+            'full' | 'reporter'
+          >`case when ${inFull} then 'full' else 'reporter' end`,
           // Null where the caller is not told who reported, as in the detail.
           channel: sql<IncidentChannel | null>`case when ${toldReporter} then ${incidents.channel} end`,
           // Null for an incident the caller sees only as its reporter.

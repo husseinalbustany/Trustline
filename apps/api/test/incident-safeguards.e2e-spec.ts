@@ -1101,6 +1101,7 @@ describe('incident safeguards', () => {
       expect(list.body.total).toBeGreaterThan(0);
       for (const item of list.body.items) {
         expect(Object.keys(item).sort()).toEqual([
+          'access',
           'assignedToMe',
           'category',
           'channel',
@@ -1121,6 +1122,7 @@ describe('incident safeguards', () => {
         ]);
         // How it arrived would say whether it was anonymous: not told.
         expect(item.channel).toBeNull();
+        expect(item.access).toBe('full');
       }
       expect(JSON.stringify(list.body)).not.toContain(reporter.id);
       const summary = await http()
@@ -2398,6 +2400,8 @@ describe('incident safeguards', () => {
         name: { en: 'Hospital a' },
         locales: ['en'],
         defaultLocale: 'en',
+        // Its clock, for showing times in the hospital's time.
+        timeZone: 'UTC',
       });
       expect(own.body).toMatchObject({
         id: named.id,
@@ -2484,6 +2488,8 @@ describe('incident safeguards', () => {
         name: { en: 'Hospital off' },
         locales: ['en'],
         defaultLocale: 'en',
+        // Its clock, for showing times in the hospital's time.
+        timeZone: 'UTC',
       });
       const said = await followUpComment(
         off.slug,
@@ -2832,6 +2838,7 @@ describe('incident safeguards', () => {
             name: { en: 'Hospital a' },
             locales: ['en'],
             defaultLocale: 'en',
+            timeZone: 'UTC',
           },
         });
         expect(answer.body).not.toHaveProperty('id');

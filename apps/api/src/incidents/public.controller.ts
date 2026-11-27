@@ -165,19 +165,23 @@ export class PublicReportingController {
 
   /**
    * What the follow-up page shows of the hospital, once the code has proved
-   * right: its name and languages. Never part of a refusal, so nothing about
-   * a hospital is learnt without a valid code, not even that it exists.
+   * right: its name, languages and clock (so times are shown in the
+   * hospital's time, as the report form asks for them). Never part of a
+   * refusal, so nothing about a hospital is learnt without a valid code, not
+   * even that it exists.
    */
   private named(tenant: {
     name: unknown;
     locales: string[];
     defaultLocale: string;
+    timeZone: string;
   }) {
     return {
       hospital: {
         name: tenant.name,
         locales: tenant.locales,
         defaultLocale: tenant.defaultLocale,
+        timeZone: tenant.timeZone,
       },
     };
   }

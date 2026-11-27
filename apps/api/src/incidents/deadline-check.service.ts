@@ -420,59 +420,61 @@ export class DeadlineCheck implements OnModuleDestroy {
       const notified = await this.notifier.sendAll(
         tx,
         tenantId,
-        claimed.map(({ status, closureRequestedBy, ...incident }): Announcement => ({
-          incident,
-          actorId: null,
-          drafts: (who) => {
-            const triagers = who.mayTriage([
-              incident.orgUnitId,
-              incident.ownerUnitId,
-            ]);
-            // For triage: those who may triage it. For closure: the
-            // person it is assigned to, or those who may triage it when
-            // nobody is, or that person has left.
-            const responsible =
-              stage.deadline === 'closure'
-                ? { to: [incident.assignedTo], orElse: triagers }
-                : { to: triagers };
-            return [
-              {
-                kind: stage.kind,
-                data: { deadline: stage.deadline },
-                internal: true,
-                ...responsible,
-              },
-              // A missed deadline also goes to everyone who may triage
-              // for the whole organization. Someone already told is not
-              // told twice.
-              ...(stage.kind === 'overdue'
-                ? [
-                    {
-                      kind: stage.kind,
-                      data: { deadline: stage.deadline },
-                      internal: true,
-                      to: who.mayTriageEverywhere(),
-                    },
-                  ]
-                : []),
-              // A closure that passes its deadline while it waits for the
-              // second signature waits on those who may give it: they are
-              // told too, but for the one who asked, who cannot.
-              ...(stage.kind === 'overdue' && status === 'awaiting_sign_off'
-                ? [
-                    {
-                      kind: stage.kind,
-                      data: { deadline: stage.deadline },
-                      internal: true,
-                      to: [...who.maySignOff()].filter(
-                        (id) => id !== closureRequestedBy,
-                      ),
-                    },
-                  ]
-                : []),
-            ];
-          },
-        })),
+        claimed.map(
+          ({ status, closureRequestedBy, ...incident }): Announcement => ({
+            incident,
+            actorId: null,
+            drafts: (who) => {
+              const triagers = who.mayTriage([
+                incident.orgUnitId,
+                incident.ownerUnitId,
+              ]);
+              // For triage: those who may triage it. For closure: the
+              // person it is assigned to, or those who may triage it when
+              // nobody is, or that person has left.
+              const responsible =
+                stage.deadline === 'closure'
+                  ? { to: [incident.assignedTo], orElse: triagers }
+                  : { to: triagers };
+              return [
+                {
+                  kind: stage.kind,
+                  data: { deadline: stage.deadline },
+                  internal: true,
+                  ...responsible,
+                },
+                // A missed deadline also goes to everyone who may triage
+                // for the whole organization. Someone already told is not
+                // told twice.
+                ...(stage.kind === 'overdue'
+                  ? [
+                      {
+                        kind: stage.kind,
+                        data: { deadline: stage.deadline },
+                        internal: true,
+                        to: who.mayTriageEverywhere(),
+                      },
+                    ]
+                  : []),
+                // A closure that passes its deadline while it waits for the
+                // second signature waits on those who may give it: they are
+                // told too, but for the one who asked, who cannot.
+                ...(stage.kind === 'overdue' && status === 'awaiting_sign_off'
+                  ? [
+                      {
+                        kind: stage.kind,
+                        data: { deadline: stage.deadline },
+                        internal: true,
+                        to: [...who.maySignOff()].filter(
+                          (id) => id !== closureRequestedBy,
+                        ),
+                      },
+                    ]
+                  : []),
+              ];
+            },
+          }),
+        ),
       );
       return { claimed: mine.length, notified };
     });

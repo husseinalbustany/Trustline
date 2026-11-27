@@ -443,7 +443,10 @@ describe('notifications', () => {
       expect(await told(id)).toEqual({
         incident_handed_over: sorted(labQuality),
       });
-      expect((await rowsFor(id))[0].data).toEqual({ reference, serious: false });
+      expect((await rowsFor(id))[0].data).toEqual({
+        reference,
+        serious: false,
+      });
       await expectAllCouldOpen(id);
 
       // And back to the ward: its quality officer never lost it, since it
@@ -734,7 +737,10 @@ describe('notifications', () => {
       const rows = await rowsFor(fresh.id);
       expect(rows).toHaveLength(5);
       for (const row of rows) {
-        expect(row.data).toEqual({ reference: fresh.reference, serious: false });
+        expect(row.data).toEqual({
+          reference: fresh.reference,
+          serious: false,
+        });
       }
       expect(JSON.stringify(rows)).not.toContain(reporter.id);
       expect(JSON.stringify(rows)).not.toContain('One more thing');
@@ -808,7 +814,10 @@ describe('notifications', () => {
         comment_added: sorted(...triagers),
       });
       for (const row of await rowsFor(hidden.id)) {
-        expect(row.data).toEqual({ reference: hidden.reference, serious: false });
+        expect(row.data).toEqual({
+          reference: hidden.reference,
+          serious: false,
+        });
       }
       // When they comment under their own name, as a handler, they are its
       // author like any other and the rest are told.
@@ -1091,7 +1100,11 @@ describe('notifications', () => {
       expect(await told(id)).toEqual({ sign_off_decided: sorted(quality) });
       const rows = await rowsFor(id);
       expect(rows).toHaveLength(1);
-      expect(rows[0].data).toEqual({ reference, decision: 'withdrawn', serious: true });
+      expect(rows[0].data).toEqual({
+        reference,
+        decision: 'withdrawn',
+        serious: true,
+      });
       expect(JSON.stringify(rows)).not.toContain('family');
       expect(JSON.stringify(rows)).not.toContain(quality2.id);
       await expectAllCouldOpen(id);
@@ -1600,7 +1613,11 @@ describe('notifications', () => {
       expect(await at(reported + 54 * HOUR)).toBe(2);
       expect(await told(id)).toEqual({ due_soon: sorted(boss, officer) });
       for (const row of await rowsFor(id)) {
-        expect(row.data).toEqual({ reference, deadline: 'triage', serious: false });
+        expect(row.data).toEqual({
+          reference,
+          deadline: 'triage',
+          serious: false,
+        });
       }
       expect((await timesOf(id)).sent).toEqual({
         triageDueSoon: true,
@@ -1625,7 +1642,11 @@ describe('notifications', () => {
       // The administrator may triage everywhere and this unit too: once.
       expect(await told(id)).toEqual({ overdue: sorted(boss, officer) });
       for (const row of await rowsFor(id)) {
-        expect(row.data).toEqual({ reference, deadline: 'triage', serious: false });
+        expect(row.data).toEqual({
+          reference,
+          deadline: 'triage',
+          serious: false,
+        });
       }
       expect(await at(triageDue + HOUR)).toBe(0);
       expect(await at(triageDue + 10 * DAY)).toBe(0);
@@ -1723,9 +1744,16 @@ describe('notifications', () => {
     });
 
     it('announces nothing about closing once closed, and a reopened incident by its new deadline', async () => {
+      // Reported forty days ago: its deadline to close passed ten days ago.
       const { id } = await triaged({ assignedTo: assignee.id });
-      const { closeDue } = await timesOf(id);
-      await at(closeDue + HOUR);
+      await bench.owner.db.execute(
+        sql`update incidents set
+              reported_at = reported_at - interval '40 days',
+              triage_due_at = triage_due_at - interval '40 days',
+              close_due_at = close_due_at - interval '40 days'
+            where id = ${id}`,
+      );
+      await at(Date.now());
       expect(await told(id)).toEqual({ overdue: sorted(assignee, boss) });
       await clear(id);
       // Closed late and reopened: a new deadline, thirty days from the
@@ -1742,29 +1770,36 @@ describe('notifications', () => {
         closeDueSoon: false,
         closeOverdue: false,
       });
-      expect(await at(closeDue + 2 * HOUR)).toBe(0);
+      await at(Date.now() + 2 * HOUR);
       expect(await told(id)).toEqual({});
       // Its last quarter counts from the reopening, not from the report: a
       // quarter of 30 days is 7 and a half.
-      expect(await at(reopened.closeDue - 8 * DAY)).toBe(0);
-      expect(await at(reopened.closeDue - 7 * DAY)).toBe(1);
+      await at(reopened.closeDue - 8 * DAY);
+      expect(await told(id)).toEqual({});
+      await at(reopened.closeDue - 7 * DAY);
       expect(await told(id)).toEqual({ due_soon: sorted(assignee) });
       await clear(id);
-      expect(await at(reopened.closeDue + HOUR)).toBe(2);
+      await at(reopened.closeDue + HOUR);
       expect(await told(id)).toEqual({ overdue: sorted(assignee, boss) });
       await clear(id);
+      await at(reopened.closeDue + 2 * DAY);
+      expect(await told(id)).toEqual({});
 
-      // Closed in time and reopened after the old deadline: the new one is
-      // still to come.
+      // Closed in time: nothing said, even past its deadline. Reopened, it
+      // has a new one, thirty days from the reopening, which by four hours
+      // past the old one has passed too: announced then, once.
       const early = await triaged({ assignedTo: assignee.id });
+      const { closeDue } = await timesOf(early.id);
       await move(boss, early.id, 'closed', 'Done.').expect(200);
       await clear(early.id);
       await at(closeDue + 3 * HOUR);
       expect(await told(early.id)).toEqual({});
       await move(boss, early.id, 'in_progress', 'Not done.').expect(200);
       await clear(early.id);
+      const again = await timesOf(early.id);
+      expect(again.closeDue).toBeLessThan(closeDue + 4 * HOUR);
       await at(closeDue + 4 * HOUR);
-      expect(await told(early.id)).toEqual({});
+      expect(await told(early.id)).toEqual({ overdue: sorted(assignee, boss) });
 
       // A deadline that triage moves is another deadline: announced again.
       const later = await triaged({ assignedTo: assignee.id });

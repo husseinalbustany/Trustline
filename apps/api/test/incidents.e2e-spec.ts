@@ -829,6 +829,7 @@ describe('incident reporting', () => {
       expect(res.body.total).toBeGreaterThan(2);
       const [first, second] = res.body.items;
       expect(Object.keys(first).sort()).toEqual([
+        'access',
         'assignedToMe',
         'category',
         'channel',
@@ -862,6 +863,9 @@ describe('incident reporting', () => {
         isSentinel: false,
         status: 'new',
         descriptionExcerpt: 'Short one.',
+        // Their own report, seen as its reporter sees it.
+        access: 'reporter',
+        channel: 'app',
       });
       expect(second.descriptionExcerpt).toHaveLength(140);
       expect(long.startsWith(second.descriptionExcerpt.slice(0, 139))).toBe(

@@ -173,6 +173,12 @@ code alone, are written into the sections above. The rest:
   > ignores any change of the flag from true to false: the rest of such a
   > change is stored, the flag stays. So a release that knows nothing of the
   > flag, a script or a mistake can neither clear it nor fail to set it.
+  >
+  > **Changed after the second quality review.** A report through the public
+  > link does not start this from the sender's own harm level: the flag is
+  > raised only once a triager grades it sentinel or death. The trigger keeps
+  > the same rule (migration 0030): a public report's grade counts once it
+  > has a `first_triaged_at`. Reports by signed-in staff are unchanged.
 - **"By the reporter" is decided when a comment is written,** not when it is
   read: it is true only when the writer had no more than the reporter's own
   access, or used a follow-up code. A handler who also reported the incident
@@ -215,7 +221,8 @@ Where a rule above changed, it says so in its place. The rest:
   gets an entry `public_reporting_limit_reached` (no actor, no address,
   nothing of what was sent; `changes` holds the limit) and the server log
   one warning with the hospital's id. Once an hour per hospital, however
-  many are turned away. Nobody is notified by it yet.
+  many are turned away. (Since the second quality review it is also
+  notified: `public_form_paused`, below.)
 - **Nobody queues for a hospital's turn.** Public reports to one hospital
   are counted one at a time. A report that arrives while another is being
   stored is not kept waiting, holding a database connection: it is answered
@@ -343,9 +350,16 @@ browser's. The client is never asked for an offset.
   > becomes "late" by raising it: the person being measured could move the
   > mark, and would be discouraged from raising a harm level. So the triage
   > deadline stays the one the triage was made under. When `close_due_at`
-  > moves to a moment still to come, what was announced about the old one
-  > is forgotten (`close_due_soon_at`, `close_overdue_at` are cleared): it
-  > is another deadline, and is announced in its turn.
+  > moves to a moment still to come, it is another deadline, and is
+  > announced in its turn.
+  >
+  > **Changed after the second quality review.** What was announced is no
+  > longer cleared when the deadline moves; it is kept with the deadline it
+  > was announced for (`close_due_soon_for`, `close_overdue_for`), and a
+  > closing deadline is announced at a stage only if it is later than the
+  > last one announced there. So changing the harm level back and forth,
+  > between two deadlines still to come or between one past and one to come,
+  > never repeats a `due_soon` or an `overdue`.
   >
   > **Changed after the third security review.** When it moves to a moment
   > already past, what was announced stands. Otherwise whoever may triage
@@ -354,8 +368,14 @@ browser's. The client is never asked for an offset.
   > changed its harm level. If nothing was announced yet (the old deadline
   > had not passed), the next check announces the missed one, once.
 - `triage_due_at` stops mattering once the incident leaves `new`.
-  `close_due_at` stops mattering once it is `closed` or `rejected`; reopening
-  does not give a new deadline.
+  `close_due_at` stops mattering once it is `closed` or `rejected`.
+  > **Changed after the second quality review: reopening gives a new
+  > closing deadline**, counted from the reopening under the rules in force
+  > (`incidents.close_due_from` records when that time started; a later
+  > regrading counts from it too, and so does "due soon"). The deadline it
+  > had stays on the timeline: the `reopened` entry's details carry
+  > `closeDueAt: { from, to }`, as does its audit entry. Someone who sees the
+  > incident only as its reporter does not get that part of the details.
 - An incident is **overdue for triage** when it is `new` and past
   `triage_due_at`; **overdue for closure** when it is `triaged`,
   `in_progress` or `awaiting_sign_off` and past `close_due_at`. This is
@@ -372,6 +392,12 @@ browser's. The client is never asked for an offset.
   > - "Triaged" is the first triage, kept in `incidents.first_triaged_at`:
   >   `triaged_at` moves with every later correction and would turn a timely
   >   triage into a late one.
+  >
+  > **Changed after the second quality review.** Counted: the reports of
+  > the last 30 days that have been triaged, or set aside (which records
+  > `first_triaged_at` at that moment; migration 0030 records it for those
+  > set aside before), or are still `new` past their triage deadline, which
+  > count as late. On time: first triage no later than the deadline.
   > - `overdue`, `triagedOnTime`, the `overdue=true` filter and `sort=due`
   >   count only incidents the caller sees in full. Otherwise a reporter
   >   would learn their own report's deadlines from a count or an order.
@@ -419,7 +445,9 @@ description, no comment text, no names of people).
   > - **A notification names nobody.** `data` is the reference plus, by kind,
   >   `deadline` (`triage` | `closure`), `decision` (`signed_off` |
   >   `sent_back` | `withdrawn`) or `change` (`closed` | `rejected` |
-  >   `reopened`).
+  >   `reopened`). Since the second quality review every `data` also
+  >   carries `serious: boolean` (severe harm, death or sentinel, as the
+  >   incident stands when the notification is written).
 - A notification is written in the same transaction as the change it
   announces.
 - `due_soon` and `overdue` come from a background check that runs every five
@@ -490,3 +518,58 @@ description, no comment text, no names of people).
 - **Notifications:** a bell in the shell with the unread count and a
   notifications page. Opening one marks it read and goes to the incident.
 - All wording in the three dictionaries with identical keys.
+
+## Decided after the second quality review
+
+Where a rule above changed, it says so in its place. The rest:
+
+- **Not taken forward after triage.** `rejected` can be reached from
+  `triaged` as well as `new`, note required, for anything not serious. Not
+  for an incident that has needed sign-off (`sign_off_needed`), whatever it
+  is called now: one person would otherwise end it without the second
+  signature (409 `serious_cannot_be_rejected`). From `new` it records
+  `first_triaged_at`.
+- **The channel filter.** `GET /incidents?channel=app|public`. Refused with
+  403 `missing_permission` (`incidents.see_reporter`) to a caller who holds
+  that right nowhere. For one who holds it somewhere it matches only the
+  incidents whose reporter they are told of (they reported it, or the right
+  covers its unit or handling department); any other incident matches
+  neither value, so the filter cannot tell an anonymous report from a named
+  one. List items carry `channel` on the same rule (null otherwise).
+- **The category filter.** `GET /incidents?categoryId=<uuid>`; a category of
+  another hospital finds nothing.
+- **List items carry `access`** (`full` | `reporter`), as the detail does.
+- **Who else could sign off.** The incident carries `signOff: { others }`
+  for a reader with full access when it needs sign-off, null otherwise:
+  how many active people hold `incidents.sign_off` covering it and see all
+  of it, other than the one who asked for the closure it awaits (or, before
+  anyone has asked, the reader, who would be the one to ask). 0 means nobody
+  else could sign.
+- **A missed closing deadline while awaiting sign-off** is told, as
+  `overdue`, also to those who may sign it off (not the requester).
+- **Handover.** `incident_handed_over` also reaches holders of
+  `incidents.view` over the new handling department who could neither view
+  nor triage it before through the unit where it happened or the old
+  department (the department's managers). The triage part is unchanged.
+- **`sentinel_flagged`**: when triage makes an incident a sentinel event,
+  to those who may sign it off and can see it, and to those who triage for
+  the whole organization, never the triager. Separate from an assignment or
+  a handover in the same triage, so it is not folded into either.
+- **`public_form_paused`**: when the hourly ceiling first turns a public
+  report away (the moment of the audit entry, once an hour), to everyone
+  holding `settings.manage` or `incidents.triage` for the whole
+  organization. It is about no incident: `notifications.incident_id` is
+  null for this kind only (a database check), and `GET /notifications`
+  gives it `incident: null`. `data` is `{ limit, serious: false }`.
+- **The follow-up view's `hospital`** carries `timeZone` too.
+
+### Left open by the third security review, done in this step
+
+- **`tenants.time_zone` is checked by the database**
+  (`tenants_time_zone_shape`): `UTC`, or Area/Location with at most one more
+  part, each starting with a capital letter or a digit, nothing in `Etc/`.
+  Which names exist stays the API's check, against the runtime.
+- **Deadlines the check fills in are audited**: one entry per incident,
+  `incident_deadlines_filled`, no actor, `changes` the deadlines given
+  (`{ from: null, to }`).
+- **Changing the harm level back and forth repeats nothing**: see section 4.

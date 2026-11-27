@@ -105,11 +105,14 @@ for a unit covers that unit and every unit beneath it in the tree. So:
   `type`, `harmLevel`, `sentinel` (true | false), `orgUnitId` (where it happened or who owns it,
   that exact unit; a unit outside the caller's view gives no rows, not an error),
   `from` and `to` (dates `YYYY-MM-DD` on the day of reporting in UTC, both included),
-  `reference` (the start of a reference or all of it, any letter case), `assignedToMe=true`.
+  `reference` (the start of a reference or all of it, any letter case), `assignedToMe=true`,
+  `categoryId` (a category of another hospital gives no rows), and `channel` = `app` | `public`
+  (see `incident-safeguards-and-deadlines.md`, "Decided after the second quality review").
   `sort` = `newest` (default) | `oldest` | `harm` (death first, down to none; the oldest first within a level).
   Items carry: id, reference, type, category (id + name), orgUnit (id + name),
   ownerUnit, occurredAt, reportedAt, harmLevel, isSentinel, status, assignedToMe, and a
-  description excerpt of at most 140 characters.
+  description excerpt of at most 140 characters. Also `access` (`full` | `reporter`, as the
+  detail gives it) and `channel` (null where the caller is not told who reported).
 - `GET /incidents/summary` → `{ open, awaitingTriage, closedLast30Days, assignedToMe, serious, medianSecondsToReport }`
   counted over what the caller may see. `assignedToMe`: open incidents assigned to the caller.
   `serious`: open incidents that are severe, death or sentinel. `medianSecondsToReport`: the median
@@ -136,9 +139,12 @@ for a unit covers that unit and every unit beneath it in the tree. So:
   outside their scope), the change stands and the answer is 200 `{ id, reference, handedOff: true }`.
 - `POST /incidents/:id/status` (triage in scope) body `{ to, note?, revision? }`. Allowed moves:
   triaged → in_progress; triaged | in_progress → closed (note required, stored as closure_summary);
-  new → rejected (note required, stored as rejection_reason);
+  new | triaged → rejected (note required, stored as rejection_reason; from `triaged` added
+  after the second quality review, for a duplicate or something that is not an incident found
+  at triage);
   closed | rejected → in_progress (reopen, note required). Anything else is 409 `invalid_transition`.
-  A serious incident (harm severe or death, or sentinel) cannot be rejected: 409 `serious_cannot_be_rejected`.
+  A serious incident (harm severe or death, or sentinel) cannot be rejected: 409 `serious_cannot_be_rejected`;
+  nor can one that has needed a second person to close it (`sign_off_needed`), whatever it is called now.
   Lowering the harm level at triage first is allowed, and leaves its trace.
 - Stale decisions: when `revision` is sent to triage or status and differs from the stored one,
   the answer is 409 `stale_incident` and nothing changes. Left out, the call is not checked.

@@ -110,8 +110,9 @@ factor, and self-service "forgot password" by email.
 - **Handling:** a quality officer or department manager triages the report
   (harm level, sentinel or not, handling department, assignee), moves it to in
   progress, and closes it with a summary. A report can be set aside with a
-  reason, unless it is severe, fatal or sentinel. A closed report can be
-  reopened.
+  reason, before or after triage, unless it is severe, fatal or sentinel (or
+  has been, and so needs a second signature). A closed report can be
+  reopened, and then has a new deadline to close by.
 - **Timeline and comments:** every step is written to the incident's timeline
   by the system, with the previous and new values. Comments are either visible
   to the reporter or internal to those handling the incident.
@@ -162,8 +163,9 @@ factor, and self-service "forgot password" by email.
 - **When the public form is held shut:** the first time in an hour that a
   hospital's ceiling turns a report away, the hospital's audit log gets an
   entry `public_reporting_limit_reached` (no actor, nothing about any
-  sender) and the server log a warning with the hospital's id. Somebody has
-  to look for them: nothing is sent to anyone yet.
+  sender) and the server log a warning with the hospital's id, and whoever
+  holds `settings.manage` or `incidents.triage` for the whole hospital gets
+  an in-app notification (`public_form_paused`). Nothing is emailed yet.
 - **Second sign-off:** a sentinel event, or an incident with harm level
   death, is not closed by one person. Whoever handles it asks for closure
   with the summary they propose; someone else holding `incidents.sign_off`
