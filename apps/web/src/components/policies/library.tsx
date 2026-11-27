@@ -513,7 +513,9 @@ export function Library({ lang, t }: PoliciesProps) {
 
       {data && data.total > 0 && (
         <div className="mt-6 flex flex-col items-start gap-1 print:hidden">
-          <Button variant="secondary" disabled={exporting} onClick={exportList}>
+          <Button variant="secondary"
+                // A long label in some languages: it wraps on a phone.
+                className="h-auto! min-h-9 py-1.5 text-start whitespace-normal!" disabled={exporting} onClick={exportList}>
             <FileDown className="size-4" aria-hidden />
             {exporting ? t.export.preparing : t.export.list}
           </Button>

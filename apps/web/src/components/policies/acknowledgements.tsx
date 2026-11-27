@@ -205,6 +205,8 @@ export function Acknowledgements({ lang, t }: PoliciesProps) {
             <div className="flex flex-col items-start gap-1">
               <Button
                 variant="secondary"
+                // A long label in some languages: it wraps on a phone.
+                className="h-auto! min-h-9 py-1.5 text-start whitespace-normal!"
                 disabled={exporting}
                 onClick={() => exportFile(figures.versionId)}
               >
