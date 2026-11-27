@@ -798,6 +798,16 @@ export const notificationKind = pgEnum('notification_kind', [
   'review_due',
   // A document's periodic review date has passed.
   'review_overdue',
+  // A step of an approval run has passed its due time undecided: to the
+  // document's managers, once per step.
+  'document_step_overdue',
+  // An approved version was not published on its scheduled day because its
+  // signatures no longer stand behind what it holds: to the document's
+  // managers, once per version.
+  'document_publish_failed',
+  // Once a week, to the managers of the units whose people have
+  // acknowledgements overdue: how many. About no one document.
+  'acknowledgements_overdue_digest',
 ]);
 
 // Something a user is told about an incident they can see. Stored so that it
@@ -851,12 +861,12 @@ export const notifications = pgTable(
       .on(t.tenantId, t.userId)
       .where(sql`${t.readAt} is null`),
     // Every notification is about an incident or a document, never both,
-    // except the one kind that is about the hospital. Compared as text so
-    // that the check does not need a new kind to be committed before it is
-    // created.
+    // except the kinds that are about the hospital, or about many
+    // documents at once. Compared as text so that the check does not need a
+    // new kind to be committed before it is created.
     check(
       'notifications_about_one_thing',
-      sql`(${t.incidentId} is null or ${t.documentId} is null) and (${t.incidentId} is not null or ${t.documentId} is not null or ${t.kind}::text = 'public_form_paused')`,
+      sql`(${t.incidentId} is null or ${t.documentId} is null) and (${t.incidentId} is not null or ${t.documentId} is not null or ${t.kind}::text in ('public_form_paused', 'acknowledgements_overdue_digest'))`,
     ),
     tenantIsolation(),
   ],
@@ -929,6 +939,17 @@ export const documentVersionStatus = pgEnum('document_version_status', [
   'withdrawn',
 ]);
 
+// Where a version's text came from. Every version is `written` (in
+// Trustline's editor) in this release; `imported` (a client's existing
+// library) and `ai_drafted` (docs/specs/ai-policy-drafting.md) are for what
+// comes later, so that no version has to be migrated then. Not part of what
+// is signed.
+export const documentVersionSource = pgEnum('document_version_source', [
+  'written',
+  'imported',
+  'ai_drafted',
+]);
+
 export const documentReviewOutcome = pgEnum('document_review_outcome', [
   'no_change',
   'revised',
@@ -956,6 +977,8 @@ export const documentTypes = pgTable(
     defaultReviewMonths: integer().notNull(),
     active: boolean().notNull().default(true),
     position: integer().notNull().default(0),
+    // Raised by every change, for stale-save protection (409 `stale_type`).
+    revision: integer().notNull().default(1),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
@@ -989,6 +1012,9 @@ export const documentCategories = pgTable(
     parentId: uuid(),
     active: boolean().notNull().default(true),
     position: integer().notNull().default(0),
+    // Raised by every change, for stale-save protection (409
+    // `stale_category`).
+    revision: integer().notNull().default(1),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
@@ -1194,6 +1220,7 @@ export const documentVersions = pgTable(
     withdrawnBy: uuid(),
     acknowledgementRequired: boolean().notNull().default(false),
     acknowledgeWithinDays: integer().notNull().default(14),
+    source: documentVersionSource().notNull().default('written'),
     // As documents.revision, for the version's own changes and decisions
     // (409 `stale_version`).
     revision: integer().notNull().default(1),
@@ -1623,6 +1650,102 @@ export const documentAcknowledgements = pgTable(
     index('document_acknowledgements_user_idx')
       .on(t.tenantId, t.userId)
       .where(sql`${t.acknowledgedAt} is null`),
+    tenantIsolation(),
+  ],
+);
+
+// The policies module's settings that belong to a whole client. No row
+// means the defaults: a client has one only once it changed something.
+export const documentSettings = pgTable(
+  'document_settings',
+  {
+    tenantId: uuid()
+      .primaryKey()
+      .references(() => tenants.id),
+    // The longest review period a document may have, in months. A change
+    // of a document's period above it is refused; documents set longer
+    // before it was lowered keep theirs until they are next changed.
+    maxReviewMonths: integer().notNull().default(36),
+    revision: integer().notNull().default(1),
+    updatedBy: uuid(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'document_settings_updated_by_fk',
+      columns: [t.tenantId, t.updatedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    check(
+      'document_settings_max_review_months',
+      sql`${t.maxReviewMonths} between 1 and 120`,
+    ),
+    tenantIsolation(),
+  ],
+);
+
+// What a version held when it was sent for review, once per approval run:
+// what its reviewers read (the database keeps a version in review from
+// changing), so that a version returned and changed can be compared with
+// what was returned. Written once, never changed.
+export const documentReviewRounds = pgTable(
+  'document_review_rounds',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    versionId: uuid().notNull(),
+    runId: uuid().notNull(),
+    sections: jsonb().$type<DocumentSection[]>().notNull(),
+    content: jsonb().$type<DocumentContent>().notNull(),
+    changeSummary: jsonb().$type<Localized>(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'document_review_rounds_version_fk',
+      columns: [t.tenantId, t.versionId],
+      foreignColumns: [documentVersions.tenantId, documentVersions.id],
+    }),
+    foreignKey({
+      name: 'document_review_rounds_run_fk',
+      columns: [t.tenantId, t.runId],
+      foreignColumns: [approvalRuns.tenantId, approvalRuns.id],
+    }),
+    unique('document_review_rounds_run_key').on(t.tenantId, t.runId),
+    index('document_review_rounds_version_idx').on(t.tenantId, t.versionId),
+    tenantIsolation(),
+  ],
+);
+
+// What the daily check of the policies module has sent once and must not
+// send again: an overdue approval step (`step_overdue`, the run step), a
+// scheduled version left unpublished (`publish_failed`, the version), the
+// weekly digest of overdue acknowledgements (`acknowledgement_digest`, the
+// manager, for the week). Claimed by inserting the row in the transaction
+// that writes the notifications: whoever inserts it first sends it.
+export const policyReminders = pgTable(
+  'policy_reminders',
+  {
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    kind: text().notNull(),
+    subjectId: uuid().notNull(),
+    // For what recurs: the week (`2026-W48`). Empty for what is sent once.
+    period: text().notNull().default(''),
+    sentAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({
+      name: 'policy_reminders_pkey',
+      columns: [t.tenantId, t.kind, t.subjectId, t.period],
+    }),
+    check(
+      'policy_reminders_kind',
+      sql`${t.kind} in ('step_overdue', 'publish_failed', 'acknowledgement_digest')`,
+    ),
     tenantIsolation(),
   ],
 );

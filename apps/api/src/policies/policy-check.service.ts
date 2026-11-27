@@ -4,13 +4,16 @@ import type { Database, Transaction } from '../database/client.js';
 import { databaseFailure } from '../database/database-error.filter.js';
 import { DATABASE } from '../database/database.constants.js';
 import {
+  approvalRuns,
+  approvalRunSteps,
   documentAcknowledgements,
   documents,
   documentVersions,
+  policyReminders,
   tenants,
 } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
-import { dayOf, shiftDay } from '../i18n/time-zones.js';
+import { dayOf, isoWeekOf, shiftDay } from '../i18n/time-zones.js';
 import { EntitlementsService } from '../subscriptions/entitlements.service.js';
 import { DocumentNotifier, type NotifiedDocument } from './document-notifier.js';
 import { Publisher } from './publisher.js';
@@ -70,7 +73,15 @@ type Client = { id: string; timeZone: string };
  *   come, on the client's calendar, is published (`Publisher`), if its
  *   signatures still stand behind what it holds (`Publisher.isSigned`).
  *   One whose do not is left approved, unpublished, and named in the log
- *   with its client, on every run until someone deals with it.
+ *   with its client, on every run until someone deals with it; and the
+ *   document's managers are told, once (`document_publish_failed`).
+ * - **Overdue approval steps:** the current step of a run in progress past
+ *   its due time is reported to the document's managers, once per step
+ *   (`document_step_overdue`).
+ * - **The weekly digest:** once a week (from the first run of each ISO
+ *   week on the client's calendar), each manager of the units whose people
+ *   have acknowledgements overdue is told how many
+ *   (`acknowledgements_overdue_digest`); see `digestRecipients`.
  * - **Review reminders:** the owner of an active document is told 60, 30
  *   and 7 days before its next review, and when it has passed; managers of
  *   the document are told too when it has passed. Each once per review
@@ -245,6 +256,7 @@ export class PolicyCheck implements OnModuleDestroy {
       () => this.publishScheduled(client.id, today, now, unsigned),
       () => this.remindReviews(client.id, today),
       () => this.remindAcknowledgements(client.id, today, now),
+      () => this.reportOverdueSteps(client.id, now),
     ];
     for (const step of steps) {
       for (let claimed = BATCH; claimed >= BATCH; ) {
@@ -259,6 +271,8 @@ export class PolicyCheck implements OnModuleDestroy {
     const joined = await this.askJoiners(client.id, today, now);
     done.assigned += joined.assigned;
     done.notified += joined.notified;
+    if (this.stopping) return done;
+    done.notified += await this.sendDigests(client.id, today);
     return done;
   }
 
@@ -342,6 +356,22 @@ export class PolicyCheck implements OnModuleDestroy {
           this.logger.error(
             `Policy check did not publish version ${version.id} of client ${tenantId}: its signatures do not match what it holds (content_changed)`,
           );
+          // Its managers are told once: the log is not read by the client.
+          if (await this.claim(tx, tenantId, 'publish_failed', version.id)) {
+            notified += await this.notifier.send(tx, tenantId, doc, null, [
+              {
+                kind: 'document_publish_failed',
+                data: {
+                  version: version.version,
+                  versionId: version.id,
+                  effectiveOn: version.effectiveOn,
+                  reason: 'content_changed',
+                },
+                to: await this.managersOf(tx, doc.ownerUnitId),
+                about: 'in_progress',
+              },
+            ]);
+          }
           continue;
         }
         const outcome = await this.publisher.publish(tx, tenantId, doc, version, {
@@ -459,6 +489,7 @@ export class PolicyCheck implements OnModuleDestroy {
           remindedAt: ack.remindedAt,
           overdue: sql<boolean>`${overdue}`,
           version: documentVersions.version,
+          versionId: documentVersions.id,
           documentId: documents.id,
         })
         .from(ack)
@@ -506,7 +537,11 @@ export class PolicyCheck implements OnModuleDestroy {
             notified += await this.notifier.send(tx, tenantId, doc, null, [
               {
                 kind,
-                data: { version: row.version, dueOn: row.dueOn },
+                data: {
+                  version: row.version,
+                  versionId: row.versionId,
+                  dueOn: row.dueOn,
+                },
                 to: [row.userId],
                 about: 'published',
               },
@@ -587,7 +622,7 @@ export class PolicyCheck implements OnModuleDestroy {
             notified += await this.notifier.send(tx, tenantId, doc, null, [
               {
                 kind: 'acknowledgement_assigned',
-                data: { version: doc.version, dueOn },
+                data: { version: doc.version, versionId: doc.versionId, dueOn },
                 to: added,
                 about: 'published',
               },
@@ -601,5 +636,175 @@ export class PolicyCheck implements OnModuleDestroy {
       if (page.list.length < BATCH) return done;
       after = page.list[page.list.length - 1].id;
     }
+  }
+
+  /**
+   * Claims something to be sent once: true for whoever records it first.
+   * A second process doing the same waits on the first's row, then finds
+   * it there.
+   */
+  private async claim(
+    tx: Transaction,
+    tenantId: string,
+    kind: 'step_overdue' | 'publish_failed' | 'acknowledgement_digest',
+    subjectId: string,
+    period = '',
+  ) {
+    const added = await tx
+      .insert(policyReminders)
+      .values({ tenantId, kind, subjectId, period })
+      .onConflictDoNothing()
+      .returning({ subjectId: policyReminders.subjectId });
+    return added.length > 0;
+  }
+
+  /**
+   * Reports up to BATCH steps past their due time to their documents'
+   * managers: the current step of a run in progress on a version in
+   * review, not reported yet. Each once.
+   */
+  private reportOverdueSteps(tenantId: string, now: Date) {
+    return this.inClient(tenantId, async (tx) => {
+      const steps = await tx
+        .select({
+          stepId: approvalRunSteps.id,
+          position: approvalRunSteps.position,
+          kind: approvalRunSteps.kind,
+          dueAt: approvalRunSteps.dueAt,
+          versionId: documentVersions.id,
+          version: documentVersions.version,
+          documentId: documentVersions.documentId,
+        })
+        .from(approvalRunSteps)
+        .innerJoin(
+          approvalRuns,
+          and(
+            eq(approvalRuns.id, approvalRunSteps.runId),
+            eq(approvalRuns.status, 'in_progress'),
+            eq(approvalRuns.subjectType, 'document_version'),
+          ),
+        )
+        .innerJoin(
+          documentVersions,
+          and(
+            eq(documentVersions.id, approvalRuns.subjectId),
+            eq(documentVersions.status, 'in_review'),
+          ),
+        )
+        .where(
+          and(
+            eq(approvalRunSteps.status, 'pending'),
+            sql`${approvalRunSteps.dueAt} < ${now.toISOString()}::timestamptz`,
+            sql`not exists (select from ${policyReminders} pr
+              where pr.kind = 'step_overdue' and pr.subject_id = ${approvalRunSteps.id})`,
+          ),
+        )
+        .orderBy(asc(approvalRunSteps.dueAt), asc(approvalRunSteps.id))
+        .limit(BATCH);
+      const docs = await this.documentsById(
+        tx,
+        [...new Set(steps.map((s) => s.documentId))],
+      );
+      let notified = 0;
+      for (const step of steps) {
+        // Claimed first, whatever becomes of it, so that it is looked at once.
+        if (!(await this.claim(tx, tenantId, 'step_overdue', step.stepId))) {
+          continue;
+        }
+        const doc = docs.get(step.documentId);
+        if (!doc || doc.status === 'retired') continue;
+        notified += await this.notifier.send(tx, tenantId, doc, null, [
+          {
+            kind: 'document_step_overdue',
+            data: {
+              version: step.version,
+              versionId: step.versionId,
+              position: step.position,
+              step: step.kind,
+            },
+            to: await this.managersOf(tx, doc.ownerUnitId),
+            about: 'in_progress',
+          },
+        ]);
+      }
+      return { claimed: steps.length, notified };
+    });
+  }
+
+  /**
+   * Who is told of each overdue acknowledgement in the weekly digest: the
+   * managers of the person's unit, meaning whoever holds
+   * `policies.manage` or `policies.view_all` through a grant for that unit
+   * or one above it (granted for a unit, not for the whole organization);
+   * where no one does, or the person has no unit, those who manage
+   * documents for the whole organization. Active people only, on the
+   * version in force of each active document. Returns, for each manager,
+   * how many acknowledgements and people are overdue.
+   */
+  private async digestRecipients(tx: Transaction, today: string) {
+    const { rows } = await tx.execute<{
+      manager_id: string;
+      overdue: number;
+      people: number;
+    }>(sql`
+      with recursive overdue as (
+        select a.id, a.user_id, u.org_unit_id
+        from document_acknowledgements a
+        join documents d on d.published_version_id = a.version_id and d.status = 'active'
+        join users u on u.id = a.user_id and u.status = 'active'
+        where a.acknowledged_at is null and a.due_on < ${today}::date
+      ),
+      up (start_id, id, parent_id) as (
+        select distinct o.org_unit_id, ou.id, ou.parent_id
+        from overdue o join org_units ou on ou.id = o.org_unit_id
+        union
+        select up.start_id, p.id, p.parent_id
+        from up join org_units p on p.id = up.parent_id
+      ),
+      scoped as (
+        select distinct o.id as ack_id, o.user_id, ra.user_id as manager_id
+        from overdue o
+        join up on up.start_id = o.org_unit_id
+        join role_assignments ra on ra.org_unit_id = up.id
+        join roles r on r.id = ra.role_id
+          and r.permissions && array['policies.manage', 'policies.view_all']::text[]
+        join users m on m.id = ra.user_id and m.status = 'active'
+      ),
+      everywhere as (
+        select distinct o.id as ack_id, o.user_id, ra.user_id as manager_id
+        from overdue o
+        join role_assignments ra on ra.org_unit_id is null
+        join roles r on r.id = ra.role_id and 'policies.manage' = any(r.permissions)
+        join users m on m.id = ra.user_id and m.status = 'active'
+        where not exists (select from scoped s where s.ack_id = o.id)
+      )
+      select manager_id, count(distinct ack_id)::int as overdue, count(distinct user_id)::int as people
+      from (select * from scoped union all select * from everywhere) routed
+      group by manager_id
+      order by manager_id`);
+    return rows;
+  }
+
+  /**
+   * Sends this week's digest to each manager who has acknowledgements
+   * overdue among their people and has not had it this week. Counts only.
+   */
+  private sendDigests(tenantId: string, today: string) {
+    const week = isoWeekOf(today);
+    return this.inClient(tenantId, async (tx) => {
+      const recipients = await this.digestRecipients(tx, today);
+      const due: { userId: string; data: Record<string, string | number> }[] =
+        [];
+      for (const r of recipients) {
+        if (!(await this.claim(tx, tenantId, 'acknowledgement_digest', r.manager_id, week))) {
+          continue;
+        }
+        due.push({
+          userId: r.manager_id,
+          data: { overdue: r.overdue, people: r.people, week },
+        });
+      }
+      return this.notifier.sendDigest(tx, tenantId, due);
+    });
   }
 }

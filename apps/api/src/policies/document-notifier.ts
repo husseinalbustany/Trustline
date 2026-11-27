@@ -128,4 +128,39 @@ export class DocumentNotifier {
     }
     return rows.length;
   }
+
+  /**
+   * The weekly digest of overdue acknowledgements, to each manager named:
+   * about no one document (`document_id` null), with counts only, so it
+   * names no document a manager may not see and no person. Active users
+   * only. The screen it leads to (`GET /policies/acknowledgements/overdue`)
+   * shows each its own.
+   */
+  async sendDigest(
+    tx: Transaction,
+    tenantId: string,
+    digests: { userId: string; data: Record<string, string | number> }[],
+  ) {
+    if (digests.length === 0) return 0;
+    const active = new Set<string>();
+    for (const chunk of inChunks(digests.map((d) => d.userId))) {
+      const found = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(and(inArray(users.id, chunk), eq(users.status, 'active')));
+      for (const u of found) active.add(u.id);
+    }
+    const rows: (typeof notifications.$inferInsert)[] = digests
+      .filter((d) => active.has(d.userId))
+      .map((d) => ({
+        tenantId,
+        userId: d.userId,
+        kind: 'acknowledgements_overdue_digest' as const,
+        data: { ...d.data, serious: false } satisfies NotificationData,
+      }));
+    for (const chunk of inChunks(rows)) {
+      await tx.insert(notifications).values(chunk);
+    }
+    return rows.length;
+  }
 }

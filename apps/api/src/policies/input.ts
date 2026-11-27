@@ -4,7 +4,11 @@ import {
   documentConfidentiality,
   documentStatus,
 } from '../database/schema.js';
-import { localizedText, optionalLocalizedText } from '../i18n/locales.js';
+import {
+  localeSchema,
+  localizedText,
+  optionalLocalizedText,
+} from '../i18n/locales.js';
 import { line, optionalText, text } from '../i18n/text.js';
 
 /**
@@ -32,29 +36,49 @@ const page = {
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 };
 
+/** What the library is filtered and ordered by, on screen and exported. */
+const libraryFilters = {
+  // Number, title in any language, keywords, and the text of the
+  // versions the caller may read.
+  q: line(1, 200).optional(),
+  typeId: z.uuid().optional(),
+  // With the categories beneath it.
+  categoryId: z.uuid().optional(),
+  // With the units beneath it.
+  ownerUnitId: z.uuid().optional(),
+  status: z.enum(documentStatus.enumValues).optional(),
+  // `due`: the next review is within 30 days; `overdue`: it has passed.
+  review: z.enum(['due', 'overdue']).optional(),
+  appliesToMe: flag.default(false),
+  awaitingMyAcknowledgement: flag.default(false),
+  sort: z
+    .enum(['number', 'title', 'next_review', 'recently_published'])
+    .default('number'),
+};
+
 export const listSchema = z.preprocess(
   blankAsUnset,
-  z.strictObject({
-    // Number, title in any language, keywords, and the text of the
-    // versions the caller may read.
-    q: line(1, 200).optional(),
-    typeId: z.uuid().optional(),
-    // With the categories beneath it.
-    categoryId: z.uuid().optional(),
-    // With the units beneath it.
-    ownerUnitId: z.uuid().optional(),
-    status: z.enum(documentStatus.enumValues).optional(),
-    // `due`: the next review is within 30 days; `overdue`: it has passed.
-    review: z.enum(['due', 'overdue']).optional(),
-    appliesToMe: flag.default(false),
-    awaitingMyAcknowledgement: flag.default(false),
-    sort: z
-      .enum(['number', 'title', 'next_review', 'recently_published'])
-      .default('number'),
-    ...page,
-  }),
+  z.strictObject({ ...libraryFilters, ...page }),
 );
 export type ListInput = z.infer<typeof listSchema>;
+export type LibraryFilters = Omit<ListInput, 'page' | 'pageSize'>;
+
+/**
+ * The language a file is written in: one of the client's, checked by the
+ * service. None: the caller's own language, or else the client's default.
+ */
+const exportLocale = { locale: localeSchema.optional() };
+
+/** The library as a file: its filters, every page. */
+export const documentExportQuery = z.preprocess(
+  blankAsUnset,
+  z.strictObject({ ...libraryFilters, ...exportLocale }),
+);
+
+export const acknowledgementExportQuery = z.preprocess(
+  blankAsUnset,
+  z.strictObject(exportLocale),
+);
 
 const keyword = line(1, 60);
 const reference = line(1, 120);
@@ -97,6 +121,9 @@ export const updateSchema = z
   .strictObject({
     // A document keeps its type, and with it its number, for life.
     categoryId: z.uuid().optional(),
+    // Why: required when the review period changes, kept in the
+    // document's history of changes.
+    reason: text(1, 1000).optional(),
     title: metadata.title.optional(),
     ownerId: metadata.ownerId.optional(),
     ownerUnitId: metadata.ownerUnitId.optional(),
@@ -117,7 +144,8 @@ export const retireSchema = z.strictObject({
 
 export const reviewSchema = z.strictObject({
   password,
-  comment: optionalText(1000),
+  // Required: what was looked at, for whoever reads the review later.
+  comment: text(1, 1000),
   revision,
 });
 
@@ -163,7 +191,7 @@ export const publishSchema = z.strictObject({
 });
 
 export const withdrawSchema = z.strictObject({
-  reason: optionalText(1000),
+  reason: text(1, 1000),
   revision,
 });
 
@@ -173,10 +201,26 @@ export const acknowledgementsQuery = z.preprocess(
   blankAsUnset,
   z.strictObject({
     state: z.enum(['pending', 'acknowledged', 'overdue']).optional(),
+    // People no longer active too, marked: the evidence of what they had
+    // acknowledged. The figures count active people only either way.
+    includeLeft: flag.default(false),
     ...page,
     pageSize: z.coerce.number().int().min(1).max(500).default(100),
   }),
 );
+
+export const overdueQuery = z.preprocess(
+  blankAsUnset,
+  z.strictObject({
+    ...page,
+    pageSize: z.coerce.number().int().min(1).max(500).default(100),
+  }),
+);
+
+export const settingsSchema = z.strictObject({
+  maxReviewMonths: z.number().int().min(1).max(120),
+  revision,
+});
 
 export const peopleQuery = z.preprocess(
   blankAsUnset,
@@ -224,8 +268,9 @@ export const typeUpdateSchema = z
     defaultReviewMonths: z.number().int().min(1).max(120).optional(),
     active: z.boolean().optional(),
     position: z.number().int().min(0).max(10_000).optional(),
+    revision,
   })
-  .refine((v) => Object.keys(v).length > 0);
+  .refine((v) => Object.keys(v).length > 1);
 
 export const categoryCreateSchema = z.strictObject({
   code: prefix,
@@ -240,8 +285,9 @@ export const categoryUpdateSchema = z
     parentId: z.uuid().nullable().optional(),
     active: z.boolean().optional(),
     position: z.number().int().min(0).max(10_000).optional(),
+    revision,
   })
-  .refine((v) => Object.keys(v).length > 0);
+  .refine((v) => Object.keys(v).length > 1);
 
 const stepSchema = z.strictObject({
   kind: z.enum(['review', 'approve']),

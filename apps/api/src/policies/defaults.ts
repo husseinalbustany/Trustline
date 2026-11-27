@@ -7,7 +7,9 @@ import type { Locale } from '../i18n/locales.js';
  * roles, and worded for any organization. A client renames, reorders,
  * switches off and adds its own; these are only ever added where missing,
  * never overwritten (ProvisioningService.ensurePolicyDefaults, and migration
- * 0039 for the clients that existed before this module).
+ * 0039 for the clients that existed before this module). A change of
+ * wording here reaches the clients that exist through a migration that
+ * rewords only what still reads as it was given, as 0043 does.
  */
 
 type Name = Record<Locale, string>;
@@ -45,7 +47,7 @@ const REFERENCES = section(
   'المراجع',
   'Références',
 );
-const STEPS = section('steps', true, 'Steps', 'الخطوات', 'Étapes');
+const STEPS = section('steps', true, 'Steps', 'خطوات العمل', 'Déroulement');
 const RECORDS = section(
   'records',
   false,
@@ -77,7 +79,7 @@ export const DEFAULT_DOCUMENT_TYPES: {
         true,
         'Policy statements',
         'بنود السياسة',
-        'Énoncés de la politique',
+        'Dispositions',
       ),
       RESPONSIBILITIES,
       REFERENCES,
@@ -108,7 +110,7 @@ export const DEFAULT_DOCUMENT_TYPES: {
         false,
         'Exceptions and escalation',
         'الاستثناءات والتصعيد',
-        'Exceptions et escalade',
+        'Exceptions et procédure d’alerte',
       ),
       REFERENCES,
     ],
@@ -130,7 +132,7 @@ export const DEFAULT_DOCUMENT_TYPES: {
         'safety_notes',
         false,
         'Safety notes',
-        'ملاحظات السلامة',
+        'تنبيهات السلامة',
         'Consignes de sécurité',
       ),
       RECORDS,
@@ -170,7 +172,11 @@ export const DEFAULT_DOCUMENT_CATEGORIES: {
   },
   {
     code: 'INF',
-    name: { en: 'Information', ar: 'المعلومات', fr: 'Information' },
+    name: {
+      en: 'Information management',
+      ar: 'إدارة المعلومات',
+      fr: 'Gestion de l’information',
+    },
     position: 6,
   },
 ];

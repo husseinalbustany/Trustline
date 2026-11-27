@@ -11,6 +11,7 @@ import {
   approvalRoutes,
   approvalRouteSteps,
   documentCategories,
+  documentSettings,
   documentTypes,
   roleAssignments,
   roles,
@@ -21,6 +22,10 @@ import { TenantDb } from '../database/tenant-db.service.js';
 import type { AuthContext } from '../identity/auth.service.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
 import { fitsLanguages, type Localized } from '../i18n/locales.js';
+import {
+  assertReviewPeriod,
+  documentSettingsOf,
+} from './document-settings.js';
 import type { StepInput } from './input.js';
 import { APPROVE_PERMISSION } from './visibility.js';
 
@@ -33,6 +38,7 @@ const typeFields = {
   defaultReviewMonths: documentTypes.defaultReviewMonths,
   active: documentTypes.active,
   position: documentTypes.position,
+  revision: documentTypes.revision,
 };
 
 const categoryFields = {
@@ -42,6 +48,7 @@ const categoryFields = {
   parentId: documentCategories.parentId,
   active: documentCategories.active,
   position: documentCategories.position,
+  revision: documentCategories.revision,
 };
 
 /** What changed between two records, field by field, for the audit log. */
@@ -111,6 +118,7 @@ export class PolicySettingsService {
     this.assertSections(auth, input.sections);
     try {
       return await this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
+        await assertReviewPeriod(tx, input.defaultReviewMonths);
         const [created] = await tx
           .insert(documentTypes)
           .values({ ...input, tenantId: auth.tenant.id })
@@ -132,6 +140,10 @@ export class PolicySettingsService {
     }
   }
 
+  /**
+   * Changes a type, given the revision the caller read (409 `stale_type`
+   * otherwise). Its review period stays within the client's maximum.
+   */
   updateType(
     auth: AuthContext,
     id: string,
@@ -142,7 +154,7 @@ export class PolicySettingsService {
       defaultReviewMonths: number;
       active: boolean;
       position: number;
-    }>,
+    }> & { revision: number },
   ) {
     this.assertLanguages(auth, input.name);
     this.assertSections(auth, input.sections);
@@ -153,11 +165,22 @@ export class PolicySettingsService {
         .where(eq(documentTypes.id, id))
         .for('update');
       if (!before) throw new NotFoundException();
-      const changes = changesOf(before, input);
+      if (before.revision !== input.revision) {
+        throw new ConflictException({ code: 'stale_type' });
+      }
+      const { revision: _revision, ...fields } = input;
+      const changes = changesOf(before, fields);
       if (Object.keys(changes).length === 0) return before;
+      if (changes.defaultReviewMonths) {
+        await assertReviewPeriod(tx, fields.defaultReviewMonths!);
+      }
       const [after] = await tx
         .update(documentTypes)
-        .set({ ...input, updatedAt: new Date() })
+        .set({
+          ...fields,
+          revision: sql`${documentTypes.revision} + 1`,
+          updatedAt: new Date(),
+        })
         .where(eq(documentTypes.id, id))
         .returning(typeFields);
       await this.provisioning.audit(
@@ -250,6 +273,7 @@ export class PolicySettingsService {
     }
   }
 
+  /** Changes a category, given the revision the caller read (409 `stale_category`). */
   updateCategory(
     auth: AuthContext,
     id: string,
@@ -258,7 +282,7 @@ export class PolicySettingsService {
       parentId: string | null;
       active: boolean;
       position: number;
-    }>,
+    }> & { revision: number },
   ) {
     this.assertLanguages(auth, input.name);
     return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
@@ -268,14 +292,22 @@ export class PolicySettingsService {
         .where(eq(documentCategories.id, id))
         .for('update');
       if (!before) throw new NotFoundException();
-      if (input.parentId !== undefined) {
-        await this.assertParent(tx, input.parentId, id);
+      if (before.revision !== input.revision) {
+        throw new ConflictException({ code: 'stale_category' });
       }
-      const changes = changesOf(before, input);
+      const { revision: _revision, ...fields } = input;
+      if (fields.parentId !== undefined) {
+        await this.assertParent(tx, fields.parentId, id);
+      }
+      const changes = changesOf(before, fields);
       if (Object.keys(changes).length === 0) return before;
       const [after] = await tx
         .update(documentCategories)
-        .set({ ...input, updatedAt: new Date() })
+        .set({
+          ...fields,
+          revision: sql`${documentCategories.revision} + 1`,
+          updatedAt: new Date(),
+        })
         .where(eq(documentCategories.id, id))
         .returning(categoryFields);
       await this.provisioning.audit(
@@ -349,7 +381,9 @@ export class PolicySettingsService {
   }
 
   /**
-   * Steps a route may have: the last one an approval; a role named only if
+   * Steps a route may have: the last one an approval; no person named for
+   * two steps (400 `same_person_in_two_steps`, with the `userId` and the
+   * `positions`); a role named only if
    * it includes `policies.approve` (400 `role_cannot_approve`); a person
    * named only if they are active and hold it somewhere (400
    * `user_cannot_approve`).
@@ -357,6 +391,21 @@ export class PolicySettingsService {
   private async assertSteps(tx: Transaction, steps: StepInput[]) {
     if (steps[steps.length - 1].kind !== 'approve') {
       throw new BadRequestException({ code: 'last_step_must_approve' });
+    }
+    // Each step of a run is decided by a different person, so a route that
+    // names one person for two steps could never be completed.
+    const named = new Map<string, number[]>();
+    steps.forEach((s, i) => {
+      if (s.userId) named.set(s.userId, [...(named.get(s.userId) ?? []), i + 1]);
+    });
+    for (const [userId, positions] of named) {
+      if (positions.length > 1) {
+        throw new BadRequestException({
+          code: 'same_person_in_two_steps',
+          userId,
+          positions,
+        });
+      }
     }
     const roleIds = [...new Set(steps.map((s) => s.roleId).filter((x) => !!x))] as string[];
     if (roleIds.length > 0) {
@@ -547,5 +596,109 @@ export class PolicySettingsService {
       if (isUnique(e)) throw new ConflictException({ code: 'route_exists' });
       throw e;
     }
+  }
+
+  // The module's own settings.
+
+  /** The client's settings of the module: its defaults until it sets them. */
+  settings(auth: AuthContext) {
+    return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
+      const { maxReviewMonths, revision } = await documentSettingsOf(tx);
+      return { maxReviewMonths, revision };
+    });
+  }
+
+  /**
+   * Changes the client's settings, given the revision the caller read (409
+   * `stale_settings`). The longest review period may not be set below a
+   * type's own period (409 `type_exceeds_max`, with the `types`): lower
+   * those first. Documents whose period is longer keep it until it is next
+   * changed, which must then be within the new maximum.
+   */
+  updateSettings(
+    auth: AuthContext,
+    input: { maxReviewMonths: number; revision: number },
+  ) {
+    return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
+      // The row exists from the first change on; whoever makes it first
+      // makes it as the defaults, and both then take turns on its lock.
+      await tx
+        .insert(documentSettings)
+        .values({ tenantId: auth.tenant.id })
+        .onConflictDoNothing();
+      const before = await documentSettingsOf(tx, true);
+      if (before.revision !== input.revision) {
+        throw new ConflictException({ code: 'stale_settings' });
+      }
+      if (input.maxReviewMonths === before.maxReviewMonths) {
+        return { maxReviewMonths: before.maxReviewMonths, revision: before.revision };
+      }
+      const over = await tx
+        .select({
+          id: documentTypes.id,
+          code: documentTypes.code,
+          defaultReviewMonths: documentTypes.defaultReviewMonths,
+        })
+        .from(documentTypes)
+        .where(
+          and(
+            eq(documentTypes.active, true),
+            sql`${documentTypes.defaultReviewMonths} > ${input.maxReviewMonths}`,
+          ),
+        )
+        .orderBy(asc(documentTypes.code));
+      if (over.length > 0) {
+        throw new ConflictException({ code: 'type_exceeds_max', types: over });
+      }
+      const [after] = await tx
+        .update(documentSettings)
+        .set({
+          maxReviewMonths: input.maxReviewMonths,
+          revision: sql`${documentSettings.revision} + 1`,
+          updatedBy: auth.user.id,
+          updatedAt: new Date(),
+        })
+        .where(eq(documentSettings.tenantId, auth.tenant.id))
+        .returning({
+          maxReviewMonths: documentSettings.maxReviewMonths,
+          revision: documentSettings.revision,
+        });
+      await this.provisioning.audit(
+        tx,
+        auth.tenant.id,
+        auth.user.id,
+        'document_settings_updated',
+        'tenant',
+        auth.tenant.id,
+        {
+          maxReviewMonths: {
+            from: before.maxReviewMonths,
+            to: input.maxReviewMonths,
+          },
+        },
+      );
+      return after;
+    });
+  }
+
+  /**
+   * The client's roles, by name, for those who manage documents: to narrow
+   * an audience to roles, or name a role in an approval step (`approves`:
+   * whether it includes `policies.approve`, which a step needs). Names and
+   * ids only: what else a role allows is for those who manage roles.
+   */
+  roles(auth: AuthContext) {
+    return this.tenantDb.withTenant(auth.tenant.id, (tx) =>
+      tx
+        .select({
+          id: roles.id,
+          code: roles.code,
+          name: roles.name,
+          isSystem: roles.isSystem,
+          approves: sql<boolean>`${APPROVE_PERMISSION} = any(${roles.permissions})`,
+        })
+        .from(roles)
+        .orderBy(asc(roles.code)),
+    );
   }
 }

@@ -5,7 +5,18 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, asc, desc, eq, inArray, isNull, max, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  inArray,
+  isNotNull,
+  isNull,
+  lt,
+  max,
+  sql,
+} from 'drizzle-orm';
 import {
   ApprovalEngine,
   type Run,
@@ -18,6 +29,7 @@ import {
   documentAcknowledgements,
   documentAudiences,
   documentCategories,
+  documentReviewRounds,
   documentReviews,
   documents,
   documentTypes,
@@ -32,7 +44,7 @@ import { TenantDb } from '../database/tenant-db.service.js';
 import { AuthService, type AuthContext } from '../identity/auth.service.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
 import { covers } from '../identity/scope.js';
-import { fitsLanguages, type Localized } from '../i18n/locales.js';
+import { fitsLanguages, sameText, type Localized } from '../i18n/locales.js';
 import { addMonths, dayOf, shiftDay } from '../i18n/time-zones.js';
 import { OrgUnitsService } from '../organization/org-units.service.js';
 import {
@@ -47,6 +59,8 @@ import {
 } from './content.js';
 import { DocumentNotifier } from './document-notifier.js';
 import { loadDocument, type LoadedDocument } from './document-access.js';
+import { assertReviewPeriod } from './document-settings.js';
+import { authoritativeLocale, languageStatus } from './languages.js';
 import type {
   AudienceInput,
   CreateInput,
@@ -92,6 +106,7 @@ const versionFields = {
   withdrawnBy: documentVersions.withdrawnBy,
   acknowledgementRequired: documentVersions.acknowledgementRequired,
   acknowledgeWithinDays: documentVersions.acknowledgeWithinDays,
+  source: documentVersions.source,
   revision: documentVersions.revision,
   createdAt: documentVersions.createdAt,
   updatedAt: documentVersions.updatedAt,
@@ -141,6 +156,34 @@ function sameValue(a: unknown, b: unknown): boolean {
   }
   return a === b;
 }
+
+/**
+ * What stays open in the module while the client's subscription is
+ * suspended: acknowledging (safety work about oneself), and publishing an
+ * approved version and retiring a document (safety work: a corrected
+ * procedure goes out, an unsafe one is withdrawn from readers). Every other
+ * write is refused by SessionGuard, so `moves` offers none of them.
+ */
+const OPEN_WHILE_SUSPENDED = new Set(['publish', 'retire', 'acknowledge']);
+
+const openNow = (auth: AuthContext, moves: string[]) =>
+  auth.tenant.subscription.status === 'suspended'
+    ? moves.filter((m) => OPEN_WHILE_SUSPENDED.has(m))
+    : moves;
+
+/** The fields of a document whose changes its history shows, in order. */
+const HISTORY_FIELDS = [
+  'title',
+  'categoryId',
+  'ownerId',
+  'ownerUnitId',
+  'audience',
+  'confidentiality',
+  'reviewMonths',
+  'nextReviewOn',
+  'keywords',
+  'references',
+] as const;
 
 const refuse = {
   outsideScope: () => new ForbiddenException({ code: 'outside_scope' }),
@@ -276,6 +319,8 @@ export class DocumentsService {
       id: doc.id,
       number: doc.number,
       title: doc.title,
+      // The client's day, which screens and prints date things by.
+      today,
       type,
       category,
       owner: { id: doc.ownerId, name: people.get(doc.ownerId) ?? null },
@@ -322,7 +367,7 @@ export class DocumentsService {
           }
         : null,
       myAcknowledgement: acknowledgement,
-      moves,
+      moves: openNow(auth, moves),
     };
   }
 
@@ -467,6 +512,146 @@ export class DocumentsService {
           reviewedBy: { id: reviewedBy, name: people.get(reviewedBy) ?? null },
         })),
       };
+    });
+  }
+
+  /**
+   * The history of a document's own details (title, category, owner,
+   * owning unit, audience, confidentiality, review period and the next
+   * review date it moved, keywords, references): who changed what, when,
+   * from what to what, and why where a reason was given. From the audit
+   * log, oldest first, with names as they are now. For those with full
+   * sight; anyone else who may see the document is refused with 403.
+   */
+  changes(auth: AuthContext, id: string) {
+    return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
+      const viewer = await viewerOf(tx, auth, this.engine);
+      const doc = await this.find(tx, viewer, id);
+      if (!doc.access.full) {
+        throw new ForbiddenException({
+          code: 'missing_permission',
+          permission: 'policies.view_all',
+        });
+      }
+      const entries = await this.provisioning.trailOf(tx, 'document', doc.id, [
+        'document_updated',
+      ]);
+      type Audience = {
+        orgUnitIds?: string[];
+        roleIds?: string[];
+        wholeOrganization?: boolean;
+      };
+      type Change = { from: unknown; to: unknown };
+      const fieldsOf = (changes: unknown) =>
+        (changes && typeof changes === 'object'
+          ? (changes as Record<string, unknown>)
+          : {}) as Record<string, Change | string | undefined>;
+      // Every id the entries name, to name them.
+      const userIds = new Set<string>();
+      const unitIds = new Set<string>();
+      const categoryIds = new Set<string>();
+      const roleIds = new Set<string>();
+      const add = (set: Set<string>, value: unknown) => {
+        if (typeof value === 'string') set.add(value);
+      };
+      for (const entry of entries) {
+        if (entry.actorId) userIds.add(entry.actorId);
+        const fields = fieldsOf(entry.changes);
+        for (const side of ['from', 'to'] as const) {
+          const of = (field: string) =>
+            (fields[field] as Change | undefined)?.[side];
+          add(userIds, of('ownerId'));
+          add(unitIds, of('ownerUnitId'));
+          add(categoryIds, of('categoryId'));
+          const audience = of('audience') as Audience | undefined;
+          audience?.orgUnitIds?.forEach((u) => add(unitIds, u));
+          audience?.roleIds?.forEach((r) => add(roleIds, r));
+        }
+      }
+      const people = await this.names(tx, [...userIds]);
+      const named = async <T extends { id: string }>(
+        ids: Set<string>,
+        load: (list: string[]) => Promise<T[]>,
+      ) => new Map((ids.size > 0 ? await load([...ids]) : []).map((r) => [r.id, r]));
+      const units = await named(unitIds, (list) =>
+        tx
+          .select({ id: orgUnits.id, name: orgUnits.name })
+          .from(orgUnits)
+          .where(inArray(orgUnits.id, list)),
+      );
+      const categories = await named(categoryIds, (list) =>
+        tx
+          .select({
+            id: documentCategories.id,
+            code: documentCategories.code,
+            name: documentCategories.name,
+          })
+          .from(documentCategories)
+          .where(inArray(documentCategories.id, list)),
+      );
+      const roleList = await named(roleIds, (list) =>
+        tx
+          .select({ id: roles.id, name: roles.name })
+          .from(roles)
+          .where(inArray(roles.id, list)),
+      );
+      const value = (field: (typeof HISTORY_FIELDS)[number], v: unknown) => {
+        if (v === null || v === undefined) return null;
+        switch (field) {
+          case 'ownerId':
+            return { id: v, name: people.get(v as string) ?? null };
+          case 'ownerUnitId':
+            return units.get(v as string) ?? { id: v, name: null };
+          case 'categoryId':
+            return categories.get(v as string) ?? { id: v, code: null, name: null };
+          case 'audience': {
+            const a = v as Audience;
+            const unitList = a.orgUnitIds ?? [];
+            return {
+              wholeOrganization: a.wholeOrganization ?? unitList.length === 0,
+              orgUnits: unitList.map((u) => units.get(u) ?? { id: u, name: null }),
+              roles: (a.roleIds ?? []).map((r) => roleList.get(r) ?? { id: r, name: null }),
+            };
+          }
+          default:
+            return v;
+        }
+      };
+      const label = {
+        title: 'title',
+        categoryId: 'category',
+        ownerId: 'owner',
+        ownerUnitId: 'ownerUnit',
+        audience: 'audience',
+        confidentiality: 'confidentiality',
+        reviewMonths: 'reviewMonths',
+        nextReviewOn: 'nextReviewOn',
+        keywords: 'keywords',
+        references: 'references',
+      } as const;
+      const items = entries.map((entry) => {
+        const fields = fieldsOf(entry.changes);
+        const reason = fields.reason;
+        return {
+          id: entry.id,
+          at: entry.occurredAt,
+          by: entry.actorId
+            ? { id: entry.actorId, name: people.get(entry.actorId) ?? null }
+            : null,
+          reason: typeof reason === 'string' ? reason : null,
+          changes: HISTORY_FIELDS.filter(
+            (f) => fields[f] && typeof fields[f] === 'object',
+          ).map((f) => {
+            const change = fields[f] as Change;
+            return {
+              field: label[f],
+              from: value(f, change.from),
+              to: value(f, change.to),
+            };
+          }),
+        };
+      });
+      return { items, total: items.length };
     });
   }
 
@@ -638,6 +823,78 @@ export class DocumentsService {
         ? null
         : compareVersions(version, base ?? null, auth.tenant.locales);
 
+    // Where each section stands in each language, against the
+    // authoritative one and the version published before this one: written,
+    // shown in the authoritative language instead, or not updated since it
+    // changed there. For every reader of the version.
+    const [previous] = await tx
+      .select({
+        id: documentVersions.id,
+        version: documentVersions.version,
+        content: documentVersions.content,
+      })
+      .from(documentVersions)
+      .where(
+        and(
+          eq(documentVersions.documentId, doc.id),
+          isNotNull(documentVersions.publishedAt),
+          lt(documentVersions.version, version.version),
+        ),
+      )
+      .orderBy(desc(documentVersions.version))
+      .limit(1);
+    const authoritative = authoritativeLocale(auth.tenant);
+    const languageView = languageStatus(
+      version,
+      previous ?? null,
+      auth.tenant.locales,
+      authoritative,
+    );
+
+    // Every round of review, and what the version held when it was sent
+    // (`snapshot`): earlier rounds and their comments stay visible after it
+    // is sent again. And, while it is in progress, what it holds now
+    // compared with what it held when it was last returned: whether the
+    // comments were dealt with. For those who see its runs.
+    const snapshotted = new Set(
+      seesRuns
+        ? (
+            await tx
+              .select({ runId: documentReviewRounds.runId })
+              .from(documentReviewRounds)
+              .where(eq(documentReviewRounds.versionId, version.id))
+          ).map((r) => r.runId)
+        : [],
+    );
+    const lastReturned = seesRuns
+      ? (runs.find((r) => r.status === 'returned') ?? null)
+      : null;
+    let sinceReturned = null;
+    if (
+      lastReturned &&
+      snapshotted.has(lastReturned.id) &&
+      IN_PROGRESS.includes(version.status)
+    ) {
+      const [round] = await tx
+        .select({
+          content: documentReviewRounds.content,
+          changeSummary: documentReviewRounds.changeSummary,
+        })
+        .from(documentReviewRounds)
+        .where(
+          and(
+            eq(documentReviewRounds.runId, lastReturned.id),
+            eq(documentReviewRounds.versionId, version.id),
+          ),
+        );
+      sinceReturned = {
+        runId: lastReturned.id,
+        returnedAt: lastReturned.completedAt,
+        changeSummaryChanged: !sameText(round.changeSummary, version.changeSummary),
+        comparison: compareVersions(version, round, auth.tenant.locales),
+      };
+    }
+
     // What the viewer may do with it.
     const pending = latest ? this.engine.pendingStep(latest) : null;
     // The one who prepared the version, or who decided an earlier step of
@@ -682,12 +939,16 @@ export class DocumentsService {
       status: version.status,
       sections: version.sections,
       content: version.content,
-      // The languages it has text in, the client's default first; a reader
-      // whose language is missing is shown the default with a note.
+      // The languages it has text in, the authoritative one first; a
+      // reader whose language is missing a section is shown the
+      // authoritative text there, with a note (`languageStatus`).
       languages: languagesOf(version.content, [
-        auth.tenant.defaultLocale,
-        ...auth.tenant.locales.filter((l) => l !== auth.tenant.defaultLocale),
+        authoritative,
+        ...auth.tenant.locales.filter((l) => l !== authoritative),
       ]),
+      languageStatus: languageView,
+      source: version.source,
+      today,
       contentHash: contentHash(signedVersion(doc, version)),
       changeSummary: version.changeSummary,
       preparedBy: person(version.preparedBy),
@@ -707,16 +968,31 @@ export class DocumentsService {
       // The control block, with the document's own.
       control: {
         number: doc.number,
+        title: doc.title,
         version: version.version,
+        status: version.status,
+        documentStatus: doc.status,
+        // The published version of an active document, on or after its
+        // effective day: the one copy a print may call controlled.
+        inForce:
+          version.id === doc.publishedVersionId &&
+          doc.status === 'active' &&
+          !!version.effectiveOn &&
+          version.effectiveOn <= today,
         owner: { id: doc.ownerId, name: (await this.names(tx, [doc.ownerId])).get(doc.ownerId) ?? null },
+        preparedBy: person(version.preparedBy),
         effectiveOn: version.effectiveOn,
         nextReviewOn:
           version.id === doc.publishedVersionId ? doc.nextReviewOn : null,
         approvals,
       },
       run: seesRuns && latest ? runView(latest) : null,
+      rounds: seesRuns
+        ? runs.map((r) => ({ ...runView(r), snapshot: snapshotted.has(r.id) }))
+        : [],
       returned,
       comparison,
+      sinceReturned,
       myStep: myStep
         ? {
             position: myStep.position,
@@ -727,7 +1003,7 @@ export class DocumentsService {
         : null,
       myAcknowledgement: acknowledgement,
       revision: version.revision,
-      moves,
+      moves: openNow(auth, moves),
     };
   }
 
@@ -758,6 +1034,10 @@ export class DocumentsService {
         )
         .for('share');
       if (!type) throw new BadRequestException({ code: 'unknown_type' });
+      await assertReviewPeriod(
+        tx,
+        input.reviewMonths ?? type.defaultReviewMonths,
+      );
       const category = await this.assertCategory(tx, input.categoryId);
       await this.assertOwner(tx, input.ownerId);
       await this.orgUnits.assertActive(tx, [
@@ -931,6 +1211,18 @@ export class DocumentsService {
         changes[field] = { from: doc[field], to };
       }
       await this.assertMayChange(tx, doc.id, changes);
+      // A new review period needs a reason, and stays within the client's
+      // maximum: it moves the next review date, and with it the measure of
+      // documents past their review.
+      if ('reviewMonths' in changes) {
+        if (!input.reason) {
+          throw new BadRequestException({
+            code: 'reason_required',
+            field: 'reviewMonths',
+          });
+        }
+        await assertReviewPeriod(tx, input.reviewMonths!);
+      }
       if (input.audience) {
         const before = await this.audienceOf(tx, doc.id);
         await this.setAudience(tx, tenant.id, doc.id, input.audience);
@@ -959,6 +1251,7 @@ export class DocumentsService {
             updatedAt: new Date(),
           })
           .where(eq(documents.id, doc.id));
+        // The document's history of changes (`changes()`) reads this.
         await this.provisioning.audit(
           tx,
           tenant.id,
@@ -966,7 +1259,7 @@ export class DocumentsService {
           'document_updated',
           'document',
           doc.id,
-          changes,
+          { ...changes, ...(input.reason && { reason: input.reason }) },
         );
       }
       const after = await viewerOf(tx, auth, this.engine);
@@ -1386,12 +1679,23 @@ export class DocumentsService {
         })
         .where(eq(documentVersions.id, version.id))
         .returning(versionFields);
+      // What its reviewers read in this round, kept: the database keeps a
+      // version in review from changing, so this is what a return answers.
+      await tx.insert(documentReviewRounds).values({
+        tenantId: tenant.id,
+        versionId: version.id,
+        runId: run.id,
+        sections: version.sections,
+        content: version.content,
+        changeSummary: version.changeSummary,
+      });
       const first = run.steps[0];
       await this.notifier.send(tx, tenant.id, doc, user.id, [
         {
           kind: 'document_step_assigned',
           data: {
             version: version.version,
+            versionId: version.id,
             position: first.position,
             step: first.kind,
           },
@@ -1533,7 +1837,7 @@ export class DocumentsService {
         await this.notifier.send(tx, tenant.id, doc, user.id, [
           {
             kind: 'document_approved',
-            data: { version: version.version },
+            data: { version: version.version, versionId: version.id },
             to: [version.preparedBy, ...version.contributors, ...holders],
             about: 'in_progress',
           },
@@ -1544,6 +1848,7 @@ export class DocumentsService {
             kind: 'document_step_assigned',
             data: {
               version: version.version,
+              versionId: version.id,
               position: outcome.next.position,
               step: outcome.next.kind,
             },
@@ -1637,7 +1942,11 @@ export class DocumentsService {
       await this.notifier.send(tx, tenant.id, doc, user.id, [
         {
           kind: 'document_returned',
-          data: { version: version.version, position: step.position },
+          data: {
+            version: version.version,
+            versionId: version.id,
+            position: step.position,
+          },
           to: [version.preparedBy, ...version.contributors],
           about: 'in_progress',
         },
@@ -1717,7 +2026,7 @@ export class DocumentsService {
     auth: AuthContext,
     id: string,
     versionId: string,
-    input: { reason: string | null; revision: number },
+    input: { reason: string; revision: number },
   ) {
     const { tenant, user } = auth;
     return this.tenantDb.withTenant(tenant.id, async (tx) => {
@@ -1999,7 +2308,7 @@ export class DocumentsService {
   async confirmReview(
     auth: AuthContext,
     id: string,
-    input: { password: string; comment: string | null; revision: number },
+    input: { password: string; comment: string; revision: number },
     ip: string | null,
   ) {
     const { tenant, user } = auth;

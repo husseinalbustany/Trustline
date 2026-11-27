@@ -2,6 +2,7 @@ import '../src/env.js';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import {
+  approvalRouteSteps,
   approvalRunSteps,
   auditLog,
   documentAcknowledgements,
@@ -772,11 +773,27 @@ describe('policies and procedures', () => {
           revision: d.version.revision,
         });
       try {
-        // One person named for both steps: the second has nobody left.
-        await setSteps([
+        // One person named for both steps is refused when the route is
+        // saved: the second step would have nobody left.
+        const both = [
           { kind: 'review', userId: secondApprover.id, dueInDays: 3 },
           { kind: 'approve', userId: secondApprover.id, dueInDays: 3 },
+        ];
+        expect(
+          (await patch(a.cookie, `/approval-routes/${route.id}`, { steps: both, revision }).expect(400)).body,
+        ).toEqual({ code: 'same_person_in_two_steps', userId: secondApprover.id, positions: [1, 2] });
+        expect(
+          (await post(a.cookie, '/approval-routes', { name: { en: 'Twice' }, documentTypeId: null, steps: both }).expect(400)).body.code,
+        ).toBe('same_person_in_two_steps');
+        // A route saved so before that rule is still refused at sending.
+        await setSteps([
+          { kind: 'review', userId: approver.id, dueInDays: 3 },
+          { kind: 'approve', userId: secondApprover.id, dueInDays: 3 },
         ]);
+        await bench.owner.db
+          .update(approvalRouteSteps)
+          .set({ assigneeUserId: secondApprover.id })
+          .where(eq(approvalRouteSteps.routeId, route.id));
         const twice = await draft();
         expect((await submit(twice).expect(409)).body).toEqual({ code: 'no_assignee', position: 2 });
         // A role for the first step and one of its holders named for the
@@ -792,6 +809,7 @@ describe('policies and procedures', () => {
         expect(sent.status).toBe('in_review');
         await post(writer.cookie, `/documents/${covered.doc.id}/versions/${sent.id}/withdraw`, {
           revision: sent.revision,
+          reason: 'Only a test of the route.',
         }).expect(200);
       } finally {
         await setSteps([
@@ -996,6 +1014,7 @@ describe('policies and procedures', () => {
       v1 = (await write(approver.cookie, doc, v1, { content: { en: FULL } }).expect(200)).body;
       await post(approver.cookie, `/documents/${doc.id}/versions/${v1.id}/withdraw`, {
         revision: v1.revision,
+        reason: 'Started again.',
       }).expect(200);
       // Someone else starts version 2 from it, word for word, and sends it
       // with a change summary of their own.
@@ -1371,13 +1390,15 @@ describe('policies and procedures', () => {
       const recalled = (await post(writer.cookie, `/documents/${doc.id}/versions/${version.id}/recall`, { revision: version.revision }).expect(200)).body as Version;
       expect(recalled.status).toBe('draft');
       expect(recalled.run?.status).toBe('cancelled');
+      // Withdrawing needs a reason.
+      await post(writer.cookie, `/documents/${doc.id}/versions/${version.id}/withdraw`, { revision: recalled.revision }).expect(400);
       expect(
-        (await post(writer.cookie, `/documents/${doc.id}/versions/${version.id}/withdraw`, { revision: version.revision }).expect(409)).body.code,
+        (await post(writer.cookie, `/documents/${doc.id}/versions/${version.id}/withdraw`, { revision: version.revision, reason: 'Not needed.' }).expect(409)).body.code,
       ).toBe('stale_version');
       const gone = (await post(writer.cookie, `/documents/${doc.id}/versions/${version.id}/withdraw`, { revision: recalled.revision, reason: 'Not needed.' }).expect(200)).body as Version;
       expect(gone.status).toBe('withdrawn');
       expect(
-        (await post(writer.cookie, `/documents/${doc.id}/versions/${version.id}/withdraw`, { revision: gone.revision }).expect(409)).body.code,
+        (await post(writer.cookie, `/documents/${doc.id}/versions/${version.id}/withdraw`, { revision: gone.revision, reason: 'Again.' }).expect(409)).body.code,
       ).toBe('not_in_progress');
       // A document never published can be started again.
       const next = (await post(writer.cookie, `/documents/${doc.id}/versions`).expect(201)).body;
@@ -1438,7 +1459,7 @@ describe('policies and procedures', () => {
       expect(
         (await post(reader.cookie, `/documents/${doc.id}/versions/${v2.id}/acknowledge`, { password }).expect(404)).status,
       ).toBe(404);
-      await post(writer.cookie, `/documents/${doc.id}/versions/${v2.id}/withdraw`, { revision: v2.revision }).expect(200);
+      await post(writer.cookie, `/documents/${doc.id}/versions/${v2.id}/withdraw`, { revision: v2.revision, reason: 'Not needed.' }).expect(200);
     });
   });
 

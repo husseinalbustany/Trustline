@@ -40,6 +40,9 @@ export const NOTIFICATION_MODULE: Record<NotificationKind, ModuleKey> = {
   acknowledgement_overdue: 'policies',
   review_due: 'policies',
   review_overdue: 'policies',
+  document_step_overdue: 'policies',
+  document_publish_failed: 'policies',
+  acknowledgements_overdue_digest: 'policies',
 };
 
 /** The kinds a client with these modules is shown. */

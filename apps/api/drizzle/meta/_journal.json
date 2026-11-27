@@ -295,6 +295,20 @@
       "when": 1795811708958,
       "tag": "0041_signed_text_kept_by_the_database",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1795814408177,
+      "tag": "0042_policies_review_fixes",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1795814416674,
+      "tag": "0043_policies_grants_and_starting_wording",
+      "breakpoints": true
     }
   ]
 }

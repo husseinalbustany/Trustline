@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { and, count, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import type { Transaction } from '../database/client.js';
 import {
   approvalRoutes,
@@ -345,6 +345,38 @@ export class ProvisioningService {
       changes,
       ipAddress,
     });
+  }
+
+  /**
+   * The audit entries of one record, of these actions, oldest first: for a
+   * history shown on the record itself (a document's changes). At most
+   * `limit` of them. In the caller's transaction, so within its client.
+   */
+  trailOf(
+    tx: Transaction,
+    entityType: string,
+    entityId: string,
+    actions: string[],
+    limit = 500,
+  ) {
+    return tx
+      .select({
+        id: auditLog.id,
+        action: auditLog.action,
+        actorId: auditLog.actorId,
+        changes: auditLog.changes,
+        occurredAt: auditLog.occurredAt,
+      })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.entityType, entityType),
+          eq(auditLog.entityId, entityId),
+          inArray(auditLog.action, actions),
+        ),
+      )
+      .orderBy(asc(auditLog.occurredAt), asc(auditLog.id))
+      .limit(limit);
   }
 
   /**

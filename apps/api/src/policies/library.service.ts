@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -28,14 +29,35 @@ import {
   orgUnits,
   roleAssignments,
   roles,
+  signatures,
   users,
 } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
 import type { AuthContext } from '../identity/auth.service.js';
-import { dayOf, shiftDay } from '../i18n/time-zones.js';
+import { ProvisioningService } from '../identity/provisioning.service.js';
+import {
+  pickText,
+  SUPPORTED_LOCALES,
+  type Locale,
+  type Localized,
+} from '../i18n/locales.js';
+import {
+  dayOf,
+  daysBetween,
+  momentIn,
+  shiftDay,
+} from '../i18n/time-zones.js';
+import { inChunks } from '../incidents/notifier.js';
+import { csv, csvFileName } from './csv.js';
 import { loadDocument } from './document-access.js';
-import { REVIEW_DUE_DAYS } from './documents.service.js';
-import type { ListInput } from './input.js';
+import { REVIEW_DUE_DAYS, reviewState } from './documents.service.js';
+import {
+  ACKNOWLEDGEMENT_HEADINGS,
+  DOCUMENT_LIST_HEADINGS,
+  EXPORT_VALUES,
+  type ExportValue,
+} from './export-wording.js';
+import type { LibraryFilters, ListInput } from './input.js';
 import {
   APPROVE_PERMISSION,
   assignedVersion,
@@ -55,6 +77,9 @@ export const MEASURES = {
   /** Acknowledgement completion: at least this share, in percent. */
   acknowledgedAtLeast: 90,
 };
+
+/** The most rows a file holds: far more than any client's library. */
+export const EXPORT_MAX_ROWS = 50_000;
 
 /** A share in percent, to one decimal; null when there is nothing to share. */
 const percent = (part: number, whole: number) =>
@@ -81,6 +106,7 @@ export class LibraryService {
   constructor(
     private readonly tenantDb: TenantDb,
     private readonly engine: ApprovalEngine,
+    private readonly provisioning: ProvisioningService,
   ) {}
 
   /** The published version requires acknowledgement and the viewer has not given it. */
@@ -122,117 +148,277 @@ export class LibraryService {
     )!;
   }
 
+  /**
+   * The documents of the library the viewer may see, filtered and ordered
+   * as asked: one query for the screen, a page at a time, and for the
+   * export, all of it.
+   */
+  private libraryRows(
+    tx: Transaction,
+    auth: AuthContext,
+    viewer: Viewer,
+    input: LibraryFilters,
+    today: string,
+    page: { limit: number; offset: number },
+  ) {
+    const sees = fullSight(viewer);
+    const where = and(
+      visible(viewer, this.engine),
+      input.q ? this.matches(viewer, input.q) : undefined,
+      input.typeId ? eq(documents.typeId, input.typeId) : undefined,
+      input.categoryId
+        ? sql`${documents.categoryId} in ${unitAndBelow(documentCategories, input.categoryId)}`
+        : undefined,
+      input.ownerUnitId
+        ? sql`${documents.ownerUnitId} in ${unitAndBelow(orgUnits, input.ownerUnitId)}`
+        : undefined,
+      input.status ? eq(documents.status, input.status) : undefined,
+      input.review === 'overdue'
+        ? sql`${documents.status} = 'active' and ${documents.nextReviewOn} < ${today}`
+        : input.review === 'due'
+          ? sql`${documents.status} = 'active' and ${documents.nextReviewOn} between ${today} and ${shiftDay(today, REVIEW_DUE_DAYS)}`
+          : undefined,
+      input.appliesToMe ? inAudience(viewer) : undefined,
+      input.awaitingMyAcknowledgement ? this.awaitingMine(viewer) : undefined,
+    );
+    const published = alias(documentVersions, 'published');
+    const title = sql`coalesce(${documents.title} ->> ${auth.tenant.defaultLocale}, ${documents.number})`;
+    const order = {
+      number: [asc(documents.number)],
+      title: [asc(title), asc(documents.number)],
+      next_review: [
+        sql`${documents.nextReviewOn} asc nulls last`,
+        asc(documents.number),
+      ],
+      recently_published: [
+        sql`${published.publishedAt} desc nulls last`,
+        asc(documents.number),
+      ],
+    }[input.sort];
+    const total = async () =>
+      (
+        await tx.select({ total: count() }).from(documents).where(where)
+      )[0].total;
+    const rows = tx
+      .select({
+        id: documents.id,
+        number: documents.number,
+        title: documents.title,
+        type: {
+          id: documentTypes.id,
+          code: documentTypes.code,
+          name: documentTypes.name,
+        },
+        category: {
+          id: documentCategories.id,
+          code: documentCategories.code,
+          name: documentCategories.name,
+        },
+        ownerUnit: { id: orgUnits.id, name: orgUnits.name },
+        status: documents.status,
+        confidentiality: documents.confidentiality,
+        version: published.version,
+        effectiveOn: published.effectiveOn,
+        publishedAt: published.publishedAt,
+        nextReviewOn: documents.nextReviewOn,
+        full: sql<boolean>`${sees}`,
+        inProgress: sql<{
+          id: string;
+          version: number;
+          status: string;
+        } | null>`(select json_build_object('id', iv.id, 'version', iv.version, 'status', iv.status)
+          from ${documentVersions} iv
+          where iv.document_id = ${documents.id}
+            and iv.status in ('draft', 'in_review', 'approved')
+            and (${sees} or iv.id = ${assignedVersion(viewer, this.engine)}))`,
+        awaiting: sql<boolean>`coalesce(${this.awaitingMine(viewer)}, false)`,
+        myDueOn: sql<string | null>`(select a.due_on::text from ${documentAcknowledgements} a
+          where a.version_id = ${documents.publishedVersionId} and a.user_id = ${viewer.userId})`,
+        // For the export.
+        ownerId: documents.ownerId,
+        lastReviewedOn: documents.lastReviewedOn,
+        reviewMonths: documents.reviewMonths,
+        acknowledgementRequired: published.acknowledgementRequired,
+      })
+      .from(documents)
+      .innerJoin(documentTypes, eq(documentTypes.id, documents.typeId))
+      .innerJoin(
+        documentCategories,
+        eq(documentCategories.id, documents.categoryId),
+      )
+      .innerJoin(orgUnits, eq(orgUnits.id, documents.ownerUnitId))
+      .leftJoin(published, eq(published.id, documents.publishedVersionId))
+      .where(where)
+      .orderBy(...order)
+      .limit(page.limit)
+      .offset(page.offset);
+    return { rows, total };
+  }
+
   list(auth: AuthContext, input: ListInput) {
     const today = dayOf(new Date(), auth.tenant.timeZone);
     return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
       const viewer = await viewerOf(tx, auth, this.engine);
-      const sees = fullSight(viewer);
-      const where = and(
-        visible(viewer, this.engine),
-        input.q ? this.matches(viewer, input.q) : undefined,
-        input.typeId ? eq(documents.typeId, input.typeId) : undefined,
-        input.categoryId
-          ? sql`${documents.categoryId} in ${unitAndBelow(documentCategories, input.categoryId)}`
-          : undefined,
-        input.ownerUnitId
-          ? sql`${documents.ownerUnitId} in ${unitAndBelow(orgUnits, input.ownerUnitId)}`
-          : undefined,
-        input.status ? eq(documents.status, input.status) : undefined,
-        input.review === 'overdue'
-          ? sql`${documents.status} = 'active' and ${documents.nextReviewOn} < ${today}`
-          : input.review === 'due'
-            ? sql`${documents.status} = 'active' and ${documents.nextReviewOn} between ${today} and ${shiftDay(today, REVIEW_DUE_DAYS)}`
-            : undefined,
-        input.appliesToMe ? inAudience(viewer) : undefined,
-        input.awaitingMyAcknowledgement ? this.awaitingMine(viewer) : undefined,
-      );
-      const published = alias(documentVersions, 'published');
-      const title = sql`coalesce(${documents.title} ->> ${auth.tenant.defaultLocale}, ${documents.number})`;
-      const order = {
-        number: [asc(documents.number)],
-        title: [asc(title), asc(documents.number)],
-        next_review: [
-          sql`${documents.nextReviewOn} asc nulls last`,
-          asc(documents.number),
-        ],
-        recently_published: [
-          sql`${published.publishedAt} desc nulls last`,
-          asc(documents.number),
-        ],
-      }[input.sort];
-      const [{ total }] = await tx
-        .select({ total: count() })
-        .from(documents)
-        .where(where);
-      const rows = await tx
-        .select({
-          id: documents.id,
-          number: documents.number,
-          title: documents.title,
-          type: {
-            id: documentTypes.id,
-            code: documentTypes.code,
-            name: documentTypes.name,
-          },
-          category: {
-            id: documentCategories.id,
-            code: documentCategories.code,
-            name: documentCategories.name,
-          },
-          ownerUnit: { id: orgUnits.id, name: orgUnits.name },
-          status: documents.status,
-          confidentiality: documents.confidentiality,
-          version: published.version,
-          effectiveOn: published.effectiveOn,
-          publishedAt: published.publishedAt,
-          nextReviewOn: documents.nextReviewOn,
-          full: sql<boolean>`${sees}`,
-          inProgress: sql<{
-            id: string;
-            version: number;
-            status: string;
-          } | null>`(select json_build_object('id', iv.id, 'version', iv.version, 'status', iv.status)
-            from ${documentVersions} iv
-            where iv.document_id = ${documents.id}
-              and iv.status in ('draft', 'in_review', 'approved')
-              and (${sees} or iv.id = ${assignedVersion(viewer, this.engine)}))`,
-          awaiting: sql<boolean>`coalesce(${this.awaitingMine(viewer)}, false)`,
-          myDueOn: sql<string | null>`(select a.due_on::text from ${documentAcknowledgements} a
-            where a.version_id = ${documents.publishedVersionId} and a.user_id = ${viewer.userId})`,
-        })
-        .from(documents)
-        .innerJoin(documentTypes, eq(documentTypes.id, documents.typeId))
-        .innerJoin(
-          documentCategories,
-          eq(documentCategories.id, documents.categoryId),
-        )
-        .innerJoin(orgUnits, eq(orgUnits.id, documents.ownerUnitId))
-        .leftJoin(published, eq(published.id, documents.publishedVersionId))
-        .where(where)
-        .orderBy(...order)
-        .limit(input.pageSize)
-        .offset((input.page - 1) * input.pageSize);
-      const items = rows.map(({ full, awaiting, myDueOn, ...row }) => ({
-        ...row,
-        review:
-          row.status === 'active' && row.nextReviewOn
-            ? row.nextReviewOn < today
-              ? ('overdue' as const)
-              : row.nextReviewOn <= shiftDay(today, REVIEW_DUE_DAYS)
-                ? ('due' as const)
-                : null
+      const { rows, total } = this.libraryRows(tx, auth, viewer, input, today, {
+        limit: input.pageSize,
+        offset: (input.page - 1) * input.pageSize,
+      });
+      const items = (await rows).map(
+        ({
+          full,
+          awaiting,
+          myDueOn,
+          ownerId: _owner,
+          lastReviewedOn: _last,
+          reviewMonths: _months,
+          acknowledgementRequired: _ack,
+          ...row
+        }) => ({
+          ...row,
+          review: reviewState(row, today),
+          access: full ? ('full' as const) : ('other' as const),
+          // For the reader: an "Acknowledge" mark when it is theirs to give.
+          myAcknowledgement: awaiting
+            ? {
+                dueOn: myDueOn,
+                overdue: !!myDueOn && myDueOn < today,
+              }
             : null,
-        access: full ? ('full' as const) : ('other' as const),
-        // For the reader: an "Acknowledge" mark when it is theirs to give.
-        myAcknowledgement: awaiting
-          ? {
-              dueOn: myDueOn,
-              overdue: !!myDueOn && myDueOn < today,
-            }
-          : null,
-      }));
-      return { items, total };
+        }),
+      );
+      return { items, total: await total() };
     });
+  }
+
+  /**
+   * The language a file is written in: the one asked for, if the client
+   * works in it (400 `language_mismatch` otherwise); else the caller's own,
+   * if the client works in it; else the client's default.
+   */
+  private async fileLocale(
+    tx: Transaction,
+    auth: AuthContext,
+    asked: Locale | undefined,
+  ): Promise<Locale> {
+    const ours = (l: string | null | undefined): l is Locale =>
+      !!l &&
+      auth.tenant.locales.includes(l) &&
+      (SUPPORTED_LOCALES as readonly string[]).includes(l);
+    if (asked) {
+      if (!ours(asked)) {
+        throw new BadRequestException({ code: 'language_mismatch' });
+      }
+      return asked;
+    }
+    const [me] = await tx
+      .select({ locale: users.preferredLocale })
+      .from(users)
+      .where(eq(users.id, auth.user.id));
+    if (ours(me?.locale)) return me.locale;
+    return ours(auth.tenant.defaultLocale) ? auth.tenant.defaultLocale : 'en';
+  }
+
+  /**
+   * The master list of controlled documents as a CSV file: every document
+   * of the library the caller may see, with the library's filters and
+   * order, in the caller's language. Whoever sees a document in full also
+   * gets its version in progress. Audited: who took which list out.
+   */
+  exportDocuments(
+    auth: AuthContext,
+    input: LibraryFilters & { locale?: Locale },
+  ) {
+    const today = dayOf(new Date(), auth.tenant.timeZone);
+    return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
+      const viewer = await viewerOf(tx, auth, this.engine);
+      const locale = await this.fileLocale(tx, auth, input.locale);
+      const { locale: _locale, ...filters } = input;
+      const rows = await this.libraryRows(tx, auth, viewer, filters, today, {
+        limit: EXPORT_MAX_ROWS,
+        offset: 0,
+      }).rows;
+      const owners = await this.namesOf(
+        tx,
+        rows.map((r) => r.ownerId),
+      );
+      const words = EXPORT_VALUES[locale];
+      const h = DOCUMENT_LIST_HEADINGS[locale];
+      const name = (text: Localized | null | undefined) =>
+        pickText(text, locale, auth.tenant.defaultLocale);
+      const body = csv(
+        [
+          h.number,
+          h.title,
+          h.type,
+          h.category,
+          h.responsibleArea,
+          h.owner,
+          h.status,
+          h.confidentiality,
+          h.version,
+          h.effectiveOn,
+          h.nextReviewOn,
+          h.reviewState,
+          h.lastReviewedOn,
+          h.reviewMonths,
+          h.acknowledgementRequired,
+          h.inProgressVersion,
+          h.inProgressStatus,
+        ],
+        rows.map((r) => {
+          const review = reviewState(r, today);
+          const progress = r.full ? r.inProgress : null;
+          return [
+            r.number,
+            name(r.title),
+            name(r.type.name),
+            name(r.category.name),
+            name(r.ownerUnit.name),
+            name(owners.get(r.ownerId)),
+            words[`status.${r.status}`],
+            words[`confidentiality.${r.confidentiality}`],
+            r.version,
+            r.effectiveOn,
+            r.nextReviewOn,
+            review ? words[`review.${review}`] : null,
+            r.lastReviewedOn,
+            r.reviewMonths,
+            r.version === null
+              ? null
+              : words[r.acknowledgementRequired ? 'yes' : 'no'],
+            progress?.version ?? null,
+            progress
+              ? (words[`version.${progress.status}` as ExportValue] ?? progress.status)
+              : null,
+          ];
+        }),
+      );
+      await this.provisioning.audit(
+        tx,
+        auth.tenant.id,
+        auth.user.id,
+        'documents_exported',
+        'tenant',
+        auth.tenant.id,
+        { filters, locale, rows: rows.length },
+      );
+      return { body, fileName: csvFileName('documents', today) };
+    });
+  }
+
+  private async namesOf(tx: Transaction, ids: string[]) {
+    const wanted = [...new Set(ids)];
+    if (wanted.length === 0) return new Map<string, Localized>();
+    const found: { id: string; name: Localized }[] = [];
+    for (const chunk of inChunks(wanted)) {
+      found.push(
+        ...(await tx
+          .select({ id: users.id, name: users.name })
+          .from(users)
+          .where(inArray(users.id, chunk))),
+      );
+    }
+    return new Map(found.map((u) => [u.id, u.name]));
   }
 
   /**
@@ -264,16 +450,21 @@ export class LibraryService {
       // Acknowledgement completion: of the people asked to acknowledge the
       // published version of each active document the caller sees in full
       // (the figures are for those who manage documents or see them all),
-      // the share who have. People no longer active are not counted.
+      // whose due date has passed, the share who have (quality review
+      // condition 6: someone whose time has not run out is not yet behind).
+      // People no longer active are not counted. `live` is the same over
+      // everyone asked, due or not: the figure as it stands today.
       const figures = viewer.fullReach === 'all' || viewer.fullReach.length > 0;
       let acknowledgement = null;
       if (figures) {
+        const due = sql`${documentAcknowledgements.dueOn} < ${today}`;
+        const given = sql`${documentAcknowledgements.acknowledgedAt} is not null`;
         const [row] = await tx
           .select({
-            targeted: count(),
-            acknowledged: sql<number>`count(${documentAcknowledgements.acknowledgedAt})`.mapWith(
-              Number,
-            ),
+            targeted: number(due),
+            acknowledged: number(sql`${due} and ${given}`),
+            liveTargeted: count(),
+            liveAcknowledged: number(given),
           })
           .from(documentAcknowledgements)
           .innerJoin(
@@ -289,6 +480,7 @@ export class LibraryService {
           )
           .where(and(eq(documents.status, 'active'), fullSight(viewer)));
         acknowledgement = {
+          basis: 'due_date_passed' as const,
           targeted: row.targeted,
           acknowledged: row.acknowledged,
           percent: percent(row.acknowledged, row.targeted),
@@ -298,6 +490,11 @@ export class LibraryService {
               ? null
               : (100 * row.acknowledged) / row.targeted >=
                 MEASURES.acknowledgedAtLeast,
+          live: {
+            targeted: row.liveTargeted,
+            acknowledged: row.liveAcknowledged,
+            percent: percent(row.liveAcknowledged, row.liveTargeted),
+          },
         };
       }
       return {
@@ -476,7 +673,12 @@ export class LibraryService {
     auth: AuthContext,
     id: string,
     versionId: string,
-    input: { state?: 'pending' | 'acknowledged' | 'overdue'; page: number; pageSize: number },
+    input: {
+      state?: 'pending' | 'acknowledged' | 'overdue';
+      includeLeft: boolean;
+      page: number;
+      pageSize: number;
+    },
   ) {
     const today = dayOf(new Date(), auth.tenant.timeZone);
     return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
@@ -504,10 +706,15 @@ export class LibraryService {
           ),
         );
       if (!version) throw new NotFoundException();
+      // The figures count those still active; the list of people may
+      // show those who left too, marked, as evidence of what they had done.
       const asked = and(
         eq(documentAcknowledgements.versionId, version.id),
         eq(users.status, 'active'),
       );
+      const listed = input.includeLeft
+        ? eq(documentAcknowledgements.versionId, version.id)
+        : asked;
       const done = sql`${documentAcknowledgements.acknowledgedAt} is not null`;
       const late = sql`${documentAcknowledgements.acknowledgedAt} is null and ${documentAcknowledgements.dueOn} < ${today}`;
       const number = (condition: SQL) =>
@@ -558,11 +765,12 @@ export class LibraryService {
         .select({ matching: count() })
         .from(documentAcknowledgements)
         .innerJoin(users, eq(users.id, documentAcknowledgements.userId))
-        .where(and(asked, state));
+        .where(and(listed, state));
       const unit = alias(orgUnits, 'unit');
       const people = await tx
         .select({
           user: { id: users.id, name: users.name },
+          account: users.status,
           orgUnit: { id: unit.id, name: unit.name },
           assignedAt: documentAcknowledgements.assignedAt,
           dueOn: documentAcknowledgements.dueOn,
@@ -571,7 +779,7 @@ export class LibraryService {
         .from(documentAcknowledgements)
         .innerJoin(users, eq(users.id, documentAcknowledgements.userId))
         .leftJoin(unit, eq(unit.id, users.orgUnitId))
-        .where(and(asked, state))
+        .where(and(listed, state))
         .orderBy(
           sql`${documentAcknowledgements.acknowledgedAt} is not null`,
           asc(documentAcknowledgements.dueOn),
@@ -606,9 +814,226 @@ export class LibraryService {
             ...p,
             orgUnit: p.orgUnit?.id ? p.orgUnit : null,
             overdue: !p.acknowledgedAt && p.dueOn < today,
+            // No longer an active user: kept as evidence, not counted.
+            left: p.account !== 'active',
           })),
           total: matching,
         },
+      };
+    });
+  }
+
+  /**
+   * Who was asked to acknowledge one version, and whether and when they
+   * did, as a CSV file: any version of the document (one in force on a
+   * given day included), and everyone asked, those who have left included
+   * and marked. Only with full sight of the document (403 otherwise, 404
+   * for one the caller may not see at all). Audited.
+   */
+  exportAcknowledgements(
+    auth: AuthContext,
+    id: string,
+    versionId: string,
+    input: { locale?: Locale },
+  ) {
+    const { timeZone, defaultLocale } = auth.tenant;
+    const today = dayOf(new Date(), timeZone);
+    return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
+      const viewer = await viewerOf(tx, auth, this.engine);
+      const doc = await loadDocument(tx, viewer, this.engine, id);
+      if (!doc) throw new NotFoundException();
+      if (!doc.access.full) {
+        throw new ForbiddenException({
+          code: 'missing_permission',
+          permission: 'policies.view_all',
+        });
+      }
+      const [version] = await tx
+        .select({
+          id: documentVersions.id,
+          version: documentVersions.version,
+          status: documentVersions.status,
+        })
+        .from(documentVersions)
+        .where(
+          and(
+            eq(documentVersions.id, versionId),
+            eq(documentVersions.documentId, doc.id),
+          ),
+        );
+      if (!version) throw new NotFoundException();
+      const locale = await this.fileLocale(tx, auth, input.locale);
+      const unit = alias(orgUnits, 'unit');
+      const rows = await tx
+        .select({
+          name: users.name,
+          employeeNumber: users.employeeNumber,
+          account: users.status,
+          unitName: unit.name,
+          assignedAt: documentAcknowledgements.assignedAt,
+          dueOn: documentAcknowledgements.dueOn,
+          acknowledgedAt: documentAcknowledgements.acknowledgedAt,
+          contentHash: signatures.contentHash,
+        })
+        .from(documentAcknowledgements)
+        .innerJoin(users, eq(users.id, documentAcknowledgements.userId))
+        .leftJoin(unit, eq(unit.id, users.orgUnitId))
+        .leftJoin(
+          signatures,
+          eq(signatures.id, documentAcknowledgements.signatureId),
+        )
+        .where(eq(documentAcknowledgements.versionId, version.id))
+        .orderBy(
+          sql`${unit.name} ->> ${defaultLocale} nulls last`,
+          sql`${users.name} ->> ${defaultLocale}`,
+          asc(users.id),
+        )
+        .limit(EXPORT_MAX_ROWS);
+      const words = EXPORT_VALUES[locale];
+      const h = ACKNOWLEDGEMENT_HEADINGS[locale];
+      const name = (text: Localized | null | undefined) =>
+        pickText(text, locale, defaultLocale);
+      const body = csv(
+        [
+          h.number,
+          h.version,
+          h.versionStatus,
+          h.person,
+          h.employeeNumber,
+          h.area,
+          h.account,
+          h.assignedOn,
+          h.dueOn,
+          h.state,
+          h.acknowledgedAt,
+          h.signatureFingerprint,
+        ],
+        rows.map((r) => [
+          doc.number,
+          version.version,
+          words[`version.${version.status}`],
+          name(r.name),
+          r.employeeNumber,
+          r.unitName ? name(r.unitName) : null,
+          words[
+            r.account === 'active'
+              ? 'account.active'
+              : r.account === 'invited'
+                ? 'account.invited'
+                : 'account.left'
+          ],
+          dayOf(r.assignedAt, timeZone),
+          r.dueOn,
+          words[
+            r.acknowledgedAt
+              ? 'ack.acknowledged'
+              : r.dueOn < today
+                ? 'ack.overdue'
+                : 'ack.pending'
+          ],
+          r.acknowledgedAt ? momentIn(r.acknowledgedAt, timeZone) : null,
+          r.contentHash,
+        ]),
+      );
+      await this.provisioning.audit(
+        tx,
+        auth.tenant.id,
+        auth.user.id,
+        'acknowledgements_exported',
+        'document',
+        doc.id,
+        { versionId: version.id, version: version.version, locale, rows: rows.length },
+      );
+      return {
+        body,
+        fileName: csvFileName(
+          `acknowledgements-${doc.number}-v${version.version}`,
+          today,
+        ),
+      };
+    });
+  }
+
+  /**
+   * The acknowledgements overdue among the people the caller has the
+   * figures for (their own unit within the reach of the caller's
+   * `policies.manage` or `policies.view_all`), on the version in force of
+   * each active document: where the weekly digest leads. Most overdue
+   * first. Each names its document by number, and by title only while the
+   * caller may open it, as notifications do.
+   */
+  overdueAcknowledgements(
+    auth: AuthContext,
+    input: { page: number; pageSize: number },
+  ) {
+    const today = dayOf(new Date(), auth.tenant.timeZone);
+    return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
+      const viewer = await viewerOf(tx, auth, this.engine);
+      const unit = alias(orgUnits, 'unit');
+      const where = and(
+        sql`${documentAcknowledgements.acknowledgedAt} is null`,
+        sql`${documentAcknowledgements.dueOn} < ${today}`,
+        eq(documents.status, 'active'),
+        eq(users.status, 'active'),
+        within(viewer.fullReach, users.orgUnitId),
+      );
+      const base = () =>
+        tx
+          .select({ total: count() })
+          .from(documentAcknowledgements)
+          .innerJoin(
+            documents,
+            eq(documents.publishedVersionId, documentAcknowledgements.versionId),
+          )
+          .innerJoin(users, eq(users.id, documentAcknowledgements.userId))
+          .where(where);
+      const [{ total }] = await base();
+      const canOpen = visible(viewer, this.engine);
+      const rows = await tx
+        .select({
+          user: { id: users.id, name: users.name },
+          orgUnit: { id: unit.id, name: unit.name },
+          document: {
+            id: documents.id,
+            number: documents.number,
+          },
+          title: sql<Localized | null>`case when ${canOpen} then ${documents.title} end`,
+          canOpen: sql<boolean>`${canOpen}`,
+          version: {
+            id: documentVersions.id,
+            version: documentVersions.version,
+          },
+          dueOn: documentAcknowledgements.dueOn,
+        })
+        .from(documentAcknowledgements)
+        .innerJoin(
+          documents,
+          eq(documents.publishedVersionId, documentAcknowledgements.versionId),
+        )
+        .innerJoin(
+          documentVersions,
+          eq(documentVersions.id, documentAcknowledgements.versionId),
+        )
+        .innerJoin(users, eq(users.id, documentAcknowledgements.userId))
+        .leftJoin(unit, eq(unit.id, users.orgUnitId))
+        .where(where)
+        .orderBy(
+          asc(documentAcknowledgements.dueOn),
+          asc(documents.number),
+          sql`${users.name} ->> ${auth.tenant.defaultLocale}`,
+          asc(users.id),
+        )
+        .limit(input.pageSize)
+        .offset((input.page - 1) * input.pageSize);
+      return {
+        today,
+        items: rows.map(({ title, canOpen: open, ...r }) => ({
+          ...r,
+          orgUnit: r.orgUnit?.id ? r.orgUnit : null,
+          document: { ...r.document, title: open ? title : null, canOpen: open },
+          daysOverdue: daysBetween(r.dueOn, today),
+        })),
+        total,
       };
     });
   }

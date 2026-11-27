@@ -92,3 +92,23 @@ export function fitsLanguages(
     (!required || used.includes(defaultLocale))
   );
 }
+
+/**
+ * A client's text in one language: that language, else the client's
+ * default, else whichever it has. For what the API writes out itself (a
+ * file); screens choose with `pick()` in the web app.
+ */
+export function pickText(
+  text: Localized | null | undefined,
+  locale: string,
+  defaultLocale: string,
+): string {
+  if (!text) return '';
+  const own = text as Record<string, string | undefined>;
+  return (
+    own[locale] ??
+    own[defaultLocale] ??
+    Object.values(own).find((v) => !!v) ??
+    ''
+  );
+}

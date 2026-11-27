@@ -194,3 +194,25 @@ export function addMonths(day: Day, months: number): Day {
 export function daysBetween(from: Day, to: Day): number {
   return Math.round((parseDay(to) - parseDay(from)) / DAY_MS);
 }
+
+/** The wall-clock date and time in this time zone, as `YYYY-MM-DD HH:MM`. */
+export function momentIn(moment: Date, timeZone: string): string {
+  return new Date(wallTime(moment.getTime(), timeZone))
+    .toISOString()
+    .slice(0, 16)
+    .replace('T', ' ');
+}
+
+/**
+ * The ISO 8601 week a day is in, as `2026-W48`: weeks start on Monday, and
+ * the first week of a year is the one with its first Thursday.
+ */
+export function isoWeekOf(day: Day): string {
+  const date = parseDay(day);
+  const weekday = (new Date(date).getUTCDay() + 6) % 7;
+  // The Thursday of the same week decides the year.
+  const thursday = date + (3 - weekday) * DAY_MS;
+  const year = new Date(thursday).getUTCFullYear();
+  const week = 1 + Math.floor((thursday - Date.UTC(year, 0, 1)) / (7 * DAY_MS));
+  return `${year}-W${String(week).padStart(2, '0')}`;
+}

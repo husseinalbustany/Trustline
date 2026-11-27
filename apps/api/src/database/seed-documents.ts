@@ -43,19 +43,19 @@ const PEOPLE = [
   {
     key: 'owner',
     email: 'document.owner@example.invalid',
-    name: t('Example document owner', 'مالك الوثائق (مثال)', 'Responsable documentaire (exemple)'),
+    name: t('Example document owner', 'المسؤول عن الوثائق (مثال)', 'Responsable documentaire (exemple)'),
     role: 'quality_officer',
   },
   {
     key: 'reviewer',
     email: 'document.reviewer@example.invalid',
-    name: t('Example reviewer', 'المراجع (مثال)', 'Vérificateur (exemple)'),
+    name: t('Example reviewer', 'مُراجِع الوثائق (مثال)', 'Vérificateur (exemple)'),
     role: 'quality_officer',
   },
   {
     key: 'approver',
     email: 'document.approver@example.invalid',
-    name: t('Example approver', 'المعتمِد (مثال)', 'Approbateur (exemple)'),
+    name: t('Example approver', 'مُعتمِد الوثائق (مثال)', 'Approbateur (exemple)'),
     // Approves documents everywhere; not an administrator, which the admin
     // portal gives each client itself.
     role: 'department_manager',
@@ -89,22 +89,22 @@ const EXAMPLES: Example[] = [
     content: {
       purpose: t(
         'To make sure everyone works from the current, approved version of every policy, procedure and work instruction.',
-        'ضمان أن يعمل الجميع وفق النسخة السارية والمعتمدة من كل سياسة وإجراء وتعليمات عمل.',
+        'ضمان أن يعمل الجميع وفق الإصدار الساري والمعتمد من كل سياسة وإجراء وتعليمات عمل.',
         'Garantir que chacun travaille avec la version en vigueur et approuvée de chaque politique, procédure et instruction de travail.',
       ),
       scope: t(
         'All controlled documents of the organization, and everyone who writes, approves or uses them.',
-        'جميع الوثائق الخاضعة للرقابة في المنشأة، وكل من يكتبها أو يعتمدها أو يستخدمها.',
-        'Tous les documents maîtrisés de l’organisation, et toutes les personnes qui les rédigent, les approuvent ou les utilisent.',
+        'جميع الوثائق المضبوطة في المنشأة، وكل من يكتبها أو يعتمدها أو يستخدمها.',
+        'Tous les documents maîtrisés de l’établissement, et toutes les personnes qui les rédigent, les approuvent ou les utilisent.',
       ),
       policy_statements: t(
         '1. Every controlled document has a number, an owner and a review date.\n2. A document is approved before it is published, and the approval is signed.\n3. Only the version in Trustline is current. **Printed copies are not controlled.**\n4. Each document is reviewed by its review date at the latest.',
-        '1. لكل وثيقة خاضعة للرقابة رقم ومالك وتاريخ مراجعة.\n2. تُعتمد الوثيقة قبل نشرها، ويكون الاعتماد موقّعًا.\n3. النسخة الموجودة في Trustline وحدها هي السارية. **النسخ المطبوعة غير خاضعة للرقابة.**\n4. تُراجع كل وثيقة في موعد أقصاه تاريخ مراجعتها.',
-        '1. Chaque document maîtrisé a un numéro, un responsable et une date de révision.\n2. Un document est approuvé avant d’être publié, et l’approbation est signée.\n3. Seule la version dans Trustline est en vigueur. **Les copies imprimées ne sont pas maîtrisées.**\n4. Chaque document est révisé au plus tard à sa date de révision.',
+        '1. لكل وثيقة مضبوطة رقم والمسؤول عنها وتاريخ مراجعة.\n2. تُعتمد الوثيقة قبل نشرها، ويكون الاعتماد موقّعًا.\n3. الإصدار المنشور في Trustline وحده هو الساري. **النسخ المطبوعة غير مضبوطة.**\n4. تُراجع كل وثيقة في موعد أقصاه تاريخ مراجعتها.',
+        '1. Chaque document maîtrisé a un numéro, un responsable et une date de révision.\n2. Un document est approuvé avant d’être publié, et l’approbation est signée.\n3. Seule la version publiée dans Trustline fait foi. **Les copies imprimées ne sont pas maîtrisées.**\n4. Chaque document est révisé au plus tard à sa date de révision.',
       ),
       responsibilities: t(
         '- **Owners** keep their documents current and review them on time.\n- **Reviewers and approvers** check a document before it is published.\n- **Everyone** reads and follows the documents that apply to their work.',
-        '- **المالكون** يحافظون على تحديث وثائقهم ويراجعونها في موعدها.\n- **المراجعون والمعتمدون** يتحققون من الوثيقة قبل نشرها.\n- **الجميع** يقرؤون الوثائق التي تنطبق على عملهم ويلتزمون بها.',
+        '- **المسؤولون عن الوثائق** يحافظون على تحديث وثائقهم ويراجعونها في موعدها.\n- **المراجعون والمعتمدون** يتحققون من الوثيقة قبل نشرها.\n- **الجميع** يقرؤون الوثائق التي تنطبق على عملهم ويلتزمون بها.',
         '- **Les responsables** tiennent leurs documents à jour et les révisent à temps.\n- **Les vérificateurs et les approbateurs** contrôlent un document avant sa publication.\n- **Chacun** lit et applique les documents qui concernent son travail.',
       ),
       references: t('ISO 9001 7.5', 'ISO 9001 7.5', 'ISO 9001 7.5'),
@@ -114,29 +114,29 @@ const EXAMPLES: Example[] = [
     type: 'procedure',
     category: 'SAF',
     number: 'PRC-SAF-001',
-    title: t('Reporting a hazard', 'الإبلاغ عن الأخطار', 'Signalement d’un danger'),
+    title: t('Reporting a hazard', 'الإبلاغ عن مصادر الخطر', 'Signalement d’un danger'),
     state: 'published_with_review',
     acknowledgementRequired: true,
     effectiveDaysAgo: 90,
     content: {
       purpose: t(
         'To report a hazard as soon as it is seen, so that it is dealt with before anyone is harmed.',
-        'الإبلاغ عن الخطر فور ملاحظته، لمعالجته قبل أن يتضرر أي شخص.',
-        'Signaler un danger dès qu’il est vu, pour qu’il soit traité avant que quiconque ne soit blessé.',
+        'الإبلاغ عن مصدر الخطر فور ملاحظته، لمعالجته قبل أن يتضرر أي شخص.',
+        'Signaler un danger dès qu’il est repéré, pour qu’il soit traité avant que quiconque ne soit blessé.',
       ),
       scope: t(
         'Everyone who works for or on behalf of the organization, on any site.',
-        'كل من يعمل لدى المنشأة أو نيابة عنها، في أي موقع.',
-        'Toute personne qui travaille pour l’organisation ou en son nom, sur tous les sites.',
+        'كل من يعمل لدى المنشأة أو نيابة عنها، في أي مرفق من مرافقها.',
+        'Toute personne qui travaille pour l’établissement ou en son nom, sur tous les sites.',
       ),
       responsibilities: t(
         '- **Whoever sees a hazard** makes the area safe if they can, and reports it.\n- **The manager of the area** decides what is done and by when.',
-        '- **من يلاحظ الخطر** يؤمّن المكان إن استطاع، ويبلّغ عنه.\n- **مدير المكان** يقرر ما يجب فعله وموعده.',
+        '- **من يلاحظ الخطر** يؤمّن المكان إن استطاع، ويبلّغ عنه.\n- **المسؤول عن المكان** يقرر ما يجب فعله وموعده.',
         '- **Qui voit un danger** sécurise la zone s’il le peut, et le signale.\n- **Le responsable de la zone** décide de ce qui est fait et dans quel délai.',
       ),
       steps: t(
         '1. Make the area safe if you can do so without risk.\n2. Report the hazard in Trustline, saying where it is and what you saw.\n3. Tell the manager of the area.\n4. Follow the report until it is closed.',
-        '1. أمّن المكان إن أمكنك ذلك دون خطر.\n2. أبلغ عن الخطر في Trustline مع ذكر مكانه وما رأيته.\n3. أخبر مدير المكان.\n4. تابع البلاغ حتى إغلاقه.',
+        '1. أمّن المكان إن أمكنك ذلك دون خطر.\n2. أبلغ عن الخطر في Trustline مع ذكر مكانه وما رأيته.\n3. أخبر المسؤول عن المكان.\n4. تابع البلاغ حتى إغلاقه.',
         '1. Sécurisez la zone si vous pouvez le faire sans risque.\n2. Signalez le danger dans Trustline en indiquant où il se trouve et ce que vous avez vu.\n3. Prévenez le responsable de la zone.\n4. Suivez le signalement jusqu’à sa clôture.',
       ),
       records: t(
@@ -149,13 +149,13 @@ const EXAMPLES: Example[] = [
       content: {
         steps: t(
           '1. Make the area safe if you can do so without risk.\n2. Report the hazard in Trustline straight away, saying where it is and what you saw.\n3. Tell the manager of the area in person.\n4. Follow the report until it is closed.',
-          '1. أمّن المكان إن أمكنك ذلك دون خطر.\n2. أبلغ عن الخطر في Trustline فورًا مع ذكر مكانه وما رأيته.\n3. أخبر مدير المكان شخصيًا.\n4. تابع البلاغ حتى إغلاقه.',
+          '1. أمّن المكان إن أمكنك ذلك دون خطر.\n2. أبلغ عن الخطر في Trustline فورًا مع ذكر مكانه وما رأيته.\n3. أخبر المسؤول عن المكان شخصيًا.\n4. تابع البلاغ حتى إغلاقه.',
           '1. Sécurisez la zone si vous pouvez le faire sans risque.\n2. Signalez immédiatement le danger dans Trustline en indiquant où il se trouve et ce que vous avez vu.\n3. Prévenez en personne le responsable de la zone.\n4. Suivez le signalement jusqu’à sa clôture.',
         ),
       },
       changeSummary: t(
         'Hazards are reported straight away, and the manager of the area is told in person.',
-        'يُبلَّغ عن الخطر فورًا، ويُخبَر مدير المكان شخصيًا.',
+        'يُبلَّغ عن مصدر الخطر فورًا، ويُخبَر المسؤول عن المكان شخصيًا.',
         'Les dangers sont signalés immédiatement, et le responsable de la zone est prévenu en personne.',
       ),
     },
@@ -199,7 +199,7 @@ const EXAMPLES: Example[] = [
       scope: t(
         'Complaints from anyone the organization serves, however they are made.',
         'الشكاوى الواردة من أي شخص تخدمه المنشأة، بأي وسيلة قُدّمت.',
-        'Les réclamations de toute personne que l’organisation sert, quelle que soit la façon dont elles sont faites.',
+        'Les réclamations de toute personne bénéficiant des services de l’établissement, quel que soit le moyen utilisé.',
       ),
       responsibilities: t(
         '- **Whoever receives a complaint** records it the same day.\n- **The quality team** makes sure it is answered.',
@@ -208,7 +208,7 @@ const EXAMPLES: Example[] = [
       ),
       steps: t(
         '1. Record the complaint and thank the person who made it.\n2. Acknowledge it within two working days.\n3. Look into it and answer within twenty working days.\n4. Record what was learned.',
-        '1. سجّل الشكوى واشكر مقدّمها.\n2. أكّد استلامها خلال يومي عمل.\n3. ادرسها ورُدّ عليها خلال عشرين يوم عمل.\n4. سجّل ما تم تعلّمه.',
+        '1. سجّل الشكوى واشكر مقدّمها.\n2. أكّد استلامها خلال يومي عمل.\n3. ادرسها ورُدّ عليها خلال عشرين يوم عمل.\n4. سجّل الدروس المستفادة.',
         '1. Enregistrez la réclamation et remerciez son auteur.\n2. Accusez-en réception sous deux jours ouvrés.\n3. Instruisez-la et répondez sous vingt jours ouvrés.\n4. Consignez les enseignements tirés.',
       ),
     },
@@ -226,16 +226,16 @@ const EXAMPLES: Example[] = [
       purpose: t(
         'To protect the organization’s information from loss, misuse and disclosure.',
         'حماية معلومات المنشأة من الفقد وسوء الاستخدام والإفصاح.',
-        'Protéger les informations de l’organisation contre la perte, le mauvais usage et la divulgation.',
+        'Protéger les informations de l’établissement contre la perte, le mauvais usage et la divulgation.',
       ),
       scope: t(
         'All information the organization holds, in any form, and everyone who uses it.',
         'جميع المعلومات التي تحتفظ بها المنشأة بأي شكل، وكل من يستخدمها.',
-        'Toutes les informations détenues par l’organisation, sous toutes leurs formes, et toutes les personnes qui les utilisent.',
+        'Toutes les informations détenues par l’établissement, sous toutes leurs formes, et toutes les personnes qui les utilisent.',
       ),
       policy_statements: t(
         '1. Information is shared only with those who need it for their work.\n2. Passwords are never shared or written down.\n3. A lost device or a suspected breach is reported at once.',
-        '1. لا تُشارك المعلومات إلا مع من يحتاجها لعمله.\n2. لا تُشارك كلمات المرور ولا تُكتب أبدًا.\n3. يُبلَّغ فورًا عن فقد أي جهاز أو الاشتباه في أي اختراق.',
+        '1. لا تُشارك المعلومات إلا مع من يحتاج إليها في عمله.\n2. لا تُشارك كلمات المرور ولا تُكتب أبدًا.\n3. يُبلَّغ فورًا عن فقد أي جهاز أو الاشتباه في أي اختراق.',
         '1. Les informations ne sont partagées qu’avec ceux qui en ont besoin pour leur travail.\n2. Les mots de passe ne sont jamais partagés ni écrits.\n3. La perte d’un appareil ou un soupçon de violation est signalé immédiatement.',
       ),
       responsibilities: t(
