@@ -30,6 +30,7 @@ the same transaction. It is sent within about a minute.
 | `incident_assigned` | always | the person assigned | The incident's closing deadline is now that person's. They cannot work on it until they know about it. |
 | `sign_off_requested` | always | those who may sign it off | A sentinel event or death cannot be closed until someone else signs. The closing deadline keeps running while it waits. |
 | `document_step_assigned` | always | the assignees of the step | An approval route waits on each step in turn, and every step has a due date. Nobody else can decide it, and the steps after it cannot start. |
+| `review_approval_requested` | always | those who sign the "no change" review (business decision 6) | As an approval step: the document's next review date waits on their signature. |
 
 The other kinds are not sent immediately. Either they are not someone's
 urgent work, or they come too often to be emails:
@@ -151,7 +152,18 @@ was queued:
    `.localhost`). The outbox keeps those, since it sends nothing.
 3. **The person has not switched that kind off.** Each person has two
    switches, both on by default: `immediate` (the immediate emails) and
-   `digest` (the daily digest and the weekly one).
+   `digest` (the daily digest and the weekly one). Some immediate emails
+   are sent whatever the person's switch says (business decision 4): the
+   serious-incident and sentinel alerts (`incident_reported` and
+   `incident_handed_over` when serious, `sentinel_flagged`) to those who
+   triage, and approval steps to those assigned them (`document_step_assigned`,
+   and `review_approval_requested`, a "no change" review awaiting the
+   Approving authority). The organization's switch still stops everything.
+   `GET /me/notification-preferences` answers `alwaysOn: [{ emails, reason }]`
+   (`serious_incident_alerts` / `triages`, `approval_steps` /
+   `decides_approval_steps`). An unsubscribe link switches the immediate
+   emails off but not these, and its pages say so, in the same words for
+   everyone.
 4. **The module is on** (section 4).
 
 **Unsubscribe link.** Every email has one, for its own kind (immediate or

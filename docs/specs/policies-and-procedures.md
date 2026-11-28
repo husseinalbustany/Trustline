@@ -1281,3 +1281,104 @@ Accepted as recommended, on 28 November 2026.
     figures for today are accepted for the pilot. A side-by-side bilingual
     PDF and figures over time come with the reports work
     (`reports-and-measures.md`).
+
+## Built: the business decisions after quality review 3
+
+What the API built of decisions 1, 4, 5, 6, 8 and 9. The screens are the
+web engineer's. Migration 0053 is generated and additive: a table, columns,
+enum values and checks. Migration 0054 is custom SQL: grants, a rule that
+keeps a confirmation once given, backfills, and the changes to existing
+clients, each audited per client. Every new route answers:
+- 401 without a session;
+- 403 without its permission;
+- 404 for a record of another client;
+- 400 for anything but its strict input.
+
+1. **Who imports.**
+   - **The permission.** `policies.import`, for the whole organization, is
+     needed by every import route (`POST /documents/import`, `POST /imports`,
+     `POST /imports/check`) and for the 2 MB body.
+   - **Who holds it.** The built-in Quality officer holds it; the
+     Administrator does not. Migration 0054 gave it to every client's
+     built-in Quality officer, audited (`built_in_roles_changed_by_system`).
+   - **Who may give it.** Someone who manages documents for a place may
+     give `policies.import` there without holding it, so an administrator
+     can still make someone a Quality officer. Never themselves: nobody
+     changes their own access.
+   - **The register** stays for those who manage documents for the whole
+     organization.
+   - **The owner's confirmation.** An imported document awaits its owner's
+     confirmation, due 30 days after it is imported. The owner confirms it
+     with `POST /documents/:id/confirm-import` (`{ password, revision }`), a
+     signature with meaning `import_confirmed` over the imported version and
+     the importer's signature of it. Audited (`import_confirmed`).
+     - Refusals: 403 `not_owner`, 409 `import_already_confirmed`,
+       `not_imported`, `not_active`, `stale_document`.
+     - An importer who is the owner confirms it by importing it (`byImport`).
+     - The owner's notice of the import says the day it is due.
+     - The daily check reminds the owner and the importer 7 days before the
+       due day, and once it is overdue, each once
+       (`import_confirmation_due`, `data.overdue`).
+     - Where its state shows (`awaiting`, `overdue`, `confirmed`): the
+       document's `importConfirmation`, with the move `confirm_import` for
+       the owner; `imported.confirmation` and
+       `control.approvedBeforeTrustline.ownerConfirmation` on the version;
+       the register's `confirmation` and its three columns; and the master
+       list's last column.
+   - **Imports made before.** Migration 0054 made them due 30 days after
+     they were made, and confirmed by import where the importer is the
+     owner.
+4. **Compulsory emails** (`email.md`).
+5. **The language that applies, per document.**
+   - `PATCH /documents/:id` takes `authoritativeLocale`: one of the
+     client's languages (400 `language_mismatch`, `field:
+     'authoritativeLocale'`), or null for the organization's setting.
+   - Audited in the document's history, with `authoritative` and
+     `versionsInProgress` when the language that stands changes. The answer
+     also gives `versionsInProgress`.
+   - Drafts are checked against it, and a version records it when it is
+     sent (as before, from the document's value if it has one). Versions
+     already sent keep theirs.
+6. **A "no change" review that the Approving authority signs too.**
+   - **The setting.** `document_types.no_change_needs_approval`
+     (`noChangeNeedsApproval` on the type routes, audited as a type change)
+     is on for policies and off for the other types: new clients get it
+     from the defaults, existing ones from migration 0054, audited
+     (`document_type_changed_by_system`).
+   - **Asking.** When it is on, the owner's "no change" confirmation (with
+     its signature) becomes a review awaiting approval
+     (`document_review_approvals`, one at a time: 409 `review_pending`). The
+     next review date does not move.
+   - **Who signs.** The holders of the built-in Approving authority for the
+     whole organization or the document's unit or above; where there are
+     none, the Administrators; never the owner who asked. With nobody to
+     sign, 409 `no_review_approver`.
+   - **How they hear of it.** They are told (`review_approval_requested`,
+     in the app and by email at once), and it is in their "Awaiting me"
+     (`GET /approvals` answers `reviews`) and their digest.
+   - **Deciding.** `POST /documents/:id/review/approve` (`{ password,
+     revision }`) signs it (meaning `reviewed_no_change_approved`), records
+     the review (`document_reviews.approved_by`, `approval_signature_id`)
+     and moves the next review date a review period from that day.
+     `POST /documents/:id/review/return` (`{ comment, revision }`) returns
+     it to the owner (`review_returned`). Both need `policies.approve` and
+     being one who signs it (403 `not_review_approver`, `same_person`), and
+     both are audited.
+   - **The answer.** The document gives `reviewNeedsApproval`,
+     `reviewApproval` (the latest, with its comments for its owner, its
+     managers and its approvers), and the moves `approve_review` and
+     `return_review`.
+8. **Retention: acknowledgement records and signatures are kept at least
+   six years after the document is retired, and never deleted earlier.**
+   - Nothing in Trustline deletes or anonymises them, including those of
+     people who have left.
+   - The application role has no DELETE on `document_acknowledgements`,
+     `signatures`, `document_reviews`, `documents` or `users`, so nothing
+     the API does can delete them.
+   - A person who leaves is disabled, never deleted, and acknowledgements
+     point to them without cascade.
+   - The test proves each of these with the application's own connection
+     (`policies-decisions-q3.e2e-spec.ts`).
+   - Deleting after six years, if ever, is a task for later, run as the
+     owner role with its own decision.
+9. **The signing PIN** for people with no password (`identity-signing-pin.md`).

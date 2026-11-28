@@ -27,7 +27,7 @@ import {
 } from '../i18n/locales.js';
 import { PERMISSIONS, type Permission } from './permissions.js';
 import { ProvisioningService } from './provisioning.service.js';
-import { covers, mayGrant } from './scope.js';
+import { mayGrant } from './scope.js';
 import {
   requireEverywhere,
   requirePermission,

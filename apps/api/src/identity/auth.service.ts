@@ -48,7 +48,8 @@ export const SIGNING_PIN_FRESH_MS = 10 * 60_000;
  * or down one at a time (123456, 987654, 890123).
  */
 export function pinTooSimple(pin: string) {
-  const digits = [...pin].map(Number);
+  // Digits only (SIGNING_PIN): one character each.
+  const digits = pin.split('').map(Number);
   const steps = digits.slice(1).map((d, i) => (d - digits[i] + 10) % 10);
   return steps.every((s) => s === 0) || steps.every((s) => s === 1) || steps.every((s) => s === 9);
 }
