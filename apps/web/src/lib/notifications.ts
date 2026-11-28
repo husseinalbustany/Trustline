@@ -155,6 +155,7 @@ const detailOf = {
   import_confirmation_due: "overdue",
   signing_pin_changed: "action",
   external_access_changed: "change",
+  data_export_changed: "change",
 } as const;
 
 /** A sentence, or a set of them by what `data` adds, with `other` as a rest. */

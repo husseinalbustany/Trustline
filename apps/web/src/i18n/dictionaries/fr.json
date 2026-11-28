@@ -45,7 +45,8 @@
       "policiesOverdue": "Confirmations en retard",
       "policiesStepsOverdue": "Étapes d’approbation en retard",
       "policiesSettings": "Paramètres des documents",
-      "audit": "Journal d’audit"
+      "audit": "Journal d’audit",
+      "dataExport": "Exportation des données"
     }
   },
   "dashboard": {
@@ -630,8 +631,19 @@
       "audit_chain_head": "Journal d’audit : la vérification de la semaine est réussie jusqu’à l’entrée {seq}. Son sceau vous a été envoyé par e-⁠mail ; conservez ce message.",
       "ai_provider_changed": "Trustline a changé qui traite les demandes d’IA pour : {features}. Voyez où elles sont traitées désormais.",
       "ai_allowance_warning": "IA, {feature} : {used} utilisés sur les {allowance} du mois. L’allocation repart le {resetsOn}.",
-      "ai_allowance_reached": "IA, {feature} : l’allocation du mois ({allowance}) est épuisée, suspendu jusqu’au {resetsOn}.",
-      "other": "Du nouveau concernant l’incident {reference}."
+      "ai_allowance_reached": "IA, {feature} : l’allocation du mois ({allowance}) est épuisée ; l’IA est suspendue jusqu’au {resetsOn}. La rédaction à la main reste possible.",
+      "other": "Du nouveau concernant l’incident {reference}.",
+      "data_export_changed": {
+        "requested": "Une exportation complète des données de votre établissement a été demandée. Ouvrez-la pour voir qui l’a demandée ; si vous ne l’attendiez pas, refusez-la.",
+        "approved": "Une exportation complète des données de votre établissement a été approuvée.",
+        "refused": "Une exportation complète des données de votre établissement a été refusée.",
+        "cancelled": "Une exportation complète des données de votre établissement a été annulée.",
+        "lapsed": "Une demande d’exportation complète des données a expiré sans approbation.",
+        "ready": "L’exportation complète des données de votre établissement est prête à être téléchargée.",
+        "downloaded": "L’exportation complète des données de votre établissement a été téléchargée.",
+        "failed": "L’exportation complète des données de votre établissement n’a pas pu être préparée.",
+        "other": "L’exportation complète des données de votre établissement a changé."
+      }
     },
     "descriptionGeneral": "Ce qui s’est passé et vous concerne. Une notification ne nomme personne.",
     "emptyGeneral": "Vous n’avez encore aucune notification. Dès qu’il se passe quelque chose qui vous concerne, cela apparaît ici.",
@@ -730,7 +742,7 @@
     "aiFeatures": {
       "drafting": "la rédaction",
       "insights": "les suggestions",
-      "assistant": "l’assistant"
+      "assistant": "l’assistant conversationnel"
     }
   },
   "modulePage": {
@@ -950,7 +962,7 @@
         "users": "Utilisateurs",
         "sites": "Sites",
         "storageMb": "Stockage (Mo)",
-        "aiCreditsPerMonth": "Crédits IA par mois"
+        "aiCreditsPerMonth": "Allocation d’IA mensuelle"
       },
       "extraNames": {
         "sso": "Authentification unique (SSO)",
@@ -1128,7 +1140,7 @@
       "spending": "Limite de dépenses pour tous les clients",
       "spent": "Dépensé en {month} (UTC) : {spent}",
       "limit": "Limite mensuelle, en dollars américains",
-      "limitHelp": "Vide : pas de limite. Atteinte, l’IA de tous les clients est suspendue jusqu’au mois suivant.",
+      "limitHelp": "Laissez vide pour ne fixer aucune limite. Une fois atteinte, l’IA de tous les clients est suspendue jusqu’au mois suivant.",
       "saveLimit": "Enregistrer la limite",
       "limitSaved": "La limite est enregistrée.",
       "connections": "Connexions",
@@ -1182,7 +1194,7 @@
       "features": {
         "drafting": "Rédaction",
         "insights": "Suggestions",
-        "assistant": "Assistant"
+        "assistant": "Assistant conversationnel"
       },
       "cost": "Coût",
       "state": "État",
@@ -1214,15 +1226,15 @@
       "clientLimitHelp": "Vide : pas de limite. Jamais montrée au client.",
       "errors": {
         "invalid_region": "La région ne correspond pas au fournisseur ou au lieu de traitement.",
-        "inference_type_not_offered": "L’API d’Anthropic ne traite pas les demandes dans une seule région.",
+        "inference_type_not_offered": "L’API d’Anthropic ne traite pas les demandes dans une seule région. Choisissez un traitement mondial ou régional.",
         "model_inference_mismatch": "Le modèle {model} ne correspond pas au lieu de traitement : le mondial demande global.…, le régional la zone de la région, l’intra-région le modèle seul.",
-        "credential_env_mismatch": "La variable d’identifiant n’est pas nommée pour ce fournisseur.",
+        "credential_env_mismatch": "La variable d’identifiant n’est pas nommée pour ce fournisseur. Utilisez un nom qui commence par le préfixe de ce fournisseur.",
         "unknown_model": "La connexion ne propose pas le modèle {model}.",
         "name_taken": "Une autre connexion porte déjà ce nom.",
         "connection_in_use": "Des clients utilisent cette connexion ({clients}) : sa région, son traitement ou son identifiant ne peuvent changer, ni elle être désactivée, tant qu’ils n’en changent pas.",
         "model_in_use": "Des clients utilisent le modèle {model} ({clients}) : il ne peut pas être retiré tant qu’ils n’en changent pas.",
-        "unknown_connection": "{feature} : cette connexion n’existe plus.",
-        "connection_inactive": "{feature} : cette connexion est inactive.",
+        "unknown_connection": "{feature} : cette connexion n’existe plus. Choisissez-en une autre.",
+        "connection_inactive": "{feature} : cette connexion est inactive. Choisissez-en une autre.",
         "invalid": "Vérifiez les champs : il manque quelque chose ou un format n’est pas correct.",
         "generic": "Impossible d’enregistrer. Réessayez."
       }
@@ -1540,7 +1552,7 @@
         "sites": "Sites",
         "sitesHelp": "Sites actifs. Les services et les unités ne comptent pas.",
         "storage": "Stockage",
-        "ai": "Crédits IA par mois",
+        "ai": "Allocation d’IA mensuelle",
         "notInUse": "Pas encore comptabilisé",
         "meter": {
           "usedOf": "{used} sur {max}",
@@ -1602,7 +1614,8 @@
       "policies.view_all": "Lire tous les documents, y compris restreints et brouillons, et voir les chiffres de prise de connaissance",
       "policies.import": "Importer les documents existants",
       "audit.view": "Consulter le journal d’audit",
-      "reports.manage": "Corriger les chiffres des rapports et fixer les objectifs et la référence"
+      "reports.manage": "Corriger les chiffres des rapports et fixer les objectifs et la référence",
+      "data.export": "Demander, approuver et télécharger une exportation complète des données de l’établissement"
     },
     "permissionHints": {
       "policies.import": "Détenue par le Responsable qualité. Un administrateur peut la donner sans la détenir.",
@@ -1681,6 +1694,9 @@
         "invalid": "Vérifiez les champs : il manque quelque chose ou un format n’est pas correct.",
         "generic": "Impossible d’enregistrer. Réessayez."
       }
+    },
+    "permissionWarnings": {
+      "data.export": "Cette permission donne accès à tout ce que l’établissement détient dans Trustline : noms des déclarants, commentaires internes, documents restreints et journal d’audit complet. Une exportation complète demande deux titulaires : l’un la demande, l’autre l’approuve. Ne la donnez qu’aux personnes qui répondront des données une fois sorties de Trustline."
     }
   },
   "policies": {
@@ -2386,24 +2402,24 @@
       "signing_pin_unavailable": "Les codes de signature ne peuvent pas être utilisés pour le moment : le serveur n’est pas configuré pour cela. Rien n’a été signé. Prévenez votre administrateur.",
       "signs_with_pin": "Cette personne signe avec un code de signature : aucun mot de passe ne lui est donné par un lien. Réinitialisez plutôt son code de signature.",
       "read_only_access": "Vous avez un accès en lecture seule en tant qu’évaluateur externe : rien n’a été modifié.",
-      "ai_not_offered": "L’IA n’est pas disponible pour cela.",
-      "ai_switched_off": "Votre établissement n’a pas activé l’IA. Vous pouvez toujours rédiger le document vous-même.",
+      "ai_not_offered": "La rédaction avec l’IA n’est pas proposée à votre établissement. Vous pouvez toujours rédiger le document vous-même.",
+      "ai_switched_off": "Votre établissement n’a pas activé l’IA. Demandez à votre administrateur de l’activer, ou rédigez le document vous-même.",
       "ai_allowance_reached": "L’allocation du mois est épuisée ; elle repart le {date}. La rédaction à la main reste possible.",
       "ai_spending_limit": "L’assistant est suspendu, et Trustline a été prévenu. La rédaction à la main reste possible.",
       "ai_unavailable": "L’assistant est indisponible pour le moment ; tout le reste fonctionne. Réessayez dans quelques minutes.",
       "ai_request_too_large": "C’est trop long pour l’assistant. Raccourcissez, puis réessayez.",
-      "subscription_suspended": "Cela n’a pas été fait : les modifications sont suspendues pour le compte de votre établissement.",
+      "subscription_suspended": "Cela n’a pas été fait : les modifications sont suspendues pour le compte de votre établissement. Adressez-vous à votre administrateur.",
       "answers_mismatch": "Chaque question ouverte demande une réponse, ou « Non décidé ». Rechargez la page si les questions ont changé.",
-      "draft_changed": "Cette conversation a changé entre-temps, peut-être dans un autre onglet. Elle est affichée telle qu’elle est maintenant.",
-      "not_asking": "L’assistant a fini de poser ses questions.",
+      "draft_changed": "Cette conversation a changé entre-temps, peut-être dans un autre onglet. Elle est affichée telle qu’elle est maintenant : vérifiez-la, puis réessayez.",
+      "not_asking": "L’assistant a fini de poser ses questions. Rechargez la page pour voir où en est le brouillon.",
       "questions_open": "Répondez d’abord aux questions ouvertes.",
-      "not_ready": "Cette conversation ne peut pas être rédigée maintenant.",
-      "not_drafted": "Il n’y a pas encore de brouillon.",
+      "not_ready": "Cette conversation ne peut pas encore être rédigée : répondez d’abord aux questions ouvertes, ou rechargez la page.",
+      "not_drafted": "Il n’y a pas encore de brouillon. Choisissez d’abord « Rédiger maintenant ».",
       "draft_too_long_for_assistant": "Le brouillon est désormais trop long pour que l’assistant le modifie. Modifiez-le à la main.",
       "unknown_version": "Cette version n’existe plus. Rechargez la page.",
-      "handed_over": "Cette conversation est déjà devenue un document.",
+      "handed_over": "Cette conversation est déjà devenue un document. Ouvrez plutôt le document.",
       "not_ai_draft": "Ce document n’a pas été rédigé avec l’assistant.",
-      "already_owned": "Quelqu’un a déjà pris en charge ce brouillon.",
+      "already_owned": "Quelqu’un a déjà pris en charge ce brouillon. Rechargez la page pour voir qui.",
       "ai_draft_not_owned": "Ce brouillon IA ne peut pas être soumis à vérification tant qu’une personne ne l’a pas pris en charge.",
       "ai_draft_gaps": "Une marque « À décider » figure encore dans : {sections}. Tranchez chaque point, puis soumettez de nouveau."
     },
@@ -2804,13 +2820,13 @@
       "save": "Enregistrer la présentation",
       "saved": "La présentation est enregistrée.",
       "changed": "Quelqu’un d’autre a enregistré cette présentation entre-temps. Rechargez la page, puis réessayez.",
-      "unknownSection": "Une consigne porte sur une section qu’aucun type n’a : {section}.",
+      "unknownSection": "Une consigne porte sur une section qu’aucun type n’a : {section}. Retirez cette consigne, ou ajoutez la section à un type de document.",
       "languageMismatch": "Écrivez uniquement dans les langues de l’établissement.",
       "invalid": "Vérifiez les champs : la couleur est au format #RRGGBB, et le bloc de contrôle a de 1 à 7 champs.",
       "error": "Impossible d’enregistrer. Réessayez."
     },
     "drafting": {
-      "notice": "Rédigé par un assistant IA. Il peut être faux ou incomplet : vérifiez chaque partie au regard du fonctionnement de votre établissement avant de vous y fier. Rien de ce qu’il rédige n’est approuvé ni publié sans intervention humaine.",
+      "notice": "Ce texte a été rédigé par un assistant d’IA. Il peut contenir des erreurs ou des oublis : vérifiez chaque partie au regard du fonctionnement de votre établissement avant de vous y fier. Seule une personne peut approuver ou publier ce qu’il rédige.",
       "aiDraft": "Brouillon IA",
       "aiQuestions": "Questions de l’IA",
       "writeYourself": "La rédiger vous-même",
@@ -2820,7 +2836,7 @@
       "underWay": "Vos brouillons avec l’assistant",
       "lastActivity": "Dernière modification le {time}",
       "status": {
-        "asking": "Questions",
+        "asking": "En attente de vos réponses",
         "ready": "Prêt à rédiger",
         "drafted": "Rédigé",
         "handed_over": "Devenu document"
@@ -2831,7 +2847,7 @@
       "type": "Type de document",
       "languageLabel": "Langue",
       "requestLabel": "De quoi avez-vous besoin ?",
-      "requestHelp": "À quoi elle sert, à qui elle s’applique, et ce qu’elle doit couvrir. Ne nommez pas de patients.",
+      "requestHelp": "À quoi elle sert, à qui elle s’applique, et ce qu’elle doit couvrir. N’écrivez le nom de personne.",
       "keptFor": "Cette conversation n’appartient qu’à vous. Transformée en document, elle est conservée avec lui. Abandonnée, elle est supprimée le lendemain ; inutilisée pendant 90 jours, elle est supprimée.",
       "start": "Commencer",
       "thinking": "L’assistant travaille…",
@@ -2846,10 +2862,10 @@
       "questionsTitle": "L’assistant demande",
       "reason": "Pourquoi il le demande : {reason}",
       "notDecided": "Non décidé",
-      "emptyIsUndecided": "Une question laissée vide compte comme non décidée : le brouillon la marque comme un point à compléter.",
+      "emptyIsUndecided": "Une question laissée vide compte comme non décidée : le brouillon la marque comme un point à décider.",
       "submitAnswers": "Envoyer les réponses",
       "draftNow": "Rédiger maintenant",
-      "noQuestionsYet": "L’assistant n’a pas encore posé ses questions. Redemandez, ou rédigez maintenant : les points ouverts seront marqués à compléter.",
+      "noQuestionsYet": "L’assistant n’a pas encore posé ses questions. Redemandez, ou rédigez maintenant : les points ouverts seront marqués comme points à décider.",
       "askAgain": "Reposer les questions",
       "readyToDraft": "L’assistant en sait assez pour rédiger.",
       "discard": "Abandonner cette conversation",
@@ -2981,7 +2997,7 @@
       "measures_recomputed_by_system": "Recalcul des chiffres par une mise à jour de Trustline",
       "ai_use_changed": "Activation ou désactivation de l’IA",
       "ai_settings_changed": "Modification des réglages d’IA par Trustline",
-      "organization_profile_updated": "Modification du profil de l’organisation",
+      "organization_profile_updated": "Modification du profil de l’établissement",
       "document_design_updated": "Modification de la présentation des documents",
       "ai_draft_started": "Début d’une rédaction avec l’assistant",
       "ai_draft_questions_asked": "Questions posées par l’assistant",
@@ -2990,7 +3006,17 @@
       "ai_draft_discarded": "Abandon d’un brouillon de l’assistant",
       "ai_draft_handed_over": "Transformation d’un brouillon de l’assistant en document",
       "ai_draft_ownership_taken": "Prise en charge d’un brouillon rédigé par l’IA",
-      "ai_drafts_removed_by_system": "Suppression d’anciens brouillons de l’assistant"
+      "ai_drafts_removed_by_system": "Suppression d’anciens brouillons de l’assistant",
+      "data_export_requested": "Demande d’exportation complète des données",
+      "data_export_approved": "Approbation de l’exportation complète des données",
+      "data_export_refused": "Refus de l’exportation complète des données",
+      "data_export_cancelled": "Annulation de l’exportation complète des données",
+      "data_export_lapsed": "Expiration de la demande d’exportation complète, sans approbation",
+      "data_export_ready": "Mise à disposition de l’exportation complète des données",
+      "data_export_failed": "Échec de la préparation de l’exportation complète des données",
+      "data_export_downloaded": "Téléchargement de l’exportation complète des données",
+      "data_export_expired": "Expiration de l’exportation complète des données",
+      "data_export_approved_by_trustline": "Approbation de l’exportation complète des données par Trustline, sur demande écrite"
     },
     "areas": {
       "sign_in": "Connexion",
@@ -3128,7 +3154,7 @@
     "description": "Les indicateurs suivis par l’établissement, mois par mois, au regard de leurs objectifs.",
     "loading": "Chargement des chiffres…",
     "loadError": "Impossible de charger les chiffres. Rechargez la page.",
-    "noAccess": "Les rapports sont réservés aux personnes qui détiennent « Consulter les rapports ».",
+    "noAccess": "Les rapports sont réservés aux personnes qui détiennent « Consulter les rapports et tableaux de bord ».",
     "unitGone": "Vous ne pouvez pas consulter les chiffres de cette unité. Choisissez-en une autre.",
     "noMeasures": "Aucun indicateur pour ce choix : ils dépendent des modules de votre établissement et de ce que vous pouvez voir pour cette unité.",
     "settingsLink": "Paramètres des rapports",
@@ -3182,7 +3208,7 @@
       "unknown": "Non évalué"
     },
     "targetSource": {
-      "business": "l’objectif de référence",
+      "business": "l’objectif par défaut",
       "client": "l’objectif de votre établissement",
       "baseline": "votre référence",
       "first_months": "la moyenne des trois premiers mois"
@@ -3190,7 +3216,7 @@
     "trend": {
       "title": "Mois par mois",
       "none": "Aucun mois n’a encore été relevé sur cette période.",
-      "chart": "{measure}, mois par mois : de {first} à {last}",
+      "chart": "{measure}, mois par mois : {first} – {last}",
       "point": "{month} : {value}, {met}",
       "targetLine": "Objectif",
       "figures": "Chiffres de chaque mois",
@@ -3202,7 +3228,7 @@
       "met": "Objectif atteint",
       "how": "Mode de relevé",
       "revisions": "Révisions",
-      "openRevisions": "Révisions de {month}",
+      "openRevisions": "Historique des chiffres : {month}",
       "noFigures": "Les mois de cette période n’ont pas de chiffre : rien n’était dû ni compté."
     },
     "status": {
@@ -3230,7 +3256,7 @@
       "named": "Nominatives : {count}"
     },
     "history": {
-      "title": "Révisions de {month}",
+      "title": "Historique des chiffres : {month}",
       "loading": "Chargement des révisions…",
       "loadError": "Impossible de charger les révisions. Réessayez.",
       "revision": "Révision {revision}",
@@ -3251,8 +3277,8 @@
       "loading": "Chargement…",
       "loadError": "Impossible de charger les paramètres. Rechargez la page.",
       "targets": "Objectifs",
-      "targetsHelp": "Laissez un objectif vide pour utiliser l’objectif de référence.",
-      "business": "Objectif de référence : {value}",
+      "targetsHelp": "Laissez un objectif vide pour utiliser l’objectif par défaut.",
+      "business": "Objectif par défaut : {value}",
       "inForce": "En vigueur : {value}",
       "secondsUnit": "En secondes, de 1 à 3600",
       "percentUnit": "En pourcentage, de 0 à 100",
@@ -3288,17 +3314,17 @@
         "done": "Recalculé. Chaque chiffre a maintenant une nouvelle révision :",
         "line": "{measure}, {unit} : {from} → {to} (révision {revision})",
         "noSnapshot": "Les chiffres de ce mois n’ont jamais été relevés : il n’y a rien à recalculer.",
-        "notFound": "Un indicateur ou une unité choisi ne fait pas partie de ce que vous pouvez voir.",
+        "notFound": "Un des indicateurs ou des unités choisis ne fait pas partie de ce que vous pouvez voir.",
         "error": "Impossible de recalculer. Réessayez."
       }
     }
   },
   "ai": {
     "title": "IA",
-    "intro": "Ce que l’assistant IA peut faire pour votre établissement, qui traite ses demandes et où, et la part utilisée de l’allocation du mois.",
+    "intro": "Ce que l’assistant d’IA peut faire pour votre établissement, qui traite ses demandes et où, et la part utilisée de l’allocation du mois.",
     "loading": "Chargement…",
     "loadError": "Impossible de charger les réglages d’IA. Rechargez la page.",
-    "notIncluded": "L’abonnement de votre établissement ne comprend pas l’assistant IA.",
+    "notIncluded": "L’abonnement de votre établissement ne comprend pas l’assistant d’IA.",
     "notAvailable": "Trustline ne propose pas encore l’IA à votre établissement.",
     "noAccess": "Activer ou désactiver l’IA est réservé aux personnes qui gèrent les paramètres de l’établissement.",
     "error": "Impossible d’enregistrer. Réessayez.",
@@ -3310,15 +3336,15 @@
       "bedrock": "Amazon Bedrock"
     },
     "inference": {
-      "in_region": "uniquement dans la région {region}",
-      "regional": "dans la zone géographique de {region}",
+      "in_region": "uniquement {region}",
+      "regional": "dans la même zone géographique, {region}",
       "global": "dans n’importe quelle région du fournisseur"
     },
     "regions": {
-      "me-central-1": "les Émirats arabes unis",
-      "global": "toute région",
-      "us": "les États-Unis",
-      "eu": "l’Union européenne"
+      "me-central-1": "aux Émirats arabes unis",
+      "global": "dans toute région",
+      "us": "aux États-Unis",
+      "eu": "dans l’Union européenne"
     },
     "switch": {
       "title": "L’interrupteur de votre établissement",
@@ -3338,7 +3364,7 @@
     "features": {
       "drafting": "Rédaction des politiques et procédures",
       "insights": "Suggestions sur les dossiers",
-      "assistant": "Assistant"
+      "assistant": "Assistant conversationnel"
     },
     "units": {
       "drafting": "brouillons",
@@ -3422,9 +3448,9 @@
     "staffCount": "Effectif",
     "siteCount": "Sites",
     "organizationType": "Type d’établissement",
-    "organizationTypeHelp": "En quelques mots, par exemple : un hôpital général avec un service d’urgences.",
+    "organizationTypeHelp": "En quelques mots, par exemple : un hôpital général, ou une usine agroalimentaire à trois lignes.",
     "measures": "Chiffres qui le décrivent",
-    "measuresHelp": "Jusqu’à 10, par exemple les lits ou les blocs opératoires.",
+    "measuresHelp": "Jusqu’à 10, par exemple des lits, des lignes de production ou des sites.",
     "measureLabel": "Ce qui est compté",
     "measureValue": "Combien",
     "provided": "Services assurés",
@@ -3472,5 +3498,114 @@
     "fromSettingsHelp": "Ils se règlent ailleurs, et sont montrés ici pour voir le profil en entier.",
     "languages": "Langues : {languages}",
     "defaultLanguage": "Langue principale : {language}"
+  },
+  "dataExport": {
+    "title": "Exportation complète des données",
+    "description": "Tout ce que l’établissement détient dans Trustline, dans une seule archive : en fin de contrat, ou lorsque l’établissement demande ses données.",
+    "noAccess": "L’exportation complète des données est réservée aux personnes qui détiennent « Demander, approuver et télécharger une exportation complète des données de l’établissement » pour tout l’établissement.",
+    "loading": "Chargement…",
+    "formerUser": "un ancien utilisateur",
+    "password": "Votre mot de passe",
+    "requested": "Demande envoyée. Une autre personne qui détient cette permission doit maintenant l’approuver.",
+    "cancelButton": "Annuler",
+    "reasons": {
+      "on_request": "L’établissement a demandé ses données",
+      "contract_end": "Fin du contrat"
+    },
+    "request": {
+      "title": "Demander une exportation complète",
+      "everything": "Elle contient tout : noms des déclarants, commentaires internes, documents restreints, informations sur les personnes et journal d’audit complet.",
+      "twoPeople": "Une deuxième personne qui détient cette permission doit l’approuver avant que quoi que ce soit ne soit préparé.",
+      "responsibility": "Une fois le fichier téléchargé, votre établissement en est responsable en tant que responsable du traitement de ces données : conservez-le là où seules les personnes qui en ont besoin peuvent l’ouvrir, et supprimez-le quand il n’est plus utile.",
+      "onlyOne": "Une exportation est déjà en cours. Une seule peut être demandée à la fois.",
+      "reason": "Motif",
+      "note": "Remarque",
+      "noteHelp": "Facultative. Visible par la personne qui approuve.",
+      "language": "Langue de l’archive",
+      "languageHelp": "Les fichiers LISEZ-MOI, les en-têtes et les pages des documents sont dans cette langue.",
+      "passwordHelp": "La demande est signée avec votre mot de passe.",
+      "submit": "Demander l’exportation"
+    },
+    "list": {
+      "title": "Exportations",
+      "empty": "Aucune exportation n’a encore été demandée.",
+      "requested": "Demandée par {name}, {time}",
+      "language": "en {language}",
+      "lapses": "Expire le {time} si personne ne l’approuve.",
+      "approved": "Approuvée par {name}, {time}",
+      "refused": "Refusée par {name}, {time} :",
+      "cancelled": "Annulée, {time}",
+      "phase": "En préparation : {phase}",
+      "failed": "Elle n’a pas pu être préparée. Trustline a été prévenu ; redemandez-la plus tard.",
+      "ready": "Prête : {size}. Téléchargeable jusqu’au {expires}, encore {left} fois.",
+      "snapshot": "Données arrêtées au {time}",
+      "downloads": "Téléchargements effectués : {count}",
+      "sha": "Empreinte SHA-256 de l’archive :"
+    },
+    "status": {
+      "requested": "En attente d’approbation",
+      "approved": "Approuvée",
+      "refused": "Refusée",
+      "lapsed": "Expirée sans approbation",
+      "cancelled": "Annulée",
+      "making": "En préparation",
+      "ready": "Prête au téléchargement",
+      "failed": "Échec de la préparation",
+      "expired": "Expirée"
+    },
+    "phases": {
+      "data": "dossiers",
+      "documents": "documents",
+      "archive": "l’archive"
+    },
+    "approve": {
+      "open": "Approuver",
+      "intro": "Approuver permet de préparer l’archive. Signez avec votre mot de passe.",
+      "submit": "Approuver l’exportation",
+      "done": "Approuvée. L’archive est en préparation."
+    },
+    "refuse": {
+      "open": "Refuser",
+      "reason": "Motif du refus",
+      "reasonHelp": "Obligatoire. La personne qui a demandé le voit.",
+      "submit": "Refuser l’exportation",
+      "done": "Refusée."
+    },
+    "cancel": {
+      "open": "Annuler la demande",
+      "done": "Annulée."
+    },
+    "download": {
+      "open": "Télécharger",
+      "intro": "Le téléchargement est signé avec votre mot de passe, et enregistré dans le journal d’audit.",
+      "submit": "Télécharger l’archive",
+      "working": "Téléchargement…",
+      "done": "Téléchargée. Comparez son empreinte à celle affichée ici."
+    },
+    "check": {
+      "title": "Comment vérifier une archive",
+      "fingerprint": "1. Son empreinte SHA-256 doit correspondre à celle affichée avec l’exportation. Sur la plupart des ordinateurs :",
+      "command": "sha256sum <archive>.zip",
+      "manifest": "2. À l’intérieur, manifest.sig est la signature de manifest.json par Trustline. Vérifiez-la avec la clé d’exportation publiée par Trustline, jamais avec une clé trouvée dans l’archive.",
+      "files": "3. manifest.json liste chaque fichier avec son empreinte ; le LISEZ-MOI de l’archive explique comment vérifier chacun.",
+      "keys": "Télécharger les clés d’exportation de Trustline"
+    },
+    "errors": {
+      "wrong_password": "Ce mot de passe n’est pas le bon. Rien n’a été fait. Saisissez-le de nouveau.",
+      "password_locked": "Trop de mots de passe erronés : votre compte est bloqué pendant 15 minutes. Rien n’a été fait.",
+      "language_mismatch": "Choisissez une des langues de l’établissement.",
+      "export_in_progress": "Une exportation est déjà en cours. Attendez qu’elle soit terminée, refusée ou annulée.",
+      "same_person": "Vous avez demandé cette exportation : une autre personne doit l’approuver ou la refuser.",
+      "lapsed": "Cette demande a expiré sans approbation. Demandez une nouvelle exportation.",
+      "stale_export": "Cette exportation a changé entre-temps. Elle est affichée telle qu’elle est maintenant : vérifiez-la, puis réessayez.",
+      "not_requester": "Seule la personne qui a fait la demande peut l’annuler.",
+      "not_yours": "Vous ne pouvez pas télécharger cette exportation.",
+      "not_ready": "Cette exportation n’est pas encore prête. Attendez qu’elle le soit.",
+      "download_limit": "Cette exportation a été téléchargée autant de fois que permis. Demandez-en une nouvelle si vous en avez encore besoin.",
+      "expired": "Cette exportation a expiré et a été supprimée. Demandez-en une nouvelle.",
+      "notFound": "Cette exportation n’existe plus. Rechargez la page.",
+      "invalid": "Vérifiez les champs : il manque quelque chose ou un texte est trop long.",
+      "generic": "Impossible d’effectuer cette action. Réessayez."
+    }
   }
 }

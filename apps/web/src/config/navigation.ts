@@ -16,6 +16,7 @@ import {
   Users,
   type LucideIcon,
   ScrollText,
+  Archive,
 } from "lucide-react";
 import type { Dictionary } from "@/i18n/dictionaries";
 import type { ModuleKey as ModuleOrCore } from "./modules";
@@ -31,6 +32,7 @@ export type ModuleKey =
   | "organization"
   | "users"
   | "audit"
+  | "dataExport"
   | "settings";
 
 /** The pages of a module beside its main one. */
@@ -45,7 +47,7 @@ export type NavItemKey = "dashboard" | ModuleKey | SubItemKey;
 /** The areas not built yet, which show what they will cover. */
 export type PlaceholderKey = Exclude<
   ModuleKey,
-  "incidents" | "policies" | "organization" | "users" | "audit" | "settings"
+  "incidents" | "policies" | "organization" | "users" | "audit" | "dataExport" | "settings"
 >;
 
 export type NavGroupKey =
@@ -197,6 +199,13 @@ export const navigation: { key: NavGroupKey; items: NavItem[] }[] = [
         icon: ScrollText,
         // Only a grant for the whole organization opens it; the page says so.
         permissions: ["audit.view"],
+      },
+      {
+        key: "dataExport",
+        href: "/admin/data-export",
+        icon: Archive,
+        // Only a grant for the whole organization opens it; the page says so.
+        permissions: ["data.export"],
       },
       {
         key: "settings",

@@ -45,7 +45,8 @@
       "policiesOverdue": "Late acknowledgements",
       "policiesStepsOverdue": "Overdue approval steps",
       "policiesSettings": "Document settings",
-      "audit": "Audit trail"
+      "audit": "Audit trail",
+      "dataExport": "Data export"
     }
   },
   "dashboard": {
@@ -630,8 +631,19 @@
       "audit_chain_head": "The audit trail passed this week's check up to entry {seq}. Its seal has been emailed to you: keep that email.",
       "ai_provider_changed": "Trustline changed who processes AI requests for: {features}. See where they are processed now.",
       "ai_allowance_warning": "AI, {feature}: {used} of this month's {allowance} used. It starts again on {resetsOn}.",
-      "ai_allowance_reached": "AI, {feature}: this month's allowance of {allowance} is used up, so it is paused until {resetsOn}.",
-      "other": "There is an update on {reference}."
+      "ai_allowance_reached": "AI, {feature}: this month's allowance of {allowance} is used up. It is paused until {resetsOn}; you can still write by hand.",
+      "other": "There is an update on {reference}.",
+      "data_export_changed": {
+        "requested": "A full export of your organization's data was requested. Open it to see who asked; if you do not expect it, refuse it.",
+        "approved": "A full export of your organization's data was approved.",
+        "refused": "A full export of your organization's data was refused.",
+        "cancelled": "A full export of your organization's data was cancelled.",
+        "lapsed": "A request for a full data export lapsed without approval.",
+        "ready": "A full export of your organization's data is ready to download.",
+        "downloaded": "A full export of your organization's data was downloaded.",
+        "failed": "A full export of your organization's data could not be made.",
+        "other": "A full export of your organization's data changed."
+      }
     },
     "descriptionGeneral": "What has happened that concerns you. A notification names no one.",
     "emptyGeneral": "You have no notifications yet. When something happens that concerns you, it appears here.",
@@ -730,7 +742,7 @@
     "aiFeatures": {
       "drafting": "drafting",
       "insights": "suggestions",
-      "assistant": "the assistant"
+      "assistant": "the chat assistant"
     }
   },
   "modulePage": {
@@ -950,7 +962,7 @@
         "users": "Users",
         "sites": "Facilities",
         "storageMb": "Storage (MB)",
-        "aiCreditsPerMonth": "AI credits a month"
+        "aiCreditsPerMonth": "Monthly AI allowance"
       },
       "extraNames": {
         "sso": "Single sign-on",
@@ -1128,7 +1140,7 @@
       "spending": "Spending limit over every client",
       "spent": "Spent in {month} (UTC): {spent}",
       "limit": "Monthly limit, in US dollars",
-      "limitHelp": "Empty for no limit. Reached, every client's AI pauses until the next month.",
+      "limitHelp": "Leave empty for no limit. When it is reached, AI pauses for every client until the next month.",
       "saveLimit": "Save the limit",
       "limitSaved": "The limit is saved.",
       "connections": "Connections",
@@ -1182,7 +1194,7 @@
       "features": {
         "drafting": "Drafting",
         "insights": "Suggestions",
-        "assistant": "Assistant"
+        "assistant": "Chat assistant"
       },
       "cost": "Cost",
       "state": "State",
@@ -1214,15 +1226,15 @@
       "clientLimitHelp": "Empty for no limit. Never shown to the client.",
       "errors": {
         "invalid_region": "The region does not fit the provider or where requests are processed.",
-        "inference_type_not_offered": "The Anthropic API does not process requests in one region only.",
+        "inference_type_not_offered": "The Anthropic API does not process requests in one region only. Choose global or regional processing.",
         "model_inference_mismatch": "The model {model} does not match where requests are processed: global needs global.…, regional needs the region's own geography, in-region needs the bare model.",
-        "credential_env_mismatch": "The credential variable is not named for this provider.",
+        "credential_env_mismatch": "The credential variable is not named for this provider. Use a name that starts with this provider's prefix.",
         "unknown_model": "The connection does not offer the model {model}.",
         "name_taken": "Another connection already has this name.",
         "connection_in_use": "Clients use this connection ({clients}): its region, processing or credential cannot change, and it cannot be deactivated, until they move.",
         "model_in_use": "Clients use the model {model} ({clients}): it cannot be removed until they move.",
-        "unknown_connection": "{feature}: this connection no longer exists.",
-        "connection_inactive": "{feature}: this connection is inactive.",
+        "unknown_connection": "{feature}: this connection no longer exists. Choose another connection.",
+        "connection_inactive": "{feature}: this connection is inactive. Choose another connection.",
         "invalid": "Check the fields: something is missing or not in the right form.",
         "generic": "Could not save. Try again."
       }
@@ -1540,7 +1552,7 @@
         "sites": "Facilities",
         "sitesHelp": "Facilities switched on. Departments and units do not count.",
         "storage": "Storage",
-        "ai": "AI credits a month",
+        "ai": "Monthly AI allowance",
         "notInUse": "Not counted yet",
         "meter": {
           "usedOf": "{used} of {max}",
@@ -1602,7 +1614,8 @@
       "policies.view_all": "Read every document, including restricted ones and drafts, and see acknowledgement figures",
       "policies.import": "Import existing documents",
       "audit.view": "View the audit trail",
-      "reports.manage": "Correct report figures, and set targets and the baseline"
+      "reports.manage": "Correct report figures, and set targets and the baseline",
+      "data.export": "Ask for, approve and download a full export of the organization's data"
     },
     "permissionHints": {
       "policies.import": "Held by the Quality officer. An administrator can give it to someone without holding it.",
@@ -1681,6 +1694,9 @@
         "invalid": "Check the fields: something is missing or not in the right form.",
         "generic": "Could not save. Try again."
       }
+    },
+    "permissionWarnings": {
+      "data.export": "This gives everything the organization holds in Trustline: reporters' names, internal comments, restricted documents and the whole audit trail. A full export needs two people who hold it: one asks, the other approves. Give it only to those who will answer for the data once it leaves Trustline."
     }
   },
   "policies": {
@@ -2386,24 +2402,24 @@
       "signing_pin_unavailable": "Signing PINs cannot be used at the moment: the server is not set up for them. Nothing was signed. Tell your administrator.",
       "signs_with_pin": "This person signs with a signing PIN, so they are given no password by a link. Reset their signing PIN instead.",
       "read_only_access": "You have read-only access as an external reviewer, so nothing was changed.",
-      "ai_not_offered": "AI is not available for this.",
-      "ai_switched_off": "Your organization has not switched AI on. You can still write the document yourself.",
+      "ai_not_offered": "AI drafting is not offered to your organization. You can still write the document yourself.",
+      "ai_switched_off": "Your organization has not switched AI on. Ask your administrator to switch it on, or write the document yourself.",
       "ai_allowance_reached": "This month's allowance is used up; it starts again on {date}. Writing by hand still works.",
       "ai_spending_limit": "The assistant is paused, and Trustline has been told. Writing by hand still works.",
       "ai_unavailable": "The assistant is unavailable just now; everything else works. Try again in a few minutes.",
       "ai_request_too_large": "This is too long for the assistant. Shorten it, then try again.",
-      "subscription_suspended": "This was not done: changes are paused for your organization's account.",
+      "subscription_suspended": "This was not done: changes are paused for your organization's account. Ask your administrator.",
       "answers_mismatch": "Every open question needs an answer, or “Not decided”. Reload the page if the questions changed.",
-      "draft_changed": "This conversation changed in the meantime, perhaps in another tab. It is shown as it is now.",
-      "not_asking": "The assistant has finished asking questions.",
+      "draft_changed": "This conversation changed in the meantime, perhaps in another tab. It is shown as it is now: check it, then try again.",
+      "not_asking": "The assistant has finished asking questions. Reload the page to see where the draft is.",
       "questions_open": "Answer the open questions first.",
-      "not_ready": "This conversation cannot be drafted now.",
-      "not_drafted": "There is no draft yet.",
+      "not_ready": "This conversation cannot be drafted yet: answer the open questions first, or reload the page.",
+      "not_drafted": "There is no draft yet. Choose “Draft it now” first.",
       "draft_too_long_for_assistant": "The draft is now too long for the assistant to change. Edit it by hand instead.",
       "unknown_version": "This version no longer exists. Reload the page.",
-      "handed_over": "This conversation already became a document.",
+      "handed_over": "This conversation already became a document. Open the document instead.",
       "not_ai_draft": "This document was not drafted with the assistant.",
-      "already_owned": "Someone has already taken ownership of this draft.",
+      "already_owned": "Someone has already taken ownership of this draft. Reload the page to see who.",
       "ai_draft_not_owned": "This AI draft cannot be sent for review until a person takes ownership of it.",
       "ai_draft_gaps": "A “To be decided” mark is still in the text of: {sections}. Decide each point, then send it again."
     },
@@ -2804,13 +2820,13 @@
       "save": "Save the design",
       "saved": "The design is saved.",
       "changed": "Someone else saved this design in the meantime. Reload the page, then try again.",
-      "unknownSection": "Guidance is given for a section no type has: {section}.",
+      "unknownSection": "Guidance is given for a section no type has: {section}. Remove that guidance, or add the section to a document type.",
       "languageMismatch": "Write only in the organization's languages.",
       "invalid": "Check the fields: the colour is #RRGGBB, and the control block has 1 to 7 fields.",
       "error": "Could not save. Try again."
     },
     "drafting": {
-      "notice": "Written by an AI assistant. It can be wrong or incomplete: check every part against how your organization works before relying on it. Nothing it writes is approved or published without people.",
+      "notice": "Written by an AI assistant. It can be wrong or incomplete: check every part against how your organization works before you rely on it. Only a person can approve or publish what it writes.",
       "aiDraft": "AI draft",
       "aiQuestions": "AI questions",
       "writeYourself": "Write it yourself",
@@ -2820,7 +2836,7 @@
       "underWay": "Your drafts with the assistant",
       "lastActivity": "Last change {time}",
       "status": {
-        "asking": "Questions",
+        "asking": "Waiting for your answers",
         "ready": "Ready to draft",
         "drafted": "Drafted",
         "handed_over": "Now a document"
@@ -2831,8 +2847,8 @@
       "type": "Type of document",
       "languageLabel": "Language",
       "requestLabel": "What do you need?",
-      "requestHelp": "What it is for, who it applies to, and anything it must cover. Do not name patients.",
-      "keptFor": "This conversation is yours alone. Handed over, it is kept with the document. Discarded, it is removed the next day; untouched for 90 days, it is removed.",
+      "requestHelp": "What it is for, who it applies to, and anything it must cover. Do not write anyone's name.",
+      "keptFor": "Only you can see this conversation. If you make it a document, it is kept with the document. If you discard it, it is removed the next day. If it is left untouched for 90 days, it is removed.",
       "start": "Start",
       "thinking": "The assistant is working…",
       "conversationTitle": "Drafting with the assistant",
@@ -2846,10 +2862,10 @@
       "questionsTitle": "The assistant asks",
       "reason": "Why it asks: {reason}",
       "notDecided": "Not decided",
-      "emptyIsUndecided": "A question left empty counts as not decided: the draft marks it as a gap to fill.",
+      "emptyIsUndecided": "A question left empty counts as not decided: the draft marks it as a point to decide.",
       "submitAnswers": "Send the answers",
       "draftNow": "Draft it now",
-      "noQuestionsYet": "The assistant has not asked its questions yet. Ask again, or draft now: open points will be marked as gaps.",
+      "noQuestionsYet": "The assistant has not asked its questions yet. Ask again, or draft now: open points will be marked as points to decide.",
       "askAgain": "Ask the questions again",
       "readyToDraft": "The assistant knows enough to draft.",
       "discard": "Discard this conversation",
@@ -2861,7 +2877,7 @@
       "editedByPerson": "Edited by hand",
       "model": "Model: {model}",
       "gap": "To be decided",
-      "gaps": "To be decided",
+      "gaps": "Points still to decide",
       "gapsHelp": "The draft cannot be sent for review while any of these is in its text.",
       "assumption": "Assumed",
       "assumptions": "Assumptions",
@@ -2990,7 +3006,17 @@
       "ai_draft_discarded": "Assistant draft discarded",
       "ai_draft_handed_over": "Assistant draft turned into a document",
       "ai_draft_ownership_taken": "Ownership of an AI draft taken",
-      "ai_drafts_removed_by_system": "Old assistant drafts removed"
+      "ai_drafts_removed_by_system": "Old assistant drafts removed",
+      "data_export_requested": "Full data export requested",
+      "data_export_approved": "Full data export approved",
+      "data_export_refused": "Full data export refused",
+      "data_export_cancelled": "Full data export cancelled",
+      "data_export_lapsed": "Full data export request lapsed without approval",
+      "data_export_ready": "Full data export ready to download",
+      "data_export_failed": "Full data export could not be made",
+      "data_export_downloaded": "Full data export downloaded",
+      "data_export_expired": "Full data export expired",
+      "data_export_approved_by_trustline": "Full data export approved by Trustline, on a written request"
     },
     "areas": {
       "sign_in": "Sign-in",
@@ -3128,7 +3154,7 @@
     "description": "The measures the organization tracks, month by month, against their targets.",
     "loading": "Loading the figures…",
     "loadError": "Could not load the figures. Reload the page.",
-    "noAccess": "Reports are for those who hold “View reports”.",
+    "noAccess": "Reports are for those who hold “View reports and dashboards”.",
     "unitGone": "This unit is not one whose figures you may see. Choose another.",
     "noMeasures": "No measures for this choice: they depend on the modules your organization has, and on what you may see for this unit.",
     "settingsLink": "Report settings",
@@ -3182,7 +3208,7 @@
       "unknown": "Not judged"
     },
     "targetSource": {
-      "business": "the business target",
+      "business": "the default target",
       "client": "your organization's target",
       "baseline": "your baseline",
       "first_months": "the average of the first three months"
@@ -3251,8 +3277,8 @@
       "loading": "Loading…",
       "loadError": "Could not load the settings. Reload the page.",
       "targets": "Targets",
-      "targetsHelp": "Leave a target empty to use the business target.",
-      "business": "Business target: {value}",
+      "targetsHelp": "Leave a target empty to use the default target.",
+      "business": "Default target: {value}",
       "inForce": "In force: {value}",
       "secondsUnit": "Seconds, 1 to 3600",
       "percentUnit": "Percent, 0 to 100",
@@ -3338,7 +3364,7 @@
     "features": {
       "drafting": "Drafting policies and procedures",
       "insights": "Suggestions on records",
-      "assistant": "Assistant"
+      "assistant": "Chat assistant"
     },
     "units": {
       "drafting": "drafts",
@@ -3422,9 +3448,9 @@
     "staffCount": "Staff",
     "siteCount": "Sites",
     "organizationType": "What kind of organization",
-    "organizationTypeHelp": "In a few words, for example: a general hospital with an emergency department.",
+    "organizationTypeHelp": "In a few words, for example: a general hospital, or a food plant with three lines.",
     "measures": "Figures that describe it",
-    "measuresHelp": "Up to 10, for example beds or operating rooms.",
+    "measuresHelp": "Up to 10, for example beds, production lines or sites.",
     "measureLabel": "What is counted",
     "measureValue": "How many",
     "provided": "Services provided",
@@ -3472,5 +3498,114 @@
     "fromSettingsHelp": "These are set elsewhere, and shown here so you see the whole profile.",
     "languages": "Languages: {languages}",
     "defaultLanguage": "Main language: {language}"
+  },
+  "dataExport": {
+    "title": "Full data export",
+    "description": "Everything the organization holds in Trustline, in one archive: for the end of a contract, or when the organization asks for its data.",
+    "noAccess": "The full data export is for those who hold “Ask for, approve and download a full export of the organization's data” for the whole organization.",
+    "loading": "Loading…",
+    "formerUser": "a former user",
+    "password": "Your password",
+    "requested": "Asked for. Another holder of this permission must now approve it.",
+    "cancelButton": "Cancel",
+    "reasons": {
+      "on_request": "The organization asked for its data",
+      "contract_end": "The contract is ending"
+    },
+    "request": {
+      "title": "Ask for a full export",
+      "everything": "It holds everything: reporters' names, internal comments, restricted documents, people's details and the whole audit trail.",
+      "twoPeople": "A second person who holds this permission must approve it before anything is made.",
+      "responsibility": "Once the file is downloaded, your organization is responsible for it as the controller of that data: keep it where only those who need it can open it, and delete it when it is no longer needed.",
+      "onlyOne": "An export is already under way. Only one can be asked for at a time.",
+      "reason": "Why",
+      "note": "Note",
+      "noteHelp": "Optional. Seen by the person who approves.",
+      "language": "Language of the archive",
+      "languageHelp": "The READMEs, file headings and document pages are in this language.",
+      "passwordHelp": "Asking is signed with your password.",
+      "submit": "Ask for the export"
+    },
+    "list": {
+      "title": "Exports",
+      "empty": "No export has been asked for yet.",
+      "requested": "Asked for by {name}, {time}",
+      "language": "in {language}",
+      "lapses": "Lapses on {time} if no one approves it.",
+      "approved": "Approved by {name}, {time}",
+      "refused": "Refused by {name}, {time}:",
+      "cancelled": "Cancelled, {time}",
+      "phase": "Being made: {phase}",
+      "failed": "It could not be made. Trustline has been told; ask for it again later.",
+      "ready": "Ready: {size}. It can be downloaded until {expires}, {left} more times.",
+      "snapshot": "Data as at {time}",
+      "downloads": "Downloads so far: {count}",
+      "sha": "The archive's SHA-256 fingerprint:"
+    },
+    "status": {
+      "requested": "Waiting for approval",
+      "approved": "Approved",
+      "refused": "Refused",
+      "lapsed": "Lapsed",
+      "cancelled": "Cancelled",
+      "making": "Being made",
+      "ready": "Ready to download",
+      "failed": "Could not be made",
+      "expired": "Expired"
+    },
+    "phases": {
+      "data": "records",
+      "documents": "documents",
+      "archive": "the archive"
+    },
+    "approve": {
+      "open": "Approve",
+      "intro": "Approving lets the archive be made. Sign with your password.",
+      "submit": "Approve the export",
+      "done": "Approved. The archive is being made."
+    },
+    "refuse": {
+      "open": "Refuse",
+      "reason": "Why it is refused",
+      "reasonHelp": "Required. The person who asked sees it.",
+      "submit": "Refuse the export",
+      "done": "Refused."
+    },
+    "cancel": {
+      "open": "Cancel the request",
+      "done": "Cancelled."
+    },
+    "download": {
+      "open": "Download",
+      "intro": "Downloading is signed with your password, and recorded in the audit trail.",
+      "submit": "Download the archive",
+      "working": "Downloading…",
+      "done": "Downloaded. Check its fingerprint against the one shown here."
+    },
+    "check": {
+      "title": "How to check an archive",
+      "fingerprint": "1. Its SHA-256 fingerprint must match the one shown with the export. On most computers:",
+      "command": "sha256sum <archive>.zip",
+      "manifest": "2. Inside, manifest.sig is Trustline's signature of manifest.json. Check it with Trustline's published export key, never with a key found in the archive.",
+      "files": "3. manifest.json lists every file with its fingerprint; the README in the archive says how to check each one.",
+      "keys": "Download Trustline's export keys"
+    },
+    "errors": {
+      "wrong_password": "That password is not right. Nothing was done. Type it again.",
+      "password_locked": "Too many wrong passwords: your account is locked for 15 minutes. Nothing was done.",
+      "language_mismatch": "Choose one of the organization's languages.",
+      "export_in_progress": "An export is already under way. Wait until it is done, refused or cancelled.",
+      "same_person": "You asked for this export, so someone else must approve or refuse it.",
+      "lapsed": "This request lapsed without approval. Ask for a new export.",
+      "stale_export": "This export changed in the meantime. It is shown as it is now: check it, then try again.",
+      "not_requester": "Only the person who asked can cancel this request.",
+      "not_yours": "You may not download this export.",
+      "not_ready": "This export is not ready yet. Wait until it is.",
+      "download_limit": "This export has been downloaded as many times as allowed. Ask for a new export if you need it again.",
+      "expired": "This export has expired and was deleted. Ask for a new export.",
+      "notFound": "This export no longer exists. Reload the page.",
+      "invalid": "Check the fields: something is missing or too long.",
+      "generic": "Could not do this. Try again."
+    }
   }
 }

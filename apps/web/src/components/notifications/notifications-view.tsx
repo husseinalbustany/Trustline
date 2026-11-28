@@ -72,6 +72,7 @@ const ownPlace = new Set([
   "ai_provider_changed",
   "ai_allowance_warning",
   "ai_allowance_reached",
+  "data_export_changed",
 ]);
 
 /** The AI notices: about the organization's AI settings. */
@@ -286,7 +287,10 @@ export function NotificationsView({
                         ? `/${lang}/admin/users/external`
                         : aboutAi.has(n.kind)
                           ? `/${lang}/admin/settings/ai`
-                          : null;
+                          : n.kind === "data_export_changed" &&
+                              session.scope?.["data.export"] === "all"
+                            ? `/${lang}/admin/data-export`
+                            : null;
     const title = doc?.canOpen && doc.title
       ? pick(doc.title, lang, session.tenant.defaultLocale)
       : null;

@@ -42,11 +42,14 @@ export function useFigures(lang: string, t: ReportsText) {
   });
   const months = dateTimeFormat(lang, "UTC", { month: "short", year: "numeric" });
   const moment = dateTimeFormat(lang, session.tenant.timeZone);
+  // A share is held left to right (U+2066 … U+2069), so "85%" never reads
+  // "%85" inside a right-to-left sentence.
+  const ltr = (text: string) => `\u2066${text}\u2069`;
   const value = (unit: string, v: number | null | undefined) =>
     v === null || v === undefined
       ? "—"
       : unit === "percent"
-        ? percent.format(v / 100)
+        ? ltr(percent.format(v / 100))
         : unit === "seconds"
           ? fill(t.values.seconds, { value: numbers.format(v) })
           : numbers.format(v);
@@ -55,7 +58,7 @@ export function useFigures(lang: string, t: ReportsText) {
     value,
     /** A share the API gives as a whole percentage. */
     share: (v: number | null | undefined) =>
-      v === null || v === undefined ? "—" : percent.format(v / 100),
+      v === null || v === undefined ? "—" : ltr(percent.format(v / 100)),
     month: (m: string) => months.format(new Date(`${m}-01T00:00:00Z`)),
     moment: (iso: string) => moment.format(new Date(iso)),
   };
@@ -373,14 +376,14 @@ function MeasurePanel({
   const c = m.current;
 
   return (
-    <section aria-labelledby={`measure-${m.code}`} className="flex flex-col rounded-lg border border-line bg-background">
+    <section aria-labelledby={`measure-${m.code}`} className="flex min-w-0 flex-col rounded-lg border border-line bg-background">
       <div className="border-b border-line px-4 py-3">
         <h2 id={`measure-${m.code}`} className="font-semibold">
           {words.name}
         </h2>
         {words.help && <p className="mt-1 text-sm text-muted">{words.help}</p>}
       </div>
-      <div className="flex flex-col gap-4 p-4">
+      <div className="flex min-w-0 flex-col gap-4 p-4">
         {/* The month so far, against the target in force now. */}
         <div className="flex flex-col gap-2 rounded-md bg-surface p-3">
           <p className="text-xs font-medium text-muted">{t.current.title}</p>
@@ -413,7 +416,7 @@ function MeasurePanel({
           {c && <p className="text-xs text-muted">{fill(t.current.asOf, { time: f.moment(c.asOf) })}</p>}
         </div>
 
-        <div className="flex flex-col gap-2">
+        <div className="flex min-w-0 flex-col gap-2">
           <h3 className="text-sm font-medium">{t.trend.title}</h3>
           {taken.length === 0 ? (
             <p className="text-sm text-muted">{t.trend.none}</p>
@@ -437,7 +440,7 @@ function MeasurePanel({
                 lastMonth={f.month(span[span.length - 1])}
               />
               )}
-              <details className="text-sm">
+              <details className="min-w-0 text-sm">
                 <summary className="cursor-pointer text-accent">{t.trend.figures}</summary>
                 <MonthsTable
                   lang={lang}
@@ -480,12 +483,13 @@ function MonthsTable({
   const statuses = t.status as Record<string, string>;
   const tr = t.trend;
   return (
-    <div className="mt-2 flex flex-col gap-3">
-      <div className="overflow-x-auto">
+    <div className="mt-2 flex min-w-0 flex-col gap-3">
+      <div className="max-w-full overflow-x-auto">
         <table className="w-full text-start text-sm">
           <thead className="text-xs text-muted">
             <tr className="border-b border-line">
-              <th scope="col" className="py-2 pe-3 text-start font-medium">{tr.month}</th>
+              {/* The month stays in view while the figures scroll beside it. */}
+              <th scope="col" className="sticky start-0 bg-background py-2 pe-3 text-start font-medium">{tr.month}</th>
               <th scope="col" className="py-2 pe-3 text-start font-medium">{tr.value}</th>
               <th scope="col" className="py-2 pe-3 text-start font-medium">{tr.counted}</th>
               <th scope="col" className="py-2 pe-3 text-start font-medium">{tr.target}</th>
@@ -496,7 +500,7 @@ function MonthsTable({
           <tbody>
             {months.map((x) => (
               <tr key={x.month} className="border-b border-line align-top last:border-b-0">
-                <th scope="row" className="py-2 pe-3 text-start font-normal whitespace-nowrap">
+                <th scope="row" className="sticky start-0 bg-background py-2 pe-3 text-start font-normal whitespace-nowrap">
                   {f.month(x.month)}
                 </th>
                 <td className="py-2 pe-3 whitespace-nowrap tabular-nums">{f.value(m.valueUnit, x.value)}</td>
@@ -517,9 +521,13 @@ function MonthsTable({
                 <td className="py-2">
                   <div className="flex flex-col items-start gap-1">
                     {x.method === "corrected" && x.correctedAt ? (
-                      <Pill tone="warn">{fill(t.marks.corrected, { date: f.moment(x.correctedAt) })}</Pill>
+                      <span className="rounded-md bg-warn-soft px-2 py-0.5 text-xs font-medium text-warn">
+                        {fill(t.marks.corrected, { date: f.moment(x.correctedAt) })}
+                      </span>
                     ) : x.method === "reconstructed" ? (
-                      <Pill tone="neutral">{t.marks.reconstructed}</Pill>
+                      <span className="rounded-md bg-surface px-2 py-0.5 text-xs font-medium text-muted">
+                        {t.marks.reconstructed}
+                      </span>
                     ) : (
                       <span className="text-muted">{methods[x.method] ?? x.method}</span>
                     )}
@@ -588,7 +596,7 @@ function Revisions({
 
   const history = answer?.key === key ? answer.history : null;
   return (
-    <div role="region" aria-label={fill(h.title, { month: f.month(month) })} className="flex flex-col gap-2 rounded-md border border-line p-3">
+    <div role="region" aria-label={fill(h.title, { month: f.month(month) })} className="flex min-w-0 flex-col gap-2 rounded-md border border-line p-3 break-words">
       <div className="flex items-center justify-between gap-2">
         <p className="font-medium">{fill(h.title, { month: f.month(month) })}</p>
         <button type="button" onClick={onClose} className="text-xs text-accent hover:underline">

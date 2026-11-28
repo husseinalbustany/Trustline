@@ -226,6 +226,12 @@ export function RoleForm({
                           {t.permissionHints[permission as keyof typeof t.permissionHints]}
                         </span>
                       )}
+                      {/* What giving it really gives, where that is everything. */}
+                      {Object.hasOwn(t.permissionWarnings, permission) && (
+                        <span className="mt-1 rounded-md border border-warn bg-warn-soft px-2 py-1 text-xs">
+                          {t.permissionWarnings[permission as keyof typeof t.permissionWarnings]}
+                        </span>
+                      )}
                     </span>
                   </label>
                 ))}
