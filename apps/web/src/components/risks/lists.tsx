@@ -243,7 +243,7 @@ export function ReviewsDue({ lang, t }: RisksProps) {
   );
 }
 
-type CommitteeList = RiskList & {
+type CommitteeList = Omit<RiskList, "items"> & {
   committee: { id: string; name: Localized; active: boolean };
   items: (RiskSummary & { lastReview: { reviewedOn: string; committeeId: string | null } | null })[];
 };

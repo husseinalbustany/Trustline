@@ -15,7 +15,7 @@ import { RiskRow, useBandWord, usePick, useRiskSettings } from "./bits";
 import type { RisksText } from "./types";
 import { useExplain } from "./use-explain";
 
-type ForIncident = Omit<RiskList, "total"> & {
+type ForIncident = Omit<RiskList, "total" | "items"> & {
   items: (RiskSummary & { linkKind: "raised" | "supports"; linkId: string })[];
   raise: { orgUnitId: string | null; impact: number | null; linkKind: "raised" } | null;
   mayLink: boolean;

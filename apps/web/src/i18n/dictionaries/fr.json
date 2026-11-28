@@ -38,7 +38,7 @@
       "investigations": "Enquêtes",
       "actions": "Actions correctives",
       "policies": "Documents",
-      "risks": "Risques",
+      "risks": "Registre des risques",
       "training": "Formation",
       "reports": "Rapports",
       "organization": "Organisation",
@@ -49,7 +49,10 @@
       "policiesStepsOverdue": "Étapes d’approbation en retard",
       "policiesSettings": "Paramètres des documents",
       "audit": "Journal d’audit",
-      "dataExport": "Exportation des données"
+      "dataExport": "Exportation des données",
+      "risksMine": "Mes risques et actions",
+      "risksReviews": "Revues à faire",
+      "risksSettings": "Paramètres des risques"
     }
   },
   "dashboard": {
@@ -95,7 +98,9 @@
     "measureMet": "Objectif atteint",
     "measureMissed": "Objectif non atteint",
     "measureNone": "Rien à mesurer pour l’instant",
-    "policiesLoadError": "Impossible de charger les chiffres des documents. Rechargez la page."
+    "policiesLoadError": "Impossible de charger les chiffres des documents. Rechargez la page.",
+    "overdueActionsHelp": "{percent} des {of} actions en cours",
+    "risksLoadError": "Impossible de charger les chiffres des risques. Rechargez la page."
   },
   "reportIncident": {
     "title": "Déclarer un incident",
@@ -437,7 +442,11 @@
       "subscription_suspended": "Rien n’a été enregistré : ce type de modification est suspendu pour le compte de votre établissement. Adressez-vous à votre administrateur.",
       "read_only_access": "Vous avez un accès en lecture seule en tant qu’évaluateur externe : rien n’a été modifié."
     },
-    "inactiveUnit": "un service désormais inactif"
+    "inactiveUnit": "un service désormais inactif",
+    "risks": {
+      "title": "Risques",
+      "raise": "Signaler un risque"
+    }
   },
   "publicReport": {
     "title": "Déclarer un incident",
@@ -648,6 +657,27 @@
       },
       "contract_ending": "Le contrat de votre établissement avec Trustline prend fin le {day}. Vous pouvez en exporter les données d’ici là.",
       "data_export_granted": "{name} a reçu la permission d’exporter toutes les données de l’établissement.",
+      "risk_owner_assigned": "Vous avez été désigné propriétaire de {reference}.",
+      "risk_review_due": "La revue de {reference} est à faire le {date}.",
+      "risk_review_overdue": "La revue de {reference} était à faire le {date}.",
+      "risk_above_tolerance": "{reference} dépasse la tolérance de sa catégorie.",
+      "risk_escalated": "{reference} a été remonté à un comité.",
+      "risk_de_escalated": "{reference} a été retiré de la liste d’un comité.",
+      "risks_overdue_digest": "Résumé hebdomadaire des risques : revues en retard : {reviewsOverdue}, actions en retard : {actionsOverdue}, étapes en retard : {stepsOverdue}.",
+      "action_assigned": "L’action {reference} sur {source} vous a été confiée, échéance le {date}.",
+      "action_due_soon": "L’action {reference} arrive à échéance le {date}.",
+      "action_overdue": "L’action {reference} était à faire le {date}.",
+      "action_escalated": "L’action {reference} est en retard et vous a été signalée.",
+      "action_completed": "L’action {reference} sur {source} a été terminée.",
+      "risk_step_assigned": "{reference} attend votre signature.",
+      "risk_step_overdue": "Une étape sur {reference} est en retard.",
+      "risk_acceptance_decided": "Une décision a été prise sur l’acceptation de {reference}.",
+      "risk_acceptance_ending": "L’acceptation de {reference} prend fin le {until}.",
+      "risk_acceptance_lapsed": "L’acceptation de {reference} est caduque.",
+      "risk_closed": "{reference} a été clos.",
+      "risk_proposed": "{reference} a été proposé au registre.",
+      "risk_incident_linked": "Un incident a été lié à {reference}.",
+      "risk_control_document_retired": "Une procédure servant de moyen de maîtrise de {reference} a été retirée.",
       "other": "Du nouveau concernant l’incident {reference}."
     },
     "descriptionGeneral": "Ce qui s’est passé et vous concerne. Une notification ne nomme personne.",
@@ -674,7 +704,9 @@
         "sentinel": "un incident signalé comme événement sentinelle, si vous pouvez valider sa clôture ou assurer le tri pour tout l’établissement",
         "assigned": "un incident qui vous est attribué",
         "signOff": "la clôture d’un incident en attente de la validation d’une deuxième personne, si vous pouvez la donner",
-        "step": "une étape de vérification ou d’approbation d’un document qui attend votre décision"
+        "step": "une étape de vérification ou d’approbation d’un document qui attend votre décision",
+        "riskExtreme": "un risque Extrême remonté à un comité dont vous êtes membre",
+        "riskStep": "l’acceptation ou la clôture d’un risque qui attend votre signature"
       },
       "digest": "Récapitulatif du matin",
       "digestHelp": "Une fois par jour, à 7 h, heure de votre établissement, et seulement si quelque chose vous attend :",
@@ -682,7 +714,8 @@
         "acknowledge": "les documents dont vous devez confirmer la prise de connaissance",
         "approve": "les documents à vérifier ou à approuver",
         "reviews": "les révisions périodiques à faire",
-        "incidents": "les incidents qui vous sont attribués, en signalant ceux en retard"
+        "incidents": "les incidents qui vous sont attribués, en signalant ceux en retard",
+        "risks": "les risques à revoir, les actions à échéance et, pour les responsables, les risques proposés au registre"
       },
       "weekly": "Si vous gérez des documents, ce réglage couvre aussi le récapitulatif hebdomadaire des prises de connaissance et des étapes d’approbation en retard.",
       "noDetails": "Les e-⁠mails ne contiennent que des références et des nombres, jamais un nom, une description ni le texte d’un document : connectez-vous pour les consulter.",
@@ -748,7 +781,8 @@
       "drafting": "la rédaction",
       "insights": "les suggestions",
       "assistant": "l’assistant conversationnel"
-    }
+    },
+    "riskUnavailable": "Vous n’avez plus accès à ce risque."
   },
   "modulePage": {
     "scopeTitle": "Ce que cette partie couvrira",
@@ -1979,7 +2013,8 @@
       "reviewOpens": "La confirmation sans modification est possible à partir du {opensOn}, à l’approche de son échéance du {dueOn}. Pour modifier le document dès maintenant, commencez une nouvelle version.",
       "reviewOpensOwner": "La confirmation sans modification est possible à partir du {opensOn}, à l’approche de son échéance du {dueOn}.",
       "authoritativeOwn": "{language} (définie pour ce document)",
-      "auditTrail": "Journal d’audit"
+      "auditTrail": "Journal d’audit",
+      "risks": "Moyen de maîtrise dans {count} risques"
     },
     "acknowledge": {
       "title": "Confirmer la prise de connaissance",
@@ -3760,6 +3795,828 @@
       "generic": "Impossible d’effectuer cette action. Réessayez.",
       "approver_not_independent": "Vous ne pouvez pas approuver cette exportation : votre compte ou votre permission a été donné par la personne qui l’a demandée, ou il y a moins de 7 jours. Un autre administrateur doit l’approuver.",
       "archive_unavailable": "Cette archive ne peut pas être ouverte. Demandez une nouvelle exportation. Cette tentative n’a pas été comptée."
+    }
+  },
+  "risks": {
+    "title": "Registre des risques",
+    "description": "Les risques de l’établissement et de ses unités : leur vraisemblance, leur gravité et ce qui est fait pour les maîtriser.",
+    "loading": "Chargement…",
+    "loadError": "Impossible de charger cette page. Rechargez-la.",
+    "notFound": "Ce risque n’existe pas, ou vous ne pouvez pas l’ouvrir.",
+    "noAccess": "Vous n’avez pas accès à cette page.",
+    "back": "Retour au registre des risques",
+    "newRisk": "Nouveau risque",
+    "newFromIncident": "Signaler un risque à partir d’un incident",
+    "editTitle": "Modifier les détails du risque",
+    "saving": "Enregistrement…",
+    "save": "Enregistrer",
+    "saved": "Enregistré.",
+    "cancel": "Annuler",
+    "choose": "Choisir…",
+    "none": "Aucun",
+    "yes": "Oui",
+    "no": "Non",
+    "someone": "Quelqu’un",
+    "someUnit": "Une unité",
+    "someCommittee": "Un comité",
+    "wholeOrganization": "Tout l’établissement",
+    "notRated": "Pas encore évalué",
+    "rateAgain": "À réévaluer",
+    "stale": "Cela a changé pendant que vous le consultiez. La page l’affiche maintenant tel qu’il est.",
+    "behind": "Cette page n’affiche peut-être pas les dernières modifications. Rechargez-la.",
+    "movesLabel": "Ce que vous pouvez faire",
+    "inBrief": "Vous êtes responsable d’une action sur ce risque : vous en voyez donc ceci, et vos actions.",
+    "gone": "Votre décision est enregistrée. Vous ne voyez plus ce risque.",
+    "noMatrix": "Aucune matrice des risques n’est encore en service. La personne qui gère les risques pour tout l’établissement la définit dans les paramètres des risques.",
+    "targetAboveCurrent": "Le niveau cible est au-dessus du niveau actuel. Réévaluez la cible.",
+    "byOn": "{name}, {date}",
+    "bands": {
+      "low": "Faible",
+      "medium": "Moyen",
+      "high": "Élevé",
+      "extreme": "Extrême"
+    },
+    "status": {
+      "proposed": "Proposé",
+      "open": "Inscrit au registre",
+      "closed": "Clos",
+      "rejected": "Non retenu"
+    },
+    "source": {
+      "manual": "Saisi par un responsable",
+      "incident": "Issu d’un incident",
+      "assessment": "Issu d’une évaluation",
+      "investigation": "Issu d’une enquête",
+      "ai_suggestion": "Suggestion de l’assistant"
+    },
+    "treatment": {
+      "reduce": "Réduire",
+      "avoid": "Éviter",
+      "share": "Partager",
+      "accept": "Accepter"
+    },
+    "ratingKind": {
+      "inherent": "Niveau de risque brut",
+      "current": "Niveau de risque actuel",
+      "target": "Niveau de risque cible"
+    },
+    "axis": {
+      "likelihood": "Vraisemblance",
+      "impact": "Impact"
+    },
+    "appetite": {
+      "averse": "Aversion",
+      "minimal": "Minimale",
+      "cautious": "Prudente",
+      "open": "Ouverte",
+      "eager": "Forte"
+    },
+    "standing": {
+      "within": "Dans la tolérance",
+      "above_treated": "Au-delà de la tolérance, en cours de traitement",
+      "above_not_addressed": "Au-delà de la tolérance, non traité",
+      "above_accepted": "Au-delà de la tolérance, accepté jusqu’au {day}"
+    },
+    "review": {
+      "title": "Revue",
+      "due": "Revue à faire",
+      "overdue": "Revue en retard",
+      "outcome": {
+        "no_change": "Aucun changement",
+        "re_rated": "Réévalué",
+        "treatment_changed": "Traitement modifié",
+        "closure_proposed": "Clôture proposée"
+      },
+      "late": "Faite en retard",
+      "byCommittee": "Revu par {committee} le {day}",
+      "comment": "Ce qui a été examiné et constaté"
+    },
+    "trend": {
+      "up": "En hausse depuis la dernière revue",
+      "down": "En baisse depuis la dernière revue"
+    },
+    "control": {
+      "kind": {
+        "preventive": "Préventif",
+        "detective": "De détection",
+        "mitigating": "D’atténuation"
+      },
+      "hierarchy": {
+        "elimination": "Suppression",
+        "substitution": "Substitution",
+        "engineering": "Mesures techniques",
+        "administrative": "Mesures organisationnelles",
+        "protective_equipment": "Équipements de protection"
+      },
+      "effectiveness": {
+        "not_assessed": "Non évalué",
+        "effective": "Efficace",
+        "partly_effective": "Partiellement efficace",
+        "ineffective": "Inefficace"
+      }
+    },
+    "matrixStatus": {
+      "draft": "Brouillon",
+      "in_use": "En service",
+      "retired": "Retiré"
+    },
+    "moves": {
+      "edit": "Modifier",
+      "rate": "Évaluer",
+      "add_control": "Ajouter un moyen de maîtrise",
+      "review": "Enregistrer une revue",
+      "add_action": "Ajouter une action",
+      "escalate": "Faire remonter",
+      "de_escalate": "Retirer de la liste du comité",
+      "correct": "Corriger",
+      "link_incident": "Lier un incident",
+      "request_acceptance": "Demander l’acceptation",
+      "withdraw_acceptance": "Retirer la demande",
+      "approve_acceptance": "Signer l’acceptation",
+      "return_acceptance": "Renvoyer l’acceptation",
+      "close": "Clore le risque",
+      "request_closure": "Demander la clôture",
+      "approve_closure": "Signer la clôture",
+      "return_closure": "Renvoyer la clôture",
+      "reopen": "Rouvrir",
+      "accept_proposal": "Inscrire au registre",
+      "reject_proposal": "Ne pas retenir"
+    },
+    "events": {
+      "created": "Risque ajouté",
+      "updated": "Détails modifiés",
+      "rated": "{kind} : {band}",
+      "control_added": "Moyen de maîtrise ajouté",
+      "control_updated": "Moyen de maîtrise modifié",
+      "proposal_accepted": "Inscrit au registre",
+      "proposal_rejected": "Non retenu",
+      "rebanded": "Reclassé selon la version {version} de la matrice",
+      "reviewed": "Revu",
+      "escalated": "Remonté à {committee}",
+      "de_escalated": "Retiré de la liste de {committee}",
+      "text_corrected": "Formulation corrigée",
+      "acceptance_requested": "Acceptation demandée",
+      "acceptance_step_approved": "Étape d’acceptation signée",
+      "acceptance_returned": "Acceptation renvoyée",
+      "acceptance_withdrawn": "Demande d’acceptation retirée",
+      "accepted": "Accepté jusqu’au {day}",
+      "acceptance_lapsed": "Acceptation caduque",
+      "closure_requested": "Clôture demandée",
+      "closure_step_approved": "Étape de clôture signée",
+      "closure_returned": "Clôture renvoyée",
+      "closed": "Clos",
+      "reopened": "Rouvert",
+      "incident_linked": "Incident {reference} lié",
+      "incident_unlinked": "Lien avec un incident supprimé",
+      "other": "Modifié"
+    },
+    "text": {
+      "notInYourLanguage": "Pas rédigé dans votre langue.",
+      "none": "Rien n’est encore rédigé.",
+      "changed": "{field} modifié",
+      "fromTo": "{field} : {from} → {to}",
+      "reason": "Motif : {reason}",
+      "reasonGiven": "avec un motif"
+    },
+    "fields": {
+      "unit": "Unité",
+      "category": "Catégorie",
+      "owner": "Propriétaire du risque",
+      "source": "Origine",
+      "tolerance": "Tolérance de sa catégorie",
+      "references": "Références",
+      "keywords": "Mots-clés",
+      "created": "Ajouté",
+      "treatment": "Traitement du risque",
+      "targetOn": "Date cible",
+      "title": "Titre",
+      "cause": "Cause",
+      "event": "Événement",
+      "consequence": "Conséquence",
+      "orgUnitId": "Unité",
+      "categoryId": "Catégorie",
+      "ownerId": "Propriétaire du risque",
+      "description": "Description",
+      "kind": "Type",
+      "hierarchy": "Hiérarchie des mesures",
+      "effectiveness": "Efficacité",
+      "assessedOn": "Évalué le",
+      "documentId": "Procédure",
+      "active": "En service"
+    },
+    "list": {
+      "owner": "Propriétaire : {name}",
+      "target": "Cible : {band}",
+      "nextReview": "Prochaine revue le {date}",
+      "actionsOpen": "{open} actions en cours",
+      "actionsOverdue": "{open} actions en cours, dont {overdue} en retard",
+      "statusLabel": "Statut",
+      "current": "Inscrits et proposés",
+      "mine": "Dont je suis propriétaire",
+      "aboveTolerance": "Au-delà de la tolérance",
+      "notAddressed": "Non traités",
+      "search": "Rechercher",
+      "searchExample": "Référence, titre, cause ou mot-clé",
+      "searchButton": "Rechercher dans le registre",
+      "sortLabel": "Ordre",
+      "sort": {
+        "score": "Score le plus élevé d’abord",
+        "next_review": "Prochaine revue d’abord",
+        "reference": "Référence",
+        "updated": "Modifiés récemment"
+      },
+      "filters": "Plus de filtres",
+      "filtersCount": "Plus de filtres ({count})",
+      "clear": "Effacer les filtres",
+      "unit": "Unité",
+      "unitHelp": "Avec les unités qui en dépendent",
+      "category": "Catégorie",
+      "band": "Niveau actuel",
+      "ownerLabel": "Propriétaire du risque",
+      "committee": "Devant un comité",
+      "reviewLabel": "Revue",
+      "all": "Tous",
+      "empty": "Aucun risque à afficher.",
+      "emptyFiltered": "Aucun risque ne correspond à ces filtres.",
+      "pagination": "Pages du registre",
+      "page": "Page {page} sur {pages}",
+      "total": "{total} au total",
+      "previous": "Précédente",
+      "next": "Suivante"
+    },
+    "sections": {
+      "risk": "Le risque",
+      "ratings": "Évaluations",
+      "controls": "Moyens de maîtrise",
+      "treatment": "Traitement et actions",
+      "reviews": "Revues",
+      "escalation": "Remontée, acceptation et clôture",
+      "notes": "Motifs donnés",
+      "timeline": "Historique"
+    },
+    "matrix": {
+      "caption": "La place des évaluations sur la matrice en service",
+      "cell": "{band}, score {score}",
+      "axes": "Lignes : vraisemblance. Colonnes : impact.",
+      "mark": {
+        "inherent": "B",
+        "current": "A",
+        "target": "C"
+      }
+    },
+    "form": {
+      "noPersonalDetails": "Décrivez la situation, pas une personne. N’écrivez ni nom ni détail permettant d’identifier une personne servie ou un membre du personnel.",
+      "cause": "Cause",
+      "event": "Événement",
+      "consequence": "Conséquence",
+      "reason": "Motif",
+      "reasonHelp": "Obligatoire pour changer le propriétaire, l’unité ou la catégorie.",
+      "intro": "Ce qui pourrait arriver, pourquoi, et ce que cela entraînerait.",
+      "title": "Titre",
+      "anyLanguage": "La cause, l’événement et la conséquence peuvent être rédigés dans n’importe laquelle des langues de l’établissement.",
+      "keywordsHelp": "Séparés par des virgules",
+      "referencesHelp": "Une par ligne : une norme, un texte de loi ou un rapport",
+      "ratings": "Évaluations",
+      "ratingsHelp": "Avec un niveau actuel, le risque est inscrit au registre ; sans, il est proposé et un responsable l’y inscrit.",
+      "ratingsHelpProposed": "Le risque est proposé : un responsable l’évalue et l’inscrit au registre.",
+      "withCurrent": "Donner un niveau actuel maintenant",
+      "withInherent": "Donner le niveau brut",
+      "inherentRequired": "Donner le niveau brut (exigé par les paramètres des risques)",
+      "withTarget": "Donner un niveau cible",
+      "add": "Ajouter le risque",
+      "propose": "Proposer le risque",
+      "proposedNote": "Un responsable de l’unité en est informé et décide de l’inscrire ou non au registre.",
+      "cannotRaise": "Aucun risque ne peut être signalé à partir de cet incident.",
+      "fromIncidentNote": "L’unité et l’impact viennent de l’incident. Rien de sa description n’est repris : décrivez le risque avec vos propres mots."
+    },
+    "rating": {
+      "currentAboveInherent": "Le niveau actuel est au-dessus du niveau brut. Vérifiez le niveau brut.",
+      "rerateNeeded": "Évalué sur une version antérieure de la matrice. Réévaluez-le.",
+      "domainsHint": "Lisez les domaines concernés et retenez le niveau le plus élevé.",
+      "domains": "Domaines d’impact",
+      "domain": "Domaine",
+      "result": "Vraisemblance {likelihood} × impact {impact} :",
+      "pick": "Choisissez une vraisemblance et un impact.",
+      "rationale": "Justification",
+      "save": "Enregistrer l’évaluation",
+      "which": "Quelle évaluation",
+      "levels": "Vraisemblance {likelihood}, impact {impact}",
+      "history": "Toutes les évaluations ({count})"
+    },
+    "controls": {
+      "edit": "Modifier le moyen de maîtrise",
+      "add": "Ajouter le moyen de maîtrise",
+      "description": "En quoi il consiste",
+      "kindLabel": "Type",
+      "hierarchyLabel": "Hiérarchie des mesures",
+      "hierarchyHelp": "De la plus forte, la suppression, à la plus faible, les équipements de protection",
+      "owner": "Responsable du moyen de maîtrise",
+      "effectiveness": "Efficacité",
+      "assessedOn": "Évalué le",
+      "assessedOnHelp": "Laissé vide avec une nouvelle efficacité : aujourd’hui",
+      "switchOff": "Désactiver ce moyen de maîtrise",
+      "switchOffReason": "Motif de la désactivation",
+      "empty": "Aucun moyen de maîtrise pour l’instant.",
+      "off": "Désactivé",
+      "offReason": "Motif de la désactivation",
+      "ownedBy": "Responsable : {name}",
+      "assessed": "évalué le {date}",
+      "flag": {
+        "document_retired": "La procédure a été retirée",
+        "document_past_review": "La procédure a dépassé sa date de révision"
+      },
+      "document": "Rechercher une procédure",
+      "documentHelp": "Un document en vigueur, par son numéro ou son titre",
+      "noDocument": "Aucun document en vigueur ne correspond.",
+      "linked": "Procédure liée"
+    },
+    "document": {
+      "restricted": "Un document à accès restreint"
+    },
+    "reviewForm": {
+      "save": "Enregistrer la revue",
+      "forCommittee": "Enregistrée comme revue de {committee}",
+      "outcome": "Résultat",
+      "current": "Niveau actuel, confirmé ou modifié",
+      "rateTarget": "Réévaluer la cible",
+      "controls": "L’efficacité de chaque moyen de maîtrise aujourd’hui",
+      "treatmentHelp": "Au-delà de la tolérance, un risque n’est pas simplement accepté : demandez plutôt son acceptation.",
+      "nextReviewOn": "Prochaine revue",
+      "nextReviewHelp": "Laissée vide : selon ce que permet le niveau. Plus tôt est permis, jamais plus tard."
+    },
+    "reviews": {
+      "empty": "Aucune revue pour l’instant.",
+      "byOn": "Revu par {name} le {day}"
+    },
+    "escalation": {
+      "noneAbove": "Aucun comité n’est au-dessus de celui devant lequel il se trouve.",
+      "committee": "Comité",
+      "reason": "Motif de la remontée",
+      "deEscalateIntro": "Il quitte la liste de {committee}. Si son niveau relève d’un comité inférieur, il passe devant celui-ci.",
+      "deEscalateReason": "Motif du retrait de la liste",
+      "automatic": "Remonté automatiquement du fait de son évaluation",
+      "byHand": "Remonté manuellement, avec un motif",
+      "before": "Devant {committee}"
+    },
+    "proposal": {
+      "acceptIntro": "Désignez son propriétaire et donnez un niveau actuel. Il est alors inscrit au registre.",
+      "rejectReason": "Motif de la non-inscription",
+      "waiting": "Proposé : en attente d’inscription au registre par un responsable.",
+      "rejected": "Non retenu au registre."
+    },
+    "incidents": {
+      "title": "Incidents liés",
+      "link": "Lier un incident",
+      "find": "Référence de l’incident",
+      "findHelp": "Par exemple INC-2026-00042",
+      "findButton": "Rechercher l’incident",
+      "noneFound": "Aucun incident que vous pouvez ouvrir ne correspond.",
+      "choose": "Incident",
+      "kindLabel": "Lien avec le risque",
+      "kind": {
+        "raised": "A fait apparaître le risque",
+        "supports": "Étaye le risque"
+      },
+      "note": "Note",
+      "empty": "Aucun incident lié.",
+      "last12Months": "{count} au cours des 12 derniers mois",
+      "hidden": "Et {count} que vous ne pouvez pas ouvrir",
+      "unlink": "Supprimer le lien",
+      "unlinkReason": "Motif de la suppression du lien",
+      "noneLinked": "Aucun risque n’est lié à cet incident.",
+      "linkToRisk": "Lier à un risque",
+      "findRisk": "Rechercher un risque par sa référence ou son titre",
+      "chooseRisk": "Risque"
+    },
+    "acceptance": {
+      "title": "Acceptation au-delà de la tolérance",
+      "ask": "Demander l’acceptation",
+      "intro": "Le risque est {band}, au-delà de la tolérance de sa catégorie ({tolerance}). Indiquez pourquoi il est conservé, à quelles conditions et jusqu’à quand.",
+      "rationale": "Pourquoi le risque est conservé",
+      "conditions": "Conditions",
+      "until": "Accepté jusqu’au",
+      "untilHelp": "Au plus {months} à compter d’aujourd’hui",
+      "fixed": "Tant que la demande est en cours d’approbation, le titre, la catégorie, l’unité et le niveau actuel ne peuvent pas changer.",
+      "withdraw": "Retirer la demande",
+      "withdrawReason": "Motif du retrait de la demande",
+      "status": {
+        "in_approval": "En cours d’approbation",
+        "accepted": "Accepté",
+        "returned": "Renvoyé",
+        "withdrawn": "Retiré",
+        "lapsed": "Caduc"
+      },
+      "lapsed": {
+        "last_day": "Son dernier jour est arrivé",
+        "score_risen": "Le score a dépassé celui qui avait été accepté",
+        "category_changed": "La catégorie a changé"
+      },
+      "untilDay": "Jusqu’au {day}"
+    },
+    "steps": {
+      "approve": "Signer",
+      "return": "Renvoyer",
+      "approveTitle": {
+        "acceptance": "Signer l’acceptation de ce risque",
+        "closure": "Signer la clôture de ce risque"
+      },
+      "approveIntro": {
+        "acceptance": "Votre signature atteste que vous avez lu la demande et que vous acceptez que le risque soit conservé au-delà de la tolérance jusqu’au jour indiqué.",
+        "closure": "Votre signature atteste que vous avez lu pourquoi le risque est clos et que vous acceptez qu’il quitte le registre."
+      },
+      "comment": "Commentaire (facultatif)",
+      "returnTitle": {
+        "acceptance": "Renvoyer la demande d’acceptation",
+        "closure": "Renvoyer la demande de clôture"
+      },
+      "returnComment": "Motif du renvoi",
+      "returnHelp": "Lu par la personne qui a demandé. N’écrivez ni nom ni détail permettant d’identifier une personne.",
+      "position": "Étape {position}",
+      "kind": {
+        "review": "Vérification",
+        "approve": "Approbation"
+      },
+      "status": {
+        "waiting": "En attente",
+        "pending": "Pas encore atteinte",
+        "approved": "Signée",
+        "returned": "Renvoyée",
+        "skipped": "Non nécessaire",
+        "cancelled": "Annulée",
+        "other": "Modifiée"
+      },
+      "byRole": "Toute personne ayant le rôle",
+      "due": "à faire avant le {date}",
+      "signed": "Signée : {meaning}, {date}",
+      "meaning": {
+        "reviewed": "Vérifié",
+        "risk_accepted": "A accepté le risque",
+        "risk_closure_approved": "A approuvé la clôture"
+      },
+      "done": "Votre décision est enregistrée."
+    },
+    "signature": {
+      "password": "Votre mot de passe",
+      "passwordHelp": "Saisi de nouveau pour signer. Il est vérifié une fois et n’est pas conservé.",
+      "pin": "Votre code de signature",
+      "pinHelp": "Saisi de nouveau pour signer. Il est vérifié une fois et n’est pas conservé.",
+      "pinNeeded": "Vous signez avec un code de signature, que vous n’avez pas encore défini.",
+      "setPin": "Définir votre code de signature",
+      "signing": "Signature…",
+      "wrongPin": "Ce code de signature n’est pas le bon. Rien n’a été signé. Saisissez-le de nouveau ; après 10 codes erronés au total, la signature par votre code est bloquée.",
+      "pinPaused": "Trop de codes de signature erronés : la signature est suspendue pendant 15 minutes. Rien n’a été signé."
+    },
+    "closure": {
+      "title": "Clôture",
+      "close": "Clore le risque",
+      "request": "Demander la clôture",
+      "closeIntro": "Le risque quitte le registre. Toutes ses actions doivent d’abord être terminées ou annulées.",
+      "requestIntro": "Ce risque a été assez élevé pour que sa clôture demande une deuxième signature. Elle l’attend dans le circuit de clôture.",
+      "reason": "Motif de la clôture",
+      "waiting": "Clôture en attente d’une deuxième signature",
+      "merge": "Fusionné avec un autre risque",
+      "mergeFind": "Rechercher le risque par sa référence ou son titre",
+      "mergeInto": "Fusionné avec",
+      "reopen": "Rouvrir",
+      "reopenIntro": "Il revient au registre avec un nouveau niveau actuel.",
+      "reopenReason": "Motif de la réouverture",
+      "closedByOn": "Clos par {name}, {date}",
+      "mergedLink": "Ouvrir le risque avec lequel il a été fusionné"
+    },
+    "correct": {
+      "open": "Corriger",
+      "titleOf": "Corriger la formulation : {what}",
+      "save": "Enregistrer la correction",
+      "text": "Formulation corrigée",
+      "kind": {
+        "rating_rationale": "Justification",
+        "review_comment": "Commentaire de revue",
+        "reject_reason": "Motif de non-inscription",
+        "control_reason": "Motif de désactivation",
+        "note": "Motif",
+        "risk_text": "Formulation du risque",
+        "close_reason": "Motif de clôture",
+        "link_text": "Note du lien"
+      }
+    },
+    "notes": {
+      "kind": {
+        "change_reason": "Motif du changement",
+        "escalation_reason": "Motif de la remontée",
+        "de_escalation_reason": "Motif du retrait de la liste",
+        "reopen_reason": "Motif de la réouverture",
+        "withdraw_reason": "Motif du retrait"
+      },
+      "corrected": "Corrigé"
+    },
+    "timeline": {
+      "empty": "Rien ne s’est encore passé.",
+      "system": "Trustline"
+    },
+    "mine": {
+      "title": "Mes risques et actions",
+      "description": "Les risques dont vous êtes propriétaire, vos actions et les étapes qui attendent votre signature.",
+      "risks": "Mes risques",
+      "actions": "Mes actions",
+      "committees": "Mes comités",
+      "noRisks": "Vous n’êtes propriétaire d’aucun risque inscrit au registre.",
+      "noActions": "Vous n’avez aucune action en cours.",
+      "committeeRisks": "{count} risques devant lui"
+    },
+    "approvals": {
+      "title": "Approbations qui m’attendent",
+      "subject": {
+        "acceptance": "Acceptation",
+        "closure": "Clôture"
+      },
+      "overdue": "En retard"
+    },
+    "reviewsDue": {
+      "title": "Revues à faire",
+      "description": "Les risques que vous gérez dont la revue est à faire dans les 30 jours ou en retard, les plus proches d’abord.",
+      "both": "À faire et en retard",
+      "empty": "Aucune revue à faire."
+    },
+    "committee": {
+      "notMember": "Cette liste est réservée aux membres du comité et aux personnes qui consultent les risques pour tout l’établissement.",
+      "description": "Les risques devant ce comité, score le plus élevé d’abord. Sa revue s’enregistre depuis la page de chaque risque.",
+      "inactive": "Ce comité n’est plus en service.",
+      "risks": "Risques devant le comité",
+      "empty": "Aucun risque n’est devant ce comité.",
+      "lastReview": "Dernière revue le {day}",
+      "noReview": "Pas encore revu",
+      "recordHelp": "Pour enregistrer la revue du comité, ouvrez le risque et choisissez « Enregistrer une revue »."
+    },
+    "actions": {
+      "title": "Actions",
+      "add": "Ajouter une action",
+      "yours": "Vos actions sur ce risque",
+      "empty": "Aucune action pour l’instant.",
+      "overdue": "En retard",
+      "allWeaker": "Toutes les actions en cours de ce traitement sont faibles. Envisagez-en une plus forte.",
+      "reRatePrompt": "Une action n’a pas été efficace. Réévaluez le risque.",
+      "dueMoved": "Échéance déplacée ; initialement le {day}",
+      "ownerDue": "{name}, échéance le {date}",
+      "strength": {
+        "stronger": "Forte : modifie le système ou l’équipement",
+        "intermediate": "Intermédiaire : une liste de vérification ou une façon de faire standard",
+        "weaker": "Faible : un rappel ou une formation seule"
+      },
+      "strengthShort": {
+        "stronger": "Forte",
+        "intermediate": "Intermédiaire",
+        "weaker": "Faible"
+      },
+      "status": {
+        "open": "Ouverte",
+        "in_progress": "En cours",
+        "completed": "Terminée",
+        "verified": "Efficacité vérifiée",
+        "cancelled": "Annulée"
+      },
+      "effectiveness": {
+        "effective": "Efficace",
+        "not_effective": "Inefficace"
+      },
+      "moves": {
+        "edit": "Modifier",
+        "complete": "Marquer comme terminée",
+        "verify": "Vérifier l’efficacité",
+        "cancel": "Annuler l’action",
+        "reopen": "Rouvrir"
+      },
+      "events": {
+        "created": "Action ajoutée",
+        "updated": "Détails modifiés",
+        "due_changed": "Échéance déplacée du {from} au {to}",
+        "completed": "Marquée comme terminée",
+        "verified": "Efficacité vérifiée",
+        "cancelled": "Annulée",
+        "reopened": "Rouverte",
+        "text_corrected": "Formulation corrigée",
+        "other": "Modifiée"
+      },
+      "fields": {
+        "title": "Ce qui doit être fait",
+        "description": "Précisions",
+        "owner": "Responsable de l’action",
+        "dueOn": "Échéance",
+        "strength": "Force",
+        "strengthHelp": "Les actions fortes modifient le système ; les faibles reposent sur la mémoire des personnes.",
+        "status": "Avancement"
+      },
+      "dueReason": "Motif du changement d’échéance",
+      "dueReasonHelp": "Obligatoire quand l’échéance change. La première échéance est conservée.",
+      "completionNote": "Ce qui a été fait",
+      "completionHelp": "La preuve : ce qui a changé, et où le constater.",
+      "verifyIntro": "L’action a-t-elle produit l’effet attendu ? Une autre personne que celle qui l’a terminée le vérifie.",
+      "outcome": "Résultat",
+      "verificationNote": "Ce qui a été vérifié",
+      "reason": "Motif",
+      "details": "L’action",
+      "risk": "Risque",
+      "completedByOn": "Terminée par {name}, {date}",
+      "verifiedByOn": "Vérifiée par {name}, {date}",
+      "cancelReason": "Motif de l’annulation",
+      "late": "Terminée après l’échéance"
+    },
+    "settings": {
+      "title": "Paramètres des risques",
+      "description": "La façon d’évaluer et de classer les risques, les catégories avec leur appétence et leur tolérance, les comités et les circuits d’acceptation et de clôture.",
+      "wholeOnly": "Ces paramètres valent pour tout l’établissement. Seule une personne qui gère les risques pour tout l’établissement peut les modifier ; vous pouvez les consulter.",
+      "tabsLabel": "Parties des paramètres des risques",
+      "tabs": {
+        "general": "Général",
+        "matrix": "Matrice",
+        "categories": "Catégories",
+        "committees": "Comités",
+        "routes": "Circuits d’acceptation et de clôture"
+      },
+      "inherentRequired": "Le niveau brut est obligatoire",
+      "inherentRequiredHelp": "Un risque n’est inscrit au registre qu’avec son niveau brut, celui d’avant tout moyen de maîtrise.",
+      "acceptanceMaxMonths": "Durée maximale d’une acceptation, en mois",
+      "acceptanceMaxMonthsHelp": "De 1 à 12. Un risque accepté est réexaminé au plus tard à ce terme.",
+      "framework": "Rechercher la politique de gestion des risques",
+      "frameworkHelp": "Un document en vigueur, par son numéro ou son titre",
+      "frameworkChosen": "Politique ou cadre de gestion des risques",
+      "frameworkOpen": "Ouvrir le document",
+      "frameworkMissing": "Liez le document qui constitue votre politique ou votre cadre de gestion des risques.",
+      "committeeNoRole": "Aucun rôle n’est encore défini pour ce comité. D’ici là, ses avis vont à la personne qui gère les risques pour tout l’établissement.",
+      "putInUseConfirm": "{changing} risques changeront de niveau et {outOfRange} devront être réévalués. Mettre cette version en service ?",
+      "newVersionNeeded": "Les intervalles de revue, la remontée et les signatures déterminent le classement des risques : modifiez-les dans une nouvelle version de la matrice.",
+      "matrix": {
+        "versions": "Versions de la matrice",
+        "version": "Version {version}",
+        "size": "{likelihood} × {impact}",
+        "putInUseOn": "En service depuis le {date}",
+        "newVersion": "Créer une nouvelle version",
+        "newVersionHelp": "Un brouillon, rempli à partir de la version en service. Choisissez un autre nombre de niveaux pour en changer la taille.",
+        "draftHelp": "Un brouillon : modifiez tout sauf sa taille, puis mettez-le en service. Les risques passent aussitôt à ses niveaux.",
+        "inUseHelp": "En service : sa formulation peut être modifiée aussitôt. Ce qui détermine un niveau demande une nouvelle version.",
+        "retiredHelp": "Retirée : conservée telle quelle, pour les évaluations faites sur elle.",
+        "label": "Libellé",
+        "frequency": "Fréquence",
+        "descriptor": "Signification",
+        "bands": "Niveaux",
+        "bandName": "Nom du niveau",
+        "reviewInterval": "Revue tous les (jours)",
+        "reviewIntervalHelp": "De 1 à 730 jours",
+        "escalateTo": "Remonté à",
+        "signature": "L’acceptation au-delà de la tolérance demande une signature (toujours pour Élevé et Extrême)",
+        "cells": "Le niveau de chaque case",
+        "cellsHelp": "Lignes : vraisemblance, la plus haute en haut. Colonnes : impact. Les niveaux doivent croître avec la vraisemblance et l’impact.",
+        "cellLabel": "Vraisemblance {likelihood}, impact {impact}",
+        "domains": "Domaines d’impact",
+        "domainOff": "Désactivé",
+        "domainName": "Nom du domaine",
+        "domainLevel": "Niveau {level} : {label}",
+        "domainActive": "Affiché lors de l’évaluation",
+        "putInUse": "Mettre en service",
+        "discard": "Abandonner le brouillon",
+        "saveFirst": "Enregistrez vos modifications avant de mettre le brouillon en service.",
+        "targetAbove": "{count} risques auront un niveau cible au-dessus de leur niveau actuel.",
+        "putInUseDone": "En service. {rebanded} risques ont changé de niveau ; {outOfRange} doivent être réévalués.",
+        "discarded": "Le brouillon a été abandonné."
+      },
+      "categories": {
+        "code": "Code",
+        "codeHelp": "Lettres minuscules, chiffres et _, en commençant par une lettre. Il ne peut pas changer.",
+        "name": "Nom",
+        "appetite": "Appétence au risque",
+        "tolerance": "Tolérance au risque",
+        "toleranceHelp": "Le niveau le plus élevé auquel ses risques peuvent rester sans traitement ni acceptation",
+        "position": "Ordre",
+        "statement": "Déclaration d’appétence",
+        "active": "En service",
+        "inactive": "Hors service",
+        "appetiteIs": "Appétence : {appetite}",
+        "add": "Ajouter une catégorie"
+      },
+      "committees": {
+        "name": "Nom",
+        "memberRole": "Membres : titulaires du rôle",
+        "chairRole": "Présidence : titulaires du rôle",
+        "membersHelp": "Les membres sont les titulaires actifs du rôle accordé pour tout l’établissement.",
+        "members": "Membres : {role}",
+        "chair": "Présidence : {role}",
+        "add": "Ajouter un comité"
+      },
+      "routes": {
+        "description": "Qui signe une acceptation au-delà de la tolérance, selon le niveau, et la clôture d’un risque qui demande une deuxième signature. La dernière étape est une approbation.",
+        "variant": {
+          "medium": "Moyen au-delà de la tolérance",
+          "high": "Élevé au-delà de la tolérance",
+          "extreme": "Extrême au-delà de la tolérance",
+          "closure": "Clôture"
+        },
+        "none": "Aucun circuit pour l’instant.",
+        "add": "Définir le circuit",
+        "dueIn": "sous {days} jours",
+        "name": "Nom du circuit",
+        "who": "Qui décide",
+        "roles": "Titulaires d’un rôle",
+        "people": "Une personne",
+        "days": "Jours",
+        "removeStep": "Supprimer",
+        "addStep": "Ajouter une étape",
+        "lastApproves": "La dernière étape doit être une approbation. Personne ne peut décider de deux étapes."
+      }
+    },
+    "errors": {
+      "generic": "Un problème est survenu et rien n’a été modifié. Réessayez.",
+      "invalid": "Un élément de ce formulaire ne peut pas être accepté. Vérifiez-le puis réessayez.",
+      "signedOut": "Votre session a pris fin. Reconnectez-vous ; ce que vous avez saisi ici n’est pas conservé.",
+      "notFound": "Cela n’existe plus, ou vous ne pouvez pas l’ouvrir.",
+      "missing_permission": "Vous n’avez pas l’autorisation de faire cela.",
+      "tooMany": "Trop d’essais. Patientez un instant puis réessayez.",
+      "subscription_suspended": "Le compte de votre établissement est en lecture seule : cela ne peut pas être fait maintenant.",
+      "language_mismatch": "Rédigez les noms dans la langue principale de l’établissement, et n’utilisez que ses langues.",
+      "unknown_document": "Ce document n’est pas en vigueur, ou vous ne pouvez pas le consulter.",
+      "unknown_matrix": "Cette version de la matrice n’existe pas.",
+      "unknown_committee": "Ce comité n’existe pas, ou n’est plus en service.",
+      "unknown_domain": "Ce domaine d’impact n’existe pas.",
+      "unknown_role": "Ce rôle n’existe pas.",
+      "unknown_unit": "Cette unité n’existe pas, ou n’est plus en service.",
+      "unknown_category": "Cette catégorie n’existe pas, ou n’est plus en service.",
+      "unknown_owner": "Choisissez un propriétaire parmi les membres actifs du personnel.",
+      "unknown_control": "Ce moyen de maîtrise n’appartient pas à ce risque.",
+      "unknown_risk": "Ce risque n’existe pas, ou vous ne pouvez pas l’ouvrir.",
+      "unknown_incident": "Cet incident n’existe pas, ou vous ne pouvez pas l’ouvrir en entier.",
+      "matrix_incomplete": "Chaque niveau et chaque case de la matrice doivent avoir leur formulation et leur niveau.",
+      "level_out_of_range": "Ce niveau dépasse la taille de la matrice.",
+      "frequency_of_impact": "Seuls les niveaux de vraisemblance ont une fréquence.",
+      "bands_out_of_order": "Une case a un niveau plus bas qu’une case de vraisemblance et d’impact inférieurs ou égaux. Les niveaux doivent croître.",
+      "signature_required": "L’acceptation des risques Élevés et Extrêmes est toujours signée.",
+      "too_many_domains": "Au plus {max} domaines d’impact, y compris ceux désactivés.",
+      "inherent_required": "Donnez aussi le niveau brut : les paramètres des risques l’exigent.",
+      "target_required": "Le niveau actuel dépasse la tolérance de sa catégorie : donnez un niveau cible.",
+      "target_above_current": "Une cible ne peut pas dépasser le niveau actuel, ni le niveau actuel être sous la cible. Évaluez d’abord la cible.",
+      "reason_required": "Indiquez le motif : il est obligatoire pour ce changement.",
+      "assessed_in_future": "Un moyen de maîtrise ne peut pas être évalué à une date à venir.",
+      "outcome_mismatch": "« Aucun changement » signifie que le niveau actuel reste le même. Choisissez « Réévalué », ou gardez le niveau.",
+      "review_interval_too_long": "La prochaine revue est plus tardive que ne le permet le niveau.",
+      "review_interval_too_long_by": "La prochaine revue peut être au plus tard le {date}.",
+      "review_day_past": "La prochaine revue ne peut pas être dans le passé.",
+      "due_in_past": "L’échéance ne peut pas être dans le passé.",
+      "same_person": "Une autre personne doit le faire.",
+      "same_person_requested": "Vous l’avez demandé : une autre personne le signe.",
+      "same_person_owner": "Vous êtes propriétaire de ce risque : une autre personne le signe.",
+      "same_person_decided_earlier_step": "Vous avez décidé d’une étape précédente : une autre personne décide de celle-ci.",
+      "not_a_member": "Seul un membre du comité enregistre sa revue.",
+      "not_assignee": "Il ne vous revient pas de décider de cette étape.",
+      "stale_settings": "Les paramètres ont changé pendant que vous les consultiez.",
+      "stale_matrix": "La matrice a changé pendant que vous la consultiez.",
+      "stale_category": "La catégorie a changé pendant que vous la consultiez.",
+      "stale_committee": "Le comité a changé pendant que vous le consultiez.",
+      "stale_risk": "Le risque a changé pendant que vous le consultiez.",
+      "stale_control": "Le moyen de maîtrise a changé pendant que vous le consultiez.",
+      "stale_action": "L’action a changé pendant que vous la consultiez.",
+      "stale_route": "Le circuit a changé pendant que vous le consultiez.",
+      "draft_exists": "Il existe déjà un brouillon de la matrice. Terminez-le ou abandonnez-le d’abord.",
+      "matrix_size_fixed": "Un brouillon garde sa taille. Créez un nouveau brouillon de la taille voulue.",
+      "matrix_in_use": "Cela modifie le classement des risques. Créez une nouvelle version de la matrice.",
+      "matrix_retired": "Une version retirée ne peut pas être modifiée.",
+      "not_draft": "Cette version n’est plus un brouillon.",
+      "no_matrix": "Aucune matrice n’est encore en service.",
+      "code_taken": "Ce code est déjà utilisé. Choisissez-en un autre.",
+      "committee_in_use": "Un niveau de la matrice remonte à ce comité, ou des risques sont devant lui. Modifiez cela d’abord.",
+      "not_editable": "Un risque clos ou non retenu ne peut pas être modifié.",
+      "not_proposed": "Ce risque n’est plus proposé.",
+      "not_on_register": "Ce risque n’est pas inscrit au registre.",
+      "already_escalated": "Il est déjà devant ce comité ou un comité supérieur.",
+      "not_escalated": "Il n’est devant aucun comité.",
+      "still_above_threshold": "Son niveau relève encore de ce comité ou d’un comité supérieur.",
+      "action_not_open": "Cette action n’est plus en cours.",
+      "action_not_completed": "Cette action n’est pas encore terminée.",
+      "action_open": "Cette action est encore en cours.",
+      "actions_open": "Terminez ou annulez d’abord toutes les actions du risque.",
+      "nothing_to_correct": "La formulation est identique à la précédente.",
+      "use_edit": "Tant que le risque est inscrit au registre, modifiez son titre avec « Modifier ».",
+      "until_past": "Le dernier jour de l’acceptation ne peut pas être dans le passé.",
+      "acceptance_too_long": "C’est plus long que ce que peut durer une acceptation.",
+      "acceptance_too_long_by": "L’acceptation peut durer au plus tard jusqu’au {date}.",
+      "acceptance_required": "Au-delà de la tolérance, un risque n’est pas simplement accepté : demandez son acceptation.",
+      "within_tolerance": "Le risque est dans la tolérance : il n’y a rien à accepter.",
+      "rerate_needed": "Évaluez d’abord le risque sur la matrice en service.",
+      "already_accepted": "Le risque est déjà accepté.",
+      "acceptance_in_progress": "Une demande d’acceptation est en cours d’approbation. Attendez-la, ou retirez-la.",
+      "closure_in_progress": "Une demande de clôture attend sa signature.",
+      "no_route": "Aucun circuit n’est défini pour cela. Adressez-vous à la personne qui gère les risques pour tout l’établissement.",
+      "no_assignee": "Personne ne peut décider d’une étape du circuit.",
+      "no_assignee_at": "Personne ne peut décider de l’étape {position} du circuit.",
+      "not_in_approval": "Cette demande n’est plus en cours d’approbation.",
+      "not_current_step": "Ce n’est pas l’étape en attente.",
+      "not_closed": "Ce risque n’est pas clos.",
+      "wrong_password": "Ce mot de passe n’est pas le bon. Rien n’a été signé. Saisissez-le de nouveau.",
+      "password_locked": "Trop de mots de passe erronés : votre compte est bloqué pendant 15 minutes, pour la signature comme pour la connexion. Rien n’a été signé.",
+      "signing_pin_required": "Vous signez avec un code de signature. Définissez-en un d’abord.",
+      "signing_pin_locked": "La signature par votre code est bloquée après trop de codes erronés. Rien n’a été signé. Demandez à votre administrateur de réinitialiser votre code, puis définissez-en un nouveau.",
+      "last_step_must_approve": "La dernière étape d’un circuit doit être une approbation.",
+      "same_person_in_two_steps": "Une même personne ne peut pas décider de deux étapes.",
+      "role_cannot_approve": "Les titulaires de ce rôle ne peuvent pas signer l’acceptation ni la clôture de risques.",
+      "user_cannot_approve": "Cette personne ne peut pas signer l’acceptation ni la clôture de risques.",
+      "route_exists": "Il existe déjà un circuit pour cela.",
+      "already_linked": "Cet incident est déjà lié à ce risque."
     }
   }
 }

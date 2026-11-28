@@ -38,7 +38,7 @@
       "investigations": "Investigations",
       "actions": "Actions",
       "policies": "Documents",
-      "risks": "Risks",
+      "risks": "Risk register",
       "training": "Training",
       "reports": "Reports",
       "organization": "Organization",
@@ -49,7 +49,10 @@
       "policiesStepsOverdue": "Overdue approval steps",
       "policiesSettings": "Document settings",
       "audit": "Audit trail",
-      "dataExport": "Data export"
+      "dataExport": "Data export",
+      "risksMine": "My risks and actions",
+      "risksReviews": "Reviews due",
+      "risksSettings": "Risk settings"
     }
   },
   "dashboard": {
@@ -95,7 +98,9 @@
     "measureMet": "Target met",
     "measureMissed": "Target not met",
     "measureNone": "Nothing to measure yet",
-    "policiesLoadError": "Could not load the document figures. Reload the page."
+    "policiesLoadError": "Could not load the document figures. Reload the page.",
+    "overdueActionsHelp": "{percent} of {of} open actions",
+    "risksLoadError": "Could not load the risk figures. Reload the page."
   },
   "reportIncident": {
     "title": "Report an incident",
@@ -437,7 +442,11 @@
       "subscription_suspended": "This was not saved: changes like this are paused for your organization's account. Contact your administrator.",
       "read_only_access": "You have read-only access as an external reviewer, so nothing was changed."
     },
-    "inactiveUnit": "a department that is now inactive"
+    "inactiveUnit": "a department that is now inactive",
+    "risks": {
+      "title": "Risks",
+      "raise": "Raise a risk"
+    }
   },
   "publicReport": {
     "title": "Report an incident",
@@ -648,6 +657,27 @@
       },
       "contract_ending": "Your organization's contract with Trustline ends on {day}. You can export its data before then.",
       "data_export_granted": "{name} was given permission to export all of the organization's data.",
+      "risk_owner_assigned": "You were named owner of {reference}.",
+      "risk_review_due": "{reference} is due for review on {date}.",
+      "risk_review_overdue": "The review of {reference} was due on {date}.",
+      "risk_above_tolerance": "{reference} is above the tolerance of its category.",
+      "risk_escalated": "{reference} was escalated to a committee.",
+      "risk_de_escalated": "{reference} was taken off a committee's list.",
+      "risks_overdue_digest": "Weekly summary of risk work: reviews overdue: {reviewsOverdue}, actions overdue: {actionsOverdue}, steps overdue: {stepsOverdue}.",
+      "action_assigned": "Action {reference} on {source} was given to you, due {date}.",
+      "action_due_soon": "Action {reference} is due on {date}.",
+      "action_overdue": "Action {reference} was due on {date}.",
+      "action_escalated": "Action {reference} is overdue and was brought to your attention.",
+      "action_completed": "Action {reference} on {source} was completed.",
+      "risk_step_assigned": "{reference} is waiting for your signature.",
+      "risk_step_overdue": "A step on {reference} is overdue.",
+      "risk_acceptance_decided": "A decision was made on the acceptance of {reference}.",
+      "risk_acceptance_ending": "The acceptance of {reference} ends on {until}.",
+      "risk_acceptance_lapsed": "The acceptance of {reference} has lapsed.",
+      "risk_closed": "{reference} was closed.",
+      "risk_proposed": "{reference} was proposed for the register.",
+      "risk_incident_linked": "An incident was linked to {reference}.",
+      "risk_control_document_retired": "A procedure used as a control of {reference} was retired.",
       "other": "There is an update on {reference}."
     },
     "descriptionGeneral": "What has happened that concerns you. A notification names no one.",
@@ -674,7 +704,9 @@
         "sentinel": "an incident marked as a sentinel event, when you may sign off its closure or triage for the whole organization",
         "assigned": "an incident assigned to you",
         "signOff": "an incident's closure waiting for a second person's sign-off, when you may give it",
-        "step": "a review or approval step of a document waiting for your decision"
+        "step": "a review or approval step of a document waiting for your decision",
+        "riskExtreme": "a risk escalated to a committee you sit on with an Extreme rating",
+        "riskStep": "an acceptance or closure of a risk waiting for your signature"
       },
       "digest": "Morning summary",
       "digestHelp": "Once a day, at 07:00 your organization's time, and only when something waits for you:",
@@ -682,7 +714,8 @@
         "acknowledge": "documents to acknowledge",
         "approve": "documents to review or approve",
         "reviews": "periodic reviews due",
-        "incidents": "incidents assigned to you, overdue ones marked"
+        "incidents": "incidents assigned to you, overdue ones marked",
+        "risks": "risks to review, actions due and, for managers, risks proposed for the register"
       },
       "weekly": "If you manage documents, this also covers the weekly summary of overdue acknowledgements and approval steps.",
       "noDetails": "Emails carry references and counts only, never a name, a description or a document's text: sign in to see them.",
@@ -748,7 +781,8 @@
       "drafting": "drafting",
       "insights": "suggestions",
       "assistant": "the chat assistant"
-    }
+    },
+    "riskUnavailable": "This risk is no longer available to you."
   },
   "modulePage": {
     "scopeTitle": "What this area will cover",
@@ -1979,7 +2013,8 @@
       "reviewOpens": "Confirming that it needs no change is possible from {opensOn}, as its review date ({dueOn}) approaches. To change it now, start a new version.",
       "reviewOpensOwner": "Confirming that it needs no change is possible from {opensOn}, as its review date ({dueOn}) approaches.",
       "authoritativeOwn": "{language} (set for this document)",
-      "auditTrail": "Audit trail"
+      "auditTrail": "Audit trail",
+      "risks": "Controls in {count} risks"
     },
     "acknowledge": {
       "title": "Acknowledge this document",
@@ -3760,6 +3795,828 @@
       "generic": "Could not do this. Try again.",
       "approver_not_independent": "You cannot approve this export: your account or your permission was given by the person who asked, or less than 7 days ago. Another administrator must approve it.",
       "archive_unavailable": "This archive cannot be opened. Ask for a new export. This try was not counted."
+    }
+  },
+  "risks": {
+    "title": "Risk register",
+    "description": "The risks of the organization and its units: how likely, how serious, and what is done about them.",
+    "loading": "Loading…",
+    "loadError": "Could not load this page. Reload it.",
+    "notFound": "This risk does not exist, or you may not open it.",
+    "noAccess": "You do not have access to this page.",
+    "back": "Back to the risk register",
+    "newRisk": "New risk",
+    "newFromIncident": "Raise a risk from an incident",
+    "editTitle": "Change the risk's details",
+    "saving": "Saving…",
+    "save": "Save",
+    "saved": "Saved.",
+    "cancel": "Cancel",
+    "choose": "Choose…",
+    "none": "None",
+    "yes": "Yes",
+    "no": "No",
+    "someone": "Someone",
+    "someUnit": "A unit",
+    "someCommittee": "A committee",
+    "wholeOrganization": "Whole organization",
+    "notRated": "Not rated yet",
+    "rateAgain": "Rate again",
+    "stale": "This changed while you were looking at it. The page now shows it as it is.",
+    "behind": "This page may not show the latest changes. Reload it.",
+    "movesLabel": "What you can do",
+    "inBrief": "You own an action on this risk, so you see this much of it, and your actions.",
+    "gone": "Your decision is recorded. You no longer see this risk.",
+    "noMatrix": "No risk matrix is in use yet. Whoever manages risks for the whole organization sets one in the risk settings.",
+    "targetAboveCurrent": "The target is above the current rating. Rate the target again.",
+    "byOn": "{name}, {date}",
+    "bands": {
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "extreme": "Extreme"
+    },
+    "status": {
+      "proposed": "Proposed",
+      "open": "On the register",
+      "closed": "Closed",
+      "rejected": "Not taken onto the register"
+    },
+    "source": {
+      "manual": "Written by a manager",
+      "incident": "Raised from an incident",
+      "assessment": "Raised from an assessment",
+      "investigation": "Raised from an investigation",
+      "ai_suggestion": "From a suggestion of the assistant"
+    },
+    "treatment": {
+      "reduce": "Reduce",
+      "avoid": "Avoid",
+      "share": "Share",
+      "accept": "Accept"
+    },
+    "ratingKind": {
+      "inherent": "Inherent rating",
+      "current": "Current rating",
+      "target": "Target rating"
+    },
+    "axis": {
+      "likelihood": "Likelihood",
+      "impact": "Impact"
+    },
+    "appetite": {
+      "averse": "Averse",
+      "minimal": "Minimal",
+      "cautious": "Cautious",
+      "open": "Open",
+      "eager": "Eager"
+    },
+    "standing": {
+      "within": "Within tolerance",
+      "above_treated": "Above tolerance, being treated",
+      "above_not_addressed": "Above tolerance, not addressed",
+      "above_accepted": "Above tolerance, accepted until {day}"
+    },
+    "review": {
+      "title": "Review",
+      "due": "Review due",
+      "overdue": "Review overdue",
+      "outcome": {
+        "no_change": "No change",
+        "re_rated": "Re-rated",
+        "treatment_changed": "Treatment changed",
+        "closure_proposed": "Closure proposed"
+      },
+      "late": "Made late",
+      "byCommittee": "Reviewed by {committee} on {day}",
+      "comment": "What was looked at and found"
+    },
+    "trend": {
+      "up": "Up since the last review",
+      "down": "Down since the last review"
+    },
+    "control": {
+      "kind": {
+        "preventive": "Preventive",
+        "detective": "Detective",
+        "mitigating": "Mitigating"
+      },
+      "hierarchy": {
+        "elimination": "Elimination",
+        "substitution": "Substitution",
+        "engineering": "Engineering controls",
+        "administrative": "Administrative controls",
+        "protective_equipment": "Protective equipment"
+      },
+      "effectiveness": {
+        "not_assessed": "Not assessed",
+        "effective": "Effective",
+        "partly_effective": "Partly effective",
+        "ineffective": "Ineffective"
+      }
+    },
+    "matrixStatus": {
+      "draft": "Draft",
+      "in_use": "In use",
+      "retired": "Retired"
+    },
+    "moves": {
+      "edit": "Edit",
+      "rate": "Rate",
+      "add_control": "Add a control",
+      "review": "Record a review",
+      "add_action": "Add an action",
+      "escalate": "Escalate",
+      "de_escalate": "Take off the committee's list",
+      "correct": "Correct",
+      "link_incident": "Link an incident",
+      "request_acceptance": "Ask for acceptance",
+      "withdraw_acceptance": "Withdraw the request",
+      "approve_acceptance": "Sign the acceptance",
+      "return_acceptance": "Return the acceptance",
+      "close": "Close the risk",
+      "request_closure": "Ask for closure",
+      "approve_closure": "Sign the closure",
+      "return_closure": "Return the closure",
+      "reopen": "Reopen",
+      "accept_proposal": "Take onto the register",
+      "reject_proposal": "Do not take onto the register"
+    },
+    "events": {
+      "created": "Risk added",
+      "updated": "Details changed",
+      "rated": "{kind}: {band}",
+      "control_added": "Control added",
+      "control_updated": "Control changed",
+      "proposal_accepted": "Taken onto the register",
+      "proposal_rejected": "Not taken onto the register",
+      "rebanded": "Re-banded by version {version} of the matrix",
+      "reviewed": "Reviewed",
+      "escalated": "Escalated to {committee}",
+      "de_escalated": "Taken off {committee}'s list",
+      "text_corrected": "Wording corrected",
+      "acceptance_requested": "Acceptance asked for",
+      "acceptance_step_approved": "Acceptance step signed",
+      "acceptance_returned": "Acceptance returned",
+      "acceptance_withdrawn": "Acceptance withdrawn",
+      "accepted": "Accepted until {day}",
+      "acceptance_lapsed": "Acceptance lapsed",
+      "closure_requested": "Closure asked for",
+      "closure_step_approved": "Closure step signed",
+      "closure_returned": "Closure returned",
+      "closed": "Closed",
+      "reopened": "Reopened",
+      "incident_linked": "Incident {reference} linked",
+      "incident_unlinked": "Incident link removed",
+      "other": "Changed"
+    },
+    "text": {
+      "notInYourLanguage": "Not written in your language.",
+      "none": "Nothing written yet.",
+      "changed": "{field} changed",
+      "fromTo": "{field}: {from} → {to}",
+      "reason": "Reason: {reason}",
+      "reasonGiven": "with a reason"
+    },
+    "fields": {
+      "unit": "Unit",
+      "category": "Category",
+      "owner": "Risk owner",
+      "source": "Where it came from",
+      "tolerance": "Tolerance of its category",
+      "references": "References",
+      "keywords": "Keywords",
+      "created": "Added",
+      "treatment": "Treatment",
+      "targetOn": "Target date",
+      "title": "Title",
+      "cause": "Cause",
+      "event": "Event",
+      "consequence": "Consequence",
+      "orgUnitId": "Unit",
+      "categoryId": "Category",
+      "ownerId": "Risk owner",
+      "description": "Description",
+      "kind": "Kind",
+      "hierarchy": "Hierarchy of controls",
+      "effectiveness": "Effectiveness",
+      "assessedOn": "Assessed on",
+      "documentId": "Procedure",
+      "active": "In use"
+    },
+    "list": {
+      "owner": "Owner: {name}",
+      "target": "Target: {band}",
+      "nextReview": "Next review {date}",
+      "actionsOpen": "{open} open actions",
+      "actionsOverdue": "{open} open actions, {overdue} overdue",
+      "statusLabel": "Status",
+      "current": "On the register and proposed",
+      "mine": "Owned by me",
+      "aboveTolerance": "Above tolerance",
+      "notAddressed": "Not addressed",
+      "search": "Search",
+      "searchExample": "Reference, title, cause or keyword",
+      "searchButton": "Search the register",
+      "sortLabel": "Order",
+      "sort": {
+        "score": "Highest score first",
+        "next_review": "Next review first",
+        "reference": "Reference",
+        "updated": "Recently changed"
+      },
+      "filters": "More filters",
+      "filtersCount": "More filters ({count})",
+      "clear": "Clear the filters",
+      "unit": "Unit",
+      "unitHelp": "With the units beneath it",
+      "category": "Category",
+      "band": "Current band",
+      "ownerLabel": "Risk owner",
+      "committee": "Before a committee",
+      "reviewLabel": "Review",
+      "all": "All",
+      "empty": "No risks to show.",
+      "emptyFiltered": "No risk matches these filters.",
+      "pagination": "Pages of the register",
+      "page": "Page {page} of {pages}",
+      "total": "{total} in all",
+      "previous": "Previous",
+      "next": "Next"
+    },
+    "sections": {
+      "risk": "The risk",
+      "ratings": "Ratings",
+      "controls": "Controls",
+      "treatment": "Treatment and actions",
+      "reviews": "Reviews",
+      "escalation": "Escalation, acceptance and closure",
+      "notes": "Reasons given",
+      "timeline": "What happened"
+    },
+    "matrix": {
+      "caption": "Where the ratings fall on the matrix in use",
+      "cell": "{band}, score {score}",
+      "axes": "Rows: likelihood. Columns: impact.",
+      "mark": {
+        "inherent": "I",
+        "current": "C",
+        "target": "T"
+      }
+    },
+    "form": {
+      "noPersonalDetails": "Describe the situation, not a person. Do not write names or details that identify a person served or a member of staff.",
+      "cause": "Cause",
+      "event": "Event",
+      "consequence": "Consequence",
+      "reason": "Why",
+      "reasonHelp": "Required to change the owner, the unit or the category.",
+      "intro": "What could happen, why, and what it would lead to.",
+      "title": "Title",
+      "anyLanguage": "The cause, event and consequence may be written in any of the organization's languages.",
+      "keywordsHelp": "Separated by commas",
+      "referencesHelp": "One per line: a standard, a law or a report",
+      "ratings": "Ratings",
+      "ratingsHelp": "With a current rating the risk goes onto the register; without one it is proposed, for a manager to take onto it.",
+      "ratingsHelpProposed": "The risk is proposed: a manager rates it and takes it onto the register.",
+      "withCurrent": "Give a current rating now",
+      "withInherent": "Give the inherent rating",
+      "inherentRequired": "Give the inherent rating (required by the risk settings)",
+      "withTarget": "Give a target rating",
+      "add": "Add the risk",
+      "propose": "Propose the risk",
+      "proposedNote": "A manager of the unit is told, and decides whether it goes onto the register.",
+      "cannotRaise": "A risk cannot be raised from this incident.",
+      "fromIncidentNote": "The unit and the impact come from the incident. Nothing of its description is copied: describe the risk in your own words."
+    },
+    "rating": {
+      "currentAboveInherent": "The current rating is above the inherent rating. Check the inherent rating.",
+      "rerateNeeded": "Rated on an earlier version of the matrix. Rate it again.",
+      "domainsHint": "Read the domains that apply and take the highest level.",
+      "domains": "Impact domains",
+      "domain": "Domain",
+      "result": "Likelihood {likelihood} × impact {impact}:",
+      "pick": "Choose a likelihood and an impact.",
+      "rationale": "Why this rating",
+      "save": "Save the rating",
+      "which": "Which rating",
+      "levels": "Likelihood {likelihood}, impact {impact}",
+      "history": "Every rating ({count})"
+    },
+    "controls": {
+      "edit": "Change the control",
+      "add": "Add the control",
+      "description": "What it is",
+      "kindLabel": "Kind",
+      "hierarchyLabel": "Hierarchy of controls",
+      "hierarchyHelp": "From the strongest, elimination, to the weakest, protective equipment",
+      "owner": "Owner of the control",
+      "effectiveness": "Effectiveness",
+      "assessedOn": "Assessed on",
+      "assessedOnHelp": "Left empty with a new effectiveness: today",
+      "switchOff": "Switch this control off",
+      "switchOffReason": "Why it is switched off",
+      "empty": "No controls yet.",
+      "off": "Switched off",
+      "offReason": "Why it was switched off",
+      "ownedBy": "Owner: {name}",
+      "assessed": "assessed {date}",
+      "flag": {
+        "document_retired": "The procedure was retired",
+        "document_past_review": "The procedure is past its review date"
+      },
+      "document": "Find a procedure",
+      "documentHelp": "A document in force, by its number or title",
+      "noDocument": "No document in force matches.",
+      "linked": "Linked procedure"
+    },
+    "document": {
+      "restricted": "A restricted document"
+    },
+    "reviewForm": {
+      "save": "Record the review",
+      "forCommittee": "Recorded as the review of {committee}",
+      "outcome": "Outcome",
+      "current": "Current rating, confirmed or changed",
+      "rateTarget": "Rate the target again",
+      "controls": "How well each control works now",
+      "treatmentHelp": "Above tolerance, a risk is not simply accepted: ask for acceptance instead.",
+      "nextReviewOn": "Next review",
+      "nextReviewHelp": "Left empty: as the band allows. Earlier is allowed, never later."
+    },
+    "reviews": {
+      "empty": "No reviews yet.",
+      "byOn": "Reviewed by {name} on {day}"
+    },
+    "escalation": {
+      "noneAbove": "No committee sits above the one it is before.",
+      "committee": "Committee",
+      "reason": "Why it is escalated",
+      "deEscalateIntro": "It leaves the list of {committee}. If its band calls for a lower committee, it goes before that one.",
+      "deEscalateReason": "Why it is taken off the list",
+      "automatic": "Escalated automatically by its rating",
+      "byHand": "Escalated by hand, with a reason",
+      "before": "Before {committee}"
+    },
+    "proposal": {
+      "acceptIntro": "Name its owner and give a current rating. It then goes onto the register.",
+      "rejectReason": "Why it is not taken onto the register",
+      "waiting": "Proposed: waiting for a manager to take it onto the register.",
+      "rejected": "Not taken onto the register."
+    },
+    "incidents": {
+      "title": "Linked incidents",
+      "link": "Link an incident",
+      "find": "Incident reference",
+      "findHelp": "As INC-2026-00042",
+      "findButton": "Find the incident",
+      "noneFound": "No incident you may open matches.",
+      "choose": "Incident",
+      "kindLabel": "How it bears on the risk",
+      "kind": {
+        "raised": "Raised the risk",
+        "supports": "Supports the risk"
+      },
+      "note": "Note",
+      "empty": "No incidents linked.",
+      "last12Months": "{count} in the last 12 months",
+      "hidden": "And {count} you cannot open",
+      "unlink": "Remove the link",
+      "unlinkReason": "Why the link is removed",
+      "noneLinked": "No risk is linked to this incident.",
+      "linkToRisk": "Link to a risk",
+      "findRisk": "Find a risk by its reference or title",
+      "chooseRisk": "Risk"
+    },
+    "acceptance": {
+      "title": "Acceptance above tolerance",
+      "ask": "Ask for acceptance",
+      "intro": "The risk is {band}, above the tolerance of its category ({tolerance}). Say why it is kept, on what conditions, and until when.",
+      "rationale": "Why the risk is kept",
+      "conditions": "Conditions",
+      "until": "Accepted until",
+      "untilHelp": "At most {months} from today",
+      "fixed": "While the request is in approval, the title, category, unit and current rating cannot change.",
+      "withdraw": "Withdraw the request",
+      "withdrawReason": "Why the request is withdrawn",
+      "status": {
+        "in_approval": "In approval",
+        "accepted": "Accepted",
+        "returned": "Returned",
+        "withdrawn": "Withdrawn",
+        "lapsed": "Lapsed"
+      },
+      "lapsed": {
+        "last_day": "Its last day came",
+        "score_risen": "The score rose above the one accepted",
+        "category_changed": "The category changed"
+      },
+      "untilDay": "Until {day}"
+    },
+    "steps": {
+      "approve": "Sign",
+      "return": "Return",
+      "approveTitle": {
+        "acceptance": "Sign the acceptance of this risk",
+        "closure": "Sign the closure of this risk"
+      },
+      "approveIntro": {
+        "acceptance": "Your signature says you have read the request and agree that the risk is kept above tolerance until the day given.",
+        "closure": "Your signature says you have read why the risk is closed and agree that it leaves the register."
+      },
+      "comment": "Comment (optional)",
+      "returnTitle": {
+        "acceptance": "Return the request for acceptance",
+        "closure": "Return the request for closure"
+      },
+      "returnComment": "Why it is returned",
+      "returnHelp": "Read by whoever asked. Do not write names or details that identify a person.",
+      "position": "Step {position}",
+      "kind": {
+        "review": "Review",
+        "approve": "Approval"
+      },
+      "status": {
+        "waiting": "Waiting",
+        "pending": "Not yet reached",
+        "approved": "Signed",
+        "returned": "Returned",
+        "skipped": "Not needed",
+        "cancelled": "Cancelled",
+        "other": "Changed"
+      },
+      "byRole": "Anyone holding the role",
+      "due": "due {date}",
+      "signed": "Signed: {meaning}, {date}",
+      "meaning": {
+        "reviewed": "Reviewed",
+        "risk_accepted": "Accepted the risk",
+        "risk_closure_approved": "Approved the closure"
+      },
+      "done": "Your decision is recorded."
+    },
+    "signature": {
+      "password": "Your password",
+      "passwordHelp": "Typed again to sign. It is checked once and not kept.",
+      "pin": "Your signing PIN",
+      "pinHelp": "Typed again to sign. It is checked once and not kept.",
+      "pinNeeded": "You sign with a signing PIN, and have not set one yet.",
+      "setPin": "Set your signing PIN",
+      "signing": "Signing…",
+      "wrongPin": "That signing PIN is not right. Nothing was signed. Type it again; after 10 wrong PINs in all, signing with your PIN is locked.",
+      "pinPaused": "Too many wrong signing PINs: signing is paused for 15 minutes. Nothing was signed."
+    },
+    "closure": {
+      "title": "Closure",
+      "close": "Close the risk",
+      "request": "Ask for closure",
+      "closeIntro": "The risk leaves the register. Every action on it must be finished or cancelled first.",
+      "requestIntro": "This risk was once high enough that its closure needs a second signature. It waits for it on the route of closure.",
+      "reason": "Why it is closed",
+      "waiting": "Closure waiting for a second signature",
+      "merge": "Merged into another risk",
+      "mergeFind": "Find the risk by its reference or title",
+      "mergeInto": "Merged into",
+      "reopen": "Reopen",
+      "reopenIntro": "It goes back onto the register with a new current rating.",
+      "reopenReason": "Why it is reopened",
+      "closedByOn": "Closed by {name}, {date}",
+      "mergedLink": "Open the risk it was merged into"
+    },
+    "correct": {
+      "open": "Correct",
+      "titleOf": "Correct the wording: {what}",
+      "save": "Save the correction",
+      "text": "Corrected wording",
+      "kind": {
+        "rating_rationale": "Rationale",
+        "review_comment": "Review comment",
+        "reject_reason": "Reason not taken",
+        "control_reason": "Reason switched off",
+        "note": "Reason",
+        "risk_text": "Wording of the risk",
+        "close_reason": "Reason for closing",
+        "link_text": "Note of the link"
+      }
+    },
+    "notes": {
+      "kind": {
+        "change_reason": "Reason for the change",
+        "escalation_reason": "Reason for escalating",
+        "de_escalation_reason": "Reason for taking it off the list",
+        "reopen_reason": "Reason for reopening",
+        "withdraw_reason": "Reason for withdrawing"
+      },
+      "corrected": "Corrected"
+    },
+    "timeline": {
+      "empty": "Nothing has happened yet.",
+      "system": "Trustline"
+    },
+    "mine": {
+      "title": "My risks and actions",
+      "description": "The risks you own, the actions you own, and the steps waiting for your signature.",
+      "risks": "Risks I own",
+      "actions": "Actions I own",
+      "committees": "My committees",
+      "noRisks": "You own no risk on the register.",
+      "noActions": "You own no open action.",
+      "committeeRisks": "{count} risks before it"
+    },
+    "approvals": {
+      "title": "Approvals waiting for me",
+      "subject": {
+        "acceptance": "Acceptance",
+        "closure": "Closure"
+      },
+      "overdue": "Overdue"
+    },
+    "reviewsDue": {
+      "title": "Reviews due",
+      "description": "Risks you manage whose review is due within 30 days or has passed, soonest first.",
+      "both": "Due and overdue",
+      "empty": "No review is due."
+    },
+    "committee": {
+      "notMember": "This list is for the committee's members and those who read risks for the whole organization.",
+      "description": "The risks before this committee, highest score first. Record its review from each risk's page.",
+      "inactive": "This committee is no longer in use.",
+      "risks": "Risks before the committee",
+      "empty": "No risk is before this committee.",
+      "lastReview": "Last reviewed {day}",
+      "noReview": "Not reviewed yet",
+      "recordHelp": "To record the committee's review, open the risk and choose Record a review."
+    },
+    "actions": {
+      "title": "Actions",
+      "add": "Add an action",
+      "yours": "Your actions on this risk",
+      "empty": "No actions yet.",
+      "overdue": "Overdue",
+      "allWeaker": "Every open action of this treatment is weaker. Consider a stronger one.",
+      "reRatePrompt": "An action did not work. Rate the risk again.",
+      "dueMoved": "Due day moved; first due {day}",
+      "ownerDue": "{name}, due {date}",
+      "strength": {
+        "stronger": "Stronger: changes the system or the equipment",
+        "intermediate": "Intermediate: a checklist or a standard way of working",
+        "weaker": "Weaker: a reminder or training alone"
+      },
+      "strengthShort": {
+        "stronger": "Stronger",
+        "intermediate": "Intermediate",
+        "weaker": "Weaker"
+      },
+      "status": {
+        "open": "Open",
+        "in_progress": "In progress",
+        "completed": "Completed",
+        "verified": "Effectiveness checked",
+        "cancelled": "Cancelled"
+      },
+      "effectiveness": {
+        "effective": "Effective",
+        "not_effective": "Not effective"
+      },
+      "moves": {
+        "edit": "Edit",
+        "complete": "Mark complete",
+        "verify": "Check effectiveness",
+        "cancel": "Cancel the action",
+        "reopen": "Reopen"
+      },
+      "events": {
+        "created": "Action added",
+        "updated": "Details changed",
+        "due_changed": "Due day moved from {from} to {to}",
+        "completed": "Marked complete",
+        "verified": "Effectiveness checked",
+        "cancelled": "Cancelled",
+        "reopened": "Reopened",
+        "text_corrected": "Wording corrected",
+        "other": "Changed"
+      },
+      "fields": {
+        "title": "What is to be done",
+        "description": "More detail",
+        "owner": "Owner of the action",
+        "dueOn": "Due day",
+        "strength": "Strength",
+        "strengthHelp": "Stronger actions change the system; weaker ones rely on people remembering.",
+        "status": "Progress"
+      },
+      "dueReason": "Why the due day moves",
+      "dueReasonHelp": "Required when the due day changes. The first due day is kept.",
+      "completionNote": "What was done",
+      "completionHelp": "The evidence: what changed, where it can be seen.",
+      "verifyIntro": "Did the action do what it was meant to? Someone other than whoever completed it checks.",
+      "outcome": "Outcome",
+      "verificationNote": "What was checked",
+      "reason": "Why",
+      "details": "The action",
+      "risk": "Risk",
+      "completedByOn": "Completed by {name}, {date}",
+      "verifiedByOn": "Checked by {name}, {date}",
+      "cancelReason": "Why it was cancelled",
+      "late": "Completed after its due day"
+    },
+    "settings": {
+      "title": "Risk settings",
+      "description": "How risks are rated and banded, the categories with their appetite and tolerance, the committees, and the routes of acceptance and closure.",
+      "wholeOnly": "These settings belong to the whole organization. Only someone who manages risks for the whole organization changes them; you can read them.",
+      "tabsLabel": "Parts of the risk settings",
+      "tabs": {
+        "general": "General",
+        "matrix": "Matrix",
+        "categories": "Categories",
+        "committees": "Committees",
+        "routes": "Acceptance and closure routes"
+      },
+      "inherentRequired": "The inherent rating is required",
+      "inherentRequiredHelp": "A risk goes onto the register only with its inherent rating, the rating before any control.",
+      "acceptanceMaxMonths": "Longest acceptance, in months",
+      "acceptanceMaxMonthsHelp": "From 1 to 12. An accepted risk is looked at again at the latest then.",
+      "framework": "Find the risk management policy",
+      "frameworkHelp": "A document in force, by its number or title",
+      "frameworkChosen": "Risk management policy or framework",
+      "frameworkOpen": "Open the document",
+      "frameworkMissing": "Link the document that is your risk management policy or framework.",
+      "committeeNoRole": "No role is set for this committee yet. Until one is, its notices go to whoever manages risks for the whole organization.",
+      "putInUseConfirm": "{changing} risks will change band and {outOfRange} will need rating again. Put this version in use?",
+      "newVersionNeeded": "Review intervals, escalation and signatures decide how risks are banded: change them in a new version of the matrix.",
+      "matrix": {
+        "versions": "Versions of the matrix",
+        "version": "Version {version}",
+        "size": "{likelihood} × {impact}",
+        "putInUseOn": "In use since {date}",
+        "newVersion": "Make a new version",
+        "newVersionHelp": "A draft, filled from the version in use. Choose another number of levels to change its size.",
+        "draftHelp": "A draft: change anything but its size, then put it in use. Risks move to its bands at once.",
+        "inUseHelp": "In use: its wording can be changed at once. What decides a band needs a new version.",
+        "retiredHelp": "Retired: kept as it was, for the ratings made on it.",
+        "label": "Label",
+        "frequency": "How often",
+        "descriptor": "What it means",
+        "bands": "Bands",
+        "bandName": "Name of the band",
+        "reviewInterval": "Review every (days)",
+        "reviewIntervalHelp": "From 1 to 730 days",
+        "escalateTo": "Escalated to",
+        "signature": "Acceptance above tolerance needs a signature (always for High and Extreme)",
+        "cells": "The band of each place",
+        "cellsHelp": "Rows: likelihood, highest at the top. Columns: impact. Bands must rise with likelihood and impact.",
+        "cellLabel": "Likelihood {likelihood}, impact {impact}",
+        "domains": "Impact domains",
+        "domainOff": "Switched off",
+        "domainName": "Name of the domain",
+        "domainLevel": "Level {level}: {label}",
+        "domainActive": "Shown in the rating dialog",
+        "putInUse": "Put in use",
+        "discard": "Discard the draft",
+        "saveFirst": "Save your changes before putting the draft in use.",
+        "targetAbove": "{count} risks will have their target above their current rating.",
+        "putInUseDone": "In use. {rebanded} risks changed band; {outOfRange} need rating again.",
+        "discarded": "The draft was discarded."
+      },
+      "categories": {
+        "code": "Code",
+        "codeHelp": "Lower-case letters, digits and _, starting with a letter. It cannot change.",
+        "name": "Name",
+        "appetite": "Risk appetite",
+        "tolerance": "Tolerance",
+        "toleranceHelp": "The highest band its risks may stand at without treatment or acceptance",
+        "position": "Order",
+        "statement": "Appetite statement",
+        "active": "In use",
+        "inactive": "Not in use",
+        "appetiteIs": "Appetite: {appetite}",
+        "add": "Add a category"
+      },
+      "committees": {
+        "name": "Name",
+        "memberRole": "Members: holders of the role",
+        "chairRole": "Chair: holders of the role",
+        "membersHelp": "Members are the active holders of the role granted for the whole organization.",
+        "members": "Members: {role}",
+        "chair": "Chair: {role}",
+        "add": "Add a committee"
+      },
+      "routes": {
+        "description": "Who signs an acceptance above tolerance, by band, and the closure of a risk that needs a second signature. The last step approves.",
+        "variant": {
+          "medium": "Medium above tolerance",
+          "high": "High above tolerance",
+          "extreme": "Extreme above tolerance",
+          "closure": "Closure"
+        },
+        "none": "No route yet.",
+        "add": "Set the route",
+        "dueIn": "within {days} days",
+        "name": "Name of the route",
+        "who": "Who decides",
+        "roles": "Holders of a role",
+        "people": "A person",
+        "days": "Days",
+        "removeStep": "Remove",
+        "addStep": "Add a step",
+        "lastApproves": "The last step must be an approval. No one may decide two steps."
+      }
+    },
+    "errors": {
+      "generic": "Something went wrong and nothing was changed. Try again.",
+      "invalid": "Something in this form cannot be accepted. Check it and try again.",
+      "signedOut": "Your session has ended. Sign in again; what you typed here is not kept.",
+      "notFound": "This no longer exists, or you may not open it.",
+      "missing_permission": "You do not have permission to do this.",
+      "tooMany": "Too many tries. Wait a moment and try again.",
+      "subscription_suspended": "Your organization's account is read-only, so this cannot be done now.",
+      "language_mismatch": "Write names in the organization's main language, and use only the languages it works in.",
+      "unknown_document": "That document is not in force, or you may not read it.",
+      "unknown_matrix": "That version of the matrix does not exist.",
+      "unknown_committee": "That committee does not exist, or is no longer in use.",
+      "unknown_domain": "That impact domain does not exist.",
+      "unknown_role": "That role does not exist.",
+      "unknown_unit": "That unit does not exist, or is no longer in use.",
+      "unknown_category": "That category does not exist, or is no longer in use.",
+      "unknown_owner": "Choose an owner who is an active member of staff.",
+      "unknown_control": "That control is not one of this risk's.",
+      "unknown_risk": "That risk does not exist, or you may not open it.",
+      "unknown_incident": "That incident does not exist, or you may not open it in full.",
+      "matrix_incomplete": "Every level and every place of the matrix needs its wording and band.",
+      "level_out_of_range": "That level is beyond the size of the matrix.",
+      "frequency_of_impact": "Only likelihood levels have a frequency.",
+      "bands_out_of_order": "A place has a lower band than one with lower or equal likelihood and impact. Bands must rise.",
+      "signature_required": "Acceptance of High and Extreme risks is always signed.",
+      "too_many_domains": "At most {max} impact domains, switched-off ones included.",
+      "inherent_required": "Give the inherent rating too: the risk settings require it.",
+      "target_required": "The current rating is above the tolerance of its category: give a target rating.",
+      "target_above_current": "A target cannot be above the current rating, nor a current rating below the target. Rate the target first.",
+      "reason_required": "Say why: it is required for this change.",
+      "assessed_in_future": "A control cannot be assessed on a day still to come.",
+      "outcome_mismatch": "No change means the current rating stays as it is. Choose Re-rated, or keep the rating.",
+      "review_interval_too_long": "The next review is later than the band allows.",
+      "review_interval_too_long_by": "The next review can be {date} at the latest.",
+      "review_day_past": "The next review cannot be in the past.",
+      "due_in_past": "The due day cannot be in the past.",
+      "same_person": "Someone else must do this.",
+      "same_person_requested": "You asked for this, so someone else signs it.",
+      "same_person_owner": "You own this risk, so someone else signs it.",
+      "same_person_decided_earlier_step": "You decided an earlier step, so someone else decides this one.",
+      "not_a_member": "Only a member of the committee records its review.",
+      "not_assignee": "This step is not yours to decide.",
+      "stale_settings": "The settings changed while you were looking at them.",
+      "stale_matrix": "The matrix changed while you were looking at it.",
+      "stale_category": "The category changed while you were looking at it.",
+      "stale_committee": "The committee changed while you were looking at it.",
+      "stale_risk": "The risk changed while you were looking at it.",
+      "stale_control": "The control changed while you were looking at it.",
+      "stale_action": "The action changed while you were looking at it.",
+      "stale_route": "The route changed while you were looking at it.",
+      "draft_exists": "There is already a draft of the matrix. Finish or discard it first.",
+      "matrix_size_fixed": "A draft keeps its size. Make a new draft of the size wanted.",
+      "matrix_in_use": "This changes how risks are banded. Make a new version of the matrix.",
+      "matrix_retired": "A retired version cannot change.",
+      "not_draft": "This version is no longer a draft.",
+      "no_matrix": "No matrix is in use yet.",
+      "code_taken": "That code is already used. Choose another.",
+      "committee_in_use": "A band of the matrix escalates to this committee, or risks are before it. Change that first.",
+      "not_editable": "A closed or rejected risk cannot change.",
+      "not_proposed": "This risk is no longer proposed.",
+      "not_on_register": "This risk is not on the register.",
+      "already_escalated": "It is already before that committee or a higher one.",
+      "not_escalated": "It is not before a committee.",
+      "still_above_threshold": "Its band still calls for this committee or a higher one.",
+      "action_not_open": "This action is no longer open.",
+      "action_not_completed": "This action is not completed yet.",
+      "action_open": "This action is still open.",
+      "actions_open": "Finish or cancel every action on the risk first.",
+      "nothing_to_correct": "The wording is the same as before.",
+      "use_edit": "While the risk is on the register, change its title with Edit.",
+      "until_past": "The last day of the acceptance cannot be in the past.",
+      "acceptance_too_long": "That is longer than an acceptance may last.",
+      "acceptance_too_long_by": "The acceptance can last until {date} at the latest.",
+      "acceptance_required": "Above tolerance, a risk is not simply accepted: ask for acceptance.",
+      "within_tolerance": "The risk is within tolerance: there is nothing to accept.",
+      "rerate_needed": "Rate the risk on the matrix in use first.",
+      "already_accepted": "The risk is already accepted.",
+      "acceptance_in_progress": "A request for acceptance is in approval. Wait for it, or withdraw it.",
+      "closure_in_progress": "A request for closure is waiting for its signature.",
+      "no_route": "No route is set for this. Ask whoever manages risks for the whole organization.",
+      "no_assignee": "No one can decide a step of the route.",
+      "no_assignee_at": "No one can decide step {position} of the route.",
+      "not_in_approval": "This request is no longer in approval.",
+      "not_current_step": "This step is not the one waiting now.",
+      "not_closed": "This risk is not closed.",
+      "wrong_password": "That password is not right. Nothing was signed. Type it again.",
+      "password_locked": "Too many wrong passwords: your account is locked for 15 minutes, for signing and for signing in. Nothing was signed.",
+      "signing_pin_required": "You sign with a signing PIN. Set one first.",
+      "signing_pin_locked": "Signing with your PIN is locked after too many wrong PINs. Nothing was signed. Ask your administrator to reset your PIN, then set a new one.",
+      "last_step_must_approve": "The last step of a route must be an approval.",
+      "same_person_in_two_steps": "The same person cannot decide two steps.",
+      "role_cannot_approve": "Holders of that role may not sign acceptances or closures of risks.",
+      "user_cannot_approve": "That person may not sign acceptances or closures of risks.",
+      "route_exists": "There is already a route for this.",
+      "already_linked": "That incident is already linked to this risk."
     }
   }
 }
