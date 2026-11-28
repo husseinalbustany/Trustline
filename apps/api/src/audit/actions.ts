@@ -30,6 +30,7 @@ export const AUDIT_AREAS = [
   'exports',
   'trustline',
   'audit',
+  'reports',
 ] as const;
 export type AuditArea = (typeof AUDIT_AREAS)[number];
 
@@ -189,6 +190,15 @@ export const AUDIT_ACTIONS = {
   external_reviewer_viewed: code('audit', null, ['route', 'recordType', 'recordId', 'params', 'query']),
   // Addresses of sign-ins older than two years cleared (decision 7).
   audit_addresses_cleared: code('audit', 'tenant', ['before', 'count']),
+
+  // Reports and measures (docs/specs/reports-and-measures.md).
+  // A month's figures taken: one entry per client, module and month.
+  measures_snapshot_taken: code('reports', 'tenant', ['month', 'module', 'method', 'rows']),
+  // A correction asked for: recomputed by Trustline, never typed in.
+  measure_correction_requested: code('reports', 'tenant', ['month', 'measures', 'unitId', 'reason', 'values']),
+  measures_recomputed_by_system: migration('reports', 'tenant', ['reason', 'months']),
+  report_settings_changed: code('reports', 'tenant', ['targets', 'baseline']),
+  measures_exported: code('reports', 'tenant', ['filters', 'locale', 'rows']),
 } as const satisfies Record<string, ActionInfo>;
 
 /** The module each area belongs to, unless its action says otherwise. */
@@ -201,6 +211,7 @@ const AREA_MODULE: Record<AuditArea, AuditModule> = {
   exports: 'policies',
   trustline: 'core',
   audit: 'core',
+  reports: 'core',
 };
 
 /** The module an action's entries belong to. */

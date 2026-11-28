@@ -7,6 +7,7 @@ import { AuditChainCheck } from './audit/chain-check.service.js';
 import { EmailWorker } from './email/email-worker.service.js';
 import { DeadlineCheck } from './incidents/deadline-check.service.js';
 import { PolicyCheck } from './policies/policy-check.service.js';
+import { MeasureSnapshotCheck } from './reports/measure-snapshot.check.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -42,5 +43,9 @@ async function bootstrap() {
   // process. Says once if checkpoints cannot be signed, naming the
   // variable, never its value.
   app.get(AuditChainCheck, { strict: false }).start();
+  // The month-end snapshots of the measures, from midnight on the first of
+  // each month on the client's clock (docs/specs/reports-and-measures.md),
+  // every fifteen minutes, safe in every process.
+  app.get(MeasureSnapshotCheck, { strict: false }).start();
 }
 await bootstrap();

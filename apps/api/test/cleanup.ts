@@ -33,6 +33,7 @@ import {
   incidentEvents,
   incidentResponseRules,
   incidents,
+  measureSnapshots,
   notifications,
   orgUnits,
   plans,
@@ -40,6 +41,7 @@ import {
   platformAuditLog,
   policyReminders,
   referenceCounters,
+  reportSettings,
   roleAssignments,
   roles,
   sessions,
@@ -163,6 +165,9 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
         incidents,
         incidentCategories,
         referenceCounters,
+        // A whole test client's figures, before its units.
+        measureSnapshots,
+        reportSettings,
         // A whole test client's audit trail, its chain with it. Never the
         // entries of a client that is kept: its chain would break
         // (docs/specs/audit-trail.md, "Tests").

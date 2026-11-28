@@ -9,6 +9,7 @@ import { IncidentsModule } from './incidents/incidents.module.js';
 import { OrganizationModule } from './organization/organization.module.js';
 import { PlatformModule } from './platform/platform.module.js';
 import { PoliciesModule } from './policies/policies.module.js';
+import { ReportsModule } from './reports/reports.module.js';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module.js';
 
 @Module({
@@ -23,6 +24,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module.js';
     EmailModule,
     PlatformModule,
     AuditModule,
+    ReportsModule,
   ],
   controllers: [HealthController],
 })

@@ -157,7 +157,9 @@ export function LoginForm({
   if (challenge) {
     return (
       <AuthCard eyebrow={appName} title={t.login.codeTitle}>
-        <form onSubmit={sendCode} className="flex flex-col gap-5">
+        {/* Its own form, never the password step's reused: the code field
+            starts empty, not with what was typed in the field in its place. */}
+        <form key="code" onSubmit={sendCode} className="flex flex-col gap-5">
           <p className="text-sm text-muted">{t.login.codeHelp}</p>
           <Field label={t.login.code}>
             <input
@@ -197,7 +199,7 @@ export function LoginForm({
 
   return (
     <AuthCard eyebrow={appName} title={t.login.title}>
-      <form onSubmit={submit} className="flex flex-col gap-5">
+      <form key="password" onSubmit={submit} className="flex flex-col gap-5">
         {notice && (
           <p
             role="status"
