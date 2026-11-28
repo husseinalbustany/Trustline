@@ -62,6 +62,8 @@ describe('policies: quality review 3', () => {
   let reader: Staff; // on the ward
   let leaver: Staff; // on the ward, and leaves
   let quality: Staff;
+  let authority: Staff;
+  let deptManager: Staff; // manages the department's documents, the ward's people
   let types: Record<string, string>;
   let categories: Record<string, string>;
   let today: string;
@@ -114,7 +116,8 @@ describe('policies: quality review 3', () => {
     reader = await staff(a, 'reader', 'reporter', null, ward);
     leaver = await staff(a, 'leaver', 'reporter', null, ward);
     quality = await staff(a, 'quality', 'quality_officer', null, facility);
-    await staff(a, 'authority', 'approving_authority', null, facility);
+    authority = await staff(a, 'authority', 'approving_authority', null, facility);
+    deptManager = await staff(a, 'deptmanager', 'writer', dept, dept);
     types = Object.fromEntries(
       (await get(a.cookie, '/types').expect(200)).body.map((t: { code: string; id: string }) => [t.code, t.id]),
     );
@@ -367,6 +370,87 @@ describe('policies: quality review 3', () => {
       expect(file[1][12]).toBe('Yes');
       await get(phaManager.cookie, url(reader, '/export')).expect(404);
       expect((await auditOf('person_acknowledgements_exported')).at(-1)).toMatchObject({ actorId: writer.id, entityId: reader.id });
+    });
+  });
+
+  describe('a person’s record, of a version superseded since (L1, N1)', () => {
+    it('names the document a reader may open, but not a version that is no longer in force, nor its fingerprint', async () => {
+      // A pharmacy document for every member of staff: the department's
+      // manager may read it in force, without full sight of it.
+      const doc = (
+        await importOne(writer.cookie, document({
+          number: `SUP-${run}`,
+          ownerId: phaManager.id,
+          ownerUnitId: pharmacy,
+          nextReviewOn: shiftDay(today, 50),
+          lastReviewedOn: shiftDay(today, -100),
+          acknowledgementRequired: true,
+        })).expect(201)
+      ).body;
+      // The reader acknowledges version 1: a signature, with its fingerprint.
+      await post(reader.cookie, `/documents/${doc.id}/versions/${doc.published.id}/acknowledge`, { password }).expect(200);
+      // Re-issued through the route: version 2 in force, version 1 superseded.
+      let v2 = (await post(writer.cookie, `/documents/${doc.id}/versions`).expect(201)).body;
+      v2 = (
+        await http()
+          .patch(`/policies/documents/${doc.id}/versions/${v2.id}`)
+          .set('Cookie', writer.cookie)
+          .send({
+            revision: v2.revision,
+            changeSummary: { en: 'Re-issued.' },
+            content: { en: { scope: 'Everyone.', responsibilities: 'Pharmacists.' } },
+          })
+          .expect(200)
+      ).body;
+      v2 = (await post(writer.cookie, `/documents/${doc.id}/versions/${v2.id}/submit`, { revision: v2.revision }).expect(200)).body;
+      v2 = (await post(quality.cookie, `/documents/${doc.id}/versions/${v2.id}/approve`, { password, revision: v2.revision }).expect(200)).body;
+      v2 = (await post(authority.cookie, `/documents/${doc.id}/versions/${v2.id}/approve`, { password, revision: v2.revision }).expect(200)).body;
+      await post(writer.cookie, `/documents/${doc.id}/versions/${v2.id}/publish`, { revision: v2.revision }).expect(200);
+
+      const ofV1 = (body: { items: { document: { id: string } | null; version: unknown }[] }) =>
+        body.items.filter((i) => i.document?.id === doc.id);
+      // The department's manager: the document, not version 1.
+      const theirs = (await get(deptManager.cookie, `/people/${reader.id}/acknowledgements`).expect(200)).body;
+      // Asked again for version 2, in force: that one is named.
+      expect(ofV1(theirs)).toEqual([
+        expect.objectContaining({ version: expect.objectContaining({ version: 2, status: 'published' }) }),
+        expect.objectContaining({ document: expect.objectContaining({ number: `SUP-${run}` }), version: null }),
+      ]);
+      const file = cells((await get(deptManager.cookie, `/people/${reader.id}/acknowledgements/export?locale=en`).expect(200)).text);
+      const rows = file.filter((r) => r[4] === `SUP-${run}`);
+      expect(rows.map((r) => [r[6], r[7]])).toEqual([['2', 'Published'], ['', '']]);
+      // Acknowledged, but not theirs to open: no fingerprint.
+      expect(rows[1][10]).toBe('Acknowledged');
+      expect(rows[1][13]).toBe('');
+      const fullFile = cells((await get(writer.cookie, `/people/${reader.id}/acknowledgements/export?locale=en`).expect(200)).text);
+      expect(fullFile.filter((r) => r[4] === `SUP-${run}`)[1][13]).toMatch(/^[0-9a-f]{64}$/);
+      // Whoever has full sight of it sees the version and its fingerprint.
+      const full = (await get(writer.cookie, `/people/${reader.id}/acknowledgements`).expect(200)).body;
+      expect(ofV1(full)[1]).toMatchObject({ version: { id: doc.published.id, version: 1, status: 'superseded' } });
+    });
+
+    it('gives only the day of what is about a document the caller may not open (N1)', async () => {
+      // Restricted to the pharmacy: the department's manager may not open it.
+      const restricted = (
+        await importOne(writer.cookie, document({
+          number: `RES-${run}`,
+          ownerId: phaManager.id,
+          ownerUnitId: pharmacy,
+          confidentiality: 'restricted',
+          audience: { orgUnitIds: [ward], roleIds: [] },
+          nextReviewOn: shiftDay(today, 50),
+          lastReviewedOn: shiftDay(today, -100),
+          acknowledgementRequired: true,
+        })).expect(201)
+      ).body;
+      expect(restricted.id).toBeDefined();
+      const theirs = (await get(deptManager.cookie, `/people/${reader.id}/acknowledgements`).expect(200)).body;
+      const hidden = theirs.items.filter((i: { document: unknown }) => i.document === null);
+      expect(hidden.length).toBeGreaterThan(0);
+      for (const item of hidden) {
+        expect(item.version).toBeNull();
+        expect(item.assignedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      }
     });
   });
 

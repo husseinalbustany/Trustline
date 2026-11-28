@@ -1508,6 +1508,13 @@ describe('policies and procedures', () => {
       expect(history.reviews[0]).toMatchObject({ outcome: 'no_change', comment: 'Still right.', reviewedBy: { id: writer.id } });
       const [signature] = await bench.owner.db.select().from(signatures).where(eq(signatures.id, history.reviews[0].signatureId));
       expect(signature).toMatchObject({ meaning: 'reviewed_no_change', subjectType: 'document', subjectId: doc.id });
+      // With no review date, there is no review to confirm, as its moves say.
+      await bench.owner.db.execute(sql`update documents set next_review_on = null where id = ${doc.id}`);
+      const undated = (await get(writer.cookie, `/documents/${doc.id}`).expect(200)).body;
+      expect(undated.moves).not.toContain('confirm_review');
+      expect(
+        (await post(writer.cookie, `/documents/${doc.id}/review`, { password, comment, revision: undated.revision }).expect(409)).body,
+      ).toEqual({ code: 'review_not_due', dueOn: null, opensOn: null });
       const draft = (await newDocument(writer.cookie).expect(201)).body;
       expect(
         (await post(writer.cookie, `/documents/${draft.id}/review`, { password, comment, revision: draft.revision }).expect(409)).body.code,

@@ -1265,9 +1265,13 @@ export class LibraryService {
             dayOf(r.assignedAt, timeZone),
             r.dueOn,
             words[`ack.${item.state}`],
-            r.acknowledgedAt ? momentIn(r.acknowledgedAt, timeZone) : null,
+            r.acknowledgedAt
+              ? r.canOpen
+                ? momentIn(r.acknowledgedAt, timeZone)
+                : dayOf(r.acknowledgedAt, timeZone)
+              : null,
             words[item.late ? 'yes' : 'no'],
-            r.canOpen ? r.contentHash : null,
+            r.opensVersion ? r.contentHash : null,
           ];
         }),
       );
@@ -1325,6 +1329,10 @@ export class LibraryService {
         number: documents.number,
         title: documents.title,
         canOpen: sql<boolean>`coalesce(${canOpen}, false)`,
+        // That version itself (security review of quality 3, L1): with full
+        // sight of the document, or it is the one in force of a document
+        // the caller may open. A superseded version is not a reader's.
+        opensVersion: sql<boolean>`coalesce(${fullSight(viewer)} or (${documentVersions.id} = ${documents.publishedVersionId} and ${canOpen}), false)`,
         versionId: documentVersions.id,
         version: documentVersions.version,
         versionStatus: documentVersions.status,
@@ -1361,12 +1369,15 @@ export class LibraryService {
       document: r.canOpen
         ? { id: r.documentId, number: r.number, title: r.title }
         : null,
-      version: r.canOpen
+      // Only where the caller may open that version (L1).
+      version: r.opensVersion
         ? { id: r.versionId, version: r.version, status: r.versionStatus }
         : null,
-      assignedAt: r.assignedAt,
+      // Of a document not named, the day only (N1): the moment could tell
+      // which document it was, beside a list of publications.
+      assignedAt: r.canOpen ? r.assignedAt : dayOf(r.assignedAt, timeZone),
       dueOn: r.dueOn,
-      acknowledgedAt: r.acknowledgedAt,
+      acknowledgedAt: r.canOpen ? r.acknowledgedAt : acknowledgedOn,
       state: (r.acknowledgedAt
         ? 'acknowledged'
         : r.dueOn < today

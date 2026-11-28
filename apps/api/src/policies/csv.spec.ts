@@ -31,6 +31,13 @@ describe('CSV files', () => {
       expect(csvCell(` ${mark}@x`)).toBe(`"' ${mark}@x"`);
       expect(csvCell(`${mark}text`)).toBe(`"'${mark}text"`);
     }
+    // Every other format character too (\p{Cf}): isolates, overrides, the
+    // word joiner, the zero-width joiner, the soft hyphen.
+    for (const mark of ['\u2066', '\u202e', '\u2060', '\u200d', '\u00ad']) {
+      for (const sign of ['=', '+', '-', '@']) {
+        expect(csvCell(`${mark}${sign}1`)).toBe(`"'${mark}${sign}1"`);
+      }
+    }
     // Text with those signs further in is left alone.
     expect(csvCell('PRC-SAF-001')).toBe('"PRC-SAF-001"');
     expect(csvCell('a = b')).toBe('"a = b"');

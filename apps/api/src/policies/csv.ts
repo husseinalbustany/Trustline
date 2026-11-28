@@ -21,9 +21,13 @@ export const CSV_CONTENT_TYPE = 'text/csv; charset=utf-8';
 
 const BOM = '﻿';
 
+// Every format character (\p{Cf}: direction marks and isolates, the
+// overrides, the zero-width space, joiner and word joiner, the soft
+// hyphen, ...) counts as a formula start, so that none can hide a sign
+// behind it (security review of quality 3, L2).
 // eslint-disable-next-line no-control-regex
 const FORMULA_START =
-  /^[\s\u00a0]*[=+\-@|\uff1d\uff0b\uff0d\uff20\ufe62\ufe66\u200e\u200f\u061c\u200b\t\r]/;
+  /^[\s\u00a0]*[=+\-@|\uff1d\uff0b\uff0d\uff20\ufe62\ufe66\p{Cf}\t\r]/u;
 
 export type Cell = string | number | boolean | null | undefined;
 

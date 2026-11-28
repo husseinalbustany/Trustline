@@ -2458,8 +2458,13 @@ export class DocumentsService {
     // Only within REVIEW_CONFIRM_DAYS of its due date, or after it: a
     // review confirmed the day after publishing would move the next one on
     // with nobody having looked.
+    // With no review date there is no review to confirm, as `moves` says
+    // (security review of quality 3, N3).
     const today = dayOf(new Date(), auth.tenant.timeZone);
-    if (doc.nextReviewOn && doc.nextReviewOn > shiftDay(today, REVIEW_CONFIRM_DAYS)) {
+    if (!doc.nextReviewOn) {
+      throw new ConflictException({ code: 'review_not_due', dueOn: null, opensOn: null });
+    }
+    if (doc.nextReviewOn > shiftDay(today, REVIEW_CONFIRM_DAYS)) {
       throw new ConflictException({
         code: 'review_not_due',
         dueOn: doc.nextReviewOn,
