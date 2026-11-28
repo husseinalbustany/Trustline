@@ -5,8 +5,13 @@ const section = (key: string): DocumentSection => ({ key, name: { en: key }, req
 const sections = ['purpose', 'scope', 'steps', 'records'].map(section);
 
 describe('where each section stands in each language', () => {
-  it('takes the default language as authoritative', () => {
-    expect(authoritativeLocale({ defaultLocale: 'ar' })).toBe('ar');
+  it('takes the language the client chose as authoritative, else its main language', () => {
+    const tenant = { defaultLocale: 'ar', locales: ['ar', 'en'] };
+    expect(authoritativeLocale(tenant)).toBe('ar');
+    expect(authoritativeLocale(tenant, { authoritativeLocale: null })).toBe('ar');
+    expect(authoritativeLocale(tenant, { authoritativeLocale: 'en' })).toBe('en');
+    // A language the client no longer works in does not stand.
+    expect(authoritativeLocale(tenant, { authoritativeLocale: 'fr' })).toBe('ar');
   });
 
   it('says what is written, what falls back to the authoritative text, and what is empty', () => {

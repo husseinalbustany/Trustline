@@ -939,11 +939,12 @@ export const documentVersionStatus = pgEnum('document_version_status', [
   'withdrawn',
 ]);
 
-// Where a version's text came from. Every version is `written` (in
-// Trustline's editor) in this release; `imported` (a client's existing
-// library) and `ai_drafted` (docs/specs/ai-policy-drafting.md) are for what
-// comes later, so that no version has to be migrated then. Not part of what
-// is signed.
+// Where a version's text came from: `written` in Trustline's editor,
+// `imported` from a client's existing library as approved before Trustline
+// (always version 1 of a document made by the import, with its
+// `document_imports` row), `ai_drafted` (docs/specs/ai-policy-drafting.md)
+// for later. A document carries it too: how it came into Trustline. Fixed
+// once written (migration 0045). Not part of what an approval signs.
 export const documentVersionSource = pgEnum('document_version_source', [
   'written',
   'imported',
@@ -1068,6 +1069,9 @@ export const documents = pgTable(
     nextReviewOn: date({ mode: 'string' }),
     lastReviewedOn: date({ mode: 'string' }),
     status: documentStatus().notNull().default('draft'),
+    // How it came into Trustline: `written`, or `imported` with its first
+    // version (approved before Trustline). Stays so after it is re-issued.
+    source: documentVersionSource().notNull().default('written'),
     // Its foreign keys to document_versions are added by migrations, as the
     // two tables point at each other, which this file cannot type:
     // documents_published_version_fk (with the tenant, 0039) and
@@ -1093,6 +1097,12 @@ export const documents = pgTable(
   (t) => [
     unique('documents_tenant_id_id_key').on(t.tenantId, t.id),
     unique('documents_tenant_id_number_key').on(t.tenantId, t.number),
+    // An imported number is kept as given, in its own capitals; two numbers
+    // that differ only by them would be the same number to a reader.
+    uniqueIndex('documents_number_any_case_key').on(
+      t.tenantId,
+      sql`upper(${t.number})`,
+    ),
     foreignKey({
       name: 'documents_type_fk',
       columns: [t.tenantId, t.typeId],
@@ -1273,6 +1283,12 @@ export const documentVersions = pgTable(
       .on(t.tenantId, t.documentId)
       .where(sql`${t.status} in ('draft', 'in_review', 'approved')`),
     check('document_versions_version', sql`${t.version} >= 1`),
+    // An import makes a document with its first version; a later version
+    // is written, through the route.
+    check(
+      'document_versions_imported_first',
+      sql`${t.source} <> 'imported' or ${t.version} = 1`,
+    ),
     check(
       'document_versions_acknowledge_days',
       sql`${t.acknowledgeWithinDays} between 1 and 365`,
@@ -1313,6 +1329,9 @@ export const signatureMeaning = pgEnum('signature_meaning', [
   'approved',
   'reviewed_no_change',
   'acknowledged',
+  // The importer's statement that an imported version's text matches the
+  // original approved before Trustline, with the details of that approval.
+  'imported',
 ]);
 
 // The ordered steps something must pass before it is approved. Generic
@@ -1666,6 +1685,10 @@ export const documentSettings = pgTable(
     // of a document's period above it is refused; documents set longer
     // before it was lowered keep theirs until they are next changed.
     maxReviewMonths: integer().notNull().default(36),
+    // The language whose text of a document stands, against which the
+    // others are checked, flagged and shown (policies/languages.ts). Null:
+    // the client's main language, whatever it is at the time.
+    authoritativeLocale: text(),
     revision: integer().notNull().default(1),
     updatedBy: uuid(),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
@@ -1679,6 +1702,10 @@ export const documentSettings = pgTable(
     check(
       'document_settings_max_review_months',
       sql`${t.maxReviewMonths} between 1 and 120`,
+    ),
+    check(
+      'document_settings_authoritative_locale',
+      sql`${t.authoritativeLocale} ~ '^[a-z]{2}$'`,
     ),
     tenantIsolation(),
   ],
@@ -1715,6 +1742,121 @@ export const documentReviewRounds = pgTable(
     }),
     unique('document_review_rounds_run_key').on(t.tenantId, t.runId),
     index('document_review_rounds_version_idx').on(t.tenantId, t.versionId),
+    tenantIsolation(),
+  ],
+);
+
+// One import of a client's existing documents (docs/specs/policies-and-
+// procedures.md, "Import"): one password re-entry by the importer covering
+// the listed documents, each with its own signature. `list_hash` is the
+// SHA-256 of the canonical list of what was signed, in order. Written once,
+// never changed.
+export const documentImportBatches = pgTable(
+  'document_import_batches',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    importedBy: uuid().notNull(),
+    importedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    size: integer().notNull(),
+    listHash: text().notNull(),
+  },
+  (t) => [
+    unique('document_import_batches_tenant_id_id_key').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'document_import_batches_imported_by_fk',
+      columns: [t.tenantId, t.importedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    check('document_import_batches_size', sql`${t.size} between 1 and 100`),
+    check(
+      'document_import_batches_hash_shape',
+      sql`${t.listHash} ~ '^[0-9a-f]{64}$'`,
+    ),
+    tenantIsolation(),
+  ],
+);
+
+// What an imported document was before Trustline, as the paper says: the
+// number as given (null when Trustline numbered it), its revision label,
+// when and by whom it was approved, where the signed original is kept, the
+// day it took effect, and its next review date; and which of its sections
+// had no text when it was imported. With the importer's signature (meaning
+// `imported`). One per imported document and version. Written once, never
+// changed: what it says changes only through a new version.
+export const documentImports = pgTable(
+  'document_imports',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    batchId: uuid().notNull(),
+    // Where it stood in the batch, from 0.
+    batchIndex: integer().notNull(),
+    documentId: uuid().notNull(),
+    versionId: uuid().notNull(),
+    numberAsGiven: text(),
+    revisionLabel: text(),
+    approvedOn: date({ mode: 'string' }).notNull(),
+    // As written on the original: a transcription, not a translatable name.
+    approvedBy: text().notNull(),
+    originalKeptAt: jsonb().$type<Localized>().notNull(),
+    effectiveOn: date({ mode: 'string' }).notNull(),
+    nextReviewOn: date({ mode: 'string' }).notNull(),
+    // Sections with no text in the authoritative language when imported.
+    sectionsNotWritten: text()
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    signatureId: uuid().notNull(),
+    importedBy: uuid().notNull(),
+    importedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'document_imports_batch_fk',
+      columns: [t.tenantId, t.batchId],
+      foreignColumns: [documentImportBatches.tenantId, documentImportBatches.id],
+    }),
+    foreignKey({
+      name: 'document_imports_document_fk',
+      columns: [t.tenantId, t.documentId],
+      foreignColumns: [documents.tenantId, documents.id],
+    }),
+    // The version is one of the document's own.
+    foreignKey({
+      name: 'document_imports_version_fk',
+      columns: [t.tenantId, t.documentId, t.versionId],
+      foreignColumns: [
+        documentVersions.tenantId,
+        documentVersions.documentId,
+        documentVersions.id,
+      ],
+    }),
+    foreignKey({
+      name: 'document_imports_signature_fk',
+      columns: [t.tenantId, t.signatureId],
+      foreignColumns: [signatures.tenantId, signatures.id],
+    }),
+    foreignKey({
+      name: 'document_imports_imported_by_fk',
+      columns: [t.tenantId, t.importedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    unique('document_imports_document_key').on(t.tenantId, t.documentId),
+    unique('document_imports_version_key').on(t.tenantId, t.versionId),
+    unique('document_imports_batch_index_key').on(
+      t.tenantId,
+      t.batchId,
+      t.batchIndex,
+    ),
+    check(
+      'document_imports_dates',
+      sql`${t.effectiveOn} >= ${t.approvedOn} and ${t.nextReviewOn} > ${t.approvedOn}`,
+    ),
     tenantIsolation(),
   ],
 );

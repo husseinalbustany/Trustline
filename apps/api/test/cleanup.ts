@@ -9,6 +9,8 @@ import {
   documentAcknowledgements,
   documentAudiences,
   documentCategories,
+  documentImportBatches,
+  documentImports,
   documentReviewRounds,
   documentReviews,
   documents,
@@ -85,7 +87,8 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
     // Children before what they point to: notifications, the timeline and
     // comments before incidents, incidents before categories, users and org
     // units; acknowledgements, reviews and run steps before signatures,
-    // runs before routes, versions before documents before their types.
+    // runs before routes, versions before documents before their types;
+    // imports before their batches, signatures and versions.
     for (const table of [
       subscriptions,
       notifications,
@@ -94,6 +97,8 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
       documentAcknowledgements,
       documentReviews,
       documentReviewRounds,
+      documentImports,
+      documentImportBatches,
       approvalRunSteps,
       approvalRuns,
       signatures,

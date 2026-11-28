@@ -26,6 +26,7 @@ import {
 } from '../subscriptions/module.decorator.js';
 import { CSV_CONTENT_TYPE } from './csv.js';
 import { DocumentsService } from './documents.service.js';
+import { ImportsService } from './imports.service.js';
 import {
   acknowledgeSchema,
   acknowledgementExportQuery,
@@ -37,6 +38,9 @@ import {
   createSchema,
   documentExportQuery,
   editVersionSchema,
+  importBatchSchema,
+  importCheckSchema,
+  importOneSchema,
   listSchema,
   overdueQuery,
   parse,
@@ -136,6 +140,7 @@ export class PoliciesController {
   constructor(
     private readonly documents: DocumentsService,
     private readonly library: LibraryService,
+    private readonly imports: ImportsService,
   ) {}
 
   @Get('documents')
@@ -148,6 +153,45 @@ export class PoliciesController {
   create(@Body() body: unknown, @Req() req: AuthedRequest) {
     requirePermission(req, 'policies.manage');
     return this.documents.create(req.auth, parse(createSchema, body));
+  }
+
+  /**
+   * Imports one existing document as approved before Trustline, signed by
+   * the importer with their password: for those who manage documents for
+   * the whole organization. Its body may be up to IMPORT_BODY_LIMIT
+   * (app.setup.ts), since a document comes whole. Answered as the document.
+   */
+  @Post('documents/import')
+  importOne(@Body() body: unknown, @Req() req: AuthedRequest) {
+    requireEverywhere(req, 'policies.manage');
+    return this.imports.importOne(
+      req.auth,
+      parse(importOneSchema, body),
+      req.ip ?? null,
+    );
+  }
+
+  /**
+   * Imports a batch of existing documents under one password re-entry:
+   * all of them or none, each signed. Its body may be up to
+   * IMPORT_BODY_LIMIT.
+   */
+  @Post('imports')
+  importBatch(@Body() body: unknown, @Req() req: AuthedRequest) {
+    requireEverywhere(req, 'policies.manage');
+    return this.imports.importBatch(
+      req.auth,
+      parse(importBatchSchema, body),
+      req.ip ?? null,
+    );
+  }
+
+  /** Checks a batch as it would be imported, without the password. */
+  @Post('imports/check')
+  @HttpCode(200)
+  checkImport(@Body() body: unknown, @Req() req: AuthedRequest) {
+    requireEverywhere(req, 'policies.manage');
+    return this.imports.check(req.auth, parse(importCheckSchema, body).documents);
   }
 
   // Declared before 'documents/:id' as a habit; these have paths of their

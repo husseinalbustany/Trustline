@@ -155,15 +155,19 @@ export async function testBench(tag: string, run: string) {
   }
 
   /**
-   * Creates a user with one role (or none). Signed in, unless `signIn` is
-   * false: then they stay invited and have never set a password.
+   * Creates a user with one role, several, or none. Signed in, unless
+   * `signIn` is false: then they stay invited and have never set a password.
    */
   async function createStaff(
     hospital: Hospital,
     name: string,
-    grant: { role: string; orgUnitId: string | null } | null,
+    grant:
+      | { role: string; orgUnitId: string | null }
+      | { role: string; orgUnitId: string | null }[]
+      | null,
     { signIn = true } = {},
   ): Promise<Staff> {
+    const grants = grant === null ? [] : Array.isArray(grant) ? grant : [grant];
     const email = `${name}-${tag}-${run}@test.invalid`;
     const created = await http()
       .post('/users')
@@ -171,9 +175,10 @@ export async function testBench(tag: string, run: string) {
       .send({
         name: { en: `Person ${name}` },
         email,
-        roles: grant
-          ? [{ roleId: hospital.roles[grant.role], orgUnitId: grant.orgUnitId }]
-          : [],
+        roles: grants.map((g) => ({
+          roleId: hospital.roles[g.role],
+          orgUnitId: g.orgUnitId,
+        })),
       })
       .expect(201);
     const id = created.body.user.id as string;

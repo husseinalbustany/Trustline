@@ -26,6 +26,7 @@ export const documentFields = {
   nextReviewOn: documents.nextReviewOn,
   lastReviewedOn: documents.lastReviewedOn,
   status: documents.status,
+  source: documents.source,
   publishedVersionId: documents.publishedVersionId,
   retiredAt: documents.retiredAt,
   retiredBy: documents.retiredBy,

@@ -79,9 +79,9 @@ first field is already filled.
   password. The same mechanism resets a password, and a reset signs the user
   out everywhere. There is no email sending yet, so the administrator passes
   the link on.
-- **Roles** are sets of permissions. Every client starts with four built-in
-  roles (Administrator, Quality officer, Department manager, Reporter) and can
-  add its own. A role is granted for the whole organization or one department.
+- **Roles** are sets of permissions. Every client starts with five built-in
+  roles (Administrator, Quality officer, Department manager, Approving
+  authority, Reporter) and can add its own. A role is granted for the whole organization or one department.
 - **Safeguards:** five wrong passwords lock an account for 15 minutes; nobody
   can change their own roles, edit a role they hold, or disable themselves;
   nobody can give a role that allows more than they may do, or act on a user

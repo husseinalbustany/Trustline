@@ -96,14 +96,14 @@ describe('policies after review 2', () => {
   async function staff(
     h: Hospital,
     name: string,
-    role: string | null,
+    role: string | string[] | null,
     grantUnit: string | null,
     homeUnit: string | null,
   ) {
     const person = await bench.createStaff(
       h,
       name,
-      role ? { role, orgUnitId: grantUnit } : null,
+      role ? [role].flat().map((r) => ({ role: r, orgUnitId: grantUnit })) : null,
     );
     if (homeUnit) {
       await bench.owner.db
@@ -210,7 +210,7 @@ describe('policies after review 2', () => {
     writer = await staff(a, 'writer', 'writer', null, dept);
     phaWriter = await staff(a, 'phawriter', 'writer', pharmacy, pharmacy);
     quality = await staff(a, 'quality', 'quality_officer', null, facility);
-    approver = await staff(a, 'approver', 'administrator', null, facility);
+    approver = await staff(a, 'approver', ['administrator', 'approving_authority'], null, facility);
     reader = await staff(a, 'reader', 'reporter', null, ward);
     leaver = await staff(a, 'leaver', 'reporter', null, ward);
     auditor = await staff(a, 'auditor', 'auditor', null, facility);
@@ -263,7 +263,12 @@ describe('policies after review 2', () => {
     it('is the default until a manager for the whole organization sets it, and holds for documents and types', async () => {
       await http().get('/policies/settings').expect(401);
       await get(nobody.cookie, '/settings').expect(403);
-      expect((await get(reader.cookie, '/settings').expect(200)).body).toEqual({ maxReviewMonths: 36, revision: 1 });
+      expect((await get(reader.cookie, '/settings').expect(200)).body).toEqual({
+        maxReviewMonths: 36,
+        authoritativeLocale: null,
+        authoritative: 'en',
+        revision: 1,
+      });
       await http().patch('/policies/settings').send({ maxReviewMonths: 48, revision: 1 }).expect(401);
       // Only for the whole organization.
       expect((await patch(phaWriter.cookie, '/settings', { maxReviewMonths: 48, revision: 1 }).expect(403)).body.code).toBe(
@@ -282,14 +287,19 @@ describe('policies after review 2', () => {
       });
       // Lowered to 24 once the type is lowered, the policy type kept at 24.
       const set = (await patch(writer.cookie, '/settings', { maxReviewMonths: 48, revision: 1 }).expect(200)).body;
-      expect(set).toEqual({ maxReviewMonths: 48, revision: 2 });
+      expect(set).toEqual({ maxReviewMonths: 48, authoritativeLocale: null, authoritative: 'en', revision: 2 });
       const [entry] = await bench.owner.db
         .select({ actorId: auditLog.actorId, changes: auditLog.changes })
         .from(auditLog)
         .where(and(eq(auditLog.tenantId, a.id), eq(auditLog.action, 'document_settings_updated')));
       expect(entry).toEqual({ actorId: writer.id, changes: { maxReviewMonths: { from: 36, to: 48 } } });
       // Another client's settings are its own.
-      expect((await get(bWriter.cookie, '/settings').expect(200)).body).toEqual({ maxReviewMonths: 36, revision: 1 });
+      expect((await get(bWriter.cookie, '/settings').expect(200)).body).toEqual({
+        maxReviewMonths: 36,
+        authoritativeLocale: null,
+        authoritative: 'en',
+        revision: 1,
+      });
 
       // Within it, documents and types.
       expect((await newDocument(writer.cookie, { reviewMonths: 60 }).expect(400)).body).toEqual({
@@ -817,7 +827,7 @@ describe('policies after review 2', () => {
         await bench.createRole(c, 'writer', ['policies.view', 'policies.manage']);
         cWriter = await staff(c, 'cwriter', 'writer', null, f);
         const q = await staff(c, 'cquality', 'quality_officer', null, f);
-        const ap = await staff(c, 'capprover', 'administrator', null, f);
+        const ap = await staff(c, 'capprover', ['administrator', 'approving_authority'], null, f);
         cQuality = q;
         cApprover = ap;
         cFacility = f;

@@ -182,9 +182,12 @@ export const DEFAULT_DOCUMENT_CATEGORIES: {
 ];
 
 /**
- * The route every type starts with: a review, then an approval, each by
- * anyone holding a built-in role over the document's owning unit, with a
- * week for each. Named after the type.
+ * The route every type starts with: a review by the Quality officer, then
+ * the approval by the Approving authority (business decision 2), each by
+ * anyone holding that built-in role over the document's owning unit, with a
+ * week for each. Named after the type. Migration 0045 changed the routes of
+ * the clients that existed where they still were the earlier starting route
+ * (approval by the Administrator).
  */
 export const DEFAULT_ROUTE_STEPS: {
   position: number;
@@ -193,7 +196,7 @@ export const DEFAULT_ROUTE_STEPS: {
   dueInDays: number;
 }[] = [
   { position: 1, kind: 'review', roleCode: 'quality_officer', dueInDays: 7 },
-  { position: 2, kind: 'approve', roleCode: 'administrator', dueInDays: 7 },
+  { position: 2, kind: 'approve', roleCode: 'approving_authority', dueInDays: 7 },
 ];
 
 /** "Approval of <type>s", per type code, in every language. */

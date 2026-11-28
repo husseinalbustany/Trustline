@@ -359,6 +359,7 @@ export async function seed() {
         await seedDocuments(tx, {
           id: tenantId,
           locales: tenant.locales,
+          defaultLocale: tenant.defaultLocale,
           timeZone,
           qualityUnitCode: `${structure.code}-QM`,
         });

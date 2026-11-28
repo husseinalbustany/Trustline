@@ -248,6 +248,9 @@ export class LibraryService {
         lastReviewedOn: documents.lastReviewedOn,
         reviewMonths: documents.reviewMonths,
         acknowledgementRequired: published.acknowledgementRequired,
+        // Where the version in force came from: `imported` is approved
+        // before Trustline, and is re-issued at its review.
+        source: published.source,
       })
       .from(documents)
       .innerJoin(documentTypes, eq(documentTypes.id, documents.typeId))
@@ -373,6 +376,8 @@ export class LibraryService {
           h.acknowledgementRequired,
           h.inProgressVersion,
           h.inProgressStatus,
+          // Last, so that the columns of files taken before keep their place.
+          h.approvedBeforeTrustline,
         ],
         rows.map((r) => {
           const review = reviewState(r, today);
@@ -399,6 +404,9 @@ export class LibraryService {
             progress
               ? (words[`version.${progress.status}` as ExportValue] ?? progress.status)
               : null,
+            r.version === null
+              ? null
+              : words[r.source === 'imported' ? 'yes' : 'no'],
           ];
         }),
       );
@@ -627,6 +635,10 @@ export class LibraryService {
           ownerUnit: { id: orgUnits.id, name: orgUnits.name },
           nextReviewOn: documents.nextReviewOn,
           revision: documents.revision,
+          // In force as approved before Trustline: its review is a re-issue
+          // through the route, not a confirmation.
+          reissue: sql<boolean>`exists (select from ${documentVersions} pv
+            where pv.id = ${documents.publishedVersionId} and pv.source = 'imported')`,
         })
         .from(documents)
         .innerJoin(orgUnits, eq(orgUnits.id, documents.ownerUnitId))

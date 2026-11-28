@@ -538,6 +538,8 @@ describe('what the database itself enforces for the incident safeguards', () => 
         administrator: NEW,
         quality_officer: NEW,
         department_manager: [],
+        // Built in since migration 0045; this one gives it neither.
+        approving_authority: [],
         reporter: [],
         zz_own_role: [],
       });

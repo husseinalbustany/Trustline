@@ -135,7 +135,12 @@ export class ProvisioningService {
       .where(isNull(userTokens.usedAt));
   }
 
-  /** Creates the built-in roles, or brings them in line with the code. */
+  /**
+   * Creates the built-in roles, or brings them in line with the code. A
+   * role the client made itself under the code of a built-in role added
+   * later (`approving_authority`) stays the client's own, as migration 0045
+   * leaves it: it is not taken over.
+   */
   async ensureSystemRoles(tx: Transaction, tenantId: string) {
     await tx
       .insert(roles)
@@ -146,8 +151,8 @@ export class ProvisioningService {
           name: sql`excluded.name`,
           description: sql`excluded.description`,
           permissions: sql`excluded.permissions`,
-          isSystem: true,
         },
+        setWhere: sql`${roles.isSystem}`,
       });
   }
 

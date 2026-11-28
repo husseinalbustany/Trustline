@@ -226,10 +226,15 @@ export const changesQuery = z.preprocess(
   }),
 );
 
-export const settingsSchema = z.strictObject({
-  maxReviewMonths: z.number().int().min(1).max(120),
-  revision,
-});
+export const settingsSchema = z
+  .strictObject({
+    maxReviewMonths: z.number().int().min(1).max(120).optional(),
+    // One of the client's languages (checked by the service); null: its
+    // main language, whatever it is at the time.
+    authoritativeLocale: localeSchema.nullable().optional(),
+    revision,
+  })
+  .refine((v) => Object.keys(v).length > 1);
 
 export const peopleQuery = z.preprocess(
   blankAsUnset,
@@ -331,6 +336,87 @@ export const routeUpdateSchema = z
   .refine((v) => Object.keys(v).length > 1);
 
 export type StepInput = z.infer<typeof stepSchema>;
+
+// Importing documents approved before Trustline.
+
+/** The most documents one batch imports, under one password re-entry. */
+export const IMPORT_MAX_DOCUMENTS = 20;
+/** The most characters of text one batch carries, every document together. */
+export const IMPORT_MAX_CHARS = 600_000;
+
+/**
+ * A number as the original gives it: letters and digits of any script,
+ * with spaces, `-`, `.`, `/`, `_` and brackets between them, at most 40
+ * characters. Spaces in a row become one; the capitals are kept.
+ */
+const legacyNumber = z
+  .string()
+  .max(200)
+  .transform((v) => v.trim().replace(/\s+/g, ' '))
+  .pipe(
+    z
+      .string()
+      .max(40)
+      .regex(/^[\p{L}\p{N}](?:[\p{L}\p{N} ._/()-]*[\p{L}\p{N})])?$/u),
+  );
+
+/** One section's text, per language, per section key, for an import. */
+const importContent = z.record(
+  z.string().max(10),
+  z.record(z.string().max(40), z.string().max(40_000)),
+);
+
+/**
+ * One document to import: what a new document is made with, the details
+ * of its approval before Trustline as the original gives them, its text,
+ * and whether its readers are asked to acknowledge it. Checked further by
+ * the service (dates, languages, sections, markup, numbers).
+ */
+export const importDocumentSchema = z.strictObject({
+  typeId: z.uuid(),
+  categoryId: z.uuid(),
+  ...metadata,
+  audience: audienceSchema.default({ orgUnitIds: [], roleIds: [] }),
+  confidentiality: metadata.confidentiality.default('all_staff'),
+  keywords: metadata.keywords.default([]),
+  references: metadata.references.default([]),
+  // How often it is reviewed once re-issued: from the type unless given.
+  reviewMonths: metadata.reviewMonths.optional(),
+  // As the original gives it; none: Trustline numbers it.
+  number: legacyNumber.optional(),
+  // The original's own edition: "Rev. 3", "Issue 2".
+  revisionLabel: line(1, 40).optional(),
+  // When and by whom the original was approved, as it says.
+  approvedOn: z.iso.date(),
+  approvedBy: line(1, 200),
+  // Where the signed original is kept.
+  originalKeptAt: localizedText(300),
+  // The day it took effect: the approval day unless given.
+  effectiveOn: z.iso.date().optional(),
+  // Its next review, as the original or the register gives it.
+  nextReviewOn: z.iso.date(),
+  content: importContent,
+  acknowledgementRequired: z.boolean().default(false),
+  acknowledgeWithinDays: z.number().int().min(1).max(365).default(14),
+});
+export type ImportDocumentInput = z.infer<typeof importDocumentSchema>;
+
+/** One document, imported on its own, signed with the password. */
+export const importOneSchema = importDocumentSchema.extend({ password });
+
+/**
+ * A batch: the documents are checked one by one by the service, which says
+ * which of them is refused and why.
+ */
+export const importBatchSchema = z.strictObject({
+  password,
+  documents: z.array(z.unknown()).min(1),
+});
+
+/** A batch checked before it is signed: the same, without the password. */
+export const importCheckSchema = z.strictObject({
+  documents: z.array(z.unknown()).min(1),
+});
 
 /** Parses a body or a query, or answers 400. */
 export function parse<T extends z.ZodType>(schema: T, value: unknown) {

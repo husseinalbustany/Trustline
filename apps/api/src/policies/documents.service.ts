@@ -29,6 +29,8 @@ import {
   documentAcknowledgements,
   documentAudiences,
   documentCategories,
+  documentImportBatches,
+  documentImports,
   documentReviewRounds,
   documentReviews,
   documents,
@@ -51,16 +53,17 @@ import {
   compareVersions,
   contentSize,
   languagesOf,
-  markupProblem,
   missingSections,
-  normalizeSection,
-  SECTION_MAX_CHARS,
   VERSION_MAX_CHARS,
 } from './content.js';
+import { checkedSection } from './section-input.js';
 import { DocumentNotifier } from './document-notifier.js';
 import { loadDocument, type LoadedDocument } from './document-access.js';
-import { assertReviewPeriod } from './document-settings.js';
-import { authoritativeLocale, languageStatus } from './languages.js';
+import {
+  assertReviewPeriod,
+  authoritativeLocaleOf,
+} from './document-settings.js';
+import { languageStatus } from './languages.js';
 import type {
   AudienceInput,
   CreateInput,
@@ -190,6 +193,8 @@ const refuse = {
   staleDocument: () => new ConflictException({ code: 'stale_document' }),
   staleVersion: () => new ConflictException({ code: 'stale_version' }),
   retired: () => new ConflictException({ code: 'document_retired' }),
+  // An imported document is re-issued at its review, through the route.
+  reissueRequired: () => new ConflictException({ code: 'reissue_required' }),
 };
 
 /**
@@ -292,11 +297,16 @@ export class DocumentsService {
         effectiveOn: documentVersions.effectiveOn,
         publishedAt: documentVersions.publishedAt,
         acknowledgementRequired: documentVersions.acknowledgementRequired,
+        source: documentVersions.source,
       })
       .from(documentVersions)
       .where(eq(documentVersions.documentId, doc.id))
       .orderBy(desc(documentVersions.version));
     const published = versions.find((v) => v.id === doc.publishedVersionId);
+    // In force as approved before Trustline: its next review is a re-issue
+    // through the route, not a confirmation that nothing changed.
+    const reissueRequired =
+      doc.status === 'active' && published?.source === 'imported';
     const inProgress = versions.find((v) => IN_PROGRESS.includes(v.status));
     const shownInProgress =
       access.full || (inProgress && inProgress.id === access.assignedVersionId)
@@ -312,7 +322,11 @@ export class DocumentsService {
       if (!inProgress) moves.push('new_version');
       moves.push('retire');
     }
-    if ((access.manages || access.owner) && doc.status === 'active') {
+    if (
+      (access.manages || access.owner) &&
+      doc.status === 'active' &&
+      !reissueRequired
+    ) {
       moves.push('confirm_review');
     }
     return {
@@ -333,7 +347,11 @@ export class DocumentsService {
       nextReviewOn: doc.nextReviewOn,
       lastReviewedOn: doc.lastReviewedOn,
       review: reviewState(doc, today),
+      reissueRequired,
       status: doc.status,
+      // How it came into Trustline: `written`, or `imported` as approved
+      // before Trustline (its first version).
+      source: doc.source,
       retiredAt: doc.retiredAt,
       retiredBy:
         access.full && doc.retiredBy
@@ -357,6 +375,8 @@ export class DocumentsService {
             effectiveOn: published.effectiveOn,
             publishedAt: published.publishedAt,
             acknowledgementRequired: published.acknowledgementRequired,
+            source: published.source,
+            approvedBeforeTrustline: published.source === 'imported',
           }
         : null,
       inProgress: shownInProgress
@@ -480,6 +500,7 @@ export class DocumentsService {
           publishedAt: documentVersions.publishedAt,
           supersededAt: documentVersions.supersededAt,
           withdrawnAt: documentVersions.withdrawnAt,
+          source: documentVersions.source,
         })
         .from(documentVersions)
         .where(eq(documentVersions.documentId, doc.id))
@@ -852,7 +873,7 @@ export class DocumentsService {
       )
       .orderBy(desc(documentVersions.version))
       .limit(1);
-    const authoritative = authoritativeLocale(auth.tenant);
+    const authoritative = await authoritativeLocaleOf(tx, auth.tenant);
     const languageView = languageStatus(
       version,
       previous ?? null,
@@ -903,6 +924,15 @@ export class DocumentsService {
         comparison: compareVersions(version, round, auth.tenant.locales),
       };
     }
+
+    // What the original of an imported version says of its approval before
+    // Trustline, the importer's signature that this is its text, and the
+    // sections it came without. For every reader of the version: it is
+    // what its control block stands on.
+    const imported =
+      version.source === 'imported'
+        ? await this.importedOriginal(tx, version)
+        : null;
 
     // What the viewer may do with it.
     const pending = latest ? this.engine.pendingStep(latest) : null;
@@ -989,12 +1019,35 @@ export class DocumentsService {
           !!version.effectiveOn &&
           version.effectiveOn <= today,
         owner: { id: doc.ownerId, name: (await this.names(tx, [doc.ownerId])).get(doc.ownerId) ?? null },
-        preparedBy: person(version.preparedBy),
+        // An imported version was not prepared in Trustline: whoever
+        // imported it is named as such, in `approvedBeforeTrustline`.
+        preparedBy: imported ? null : person(version.preparedBy),
         effectiveOn: version.effectiveOn,
         nextReviewOn:
           version.id === doc.publishedVersionId ? doc.nextReviewOn : null,
-        approvals,
+        // How this version is approved: through Trustline's route, with
+        // its signatures in `approvals`; or before Trustline, as the
+        // original says, never shown as a Trustline approval (`approvals`
+        // is empty).
+        approvedThrough: imported
+          ? ('before_trustline' as const)
+          : ('trustline_route' as const),
+        approvals: imported ? [] : approvals,
+        approvedBeforeTrustline: imported
+          ? {
+              numberAsGiven: imported.numberAsGiven,
+              revisionLabel: imported.revisionLabel,
+              approvedOn: imported.approvedOn,
+              approvedBy: imported.approvedBy,
+              originalKeptAt: imported.originalKeptAt,
+              effectiveOn: imported.effectiveOn,
+              nextReviewOn: imported.nextReviewOn,
+              importedBy: imported.importedBy,
+              importedAt: imported.importedAt,
+            }
+          : null,
       },
+      imported,
       run: seesRuns && latest ? runView(latest) : null,
       rounds: seesRuns
         ? runs.map((r) => ({ ...runView(r), snapshot: snapshotted.has(r.id) }))
@@ -1014,6 +1067,76 @@ export class DocumentsService {
       revision: version.revision,
       moves: openNow(auth, moves),
     };
+  }
+
+  /**
+   * What the import of a version kept of its original, its importer's
+   * signature, its batch, and the sections it came without (in the
+   * version's own order, with whether each is required).
+   */
+  private async importedOriginal(tx: Transaction, version: VersionRow) {
+    const [row] = await tx
+      .select({
+        batchId: documentImports.batchId,
+        batchIndex: documentImports.batchIndex,
+        batchSize: documentImportBatches.size,
+        numberAsGiven: documentImports.numberAsGiven,
+        revisionLabel: documentImports.revisionLabel,
+        approvedOn: documentImports.approvedOn,
+        approvedBy: documentImports.approvedBy,
+        originalKeptAt: documentImports.originalKeptAt,
+        effectiveOn: documentImports.effectiveOn,
+        nextReviewOn: documentImports.nextReviewOn,
+        sectionsNotWritten: documentImports.sectionsNotWritten,
+        signatureId: documentImports.signatureId,
+        importedBy: documentImports.importedBy,
+        importedAt: documentImports.importedAt,
+      })
+      .from(documentImports)
+      .innerJoin(
+        documentImportBatches,
+        eq(documentImportBatches.id, documentImports.batchId),
+      )
+      .where(eq(documentImports.versionId, version.id));
+    if (!row) return null;
+    const [signature] = (
+      await this.signatures.of(tx, 'document_version', [version.id])
+    ).filter((s) => s.id === row.signatureId);
+    const people = await this.names(tx, [row.importedBy]);
+    const missing = new Set(row.sectionsNotWritten);
+    return {
+      batch: { id: row.batchId, index: row.batchIndex, size: row.batchSize },
+      numberAsGiven: row.numberAsGiven,
+      revisionLabel: row.revisionLabel,
+      approvedOn: row.approvedOn,
+      approvedBy: row.approvedBy,
+      originalKeptAt: row.originalKeptAt,
+      effectiveOn: row.effectiveOn,
+      nextReviewOn: row.nextReviewOn,
+      sectionsNotWritten: version.sections
+        .filter((s) => missing.has(s.key))
+        .map((s) => ({ key: s.key, required: s.required })),
+      importedBy: { id: row.importedBy, name: people.get(row.importedBy) ?? null },
+      importedAt: row.importedAt,
+      signature: signature
+        ? {
+            id: signature.id,
+            meaning: signature.meaning,
+            signedBy: {
+              id: signature.userId,
+              name: people.get(signature.userId) ?? null,
+            },
+            signedAt: signature.signedAt,
+            contentHash: signature.contentHash,
+          }
+        : null,
+    };
+  }
+
+  /** A document as `GET /documents/:id` answers it, in the caller's transaction. */
+  async detailOf(tx: Transaction, auth: AuthContext, id: string) {
+    const viewer = await viewerOf(tx, auth, this.engine);
+    return this.detail(tx, auth, viewer, await this.find(tx, viewer, id));
   }
 
   // Creating and editing documents.
@@ -1115,7 +1238,7 @@ export class DocumentsService {
     });
   }
 
-  private async assertCategory(tx: Transaction, id: string) {
+  async assertCategory(tx: Transaction, id: string) {
     const [category] = await tx
       .select({ id: documentCategories.id, code: documentCategories.code })
       .from(documentCategories)
@@ -1131,7 +1254,7 @@ export class DocumentsService {
   }
 
   /** The owner is an active member of the client's staff. */
-  private async assertOwner(tx: Transaction, id: string) {
+  async assertOwner(tx: Transaction, id: string) {
     const [owner] = await tx
       .select({ id: users.id })
       .from(users)
@@ -1140,7 +1263,7 @@ export class DocumentsService {
     if (!owner) throw new BadRequestException({ code: 'unknown_owner' });
   }
 
-  private async assertRoles(tx: Transaction, ids: string[]) {
+  async assertRoles(tx: Transaction, ids: string[]) {
     const wanted = [...new Set(ids)];
     if (wanted.length === 0) return;
     const found = await tx
@@ -1154,7 +1277,7 @@ export class DocumentsService {
   }
 
   /** Replaces the audience: each unit (or the whole organization) × role. */
-  private async setAudience(
+  async setAudience(
     tx: Transaction,
     tenantId: string,
     documentId: string,
@@ -1427,8 +1550,14 @@ export class DocumentsService {
         throw new ConflictException({ code: 'version_in_progress' });
       }
       const base = all.find((v) => v.id === doc.publishedVersionId) ?? all[0];
+      // Text that went through Trustline's approval is nobody's to keep
+      // out. Text imported as approved before Trustline was put here by its
+      // importer and approved by nobody in Trustline: its re-issue is its
+      // first approval here, which its importer decides no step of.
       const kept =
-        base && base.id !== doc.publishedVersionId ? base.contributors : [];
+        base && (base.id !== doc.publishedVersionId || base.source === 'imported')
+          ? base.contributors
+          : [];
       const contributors = [...new Set([...kept, user.id])];
       const [type] = await tx
         .select({ sections: documentTypes.sections })
@@ -1521,30 +1650,7 @@ export class DocumentsService {
           throw new BadRequestException({ code: 'language_mismatch' });
         }
         for (const [key, raw] of Object.entries(sections)) {
-          if (!keys.has(key)) {
-            throw new BadRequestException({
-              code: 'unknown_section',
-              section: key,
-            });
-          }
-          const value = raw === null ? '' : normalizeSection(raw);
-          const problem = value ? markupProblem(value) : null;
-          if (problem) {
-            throw new BadRequestException({
-              code: 'unsupported_markup',
-              locale,
-              section: key,
-              problem,
-            });
-          }
-          if (value.length > SECTION_MAX_CHARS) {
-            throw new BadRequestException({
-              code: 'section_too_long',
-              locale,
-              section: key,
-              max: SECTION_MAX_CHARS,
-            });
-          }
+          const value = checkedSection(locale, key, raw, keys);
           const before = content[locale]?.[key] ?? '';
           if (before === value) continue;
           edited.push(`${locale}.${key}`);
@@ -1629,7 +1735,8 @@ export class DocumentsService {
 
   /**
    * Sends a draft for review: every required section written in the
-   * client's default language, a change summary from version 2, and an
+   * client's authoritative language, a change summary in it from version
+   * 2, and an
    * approval route for its type whose every step someone other than those
    * who prepared it could decide. The first step's assignees are told.
    */
@@ -1646,21 +1753,22 @@ export class DocumentsService {
       if (version.status !== 'draft') {
         throw new ConflictException({ code: 'not_draft' });
       }
+      const authoritative = await authoritativeLocaleOf(tx, tenant);
       const missing = missingSections(
         version.sections,
         version.content,
-        tenant.defaultLocale,
+        authoritative,
       );
       if (missing.length > 0) {
         throw new BadRequestException({
           code: 'missing_sections',
-          locale: tenant.defaultLocale,
+          locale: authoritative,
           sections: missing,
         });
       }
       if (
         version.version >= 2 &&
-        !version.changeSummary?.[tenant.defaultLocale as 'en']
+        !version.changeSummary?.[authoritative as 'en']
       ) {
         throw new BadRequestException({ code: 'change_summary_required' });
       }
@@ -2305,6 +2413,11 @@ export class DocumentsService {
     if (doc.status !== 'active') {
       throw new ConflictException({ code: 'not_active' });
     }
+    const [published] = await tx
+      .select({ source: documentVersions.source })
+      .from(documentVersions)
+      .where(eq(documentVersions.id, doc.publishedVersionId!));
+    if (published?.source === 'imported') throw refuse.reissueRequired();
     return { viewer, doc };
   }
 

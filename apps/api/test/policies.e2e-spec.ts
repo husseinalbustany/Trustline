@@ -101,14 +101,14 @@ describe('policies and procedures', () => {
   async function staff(
     h: Hospital,
     name: string,
-    role: string | null,
+    role: string | string[] | null,
     grantUnit: string | null,
     homeUnit: string | null,
   ) {
     const person = await bench.createStaff(
       h,
       name,
-      role ? { role, orgUnitId: grantUnit } : null,
+      role ? [role].flat().map((r) => ({ role: r, orgUnitId: grantUnit })) : null,
     );
     if (homeUnit) {
       await bench.owner.db
@@ -242,8 +242,8 @@ describe('policies and procedures', () => {
     writer = await staff(a, 'writer', 'writer', null, nursing);
     pharmacyWriter = await staff(a, 'phawriter', 'writer', pharmacy, pharmacy);
     quality = await staff(a, 'quality', 'quality_officer', null, facility);
-    approver = await staff(a, 'approver', 'administrator', null, facility);
-    secondApprover = await staff(a, 'approver2', 'administrator', null, facility);
+    approver = await staff(a, 'approver', ['administrator', 'approving_authority'], null, facility);
+    secondApprover = await staff(a, 'approver2', ['administrator', 'approving_authority'], null, facility);
     reader = await staff(a, 'reader', 'reporter', null, ward);
     pharmacist = await staff(a, 'pharmacist', 'reporter', null, pharmacy);
     auditor = await staff(a, 'auditor', 'auditor', null, facility);
@@ -251,7 +251,7 @@ describe('policies and procedures', () => {
     nobody = await staff(a, 'nobody', 'none', null, ward);
     quality2 = await staff(a, 'quality2', 'quality_officer', null, facility);
     signer = await staff(a, 'signer', 'signer', null, pharmacy);
-    lockme = await staff(a, 'lockme', 'administrator', null, facility);
+    lockme = await staff(a, 'lockme', ['administrator', 'approving_authority'], null, facility);
 
     const bUnit = await bench.createUnit(b, 'facility', 'F', null);
     await bench.createRole(b, 'writer', ['policies.view', 'policies.manage']);
@@ -335,7 +335,7 @@ describe('policies and procedures', () => {
           ]),
         ).toEqual([
           ['review', roleOf(b, 'quality_officer')],
-          ['approve', roleOf(b, 'administrator')],
+          ['approve', roleOf(b, 'approving_authority')],
         ]);
       }
     });
@@ -1068,7 +1068,7 @@ describe('policies and procedures', () => {
     }, 60_000);
 
     it('has each step of a run decided by a different person', async () => {
-      // A quality officer who is an administrator too.
+      // A quality officer who is the Approving authority too.
       const both = await staff(a, 'both', 'quality_officer', null, facility);
       const grant = (roles: string[]) =>
         http()
@@ -1076,7 +1076,7 @@ describe('policies and procedures', () => {
           .set('Cookie', a.cookie)
           .send({ roles: roles.map((code) => ({ roleId: roleOf(a, code), orgUnitId: null })) })
           .expect(200);
-      await grant(['quality_officer', 'administrator']);
+      await grant(['quality_officer', 'approving_authority']);
       try {
         const { doc, version } = await inReview();
         const reviewed = (await decide(both, doc, version, 'approve').expect(200)).body as Version;

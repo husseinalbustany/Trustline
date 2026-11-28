@@ -31,3 +31,29 @@ export const signedVersion = (
   acknowledgementRequired: version.acknowledgementRequired,
   acknowledgeWithinDays: version.acknowledgeWithinDays,
 });
+
+/** What the original of an imported document says of itself. */
+export type ImportedOriginal = {
+  numberAsGiven: string | null;
+  revisionLabel: string | null;
+  approvedOn: string;
+  approvedBy: string;
+  originalKeptAt: Localized;
+  effectiveOn: string;
+  nextReviewOn: string;
+};
+
+/**
+ * What the importer of a document signs (meaning `imported`): that the
+ * version holds the text of the original approved before Trustline, and
+ * what the original says of its approval. The version as an approval signs
+ * it, with those details beside it.
+ */
+export const signedImport = (
+  doc: Parameters<typeof signedVersion>[0],
+  version: Parameters<typeof signedVersion>[1],
+  original: ImportedOriginal,
+) => ({
+  ...signedVersion(doc, version),
+  importedOriginal: original,
+});

@@ -3,13 +3,21 @@ import type { DocumentContent, DocumentSection } from '../database/schema.js';
 /**
  * Which language of a document is authoritative: the one whose text stands
  * when two languages disagree, which readers of a language that is missing
- * a section are shown instead, and against which the other languages are
- * said to lag. The client's default language for now (business question
- * Q4 is open: a client may later choose another). This is the one place
- * that decides it.
+ * a section are shown instead, against which the other languages are said
+ * to lag, and in which a version's required sections and change summary
+ * must be written before it is sent for review. Each client chooses it
+ * (business decision 3: `document_settings.authoritative_locale`); until it
+ * does, or if it stops working in the language it chose, it is the
+ * client's main language. This is the one place that decides it: every
+ * comparison of languages asks it, through `authoritativeLocaleOf`
+ * (document-settings.ts) where it has a transaction.
  */
-export function authoritativeLocale(tenant: { defaultLocale: string }) {
-  return tenant.defaultLocale;
+export function authoritativeLocale(
+  tenant: { defaultLocale: string; locales: string[] },
+  settings: { authoritativeLocale: string | null } = { authoritativeLocale: null },
+) {
+  const chosen = settings.authoritativeLocale;
+  return chosen && tenant.locales.includes(chosen) ? chosen : tenant.defaultLocale;
 }
 
 /**

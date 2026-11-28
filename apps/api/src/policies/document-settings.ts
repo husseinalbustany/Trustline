@@ -1,6 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import type { Transaction } from '../database/client.js';
 import { documentSettings } from '../database/schema.js';
+import { authoritativeLocale } from './languages.js';
 
 /**
  * The longest review period a document may have, in months, until a client
@@ -21,6 +22,7 @@ export async function documentSettingsOf(
   const query = tx
     .select({
       maxReviewMonths: documentSettings.maxReviewMonths,
+      authoritativeLocale: documentSettings.authoritativeLocale,
       revision: documentSettings.revision,
       updatedAt: documentSettings.updatedAt,
     })
@@ -34,10 +36,22 @@ export async function documentSettingsOf(
   return (
     row ?? {
       maxReviewMonths: DEFAULT_MAX_REVIEW_MONTHS,
+      authoritativeLocale: null,
       revision: 1,
       updatedAt: null,
     }
   );
+}
+
+/**
+ * The client's authoritative language for documents, as it stands now:
+ * the one it chose, if it still works in it, else its main language.
+ */
+export async function authoritativeLocaleOf(
+  tx: Transaction,
+  tenant: { defaultLocale: string; locales: string[] },
+) {
+  return authoritativeLocale(tenant, await documentSettingsOf(tx));
 }
 
 /**

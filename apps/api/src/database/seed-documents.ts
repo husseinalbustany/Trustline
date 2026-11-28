@@ -2,7 +2,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { contentHash } from '../approvals/signatures.js';
 import type { Locale, Localized } from '../i18n/locales.js';
 import { addMonths, dayOf, shiftDay } from '../i18n/time-zones.js';
-import { signedVersion } from '../policies/signed-content.js';
+import { signedImport, signedVersion } from '../policies/signed-content.js';
 import type { Transaction } from './client.js';
 import {
   approvalRoutes,
@@ -11,6 +11,8 @@ import {
   documentAcknowledgements,
   documentAudiences,
   documentCategories,
+  documentImportBatches,
+  documentImports,
   documentReviewRounds,
   documents,
   documentTypes,
@@ -29,8 +31,10 @@ import {
  * for any organization: a published policy, a published procedure that asks
  * for acknowledgement with a second version in review, a draft work
  * instruction, an approved procedure scheduled for a later day, and a
- * restricted policy past its review date. With three fictional members of
- * staff, invited and never signed in, who wrote, reviewed and approved them.
+ * restricted policy past its review date, and a procedure imported as
+ * approved before Trustline, its review coming up. With three fictional
+ * members of staff, invited and never signed in, who wrote, reviewed,
+ * approved and imported them.
  * Nothing is added to a client that already has a document of that number,
  * so running the seed again changes nothing.
  */
@@ -57,9 +61,11 @@ const PEOPLE = [
     key: 'approver',
     email: 'document.approver@example.invalid',
     name: t('Example approver', 'مُعتمِد الوثائق (مثال)', 'Approbateur (exemple)'),
-    // Approves documents everywhere; not an administrator, which the admin
+    // Approves documents everywhere, as the Approving authority the
+    // starting route ends with; not an administrator, which the admin
     // portal gives each client itself.
     role: 'department_manager',
+    alsoRole: 'approving_authority',
   },
 ] as const;
 
@@ -265,7 +271,13 @@ const contentIn = (sections: Sections, locales: Locale[]): DocumentContent =>
  */
 export async function seedDocuments(
   tx: Transaction,
-  tenant: { id: string; locales: Locale[]; timeZone: string; qualityUnitCode: string },
+  tenant: {
+    id: string;
+    locales: Locale[];
+    defaultLocale: Locale;
+    timeZone: string;
+    qualityUnitCode: string;
+  },
 ) {
   const tenantId = tenant.id;
   const [unit] = await tx
@@ -291,14 +303,18 @@ export async function seedDocuments(
       .select({ id: users.id })
       .from(users)
       .where(and(eq(users.tenantId, tenantId), eq(users.email, person.email)));
-    const [role] = await tx
-      .select({ id: roles.id })
-      .from(roles)
-      .where(and(eq(roles.tenantId, tenantId), eq(roles.code, person.role)));
-    await tx
-      .insert(roleAssignments)
-      .values({ tenantId, userId: user.id, roleId: role.id, orgUnitId: null })
-      .onConflictDoNothing();
+    for (const code of [person.role, 'alsoRole' in person ? person.alsoRole : null]) {
+      if (!code) continue;
+      const [role] = await tx
+        .select({ id: roles.id })
+        .from(roles)
+        .where(and(eq(roles.tenantId, tenantId), eq(roles.code, code)));
+      if (!role) continue;
+      await tx
+        .insert(roleAssignments)
+        .values({ tenantId, userId: user.id, roleId: role.id, orgUnitId: null })
+        .onConflictDoNothing();
+    }
     people[person.key] = user.id;
   }
 
@@ -553,4 +569,165 @@ export async function seedDocuments(
       });
     }
   }
+
+  await seedImported(tx, tenant, {
+    unitId: unit.id,
+    importerId: people.owner,
+    type: typeOf.get(IMPORTED.type),
+    categoryId: categoryOf.get(IMPORTED.category),
+    today,
+  });
+}
+
+/**
+ * A procedure of the organization's existing library, imported as
+ * approved before Trustline by the example document owner: its number as
+ * the original gives it, its revision, approval and next review (due in
+ * about a month, when it is to be re-issued through the route), and only
+ * some of its type's sections, as an original rarely has them all.
+ */
+const IMPORTED = {
+  type: 'procedure',
+  category: 'OPS',
+  number: 'SOP/OPS/012',
+  revisionLabel: 'Rev. 4',
+  title: t('Cleaning shared equipment', 'تنظيف المعدات المشتركة', 'Nettoyage des équipements partagés'),
+  approvedBy: t('Operations Director', 'مدير العمليات', 'Directeur des opérations'),
+  originalKeptAt: t(
+    'Quality office, document control cabinet',
+    'مكتب الجودة، خزانة ضبط الوثائق',
+    'Bureau qualité, armoire de maîtrise documentaire',
+  ),
+  content: {
+    purpose: t(
+      'To clean shared equipment the same way every time, so that it is safe for the next person.',
+      'تنظيف المعدات المشتركة بالطريقة نفسها في كل مرة، لتكون آمنة لمن يستخدمها بعدك.',
+      'Nettoyer les équipements partagés de la même façon à chaque fois, pour qu’ils soient sûrs pour la personne suivante.',
+    ),
+    steps: t(
+      '1. Switch the equipment off.\n2. Wipe every surface that is touched with the approved product.\n3. Leave it to dry.\n4. Sign the cleaning record.',
+      '1. أطفئ المعدات.\n2. امسح كل سطح يُلمس بالمنتج المعتمد.\n3. اتركها حتى تجف.\n4. وقّع سجل التنظيف.',
+      '1. Éteignez l’équipement.\n2. Essuyez toutes les surfaces touchées avec le produit approuvé.\n3. Laissez sécher.\n4. Signez le registre de nettoyage.',
+    ),
+    records: t(
+      'The cleaning record kept beside the equipment.',
+      'سجل التنظيف المحفوظ بجانب المعدات.',
+      'Le registre de nettoyage conservé à côté de l’équipement.',
+    ),
+  } as Sections,
+};
+
+async function seedImported(
+  tx: Transaction,
+  tenant: { id: string; locales: Locale[]; defaultLocale: Locale; timeZone: string },
+  at: {
+    unitId: string;
+    importerId: string;
+    type: { id: string; sections: { key: string; name: Localized; required: boolean }[]; months: number } | undefined;
+    categoryId: string | undefined;
+    today: string;
+  },
+) {
+  const tenantId = tenant.id;
+  const { type, categoryId, today } = at;
+  if (!type || !categoryId) return;
+  const [exists] = await tx
+    .select({ id: documents.id })
+    .from(documents)
+    .where(and(eq(documents.tenantId, tenantId), eq(documents.number, IMPORTED.number)));
+  if (exists) return;
+  const importedOn = shiftDay(today, -20);
+  const importedAt = new Date(`${importedOn}T09:00:00Z`);
+  const nextReviewOn = shiftDay(today, 30);
+  const approvedOn = addMonths(nextReviewOn, -type.months);
+  const effectiveOn = shiftDay(approvedOn, 14);
+  const [doc] = await tx
+    .insert(documents)
+    .values({
+      tenantId,
+      number: IMPORTED.number,
+      typeId: type.id,
+      categoryId,
+      title: inLanguages(IMPORTED.title, tenant.locales),
+      ownerId: at.importerId,
+      ownerUnitId: at.unitId,
+      confidentiality: 'all_staff',
+      reviewMonths: type.months,
+      source: 'imported',
+      createdBy: at.importerId,
+      createdAt: importedAt,
+    })
+    .returning({ id: documents.id, number: documents.number });
+  await tx.insert(documentAudiences).values({ tenantId, documentId: doc.id, orgUnitId: null, roleId: null });
+  const content = contentIn(IMPORTED.content, tenant.locales);
+  const [version] = await tx
+    .insert(documentVersions)
+    .values({
+      tenantId,
+      documentId: doc.id,
+      version: 1,
+      status: 'published',
+      source: 'imported',
+      sections: type.sections,
+      content,
+      preparedBy: at.importerId,
+      preparedAt: importedAt,
+      contributors: [at.importerId],
+      effectiveOn,
+      publishedAt: importedAt,
+      publishedBy: at.importerId,
+    })
+    .returning();
+  await tx
+    .update(documents)
+    .set({ status: 'active', publishedVersionId: version.id, nextReviewOn, lastReviewedOn: null })
+    .where(eq(documents.id, doc.id));
+  const original = {
+    numberAsGiven: IMPORTED.number,
+    revisionLabel: IMPORTED.revisionLabel,
+    approvedOn,
+    // As the original says it, in the language it is written in.
+    approvedBy: IMPORTED.approvedBy[tenant.defaultLocale],
+    originalKeptAt: inLanguages(IMPORTED.originalKeptAt, tenant.locales),
+    effectiveOn,
+    nextReviewOn,
+  };
+  const hash = contentHash(signedImport(doc, version, original));
+  const [signature] = await tx
+    .insert(signatures)
+    .values({
+      tenantId,
+      userId: at.importerId,
+      meaning: 'imported',
+      subjectType: 'document_version',
+      subjectId: version.id,
+      contentHash: hash,
+      signedAt: importedAt,
+    })
+    .returning({ id: signatures.id });
+  const [batch] = await tx
+    .insert(documentImportBatches)
+    .values({
+      tenantId,
+      importedBy: at.importerId,
+      importedAt,
+      size: 1,
+      listHash: contentHash([
+        { index: 0, documentId: doc.id, number: doc.number, versionId: version.id, contentHash: hash },
+      ]),
+    })
+    .returning({ id: documentImportBatches.id });
+  const written = new Set(Object.keys(IMPORTED.content));
+  await tx.insert(documentImports).values({
+    tenantId,
+    batchId: batch.id,
+    batchIndex: 0,
+    documentId: doc.id,
+    versionId: version.id,
+    ...original,
+    sectionsNotWritten: type.sections.filter((s) => !written.has(s.key)).map((s) => s.key),
+    signatureId: signature.id,
+    importedBy: at.importerId,
+    importedAt,
+  });
 }

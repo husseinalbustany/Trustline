@@ -138,6 +138,25 @@ export const SYSTEM_ROLES: {
     ],
   },
   {
+    // Named at onboarding: whoever gives the final approval of the
+    // organization's documents (a medical director, a chief executive, a
+    // plant manager, a head teacher). The starting approval route ends with
+    // it (policies/defaults.ts). Given to the clients that existed before it
+    // by migration 0045.
+    code: 'approving_authority',
+    name: {
+      en: 'Approving authority',
+      ar: 'صاحب صلاحية الاعتماد',
+      fr: 'Autorité d’approbation',
+    },
+    description: {
+      en: 'Gives the final approval of controlled documents, and reads every document, restricted ones and drafts included.',
+      ar: 'يمنح الاعتماد النهائي للوثائق المضبوطة، ويقرأ كل الوثائق بما فيها المقيّدة والمسودات.',
+      fr: 'Donne l’approbation finale des documents maîtrisés, et lit tous les documents, y compris restreints et brouillons.',
+    },
+    permissions: ['policies.view', 'policies.view_all', 'policies.approve'],
+  },
+  {
     code: 'reporter',
     name: { en: 'Reporter', ar: 'مُبلِّغ', fr: 'Déclarant' },
     description: {

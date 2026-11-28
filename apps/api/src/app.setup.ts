@@ -2,6 +2,7 @@ import { Logger, type INestApplication } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import type { NextFunction, Request, Response } from 'express';
 import { DatabaseErrorFilter } from './database/database-error.filter.js';
+import { importBodyParser } from './security/import-body.js';
 
 /**
  * How many proxies in front of the web app write the X-Forwarded-For header:
@@ -138,4 +139,10 @@ export function setupApp(app: INestApplication) {
     }
     next();
   });
+
+  // Bodies are at most 100 kB (Nest's parser), except on the three routes
+  // that import documents, which come whole: up to IMPORT_BODY_LIMIT, for
+  // a caller with a session (security/import-body.ts). Registered here, so
+  // before Nest's own parser, which then leaves a body already read.
+  app.use(importBodyParser());
 }

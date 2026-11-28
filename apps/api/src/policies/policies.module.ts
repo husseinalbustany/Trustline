@@ -3,6 +3,7 @@ import { ApprovalsModule } from '../approvals/approvals.module.js';
 import { OrganizationModule } from '../organization/organization.module.js';
 import { DocumentNotifier } from './document-notifier.js';
 import { DocumentsService } from './documents.service.js';
+import { ImportsService } from './imports.service.js';
 import { LibraryService } from './library.service.js';
 import {
   PoliciesController,
@@ -24,6 +25,7 @@ import { PolicySettingsService } from './settings.service.js';
   providers: [
     DocumentNotifier,
     DocumentsService,
+    ImportsService,
     LibraryService,
     PolicyCheck,
     PolicySettingsService,

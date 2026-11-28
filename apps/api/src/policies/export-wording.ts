@@ -22,6 +22,7 @@ export const DOCUMENT_LIST_HEADINGS: Words<
   | 'confidentiality'
   | 'version'
   | 'effectiveOn'
+  | 'approvedBeforeTrustline'
   | 'nextReviewOn'
   | 'reviewState'
   | 'lastReviewedOn'
@@ -46,6 +47,7 @@ export const DOCUMENT_LIST_HEADINGS: Words<
     lastReviewedOn: 'Last reviewed',
     reviewMonths: 'Review period (months)',
     acknowledgementRequired: 'Acknowledgement asked',
+    approvedBeforeTrustline: 'Approved before Trustline',
     inProgressVersion: 'Version in progress',
     inProgressStatus: 'Status of the version in progress',
   },
@@ -65,6 +67,7 @@ export const DOCUMENT_LIST_HEADINGS: Words<
     lastReviewedOn: 'آخر مراجعة',
     reviewMonths: 'دورة المراجعة (بالأشهر)',
     acknowledgementRequired: 'الإقرار بالاطلاع مطلوب',
+    approvedBeforeTrustline: 'معتمدة قبل Trustline',
     inProgressVersion: 'الإصدار قيد الإعداد',
     inProgressStatus: 'حالة الإصدار قيد الإعداد',
   },
@@ -84,6 +87,7 @@ export const DOCUMENT_LIST_HEADINGS: Words<
     lastReviewedOn: 'Dernière révision',
     reviewMonths: 'Périodicité de révision (mois)',
     acknowledgementRequired: 'Prise de connaissance demandée',
+    approvedBeforeTrustline: 'Approuvé avant Trustline',
     inProgressVersion: 'Version en cours',
     inProgressStatus: 'Statut de la version en cours',
   },

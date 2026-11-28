@@ -106,9 +106,10 @@ per version: a section with no text in the reader's language shows the
 authoritative language's text there, with a note; a section changed in the
 authoritative language since the previous published version but not in
 another is flagged "translation not updated", at review and to readers.
-The authoritative language is the client's default for now (business
-question Q4 is open); `authoritativeLocale()` in
-`src/policies/languages.ts` is the one place that says so.
+**Decided (business decision 3):** each client chooses its authoritative
+language (a document setting, by default its main language);
+`authoritativeLocale()` in `src/policies/languages.ts` is the one place
+that says which it is. See "Built: decisions 1 to 3".
 
 ### Approval routes (built generically, to be reused by investigations and others)
 
@@ -170,6 +171,8 @@ Existing permissions, plus two new ones:
 
 Built-in roles: Administrator and Quality officer get all four; Department
 manager gets view, approve and view_all over their unit; Reporter keeps view.
+**Decided (business decision 2):** a fifth, Approving authority, gets view,
+view_all and approve.
 Existing clients get the new permissions on their built-in roles by
 migration, audited, as was done for sign-off.
 
@@ -299,12 +302,13 @@ allowed.
 
 ## Built: database and API
 
-Status: the database and the API are built (migrations 0038 to 0043,
+Status: the database and the API are built (migrations 0038 to 0045,
 `apps/api/src/policies/`, `apps/api/src/approvals/`), and so are the web
 screens (`apps/web/src/components/policies/`). What was decided where this
 document left it open is marked **Chosen**; the full request and response
 shapes are below. What changed after the second quality review and
-language review 6 is in "After quality review 2" at the end.
+language review 6 is in "After quality review 2", and what the business
+then decided in "Built: decisions 1 to 3", at the end.
 
 ### Where the code is
 
@@ -359,9 +363,10 @@ language review 6 is in "After quality review 2" at the end.
   a step is worked out when it is decided: the person named, if they still
   hold it; or everyone holding the role over the owning unit, if the role
   still includes it.
-- **Chosen: the starting route** of each type: review by the Quality
-  officer role, then approval by the Administrator role (every client has
-  one from its first day), seven days each. The last step of a route must
+- **Chosen, then decided (business decision 2): the starting route** of
+  each type: review by the Quality officer role, then approval by the
+  Approving authority role, seven days each (the Administrator until
+  migration 0045). The last step of a route must
   be an approval (400 `last_step_must_approve`). At most one active route
   per type, and one for "any type" (409 `route_exists`).
 - A run copies the route's steps when it starts; changing a route changes
@@ -458,7 +463,8 @@ language review 6 is in "After quality review 2" at the end.
 - **Chosen: sizes.** 20,000 characters a section in one language (400
   `section_too_long`), 200,000 for the version in all languages together
   (400 `content_too_large`). A request body is at most 100 kB, so a long
-  version is saved a few sections at a time.
+  version is saved a few sections at a time (2 MB on the import routes
+  only: see "Built: decisions 1 to 3").
 - **Chosen:** a version keeps the sections its type had when it was
   created; a later change of the type counts for new versions.
 - The comparison with the published version is section by section and
@@ -596,8 +602,11 @@ else), 404 for a record of another client or one the caller may not see.
 | `GET /types`, `GET /categories` | any (`includeInactive` for managers) | | list, each with `revision` |
 | `POST/PATCH /types`, `/categories` | `policies.manage` everywhere | PATCH: `revision` (409 `stale_type`, `stale_category`) | the record |
 | `GET /roles` | `policies.manage` | | `[{ id, code, name, isSystem, approves }]` |
-| `GET /settings` | any | | `{ maxReviewMonths, revision }` |
-| `PATCH /settings` | `policies.manage` everywhere | `maxReviewMonths, revision` | `{ maxReviewMonths, revision }` |
+| `GET /settings` | any | | `{ maxReviewMonths, authoritativeLocale, authoritative, revision }` |
+| `PATCH /settings` | `policies.manage` everywhere | `maxReviewMonths?, authoritativeLocale?, revision` | as `GET`, with `versionsInProgress` when the authoritative language changed |
+| `POST /documents/import` | `policies.manage` everywhere | an import document and `password` | 201 document |
+| `POST /imports` | `policies.manage` everywhere | `password, documents` | 201 batch |
+| `POST /imports/check` | `policies.manage` everywhere | `documents` | what each would be |
 | `GET /approval-routes` | `policies.manage` | | list with steps |
 | `POST/PATCH /approval-routes` | `policies.manage` everywhere | `name, documentTypeId, active?, steps[{ kind, userId \| roleId, dueInDays }], revision` (PATCH) | the route |
 
@@ -653,8 +662,8 @@ or one the caller may not see, and 400 for anything but its strict input.
   document on or after its effective day, the one copy a print may call
   controlled. The current version of a document is always
   `GET /documents/:id` (`published`), which is what a QR code opens.
-- `source` on a version: `written` for every version now; `imported` and
-  `ai_drafted` are for later (not part of what is signed).
+- `source` on a version: `written`, or `imported` (decision 1, below);
+  `ai_drafted` is for later. Not part of what an approval signs.
 
 ### Exports (C5)
 
@@ -817,3 +826,237 @@ See "Acknowledgement" above: only acknowledgements past their due date.
    can be plugged in by configuration; until one is configured, mail is
    kept in an outbox and not sent. See the email section of the
    notifications work.
+
+## Built: decisions 1 to 3
+
+What the API builds of the three decisions above (decision 4, email, is
+the next piece of work). The web screens for them are not built yet. Migrations 0044 (schema, generated) and 0045
+(grants, triggers, the role and the routes of existing clients, custom
+SQL), both additive: nothing the release running before them does is
+refused. Each new route answers 401 without a session, 403 without its
+permission, 404 for a record of another client (or 400 `unknown_*` for
+another client's type, category, owner, unit or role named in a body), and
+400 for anything but its strict input.
+
+### 1. Importing existing documents
+
+**Routes** (under `/api/v1/policies`, `@ForModule('policies')`, refused
+while suspended like any write):
+
+| Route | Who | Body | Answers |
+|---|---|---|---|
+| `POST /documents/import` | `policies.manage` for the whole organization | one import document (below) and `password` | 201, the document as `GET /documents/:id` |
+| `POST /imports` | the same | `{ password, documents: [import document, …] }` | 201 `{ batch: { id, size, importedAt, listHash }, documents: [{ index, id, number, numberFrom, versionId, sectionsNotWritten, acknowledgementsAsked, signature: { id, meaning, signedAt, contentHash } }] }` |
+| `POST /imports/check` | the same | `{ documents: [import document, …] }`, no password | 200 `{ documents: [{ index, number, numberFrom, series, sectionsNotWritten, acknowledgementRequired }] }`; writes nothing |
+
+**An import document**: what `POST /documents` takes (`typeId`,
+`categoryId`, `title`, `ownerId`, `ownerUnitId`, `audience?`,
+`confidentiality?`, `keywords?`, `references?`, `reviewMonths?` for the
+reviews after its re-issue, `acknowledgementRequired?` (false),
+`acknowledgeWithinDays?` (14)), and what the original says: `number?` (as
+given; none: Trustline numbers it), `revisionLabel?` (one line, 40),
+`approvedOn` (a day), `approvedBy` (one line, 200, as written on the
+original: a transcription, so one value, not per language), `originalKeptAt`
+(per language, 300, `localizedText` and `fitsLanguages`), `effectiveOn?`
+(the approval day unless given), `nextReviewOn`, and `content` (per
+language, per section key, as a version's).
+
+**Chosen:**
+
+- **Who.** Only `policies.manage` granted for the whole organization
+  (`requireEverywhere`): a manager of one unit cannot, nor the Approving
+  authority.
+- **What it makes.** A new document (`source: imported`) whose version 1
+  is published at once with `source: imported`, `effectiveOn` as given,
+  `publishedAt` and `publishedBy` the import, `approvedAt` null, no
+  approval run, and the next review date as given. `lastReviewedOn` stays
+  null: it was never reviewed in Trustline. What the original says is kept
+  in `document_imports` (one row per document, insert-only for the
+  application role), with the sections it came without; the batch in
+  `document_import_batches` (insert-only). A version's and a document's
+  `source`, and a document's number, can no longer change
+  (`document_versions_source_fixed`, `documents_number_fixed`); an
+  imported version is always version 1 (`document_versions_imported_first`).
+  None of what the original says can be edited: it changes only through a
+  new version.
+- **The signature.** The importer re-enters the password once per request
+  (checked as for every signature, after everything else, so a refused
+  batch neither asks for it nor counts it). Each document gets its own
+  signature, meaning `imported`, of `signedImport()`
+  (`src/policies/signed-content.ts`): the version as an approval signs it
+  (`signedVersion`) with `importedOriginal: { numberAsGiven, revisionLabel,
+  approvedOn, approvedBy, originalKeptAt, effectiveOn, nextReviewOn }`. The
+  batch keeps `listHash`, the SHA-256 of the canonical list `[{ index,
+  documentId, number, versionId, contentHash }]` in order: the set the one
+  re-entry covered. A version's own `contentHash` stays the hash of
+  `signedVersion`, which acknowledgements sign.
+- **Numbers.** Kept as given (spaces in a row made one, capitals kept):
+  letters and digits of any script with spaces, `-`, `.`, `/`, `_` and
+  brackets between them, 40 at most (400 otherwise). Refused when another
+  document of the client has it in any capitals (409 `number_taken`, with
+  `takenBy`; a new unique index on `upper(number)` keeps this in the
+  database), or, for a number in Trustline's shape (`<A-Z…>-<A-Z…>-<digits>`,
+  any capitals), the same place of the same series with other zeros
+  (`pol-gov-7` is `POL-GOV-007`). **Trustline's numbering is kept clear by
+  advancing the counter**, not by reserving numbers: a number in Trustline's
+  shape raises its series' counter (`reference_counters`, whatever type or
+  category the series names, so a prefix or category made later carries on
+  after it) to at least its place, in the import's transaction, so every
+  number Trustline gives afterwards comes after it. A place of more than
+  nine digits is refused (400 `invalid_number`). Numbers of any other shape
+  cannot meet Trustline's. The audit entry says how the counter moved
+  (`counter: { series, from, to }`).
+- **Content.** The same checks as written text (`checkedSection`, shared
+  with `PATCH …/versions/:id`): the client's languages (400
+  `language_mismatch`, `field: "content"`), the type's sections (400
+  `unknown_section`), the markup (400 `unsupported_markup`), 20,000 a
+  section (400 `section_too_long`), 200,000 a version (400
+  `content_too_large`). **For imports only**, sections may be left without
+  text, required ones too; they are marked not written
+  (`sectionsNotWritten: [{ key, required }]`, against the authoritative
+  language). At least one section must have text in the authoritative
+  language (400 `content_required`, with `locale`).
+- **Days** (the client's calendar): `approvedOn` not after today (400
+  `approved_in_future`); `effectiveOn` from `approvedOn` (400
+  `effective_before_approval`) to today (400 `effective_in_future`: an
+  import is in force already, a future one goes through the route);
+  `nextReviewOn` after `approvedOn` (400 `review_before_approval`) and no
+  later than today plus the client's longest review period (400
+  `review_date_too_far`, with `latest` and `maxReviewMonths`). A next
+  review already past is accepted: the document shows overdue, which is
+  where it stands. `title` and `originalKeptAt` follow the client's
+  languages (400 `language_mismatch`, with `field`).
+- **Acknowledgement** is asked only if the importer says so
+  (`acknowledgementRequired`): then everyone in the audience is asked, due
+  after `acknowledgeWithinDays` from the import day, and told
+  (`document_published`), as on publishing.
+- **Batches: all or nothing.** One password re-entry signs the listed set,
+  so a batch with any document refused imports none: 400 `batch_refused`
+  with `problems: [{ index, number, code, status, …details }]`, every
+  document refused and why (the `code` and details it would have alone,
+  and the `status` it would be answered with: 400, or 409 for
+  `number_taken`); a document whose shape is wrong is `invalid_document`
+  with the `fields` (names only). Also `duplicate_in_batch` (`sameAs`, the
+  index of the first). Importing the rest would sign a set other than the
+  one listed, and leave a file half done that someone must then compare
+  with the register; refused whole, it is corrected and sent again, and
+  `POST /imports/check` finds every problem first without the password.
+  The single route answers a refusal with its own status and body
+  (without `index`).
+- **Sizes.** At most 20 documents and 600,000 characters of text a batch
+  (400 `batch_too_large`, with `maxDocuments` and `maxCharacters`). **The
+  100 kB body limit is raised for these three routes only, to 2 MB**
+  (`src/security/import-body.ts`, `IMPORT_BODY_LIMIT`), and only for a
+  request presenting a session: a document comes whole, since it is
+  published and signed as it arrives, and its 200,000 characters are 400
+  to 600 kB of UTF-8 in Arabic or with typographic quotes. Beyond: 413
+  `{ code: "body_too_large", max }`. Every other route keeps 100 kB.
+- **Audited per document** (`document_imported`, on the document: number
+  and how it was numbered, the counter, type, category, owner, unit,
+  confidentiality, audience, review period, version, `original`,
+  `sectionsNotWritten`, acknowledgements asked, signature and hash, batch
+  and index), and once per batch (`document_import_signed`, on the
+  client: batch, size, `listHash` and the list).
+
+**Shown distinctly, everywhere:**
+
+- A version: `source`; `imported` (null unless imported): `{ batch: { id,
+  index, size }, numberAsGiven, revisionLabel, approvedOn, approvedBy,
+  originalKeptAt, effectiveOn, nextReviewOn, sectionsNotWritten,
+  importedBy, importedAt, signature: { id, meaning, signedBy, signedAt,
+  contentHash } }`, for every reader.
+- Its control block: `approvedThrough` (`trustline_route` or
+  `before_trustline`); `approvals` is always empty for an imported version
+  (it has no run); `approvedBeforeTrustline` (null, or `{ numberAsGiven,
+  revisionLabel, approvedOn, approvedBy, originalKeptAt, effectiveOn,
+  nextReviewOn, importedBy, importedAt }`); `preparedBy` is null for an
+  imported version, which nobody prepared in Trustline.
+- A document: `source`, `reissueRequired` (active with an imported version
+  in force), `published.source` and `published.approvedBeforeTrustline`.
+- The library's items: `source` of the version in force. The history of
+  versions: `source` on each. `GET /reviews` items: `reissue`. Review
+  reminders (`review_due`, `review_overdue`): `reissue: true` in `data`.
+  The master list (CSV): a last column "Approved before Trustline" (yes or
+  no; empty with no version in force), last so that the other columns keep
+  their places.
+
+**At its next review it is re-issued**, how the rest of the module treats
+it:
+
+- **Periodic review.** `confirm_review` is not in its `moves` while the
+  version in force is imported, and `POST /documents/:id/review` answers
+  409 `reissue_required` (before the password). The owner or a manager
+  starts a new version (copied from the imported text), writes the
+  sections the original lacked (sending it needs the required ones, as for
+  any version), and sends it through the route; publishing it records the
+  review as answered by a revision (`document_reviews`, `revised`, due on
+  the imported review date) and counts the next review from its effective
+  day, as for any document. From then on it is reviewed as any other.
+  Reminders reach its owner at 60, 30 and 7 days and when overdue, as for
+  any document. Changing its review period does not move its imported
+  review date (it has no last review in Trustline).
+- **Same person.** The importer is a contributor of the imported version,
+  and **stays a contributor of a new version started from it**: the text
+  came into Trustline by them and was approved by nobody here, so its
+  re-issue is its first Trustline approval, of which they decide no step
+  (403 `same_person`, `reason: "prepared"`). A version started from a
+  published written version still starts with whoever started it only.
+- **Measures.** An imported document counts as any active document: past
+  its review date by the date it was given (so a library imported late
+  shows as late), and in the acknowledgement completion only when its
+  readers were asked.
+
+### 2. The Approving authority
+
+- `approving_authority` in `SYSTEM_ROLES`: "Approving authority" /
+  «صاحب صلاحية الاعتماد» / « Autorité d’approbation », described as giving
+  the final approval of controlled documents and reading every document;
+  `policies.view`, `policies.view_all`, `policies.approve`. A new client
+  gets it with the other built-in roles. Nobody holds it at first: the
+  onboarding names whoever it is.
+- The starting route of each type (`DEFAULT_ROUTE_STEPS`): review by the
+  Quality officer, then approval by the Approving authority.
+- Existing clients (migration 0045): the role is added to every client
+  that has the built-in roles and no role of that code (one the client
+  made itself is left its own, and `ensureSystemRoles` no longer takes
+  such a role over), audited once per client
+  (`built_in_roles_changed_by_system`, `rolesAdded`). A starting route
+  changes only where it is still exactly the starting route: switched on,
+  named as given in every language, and exactly two steps (review by the
+  built-in Quality officer, then approval by the built-in Administrator,
+  seven days, one person each); its second step then names the Approving
+  authority and its revision goes up, audited once per client
+  (`approval_routes_changed_by_system`, with the routes and types). Runs in
+  progress keep the steps they copied. **Note for onboarding:** a client
+  whose routes changed sends nothing for review (409 `no_assignee`,
+  `position: 2`) until someone holds the Approving authority.
+
+### 3. The authoritative language
+
+- `document_settings.authoritative_locale` (null: the main language,
+  whatever it is). `GET /settings` and `PATCH /settings` answer
+  `{ maxReviewMonths, authoritativeLocale, authoritative, revision }`:
+  `authoritativeLocale` as set (null or a language), `authoritative` the
+  language that stands now (the one set if the client still works in it,
+  else its main language). `PATCH /settings` takes `maxReviewMonths?`,
+  `authoritativeLocale?` (one of the client's languages, 400
+  `language_mismatch`; or null), `revision` (409 `stale_settings`), for
+  `policies.manage` for the whole organization. Audited
+  (`document_settings_updated`, with `authoritativeLocale` and
+  `authoritative` as `{ from, to }`).
+- Used wherever languages are compared: `languageStatus` (and
+  `languages`, authoritative first), sending for review (the required
+  sections, 400 `missing_sections` with its `locale`, and the change
+  summary), and imports (`content_required`, `sectionsNotWritten`).
+  Titles, names and other text a client writes keep the general rule
+  (written in the main language).
+- **Versions in progress when it changes keep their text, and runs go
+  on**: nothing written, sent, approved or published changes. From then on
+  every version is checked, flagged and shown against the new language: a
+  draft is sent only with its required sections and change summary in it,
+  a version in review or approved goes on as it is (what its approvers
+  signed is every language of it), and the language status of every
+  version, published ones included, is worked out against the new
+  language. The answer says how many versions are in progress
+  (`versionsInProgress: { draft, in_review, approved }`, when the language
+  that stands changed), and so does the audit entry.

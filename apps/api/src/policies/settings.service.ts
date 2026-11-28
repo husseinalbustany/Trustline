@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, sql } from 'drizzle-orm';
 import type { Transaction } from '../database/client.js';
 import { pgErrorCode } from '../database/errors.js';
 import {
@@ -13,6 +13,7 @@ import {
   documentCategories,
   documentSettings,
   documentTypes,
+  documentVersions,
   roleAssignments,
   roles,
   users,
@@ -27,6 +28,7 @@ import {
   documentSettingsOf,
 } from './document-settings.js';
 import type { StepInput } from './input.js';
+import { authoritativeLocale } from './languages.js';
 import { APPROVE_PERMISSION } from './visibility.js';
 
 const typeFields = {
@@ -609,25 +611,64 @@ export class PolicySettingsService {
 
   // The module's own settings.
 
-  /** The client's settings of the module: its defaults until it sets them. */
+  /**
+   * The client's settings of the module, its defaults until it sets them:
+   * the longest review period, and the authoritative language for
+   * documents, as set (`authoritativeLocale`, null: the main language) and
+   * as it stands now (`authoritative`).
+   */
   settings(auth: AuthContext) {
-    return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
-      const { maxReviewMonths, revision } = await documentSettingsOf(tx);
-      return { maxReviewMonths, revision };
-    });
+    return this.tenantDb.withTenant(auth.tenant.id, async (tx) =>
+      this.settingsView(auth, await documentSettingsOf(tx)),
+    );
+  }
+
+  private settingsView(
+    auth: AuthContext,
+    row: { maxReviewMonths: number; authoritativeLocale: string | null; revision: number },
+  ) {
+    return {
+      maxReviewMonths: row.maxReviewMonths,
+      authoritativeLocale: row.authoritativeLocale,
+      authoritative: authoritativeLocale(auth.tenant, row),
+      revision: row.revision,
+    };
   }
 
   /**
    * Changes the client's settings, given the revision the caller read (409
-   * `stale_settings`). The longest review period may not be set below a
-   * type's own period (409 `type_exceeds_max`, with the `types`): lower
-   * those first. Documents whose period is longer keep it until it is next
-   * changed, which must then be within the new maximum.
+   * `stale_settings`).
+   *
+   * The longest review period may not be set below a type's own period
+   * (409 `type_exceeds_max`, with the `types`): lower those first.
+   * Documents whose period is longer keep it until it is next changed,
+   * which must then be within the new maximum.
+   *
+   * The authoritative language is one of the client's languages (400
+   * `language_mismatch`), or null for its main language. Changing it
+   * changes no version: what was written, sent, approved or published
+   * keeps its text, and runs in progress go on. From then on every
+   * version is checked, flagged and shown against the new language: a
+   * draft is sent for review only with its required sections and change
+   * summary written in it, and the language status of every version, the
+   * published ones included, is worked out against it. How many versions
+   * are in progress is said in the answer and kept in the audit entry, so
+   * that the screen can tell whoever changed it.
    */
   updateSettings(
     auth: AuthContext,
-    input: { maxReviewMonths: number; revision: number },
+    input: {
+      maxReviewMonths?: number;
+      authoritativeLocale?: string | null;
+      revision: number;
+    },
   ) {
+    if (
+      input.authoritativeLocale &&
+      !auth.tenant.locales.includes(input.authoritativeLocale)
+    ) {
+      throw new BadRequestException({ code: 'language_mismatch' });
+    }
     return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
       // The row exists from the first change on; whoever makes it first
       // makes it as the defaults, and both then take turns on its lock.
@@ -639,30 +680,66 @@ export class PolicySettingsService {
       if (before.revision !== input.revision) {
         throw new ConflictException({ code: 'stale_settings' });
       }
-      if (input.maxReviewMonths === before.maxReviewMonths) {
-        return { maxReviewMonths: before.maxReviewMonths, revision: before.revision };
+      const changes: Record<string, unknown> = {};
+      const set: Partial<typeof documentSettings.$inferInsert> = {};
+      if (
+        input.maxReviewMonths !== undefined &&
+        input.maxReviewMonths !== before.maxReviewMonths
+      ) {
+        const over = await tx
+          .select({
+            id: documentTypes.id,
+            code: documentTypes.code,
+            defaultReviewMonths: documentTypes.defaultReviewMonths,
+          })
+          .from(documentTypes)
+          .where(
+            and(
+              eq(documentTypes.active, true),
+              sql`${documentTypes.defaultReviewMonths} > ${input.maxReviewMonths}`,
+            ),
+          )
+          .orderBy(asc(documentTypes.code));
+        if (over.length > 0) {
+          throw new ConflictException({ code: 'type_exceeds_max', types: over });
+        }
+        set.maxReviewMonths = input.maxReviewMonths;
+        changes.maxReviewMonths = {
+          from: before.maxReviewMonths,
+          to: input.maxReviewMonths,
+        };
       }
-      const over = await tx
-        .select({
-          id: documentTypes.id,
-          code: documentTypes.code,
-          defaultReviewMonths: documentTypes.defaultReviewMonths,
-        })
-        .from(documentTypes)
-        .where(
-          and(
-            eq(documentTypes.active, true),
-            sql`${documentTypes.defaultReviewMonths} > ${input.maxReviewMonths}`,
-          ),
-        )
-        .orderBy(asc(documentTypes.code));
-      if (over.length > 0) {
-        throw new ConflictException({ code: 'type_exceeds_max', types: over });
+      let versionsInProgress: Record<string, number> | null = null;
+      if (
+        input.authoritativeLocale !== undefined &&
+        input.authoritativeLocale !== before.authoritativeLocale
+      ) {
+        set.authoritativeLocale = input.authoritativeLocale;
+        changes.authoritativeLocale = {
+          from: before.authoritativeLocale,
+          to: input.authoritativeLocale,
+        };
+        const from = authoritativeLocale(auth.tenant, before);
+        const to = authoritativeLocale(auth.tenant, {
+          authoritativeLocale: input.authoritativeLocale,
+        });
+        if (from !== to) {
+          changes.authoritative = { from, to };
+          const counts = await tx
+            .select({ status: documentVersions.status, count: count() })
+            .from(documentVersions)
+            .where(inArray(documentVersions.status, ['draft', 'in_review', 'approved']))
+            .groupBy(documentVersions.status);
+          versionsInProgress = { draft: 0, in_review: 0, approved: 0 };
+          for (const row of counts) versionsInProgress[row.status] = row.count;
+          changes.versionsInProgress = versionsInProgress;
+        }
       }
+      if (Object.keys(set).length === 0) return this.settingsView(auth, before);
       const [after] = await tx
         .update(documentSettings)
         .set({
-          maxReviewMonths: input.maxReviewMonths,
+          ...set,
           revision: sql`${documentSettings.revision} + 1`,
           updatedBy: auth.user.id,
           updatedAt: new Date(),
@@ -670,6 +747,7 @@ export class PolicySettingsService {
         .where(eq(documentSettings.tenantId, auth.tenant.id))
         .returning({
           maxReviewMonths: documentSettings.maxReviewMonths,
+          authoritativeLocale: documentSettings.authoritativeLocale,
           revision: documentSettings.revision,
         });
       await this.provisioning.audit(
@@ -679,14 +757,12 @@ export class PolicySettingsService {
         'document_settings_updated',
         'tenant',
         auth.tenant.id,
-        {
-          maxReviewMonths: {
-            from: before.maxReviewMonths,
-            to: input.maxReviewMonths,
-          },
-        },
+        changes,
       );
-      return after;
+      return {
+        ...this.settingsView(auth, after),
+        ...(versionsInProgress && { versionsInProgress }),
+      };
     });
   }
 

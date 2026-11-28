@@ -64,13 +64,13 @@ describe('policies: the daily check, the module and the subscription', () => {
   async function staff(
     h: Hospital,
     name: string,
-    role: string | null,
+    role: string | string[] | null,
     homeUnit: string | null,
   ) {
     const person = await bench.createStaff(
       h,
       name,
-      role ? { role, orgUnitId: null } : null,
+      role ? [role].flat().map((r) => ({ role: r, orgUnitId: null })) : null,
     );
     if (homeUnit) {
       await bench.owner.db
@@ -165,7 +165,7 @@ describe('policies: the daily check, the module and the subscription', () => {
     writer = await staff(c, 'writer', 'writer', dept);
     manager = await staff(c, 'manager', 'writer', dept);
     quality = await staff(c, 'quality', 'quality_officer', null);
-    approver = await staff(c, 'approver', 'administrator', null);
+    approver = await staff(c, 'approver', ['administrator', 'approving_authority'], null);
     reader = await staff(c, 'reader', 'reporter', unit);
     joiner = await staff(c, 'joiner', 'reporter', null);
     types = Object.fromEntries(
@@ -383,7 +383,7 @@ describe('policies: the daily check, the module and the subscription', () => {
       await bench.createRole(h, 'writer', ['policies.view', 'policies.manage']);
       const w = await staff(h, 'mwriter', 'writer', f);
       const q = await staff(h, 'mquality', 'quality_officer', null);
-      const ap = await staff(h, 'mapprover', 'administrator', null);
+      const ap = await staff(h, 'mapprover', ['administrator', 'approving_authority'], null);
       const r1 = await staff(h, 'mreader1', 'reporter', f);
       const r2 = await staff(h, 'mreader2', 'reporter', f);
       const t = Object.fromEntries((await get(h.cookie, '/types').expect(200)).body.map((x: { code: string; id: string }) => [x.code, x.id]));
@@ -446,7 +446,7 @@ describe('policies: the daily check, the module and the subscription', () => {
       await bench.createRole(off, 'writer', ['policies.view', 'policies.manage']);
       offWriter = await staff(off, 'owriter', 'writer', f);
       const q = await staff(off, 'oquality', 'quality_officer', null);
-      const ap = await staff(off, 'oapprover', 'administrator', null);
+      const ap = await staff(off, 'oapprover', ['administrator', 'approving_authority'], null);
       offReader = await staff(off, 'oreader', 'reporter', f);
       const t = Object.fromEntries((await get(off.cookie, '/types').expect(200)).body.map((x: { code: string; id: string }) => [x.code, x.id]));
       const cat = Object.fromEntries((await get(off.cookie, '/categories').expect(200)).body.map((x: { code: string; id: string }) => [x.code, x.id]));
@@ -559,7 +559,7 @@ describe('policies: the daily check, the module and the subscription', () => {
       await bench.createRole(h, 'writer', ['policies.view', 'policies.manage']);
       const w = await staff(h, 'swriter', 'writer', f);
       const q = await staff(h, 'squality', 'quality_officer', null);
-      const ap = await staff(h, 'sapprover', 'administrator', null);
+      const ap = await staff(h, 'sapprover', ['administrator', 'approving_authority'], null);
       const r = await staff(h, 'sreader', 'reporter', f);
       const t = Object.fromEntries((await get(h.cookie, '/types').expect(200)).body.map((x: { code: string; id: string }) => [x.code, x.id]));
       const cat = Object.fromEntries((await get(h.cookie, '/categories').expect(200)).body.map((x: { code: string; id: string }) => [x.code, x.id]));

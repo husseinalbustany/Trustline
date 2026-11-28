@@ -419,6 +419,9 @@ export class PolicyCheck implements OnModuleDestroy {
           confidentiality: documents.confidentiality,
           nextReviewOn: documents.nextReviewOn,
           rank: rank.mapWith(Number),
+          // Approved before Trustline: its review is its re-issue.
+          reissue: sql<boolean>`exists (select from document_versions pv
+            where pv.id = ${documents.publishedVersionId} and pv.source = 'imported')`,
         })
         .from(documents)
         .where(
@@ -446,6 +449,7 @@ export class PolicyCheck implements OnModuleDestroy {
             data: {
               dueOn: doc.nextReviewOn!,
               ...(days !== undefined && { days }),
+              ...(doc.reissue && { reissue: true }),
             },
             to: [doc.ownerId, ...managers],
             about: 'published',
