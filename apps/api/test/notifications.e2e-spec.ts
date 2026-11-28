@@ -663,6 +663,8 @@ describe('notifications', () => {
         kind: 'comment_added',
         incident: { id, reference, canOpen: true },
         data: { reference, serious: false },
+        // Names no person.
+        person: null,
       });
       expect(Object.keys(latest).sort()).toEqual([
         'createdAt',
@@ -671,6 +673,7 @@ describe('notifications', () => {
         'id',
         'incident',
         'kind',
+        'person',
         'readAt',
       ]);
       const everything = JSON.stringify(theirs);
@@ -1286,6 +1289,7 @@ describe('notifications', () => {
           'id',
           'incident',
           'kind',
+          'person',
           'readAt',
         ]);
         expect(Object.keys(item.incident).sort()).toEqual([
