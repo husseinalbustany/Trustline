@@ -150,17 +150,22 @@ describe('rendering an email', () => {
 
   it('gives the overdue approval steps in the weekly email, alone or after the acknowledgements (quality review 3, S2)', () => {
     const alone = renderMail(
-      { category: 'weekly_digest', overdue: 0, people: 0, stepsOverdue: 2, href: `${BASE}/en/dashboard` },
+      { category: 'weekly_digest', overdue: 0, people: 0, stepsOverdue: 2, href: `${BASE}/en/policies/steps/overdue` },
       envelope(),
     );
     expect(alone.subject).toBe('Approval steps overdue this week');
+    // To the list of overdue steps (language review 8, M6).
+    expect(alone.text).toContain(`See the overdue steps in Trustline: ${BASE}/en/policies/steps/overdue`);
     expect(alone.text).toContain('Approval steps overdue: 2');
     expect(alone.text).not.toContain('Acknowledgements overdue');
     const both = renderMail(
       { category: 'weekly_digest', overdue: 4, people: 3, stepsOverdue: 1, href: `${BASE}/en/policies/overdue` },
       envelope(),
     );
-    expect(both.subject).toBe('Overdue acknowledgements this week');
+    // Both named in the subject (language review 8, A3); the link to the
+    // late acknowledgements.
+    expect(both.subject).toBe('Overdue acknowledgements and approval steps this week');
+    expect(both.text).toContain(`See who in Trustline: ${BASE}/en/policies/overdue`);
     expect(both.text).toContain('Acknowledgements overdue: 4');
     expect(both.text).toContain('Approval steps overdue: 1');
     // In French, with its spaces.

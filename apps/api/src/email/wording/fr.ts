@@ -19,7 +19,7 @@ export const fr: Wording = {
     },
     sentinel_flagged: {
       subject: 'L’incident {reference} est désormais un événement sentinelle',
-      body: 'L’incident {reference} a été qualifié d’événement sentinelle.',
+      body: 'L’incident {reference} a été qualifié d’événement sentinelle. Sa clôture devra être validée par une deuxième personne.',
     },
     incident_assigned: {
       subject: 'L’incident {reference} vous est attribué',
@@ -27,7 +27,7 @@ export const fr: Wording = {
     },
     sign_off_requested: {
       subject: 'Validation demandée : incident {reference}',
-      body: 'La clôture de l’incident {reference} attend une seconde signature, que vous pouvez donner.',
+      body: 'La clôture de l’incident {reference} attend la validation d’une deuxième personne. Vous pouvez la donner.',
     },
     document_step_review: {
       subject: 'Le document {number} attend votre vérification',
@@ -45,6 +45,8 @@ export const fr: Wording = {
     people: 'Personnes concernées : {people}',
     open: 'Voir le détail dans Trustline',
     stepsSubject: 'Étapes d’approbation en retard cette semaine',
+    bothSubject: 'Prises de connaissance et étapes d’approbation en retard cette semaine',
+    openSteps: 'Voir les étapes en retard dans Trustline',
     stepsBody: 'Certaines étapes d’approbation des documents que vous gérez ont dépassé leur échéance.',
     stepsOverdue: 'Étapes d’approbation en retard : {count}',
   },
@@ -74,7 +76,7 @@ export const fr: Wording = {
     button: 'Ne plus recevoir ces e-mails',
     doneImmediate: 'Vous ne recevrez plus les e-mails immédiats.',
     doneDigest: 'Vous ne recevrez plus les e-mails de synthèse.',
-    turnBackOn: 'Vous pouvez les réactiver dans Trustline, dans vos préférences de notification.',
+    turnBackOn: 'Vous pouvez les réactiver dans Trustline, dans vos préférences d’e-mail.',
     invalid: 'Ce lien n’est pas valide ou a expiré. Vous pouvez modifier vos préférences d’e-mail dans Trustline.',
   },
 };

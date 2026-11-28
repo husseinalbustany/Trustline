@@ -1396,14 +1396,79 @@ export class LibraryService {
   overdueSteps(auth: AuthContext) {
     return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
       const viewer = await viewerOf(tx, auth, this.engine);
-      const rows = await tx
-        .select({
-          document: { id: documents.id, number: documents.number },
-          version: { id: documentVersions.id, version: documentVersions.version },
-          position: approvalRunSteps.position,
-          kind: approvalRunSteps.kind,
-          dueAt: approvalRunSteps.dueAt,
-        })
+      const { total, rows } = await this.overdueStepRows(tx, viewer, {
+        limit: EXPORT_MAX_ROWS,
+        offset: 0,
+      });
+      return {
+        items: rows.map((r) => ({
+          document: r.document,
+          version: r.version,
+          position: r.position,
+          kind: r.kind,
+          dueAt: r.dueAt,
+        })),
+        total,
+      };
+    });
+  }
+
+  /**
+   * The list of overdue approval steps (language review 8, M6): where the
+   * weekly email and notice lead when steps are overdue. The same steps and
+   * scope as `overdueSteps`, a page at a time, most overdue first: the
+   * document's number and version, the step's position and kind, who it is
+   * assigned to (a person, or a role), its due time and how many days it is
+   * overdue. The title only where the caller may open the document.
+   */
+  overdueStepsList(auth: AuthContext, input: { page: number; pageSize: number }) {
+    const today = dayOf(new Date(), auth.tenant.timeZone);
+    return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
+      const viewer = await viewerOf(tx, auth, this.engine);
+      const { total, rows } = await this.overdueStepRows(tx, viewer, {
+        limit: input.pageSize,
+        offset: (input.page - 1) * input.pageSize,
+      });
+      const people = await this.namesOf(
+        tx,
+        rows.flatMap((r) => (r.assigneeUserId ? [r.assigneeUserId] : [])),
+      );
+      return {
+        today,
+        items: rows.map(({ title, canOpen, assigneeUserId, assigneeRole, ...r }) => ({
+          document: { ...r.document, title: canOpen ? title : null, canOpen },
+          version: r.version,
+          position: r.position,
+          kind: r.kind,
+          assignee: assigneeUserId
+            ? { type: 'person' as const, id: assigneeUserId, name: people.get(assigneeUserId) ?? null }
+            : assigneeRole?.id
+              ? { type: 'role' as const, id: assigneeRole.id, name: assigneeRole.name }
+              : null,
+          dueAt: r.dueAt,
+          dueOn: r.dueAt ? dayOf(r.dueAt, auth.tenant.timeZone) : null,
+          daysOverdue: r.dueAt ? daysBetween(dayOf(r.dueAt, auth.tenant.timeZone), today) : 0,
+        })),
+        total,
+      };
+    });
+  }
+
+  /** The overdue steps of `overdueSteps` and `overdueStepsList`. */
+  private async overdueStepRows(
+    tx: Transaction,
+    viewer: Viewer,
+    page: { limit: number; offset: number },
+  ) {
+    const where = and(
+      eq(approvalRunSteps.status, 'pending'),
+      lt(approvalRunSteps.dueAt, new Date()),
+      ne(documents.status, 'retired'),
+      within(viewer.manageReach, documents.ownerUnitId),
+    );
+    const from = () =>
+      tx
+        .select({ total: count() })
         .from(approvalRunSteps)
         .innerJoin(
           approvalRuns,
@@ -1421,17 +1486,49 @@ export class LibraryService {
           ),
         )
         .innerJoin(documents, eq(documents.id, documentVersions.documentId))
-        .where(
-          and(
-            eq(approvalRunSteps.status, 'pending'),
-            lt(approvalRunSteps.dueAt, new Date()),
-            ne(documents.status, 'retired'),
-            within(viewer.manageReach, documents.ownerUnitId),
-          ),
-        )
-        .orderBy(asc(approvalRunSteps.dueAt), asc(documents.number));
-      return { items: rows, total: rows.length };
-    });
+        .where(where);
+    const [{ total }] = await from();
+    const canOpen = visible(viewer, this.engine);
+    const role = alias(roles, 'assignee_role');
+    const rows = await tx
+      .select({
+        document: { id: documents.id, number: documents.number },
+        title: documents.title,
+        canOpen: sql<boolean>`coalesce(${canOpen}, false)`,
+        version: { id: documentVersions.id, version: documentVersions.version },
+        position: approvalRunSteps.position,
+        kind: approvalRunSteps.kind,
+        assigneeUserId: approvalRunSteps.assigneeUserId,
+        assigneeRole: { id: role.id, name: role.name },
+        dueAt: approvalRunSteps.dueAt,
+      })
+      .from(approvalRunSteps)
+      .innerJoin(
+        approvalRuns,
+        and(
+          eq(approvalRuns.id, approvalRunSteps.runId),
+          eq(approvalRuns.status, 'in_progress'),
+          eq(approvalRuns.subjectType, 'document_version'),
+        ),
+      )
+      .innerJoin(
+        documentVersions,
+        and(
+          eq(documentVersions.id, approvalRuns.subjectId),
+          eq(documentVersions.status, 'in_review'),
+        ),
+      )
+      .innerJoin(documents, eq(documents.id, documentVersions.documentId))
+      .leftJoin(role, eq(role.id, approvalRunSteps.assigneeRoleId))
+      .where(where)
+      .orderBy(
+        asc(approvalRunSteps.dueAt),
+        asc(documents.number),
+        asc(approvalRunSteps.id),
+      )
+      .limit(page.limit)
+      .offset(page.offset);
+    return { total, rows };
   }
 
   /**

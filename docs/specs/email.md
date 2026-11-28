@@ -83,9 +83,13 @@ Since quality review 3 (S2) it also counts the approval steps overdue on the
 documents each manager manages (`data.stepsOverdue`), and goes to the
 managers who have only those: the managers who are told of each overdue
 step in the app, through a grant for the document's unit, one above it, or
-the whole organization. An email with acknowledgements overdue keeps its
-subject and adds a line for the steps; one with steps only says "Approval
-steps overdue this week" and links to the dashboard. Counts only, as
+the whole organization. The subject names what is overdue (language
+review 8, A3): "Overdue acknowledgements this week", "Approval steps
+overdue this week", or, with both, "Overdue acknowledgements and approval
+steps this week". With acknowledgements overdue it links to the late
+acknowledgements screen, and adds a line for the steps; with steps only it
+links to the list of overdue steps, `/<lang>/policies/steps/overdue`
+(language review 8, M6; `GET /policies/steps/overdue`). Counts only, as
 before. Approval steps are not emailed while the subscription is
 suspended, in the weekly email as in the digest: the count is left out.
 
@@ -102,7 +106,8 @@ The same rules as the in-app notifications:
   else reaches it.
 - **A link to the item in Trustline**, built from `WEB_BASE_URL` and the
   recipient's language (`/<lang>/incidents/<id>`, `/<lang>/policies/<id>`,
-  `/<lang>/policies/<id>/versions/<versionId>`, `/<lang>/policies/overdue`).
+  `/<lang>/policies/<id>/versions/<versionId>`, `/<lang>/policies/overdue`,
+  `/<lang>/policies/steps/overdue`).
   Opening it requires signing in, and the screen applies its own access
   check.
 - **In the recipient's language:** their preferred language

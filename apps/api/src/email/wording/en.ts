@@ -17,7 +17,7 @@ export const en: Wording = {
     },
     sentinel_flagged: {
       subject: 'Incident {reference} is now a sentinel event',
-      body: 'Incident {reference} has been marked as a sentinel event.',
+      body: 'Incident {reference} has been marked as a sentinel event. Closing it will need a second person’s sign-off.',
     },
     incident_assigned: {
       subject: 'Incident {reference} is assigned to you',
@@ -43,6 +43,8 @@ export const en: Wording = {
     people: 'People concerned: {people}',
     open: 'See who in Trustline',
     stepsSubject: 'Approval steps overdue this week',
+    bothSubject: 'Overdue acknowledgements and approval steps this week',
+    openSteps: 'See the overdue steps in Trustline',
     stepsBody: 'Some approval steps of the documents you manage have passed their due date.',
     stepsOverdue: 'Approval steps overdue: {count}',
   },
@@ -72,7 +74,7 @@ export const en: Wording = {
     button: 'Stop these emails',
     doneImmediate: 'You will no longer receive the immediate emails.',
     doneDigest: 'You will no longer receive the summary emails.',
-    turnBackOn: 'You can turn them back on in Trustline, in your notification preferences.',
+    turnBackOn: 'You can turn them back on in Trustline, in your email preferences.',
     invalid: 'This link is not valid or has expired. You can change your email preferences in Trustline.',
   },
 };

@@ -1199,7 +1199,13 @@ is audited.
    and its re-issue, are theirs. Not when they imported it themselves.
 6. **Overdue approval steps by email (S2):** in the daily digest of those
    who manage documents, and counted in the weekly email to managers
-   (`email.md`).
+   (`email.md`). Listed by `GET /steps/overdue` (`page`, `pageSize`; language
+   review 8, M6), for `policies.manage`, over the documents the caller
+   manages, as the emails count them: the document's number (and title
+   where the caller may open it), the version, the step's position and kind,
+   its assignee (a person or a role), its due time and day, and the days it
+   is overdue. Most overdue first. The weekly email and notice lead there
+   when only steps are overdue.
 7. **Acknowledgements as files (S5).**
    - `GET /exports/acknowledgements/overdue?locale=`: the late list as a
      CSV (person, employee number for those whose accounts the caller

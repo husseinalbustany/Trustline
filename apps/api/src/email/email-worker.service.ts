@@ -807,9 +807,9 @@ export class EmailWorker implements OnModuleDestroy {
         overdue,
         people: Number(data.people) || 0,
         stepsOverdue: Number(data.stepsOverdue) || 0,
-        // Where the late acknowledgements are listed; with none, the
-        // dashboard, which leads to the approvals.
-        href: link(overdue > 0 ? '/policies/overdue' : '/dashboard'),
+        // Where the late acknowledgements are listed; with none, the list of
+        // the overdue approval steps (language review 8, M6).
+        href: link(overdue > 0 ? '/policies/overdue' : '/policies/steps/overdue'),
       };
     }
     if (!IMMEDIATE[kind]) return null;

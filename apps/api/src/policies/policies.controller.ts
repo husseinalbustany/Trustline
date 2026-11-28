@@ -248,6 +248,17 @@ export class PoliciesController {
     );
   }
 
+  /**
+   * The approval steps overdue on the documents the caller manages
+   * (language review 8, M6): where the weekly email and notice lead when
+   * steps are overdue. For those who manage documents, as that email goes.
+   */
+  @Get('steps/overdue')
+  overdueSteps(@Query() query: unknown, @Req() req: AuthedRequest) {
+    requirePermission(req, 'policies.manage');
+    return this.library.overdueStepsList(req.auth, parse(overdueQuery, query));
+  }
+
   /** The late acknowledgements list as a CSV file (quality review 3, S5). */
   @Get('exports/acknowledgements/overdue')
   async exportOverdue(

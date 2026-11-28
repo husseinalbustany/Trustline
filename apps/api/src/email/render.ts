@@ -149,9 +149,15 @@ export function renderMail(content: MailContent, envelope: MailEnvelope): Render
     body.push({ kind: 'link', text: w.open, href: content.href });
   } else if (content.category === 'weekly_digest') {
     // Acknowledgements first, as before; the approval steps as a line of
-    // their own, or alone when no acknowledgement is overdue.
+    // their own, or alone when no acknowledgement is overdue. The subject
+    // names what is overdue (language review 8, A3).
     const acks = content.overdue > 0;
-    subject = acks ? w.weekly.subject : w.weekly.stepsSubject;
+    const steps = content.stepsOverdue > 0;
+    subject = acks
+      ? steps
+        ? w.weekly.bothSubject
+        : w.weekly.subject
+      : w.weekly.stepsSubject;
     body.push({ kind: 'text', text: acks ? w.weekly.body : w.weekly.stepsBody });
     if (acks) {
       body.push({ kind: 'text', text: say(w.weekly.overdue, { overdue: content.overdue }) });
@@ -160,7 +166,9 @@ export function renderMail(content: MailContent, envelope: MailEnvelope): Render
     if (content.stepsOverdue > 0) {
       body.push({ kind: 'text', text: say(w.weekly.stepsOverdue, { count: content.stepsOverdue }) });
     }
-    body.push({ kind: 'link', text: acks ? w.weekly.open : w.daily.open, href: content.href });
+    // To the late acknowledgements when there are any, else to the overdue
+    // steps (language review 8, M6): `href` is chosen so by the worker.
+    body.push({ kind: 'link', text: acks ? w.weekly.open : w.weekly.openSteps, href: content.href });
   } else {
     const day = formatDay(content.day, envelope.locale);
     subject = fill(w.daily.subject, { day: rtl ? `${FSI}${day}${PDI}` : day });

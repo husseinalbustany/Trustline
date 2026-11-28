@@ -269,7 +269,7 @@ describe('policies: quality review 3', () => {
       const file = cells((await get(writer.cookie, '/exports/imports?locale=en').expect(200)).text);
       expect(file[0]).toEqual([
         'Number', 'Title', 'Number on the original', 'Revision on the original', 'Approved on',
-        'Approved by (as on the original)', 'Last reviewed on the original', 'Where the signed original is kept',
+        'Approved by (as written on the original)', 'Last reviewed on the original', 'Where the signed original is kept',
         'Differences from the original', 'Imported by', 'Imported at', 'Batch', 'Fingerprint of the batch',
         'Fingerprint of what was signed',
       ]);
@@ -509,8 +509,43 @@ describe('policies: quality review 3', () => {
       expect(daily.text_body).toContain(`/en/policies/${doc.id}/versions/${version.id}`);
       expect(daily.text_body).not.toContain('Stalled');
       const week = kept.rows.find((r) => r.category === 'weekly_digest')!;
-      expect(week.subject).toBe('Overdue acknowledgements this week');
+      expect(week.subject).toBe('Overdue acknowledgements and approval steps this week');
+      expect(week.text_body).toContain('/en/policies/overdue');
       expect(week.text_body).toContain('Approval steps overdue: 1');
+    });
+  });
+
+  describe('GET /policies/steps/overdue (language review 8, M6)', () => {
+    const stalled = (items: { document: { title: { en?: string } | null } }[]) =>
+      items.filter((i) => i.document.title?.en === 'Stalled');
+
+    it('needs a session, and policies.manage', async () => {
+      await http().get('/policies/steps/overdue').expect(401);
+      await get(reader.cookie, '/steps/overdue').expect(403);
+    });
+
+    it('takes only a page', async () => {
+      for (const query of ['pageSize=0', 'page=x', 'tenantId=1']) await get(writer.cookie, `/steps/overdue?${query}`).expect(400);
+    });
+
+    it('lists the overdue steps of the documents the caller manages, with their numbers, steps and assignees', async () => {
+      const list = (await get(owner.cookie, '/steps/overdue').expect(200)).body;
+      const [step] = stalled(list.items);
+      expect(step).toMatchObject({
+        document: { id: expect.any(String), number: expect.stringMatching(/^PRC-SAF-\d{3,}$/), title: { en: 'Stalled' }, canOpen: true },
+        version: { id: expect.any(String), version: 1 },
+        position: 1,
+        kind: 'review',
+        // The starting route's review: the Quality officer's role.
+        assignee: { type: 'role', id: expect.any(String), name: expect.objectContaining({ en: 'Quality officer' }) },
+        dueOn: shiftDay(today, -1),
+        daysOverdue: 1,
+      });
+      expect(list.total).toBe(list.items.length);
+      // Out of scope: a manager of another unit does not see it.
+      expect(stalled((await get(phaManager.cookie, '/steps/overdue').expect(200)).body.items)).toEqual([]);
+      // Another hospital's are its own.
+      expect((await get(b.cookie, '/steps/overdue').expect(200)).body).toMatchObject({ items: [], total: 0 });
     });
   });
 

@@ -40,6 +40,10 @@ export type Wording = {
     open: string;
     /** With no acknowledgement overdue, only approval steps. */
     stepsSubject: string;
+    /** With both acknowledgements and approval steps overdue (language review 8, A3). */
+    bothSubject: string;
+    /** The link to the overdue steps (language review 8, M6). */
+    openSteps: string;
     stepsBody: string;
     stepsOverdue: string;
   };
