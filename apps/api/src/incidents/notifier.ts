@@ -59,6 +59,8 @@ export const NOTIFICATION_MODULE: Record<NotificationKind, ModuleKey> = {
   policies_import_granted: 'policies',
   external_access_changed: 'core',
   audit_chain_head: 'core',
+  // A full data export (docs/specs/data-export.md): core.
+  data_export_changed: 'core',
 };
 
 /** The kinds a client with these modules is shown. */

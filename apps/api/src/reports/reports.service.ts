@@ -316,7 +316,7 @@ export class ReportsService {
         rows.map((r) => {
           const def = MEASURE_DEFINITIONS[r.measure as MeasureCode];
           const value = r.value === null ? null : Number(r.value);
-          const target = r.target === null ? null : Number(r.target);
+          const target = this.targetOf(r.measure as MeasureCode, unit, { value: r.target === null ? null : Number(r.target), source: r.targetSource }).value;
           const met = metOf(def.direction, value, target);
           return [
             r.month.slice(0, 7),
@@ -413,15 +413,25 @@ export class ReportsService {
 
   /** The client's targets and baseline, with the business's beside them. */
   settings(auth: AuthContext) {
-    return this.tenantDb.withTenant(auth.tenant.id, (tx) => this.settingsIn(tx));
+    return this.tenantDb.withTenant(auth.tenant.id, (tx) => this.settingsIn(tx, auth));
   }
 
-  private async settingsIn(tx: Transaction) {
+  /**
+   * The settings as this caller may read them. The baseline and the
+   * reporting-volume target are figures of the organization's reports:
+   * only for those who see incident figures for all of it (security review
+   * 16, M2). A module the client lacks has no targets here.
+   */
+  private async settingsIn(tx: Transaction, auth: AuthContext) {
     const [row] = await tx.select().from(reportSettings);
     const targets = await this.snapshots.targetsOf(tx);
+    const has = (m: string) => (auth.tenant.modules as string[]).includes(m);
+    const reportsAll = has('incidents') && reachOf(auth, ['incidents.view', 'incidents.triage']) === 'all';
     return {
       revision: row?.revision ?? 0,
-      targets: MEASURE_CODES.filter((c) => c !== 'incidents.reported').map((code) => ({
+      targets: MEASURE_CODES.filter(
+        (c) => c !== 'incidents.reported' && MEASURE_DEFINITIONS[c].taken && has(MEASURE_DEFINITIONS[c].module),
+      ).map((code) => ({
         code,
         module: MEASURE_DEFINITIONS[code].module,
         direction: MEASURE_DEFINITIONS[code].direction,
@@ -430,11 +440,13 @@ export class ReportsService {
         effective: targets[code].value,
       })),
       baseline:
-        row?.baselineMonthlyAverage !== null && row?.baselineMonthlyAverage !== undefined
+        reportsAll && row?.baselineMonthlyAverage !== null && row?.baselineMonthlyAverage !== undefined
           ? { monthlyAverage: Number(row.baselineMonthlyAverage), note: row.baselineNote }
           : null,
-      firstMonthsBaseline: await this.snapshots.firstMonthsBaseline(tx),
-      reportedTarget: { value: targets['incidents.reported'].value, source: targets['incidents.reported'].source },
+      firstMonthsBaseline: reportsAll ? await this.snapshots.firstMonthsBaseline(tx) : null,
+      reportedTarget: reportsAll
+        ? { value: targets['incidents.reported'].value, source: targets['incidents.reported'].source }
+        : null,
     };
   }
 
@@ -473,7 +485,7 @@ export class ReportsService {
       if (input.baseline !== undefined && JSON.stringify(input.baseline) !== JSON.stringify(baselineBefore)) {
         changes.baseline = { from: baselineBefore, to: input.baseline };
       }
-      if (Object.keys(changes).length === 0) return this.settingsIn(tx);
+      if (Object.keys(changes).length === 0) return this.settingsIn(tx, auth);
       const values = {
         targets,
         ...(input.baseline !== undefined && {
@@ -485,9 +497,18 @@ export class ReportsService {
         updatedBy: auth.user.id,
       };
       if (row) await tx.update(reportSettings).set(values).where(eq(reportSettings.tenantId, auth.tenant.id));
-      else await tx.insert(reportSettings).values({ tenantId: auth.tenant.id, ...values });
+      else {
+        // Two first changes at once: the second finds the row made, and is
+        // stale (security review 16, L7).
+        const made = await tx
+          .insert(reportSettings)
+          .values({ tenantId: auth.tenant.id, ...values })
+          .onConflictDoNothing()
+          .returning({ tenantId: reportSettings.tenantId });
+        if (made.length === 0) throw new ConflictException({ code: 'stale_settings' });
+      }
       await this.provisioning.audit(tx, auth.tenant.id, auth.user.id, 'report_settings_changed', 'tenant', auth.tenant.id, changes);
-      return this.settingsIn(tx);
+      return this.settingsIn(tx, auth);
     });
   }
 }

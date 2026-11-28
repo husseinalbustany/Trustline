@@ -9,7 +9,8 @@ const blankAsUnset = (query: unknown) =>
     ? Object.fromEntries(Object.entries(query).filter(([, v]) => v !== ''))
     : query;
 
-const month = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
+// Years from 2000 (security review 16, L7): no figure is older.
+const month = z.string().regex(/^2\d{3}-(0[1-9]|1[0-2])$/);
 const monthsApart = (from: string, to: string) =>
   (Number(to.slice(0, 4)) - Number(from.slice(0, 4))) * 12 + Number(to.slice(5)) - Number(from.slice(5));
 

@@ -286,6 +286,9 @@ describe('reports and measures', () => {
         'from=2026-13&to=2026-12',
         `${months(thisMonth, lastMonth)}`,
         'from=2010-01&to=2026-11',
+        // Years before 2000 (security review 16, L7).
+        'from=0000-01&to=0000-01',
+        'from=1999-12&to=2000-01',
         `${months(lastMonth, lastMonth)}&measures=nothing.here`,
         `${months(lastMonth, lastMonth)}&other=1`,
       ]) {
@@ -296,7 +299,12 @@ describe('reports and measures', () => {
     it('scopes a department manager to their units, and answers another unit as if it were not there', async () => {
       expect((await get(manager.cookie, `/reports/measures?${months(lastMonth, lastMonth)}`).expect(403)).body).toMatchObject({ code: 'missing_permission' });
       const mine = await measuresOf(manager.cookie, `${months(lastMonth, lastMonth)}&unitId=${dept}`);
-      expect(mine.measures.find((m) => m.code === 'incidents.reported')!.months).toEqual([expect.objectContaining({ month: lastMonth.slice(0, 7), value: 2 })]);
+      const reportedHere = mine.measures.find((m) => m.code === 'incidents.reported')!;
+      expect(reportedHere.months).toEqual([expect.objectContaining({ month: lastMonth.slice(0, 7), value: 2 })]);
+      // The organization's baseline is no unit's target, and not theirs to
+      // read (security review 16, M2).
+      expect(reportedHere).toMatchObject({ target: null, targetSource: null });
+      expect(reportedHere.months[0]).toMatchObject({ target: null, targetSource: null, met: null });
       await get(manager.cookie, `/reports/measures?${months(lastMonth, lastMonth)}&unitId=${ward}`).expect(200);
       await get(manager.cookie, `/reports/measures?${months(lastMonth, lastMonth)}&unitId=${other}`).expect(404);
       await get(manager.cookie, `/reports/measures?${months(lastMonth, lastMonth)}&unitId=${facility}`).expect(404);
@@ -339,6 +347,10 @@ describe('reports and measures', () => {
       await http().post('/reports/measures/corrections').set('Cookie', authority.cookie)
         .send({ month: lastMonth.slice(0, 7), measures: ['policies.past_review'], reason: 'Not theirs to correct.' })
         .expect(403);
+      // No figure of the organization's reports through the settings
+      // (security review 16, M2).
+      const settings = (await get(authority.cookie, '/reports/settings').expect(200)).body;
+      expect(settings).toMatchObject({ baseline: null, firstMonthsBaseline: null, reportedTarget: null });
     });
 
     it('corrects a month only by recomputing it, with a reason, for the whole organization’s reports.manage', async () => {
@@ -364,6 +376,23 @@ describe('reports and measures', () => {
         [2, 'corrected', 0],
       ]);
       expect(history.revisions[1]).toMatchObject({ reason: body.reason, requestedBy: { id: quality.id } });
+      // For a unit, the reason is for those who read the whole
+      // organization only (security review 16, L4).
+      const unitHistory = (await get(manager.cookie, `/reports/measures/incidents.reported/history?month=${lastMonth.slice(0, 7)}&unitId=${dept}`).expect(200)).body;
+      expect(unitHistory.revisions.map((r: { method: string; value: number; reason: string | null }) => [r.method, r.value, r.reason])).toEqual([
+        [expect.stringMatching(/snapshot|reconstructed/), 2, null],
+        ['corrected', 0, null],
+      ]);
+      // One correction at a time per client (L1, L6): another waits its turn.
+      const held = await bench.owner.pool.connect();
+      try {
+        await held.query('begin');
+        await held.query(`select pg_advisory_xact_lock(hashtextextended($1, 0))`, [`trustline.measures.${a.id}.correct`]);
+        expect((await http().post('/reports/measures/corrections').set('Cookie', quality.cookie).send(body).expect(409)).body).toEqual({ code: 'correction_in_progress' });
+      } finally {
+        await held.query('rollback');
+        held.release();
+      }
       // The series shows the latest revision.
       const series = await measuresOf(a.cookie, `${months(lastMonth, lastMonth)}&unitId=${ward}`);
       expect(series.measures.find((m) => m.code === 'incidents.reported')!.months[0]).toMatchObject({ value: 0, method: 'corrected', revision: 2 });
@@ -373,6 +402,31 @@ describe('reports and measures', () => {
         .where(and(eq(auditLog.tenantId, a.id), eq(auditLog.action, 'measure_correction_requested')));
       expect(audited.changes).toMatchObject({ month: body.month, measures: ['incidents.reported'], reason: body.reason });
       await get(a.cookie, `/reports/measures/nothing.here/history?month=${lastMonth.slice(0, 7)}`).expect(404);
+    });
+
+    it('works a month out again on the structure it was taken on, and hides how reports arrived where units moved since', async () => {
+      // One report back on the ward, then the ward moved to the other
+      // department.
+      const [one] = (await bench.owner.db.execute<{ id: string }>(sql`select id from incidents where tenant_id = ${a.id} and org_unit_id = ${other} and status = 'triaged' and reported_at < ${startOfDay(thisMonth, zone)} limit 1`)).rows;
+      await bench.owner.db.execute(sql`update incidents set org_unit_id = ${ward} where id = ${one.id}`);
+      await bench.owner.db.execute(sql`update org_units set parent_id = ${other} where id = ${ward}`);
+      try {
+        const body = { month: lastMonth.slice(0, 7), measures: ['incidents.reported'], reason: 'One report was on the ward after all.' };
+        const { revisions } = (await http().post('/reports/measures/corrections').set('Cookie', quality.cookie).send(body).expect(201)).body;
+        const to = (unit: string) => revisions.find((r: { unitId: string }) => r.unitId === unit).to.value;
+        // As the structure was: the ward in its department of then.
+        expect([to(ward), to(dept), to(other), to(facility)]).toEqual([1, 1, 2, 3]);
+        const channelOf = async (unit: string) =>
+          (await measuresOf(a.cookie, `${months(lastMonth, lastMonth)}&unitId=${unit}&measures=incidents.reported`)).measures[0].months[0].details;
+        // Both departments changed since: how reports arrived is not told
+        // for them (L5); for the facility and the ward, as before.
+        expect(await channelOf(dept)).not.toHaveProperty('channel');
+        expect(await channelOf(other)).not.toHaveProperty('channel');
+        expect(await channelOf(facility)).toHaveProperty('channel');
+        expect(await channelOf(ward)).toHaveProperty('channel');
+      } finally {
+        await bench.owner.db.execute(sql`update org_units set parent_id = ${dept} where id = ${ward}`);
+      }
     });
 
     it('takes the client’s own targets and baseline, audited, and each month keeps the target it was taken under', async () => {
@@ -398,8 +452,16 @@ describe('reports and measures', () => {
       const series = await measuresOf(a.cookie, months(lastMonth, lastMonth));
       const triage = series.measures.find((m) => m.code === 'incidents.triaged_on_time')!;
       expect(triage).toMatchObject({ target: 90, targetSource: 'client' });
-      // Last month keeps the target it was taken under.
+      // Last month keeps the target it was taken under, even corrected
+      // after the change (security review 16, M1).
       expect(triage.months[0]).toMatchObject({ target: 95 });
+      await http()
+        .post('/reports/measures/corrections')
+        .set('Cookie', quality.cookie)
+        .send({ month: lastMonth.slice(0, 7), measures: ['incidents.triaged_on_time'], reason: 'A decision was recorded on the wrong report.' })
+        .expect(201);
+      const after = (await measuresOf(a.cookie, months(lastMonth, lastMonth))).measures.find((m) => m.code === 'incidents.triaged_on_time')!;
+      expect(after.months[0]).toMatchObject({ method: 'corrected', target: 95, targetSource: 'business' });
       const [audited] = await bench.owner.db
         .select({ changes: auditLog.changes })
         .from(auditLog)
