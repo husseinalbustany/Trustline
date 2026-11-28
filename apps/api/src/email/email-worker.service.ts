@@ -76,6 +76,14 @@ const DB_NOW = sql`clock_timestamp()`;
 const CLAIM_UNTIL = sql`clock_timestamp() + ${sql.raw(`interval '${CLAIM_MS} milliseconds'`)}`;
 /** The waits before each attempt after the first, in minutes. */
 export const BACKOFF_MINUTES = [1, 5, 30, 120];
+/**
+ * How long sending waits, in every client, after the mail server refused
+ * the login or to relay (security review 9, finding 2): long enough not to
+ * send a wrong password every 30 seconds, which can lock the account at the
+ * mail service, and short enough for a corrected configuration to be found
+ * soon.
+ */
+export const PAUSE_AFTER_REFUSAL_MS = 5 * 60_000;
 /** Attempts before an email is given up. */
 export const MAX_ATTEMPTS = BACKOFF_MINUTES.length + 1;
 /** An email not sent within this long of being queued is dropped. */
@@ -179,6 +187,11 @@ export class EmailWorker implements OnModuleDestroy {
    * which runs at whatever hour it is, can say when the digest is due.
    */
   digestHour = DIGEST_HOUR;
+  /**
+   * Until when nothing is sent, after the mail server refused the login or
+   * to relay. For this process; another finds out the same way, once.
+   */
+  sendingPausedUntil = 0;
 
   constructor(
     @Inject(DATABASE) private readonly db: Database,
@@ -362,6 +375,10 @@ export class EmailWorker implements OnModuleDestroy {
    * and not tried goes back to the queue as it was.
    */
   private async sendQueue(client: Client, now: Date, result: EmailRunResult) {
+    if (now.getTime() < this.sendingPausedUntil) {
+      result.loginRefused = true;
+      return;
+    }
     for (;;) {
       if (this.stopping || result.loginRefused) return;
       const claimed = await this.claim(client.id, now);
@@ -382,7 +399,7 @@ export class EmailWorker implements OnModuleDestroy {
    * the attempt they were claimed for not counted. Only rows still held by
    * this claim.
    */
-  private async release(tenantId: string, rows: Claimed[]) {
+  private async release(tenantId: string, rows: Claimed[], lastError?: string) {
     await this.inClient(tenantId, async (tx) => {
       for (const row of rows) {
         await tx
@@ -391,6 +408,7 @@ export class EmailWorker implements OnModuleDestroy {
             status: 'pending',
             attempts: sql`${emailQueue.attempts} - 1`,
             claimedUntil: null,
+            ...(lastError !== undefined && { lastError }),
           })
           .where(
             and(
@@ -520,11 +538,20 @@ export class EmailWorker implements OnModuleDestroy {
       await this.sender.send(prepared.mail);
     } catch (error) {
       const failure = classifySmtpError(error);
-      if (failure.stopsSending && !result.loginRefused) {
-        result.loginRefused = true;
-        this.logger.error(
-          `Email: the mail server refused the login (${failure.code}): nothing more is sent this run; check SMTP_USER and SMTP_PASSWORD`,
-        );
+      if (failure.stopsSending) {
+        // The configuration's, not this email's: it goes back as it was,
+        // with no attempt counted (security review 9, finding 2), so that
+        // an outage of the login gives up nobody's email. The day-old
+        // expiry is the only limit. Nothing is sent for a while.
+        if (!result.loginRefused) {
+          result.loginRefused = true;
+          this.sendingPausedUntil = now.getTime() + PAUSE_AFTER_REFUSAL_MS;
+          this.logger.error(
+            `Email: the mail server refused the login or to relay (${failure.code}): nothing is sent for ${PAUSE_AFTER_REFUSAL_MS / 60_000} minutes; check SMTP_USER, SMTP_PASSWORD and the relay's settings`,
+          );
+        }
+        await this.release(client.id, [row], failure.code);
+        return 'retried';
       }
       return this.failed(client, row, now, failure.code, failure.outcome === 'permanent');
     }

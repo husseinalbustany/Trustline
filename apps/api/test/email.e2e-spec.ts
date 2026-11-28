@@ -638,7 +638,7 @@ describe('email', () => {
       expect(rows.every((r) => r.status === 'failed' && r.reason === 'refused' && r.attempts === 1)).toBe(true);
     });
 
-    it('tries again, and stops sending for the run, when the server refuses the login', async () => {
+    it('tries again, counts no attempt, and waits before sending again, when the server refuses the login', async () => {
       // nodemailer's own shape of a refused login: it calls it permanent.
       const refusedLogin = () =>
         Object.assign(new Error('Invalid login'), { code: 'EAUTH', responseCode: 535, permanent: true, command: 'AUTH PLAIN' });
@@ -647,17 +647,52 @@ describe('email', () => {
       expect(count).toBeGreaterThan(1);
       const { sender, asked } = failing(refusedLogin);
       worker.sender = sender;
-      const done = await work();
-      expect(done).toMatchObject({ loginRefused: true, retried: 1, givenUp: 0 });
-      // Tried once, for one email: the others went back as they were.
-      expect(asked).toHaveLength(1);
-      const rows = await queue();
-      expect(rows.filter((r) => r.status === 'pending' && r.attempts === 1 && r.last_error === 'EAUTH')).toHaveLength(1);
-      expect(rows.filter((r) => r.status === 'pending' && r.attempts === 0)).toHaveLength(count - 1);
-      expect(rows.some((r) => r.status === 'failed')).toBe(false);
-      // Mended: everything goes.
-      worker.sender = outbox;
-      expect(await work(new Date(Date.now() + 2 * MINUTE))).toMatchObject({ kept: count, loginRefused: false });
+      const now = new Date();
+      try {
+        expect(await work(now)).toMatchObject({ loginRefused: true, retried: 1, givenUp: 0 });
+        // Tried once, for one email; every one went back with no attempt
+        // counted (security review 9, finding 2).
+        expect(asked).toHaveLength(1);
+        let rows = await queue();
+        expect(rows.every((r) => r.status === 'pending' && r.attempts === 0)).toBe(true);
+        expect(rows.filter((r) => r.last_error === 'EAUTH')).toHaveLength(1);
+        // Nothing is tried for five minutes, in any client.
+        expect(await work(new Date(now.getTime() + 2 * MINUTE))).toMatchObject({ loginRefused: true, retried: 0 });
+        expect(asked).toHaveLength(1);
+        // A long outage gives nobody's email up.
+        for (let i = 1; i <= 8; i++) await work(new Date(now.getTime() + i * 6 * MINUTE));
+        rows = await queue();
+        expect(rows.every((r) => r.status === 'pending' && r.attempts === 0)).toBe(true);
+        expect(asked.length).toBeGreaterThan(1);
+        expect(asked.length).toBeLessThan(10);
+        // Mended: everything goes.
+        worker.sender = outbox;
+        expect(await work(new Date(now.getTime() + 60 * MINUTE))).toMatchObject({ kept: count, loginRefused: false });
+      } finally {
+        worker.sender = outbox;
+        worker.sendingPausedUntil = 0;
+      }
+    });
+
+    it('treats a refusal to relay at RCPT TO as the configuration’s, not the recipient’s', async () => {
+      // Postfix's answer when the relay does not know this sender.
+      const relayDenied = () =>
+        Object.assign(new Error('Can\'t send mail - all recipients were rejected'), {
+          code: 'EENVELOPE',
+          responseCode: 554,
+          command: 'RCPT TO',
+          response: '554 5.7.1 <someone@test.invalid>: Relay access denied',
+        });
+      await report(nurse, { harmLevel: 'severe' });
+      worker.sender = failing(relayDenied).sender;
+      try {
+        expect(await work()).toMatchObject({ loginRefused: true, givenUp: 0 });
+        const rows = await queue();
+        expect(rows.every((r) => r.status === 'pending' && r.attempts === 0)).toBe(true);
+      } finally {
+        worker.sender = outbox;
+        worker.sendingPausedUntil = 0;
+      }
     });
 
     it('reads the organization’s switch for each email, not once a run', async () => {

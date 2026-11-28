@@ -153,6 +153,21 @@ describe('the SMTP sender', () => {
     }
   });
 
+  it.each([
+    ['Postfix', '554 5.7.1 <person@hospital.example>: Relay access denied', '554'],
+    ['Exchange', '550 5.7.54 SMTP; Unable to relay recipient in non-accepted domain', '550'],
+  ])('says to try again, and to stop sending, when %s refuses to relay', async (_server, reply, code) => {
+    const smtp = await fakeSmtp(reply);
+    const sender = senderFor(smtp.port);
+    try {
+      const error = await sender.send(mail).catch((e: unknown) => e);
+      expect(error).toMatchObject({ outcome: 'retry', code, stopsSending: true });
+    } finally {
+      await sender.close();
+      smtp.server.close();
+    }
+  });
+
   it('says to try again when the server refuses the sender, which is not this message’s doing', async () => {
     const smtp = await fakeSmtp('250 OK', { mailReply: '553 5.7.1 Sender address rejected' });
     const sender = senderFor(smtp.port);
@@ -186,6 +201,19 @@ describe('classifying a failure', () => {
   it.each([
     // This message or this recipient, refused for good.
     [{ responseCode: 550, code: 'EENVELOPE', command: 'RCPT TO' }, 'permanent', '550', false],
+    [{ responseCode: 550, code: 'EENVELOPE', command: 'RCPT TO', response: '550 5.1.1 <x@y.example>: Recipient address rejected: User unknown in local recipient table' }, 'permanent', '550', false],
+    [{ responseCode: 552, code: 'EENVELOPE', command: 'RCPT TO', response: '552 5.2.2 Mailbox full' }, 'permanent', '552', false],
+    [{ responseCode: 550, code: 'EENVELOPE', command: 'RCPT TO', response: '550 5.1.10 RESOLVER.ADR.RecipientNotFound; Recipient not found by SMTP address lookup' }, 'permanent', '550', false],
+    // Refused to relay for this sender (Postfix, Exchange), or a login
+    // required, at RCPT TO: the configuration's (security review 9,
+    // finding 1). Tried again, and the run stops.
+    [{ responseCode: 554, code: 'EENVELOPE', command: 'RCPT TO', response: '554 5.7.1 <x@y.example>: Relay access denied' }, 'retry', '554', true],
+    [{ responseCode: 550, code: 'EENVELOPE', command: 'RCPT TO', response: '550 5.7.54 SMTP; Unable to relay recipient in non-accepted domain' }, 'retry', '550', true],
+    [{ responseCode: 530, code: 'EENVELOPE', command: 'RCPT TO', response: '530 5.7.0 Authentication required' }, 'retry', '530', true],
+    [{ responseCode: 530, code: 'EENVELOPE', command: 'RCPT TO' }, 'retry', '530', true],
+    // Other 5xx at RCPT TO with no sign that the address is at fault.
+    [{ responseCode: 554, code: 'EENVELOPE', command: 'RCPT TO' }, 'retry', '554', false],
+    [{ responseCode: 554, code: 'EENVELOPE', command: 'RCPT TO', response: '554 5.4.4 Unable to route' }, 'retry', '554', false],
     [{ responseCode: 554, code: 'EMESSAGE', command: 'DATA' }, 'permanent', '554', false],
     // For now.
     [{ responseCode: 421, code: 'EENVELOPE', command: 'RCPT TO' }, 'retry', '421', false],
