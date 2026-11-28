@@ -353,7 +353,7 @@ function General({ lang, t, lists, reload }: PartProps) {
                   >
                     <option value="">
                       {fill(s.authoritativeMain, {
-                        language: languageName(defaultLocale),
+                        language: named(defaultLocale),
                       })}
                     </option>
                     {locales.map((l) => (

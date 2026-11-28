@@ -16,7 +16,8 @@
     "language": "Language",
     "notifications": "Notifications",
     "notificationsUnread": "Notifications, unread: {count}",
-    "unreadMany": "99+"
+    "unreadMany": "99+",
+    "emailPreferences": "Your email preferences"
   },
   "nav": {
     "groups": {
@@ -586,7 +587,52 @@
     },
     "descriptionGeneral": "What has happened that concerns you. A notification names no one.",
     "emptyGeneral": "You have no notifications yet. When something happens that concerns you, it appears here.",
-    "documentUnavailable": "This document is no longer available to you."
+    "documentUnavailable": "This document is no longer available to you.",
+    "preferences": {
+      "title": "Email preferences",
+      "description": "Which notifications also reach you by email, and in which language. Every notification stays in Trustline either way.",
+      "loading": "Loading…",
+      "loadError": "Could not load your preferences. Reload the page.",
+      "organizationOff": "Your organization has switched email off.",
+      "organizationOffHelp": "Nothing is sent by email until it is switched on again. Your choices below are kept for then.",
+      "organizationOffManager": "Nothing is sent by email until it is switched on again in the organization's settings. Your choices below are kept for then.",
+      "openSettings": "Open the organization's settings",
+      "back": "Back to notifications",
+      "emailTitle": "What you receive by email",
+      "sentTo": "Emails go to {email}.",
+      "on": "On",
+      "off": "Off",
+      "immediate": "Immediate emails",
+      "immediateHelp": "Sent within about a minute, for what cannot wait:",
+      "immediateItems": {
+        "serious": "a serious incident reported, or handed over, in an area you triage",
+        "sentinel": "an incident marked as a sentinel event, when you may sign off its closure or triage for the whole organization",
+        "assigned": "an incident assigned to you",
+        "signOff": "an incident's closure waiting for a second person's sign-off, when you may give it",
+        "step": "a review or approval step of a document waiting for your decision"
+      },
+      "digest": "Morning summary",
+      "digestHelp": "Once a day, at 07:00 your organization's time, and only when something waits for you:",
+      "digestItems": {
+        "acknowledge": "documents to acknowledge",
+        "approve": "documents to review or approve",
+        "reviews": "periodic reviews due",
+        "incidents": "incidents assigned to you, overdue ones marked"
+      },
+      "weekly": "If you manage documents, this also covers the weekly summary of overdue acknowledgements in your teams.",
+      "noDetails": "Emails carry references and counts only, never a name, a description or a document's text: sign in to see them.",
+      "languageTitle": "Language of your emails",
+      "language": "Language",
+      "languageHelp": "The links in your emails open Trustline in this language too.",
+      "languageDefault": "Your organization's default ({language})",
+      "languageOnly": "Your organization works in one language, {language}: your emails are written in it.",
+      "languageMismatch": "Your organization does not use this language. Choose one of its languages.",
+      "save": "Save",
+      "saving": "Saving…",
+      "saved": "Saved.",
+      "saveError": "Could not save. Try again."
+    },
+    "preferencesLink": "Email preferences"
   },
   "modulePage": {
     "scopeTitle": "What this area will cover",
@@ -1244,6 +1290,22 @@
           "atLimit": "Limit reached: no more can be added."
         },
         "change": "To change the plan, add a module or raise a limit, contact Trustline."
+      },
+      "email": {
+        "title": "Email",
+        "on": "On",
+        "off": "Off",
+        "what": "Notifications are also sent by email: what cannot wait at once, the rest in a morning summary. Emails carry references and counts only. Each person chooses what they receive in their email preferences.",
+        "onHelp": "Switching it off stops every email to everyone in your organization at once, including those waiting to be sent. Notifications in Trustline carry on as usual.",
+        "offHelp": "While it is off, nobody in your organization receives email from Trustline. Notifications in Trustline carry on as usual.",
+        "ownPreferences": "Your own email preferences",
+        "outbox": "No mail service is configured yet, so emails are kept in Trustline and not sent. Sending starts once a mail service is configured; what was kept before then is not sent.",
+        "suspendedOn": "While your subscription is suspended, email can be switched off but not on.",
+        "suspendedOff": "While your subscription is suspended, email can be switched off, but not switched on again until the subscription is active.",
+        "switchOn": "Switch on",
+        "switchOff": "Switch off",
+        "switchedOn": "Email is switched on.",
+        "switchedOff": "Email is switched off."
       }
     },
     "permissions": {
@@ -1893,7 +1955,7 @@
       "language_mismatch_kept_at": "Say where the original is kept in your organization's main language, and only in the languages it uses.",
       "duplicate_in_batch": "Another document of this batch has the same number.",
       "invalid_document": "Some fields of this document cannot be read. Check it and try again.",
-      "batch_too_large": "This batch is too large: at most 20 documents and 600,000 characters of text.",
+      "batch_too_large": "This batch is too large: at most {documents} documents and {characters} characters of text.",
       "body_too_large": "This is too large to send at once. Split it into smaller batches.",
       "batch_refused": "Some documents cannot be imported, so none was. Correct them and check again.",
       "reissue_required": "This document was approved before Trustline: its review is a re-issue through the approval route, not a confirmation that nothing changed.",
@@ -1901,7 +1963,7 @@
       "approved_after_start_by": "Only documents approved on {date} or earlier can be imported. This one was approved later: create it as a new document and send it through the approval route.",
       "import_window_closed": "Importing existing documents is closed for your organization. Create new documents instead, or ask Trustline to open importing again.",
       "import_window_closed_on": "Importing existing documents closed on {date}. Create new documents instead, or ask Trustline to open importing again.",
-      "no_assignee_role": "Not sent for review yet: nobody can decide step {position} of its approval route ({kind}, by the role {role}). Nobody holds this role for this document's responsible area, apart from those who prepared this version. Ask whoever manages users to give the role {role} to the person who decides this step, then send the version again.",
+      "no_assignee_role": "Not sent for review yet: nobody can decide step {position} of its approval route ({kind}, by the role “{role}”). Nobody holds this role for this document's responsible area, or only someone who prepared this version does. Ask whoever manages users to give the role “{role}” to the person who decides this step, then send the version again.",
       "no_assignee_person": "Not sent for review yet: step {position} of its approval route ({kind}) names {name}, who cannot decide it: their account is not active, no role of theirs allows it, or they prepared this version. Ask whoever manages document settings to change the route, then send the version again.",
       "no_assignee_give_role": "Give the role to someone",
       "no_assignee_open_routes": "Open the approval routes",
@@ -1991,7 +2053,7 @@
       "importedTitle": "Imported: {count} · batches signed: {batches}",
       "line": "Row {line}",
       "noTitle": "No title",
-      "correct": "Correct",
+      "correct": "Correct it",
       "leaveOut": "Leave it out",
       "correcting": "Correcting: {place}",
       "ownerInFile": "In the file: {name}",
@@ -2118,25 +2180,25 @@
       "approvedOn": "Approved on",
       "approvedBy": "Approved by (as written on the original)",
       "originalKeptAt": "Signed original kept at",
-      "importedBy": "Imported into Trustline by {name} on {date}, with a signature that this text is the original's.",
+      "importedBy": "Imported into Trustline by {name} on {date}, who signed that this text matches the original.",
       "nextReviewReissue": "Next review (re-issue)",
       "importedByLabel": "Imported by",
-      "notWrittenLabel": "Sections the original came without"
+      "notWrittenLabel": "Sections missing from the original"
     },
     "reissue": {
       "pill": "Re-issue required",
-      "at": "Its next review, on {date}, is a re-issue",
+      "at": "Its next review, on {date}, will be a re-issue.",
       "due": "Re-issue required by {date}",
       "wasDue": "Re-issue was due on {date}",
-      "help": "This document was approved before Trustline. Its next review is a re-issue: start a new version from this text, write the sections it lacks, and send it through the approval route. Confirming that nothing changed is not possible for it.",
+      "help": "This document was approved before Trustline. Its next review is a re-issue: start a new version from this text, write the sections it lacks, and send it through the approval route. It cannot simply be confirmed as unchanged.",
       "helpReader": "This document was approved before Trustline. At its next review, those who manage documents re-issue it through the approval route.",
       "inProgress": "Its re-issue is in progress: the new version goes through the approval route. This version stays in force until the new one is published.",
-      "actionHelp": "Approved before Trustline: its review is a re-issue through the approval route. Whoever imported it cannot decide a step of its re-issue.",
+      "actionHelp": "Approved before Trustline: its review is a re-issue through the approval route. Whoever imported it cannot decide a step of this re-issue.",
       "actionHelpBusy": "Its re-issue is in progress. Continue it from the version in progress.",
       "start": "Start the re-issue",
       "byDate": "Re-issue by {date}",
       "editorTitle": "Re-issue of a document approved before Trustline",
-      "editorHelp": "Write the sections the original came without, then send it through the approval route. Whoever imported the document cannot decide a step of this review."
+      "editorHelp": "Write the sections missing from the original, then send it through the approval route. Whoever imported the document cannot decide a step of this re-issue."
     }
   }
 }

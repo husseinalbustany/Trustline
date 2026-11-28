@@ -77,6 +77,10 @@ export function importWindowOf(settings: unknown): ImportWindow | null {
     : null;
 }
 
+/** Whether the window has closed, by the client's calendar. */
+export const windowClosed = (w: ImportWindow | null, today: string) =>
+  !!w?.closesOn && w.closesOn < today;
+
 /** Said at the top of the import screens, when the API says when imports end. */
 export function ImportWindowNote({
   lang,
@@ -87,7 +91,7 @@ export function ImportWindowNote({
   if (!w) return null;
   const day = dayFormat(lang);
   const m = t.importing;
-  const closed = !!w.closesOn && w.closesOn < todayIn(session.tenant.timeZone);
+  const closed = windowClosed(w, todayIn(session.tenant.timeZone));
   return (
     <div
       role="note"
@@ -427,6 +431,8 @@ function ImportForm({ lang, t, ready }: PoliciesProps & { ready: Ready }) {
   const readOnly = useReadOnly();
   const { lists, settings } = ready;
   const authoritative = settings?.authoritative ?? session.tenant.defaultLocale;
+  // Nothing can be imported once the window has closed.
+  const closed = windowClosed(importWindowOf(settings), todayIn(session.tenant.timeZone));
   const m = t.importing;
   const form = useRef<HTMLFormElement>(null);
   const [typeId, setTypeId] = useState("");
@@ -563,7 +569,7 @@ function ImportForm({ lang, t, ready }: PoliciesProps & { ready: Ready }) {
         )}
         {!checked && (
           <div className="flex flex-wrap items-center gap-3">
-            <Button type="submit" disabled={busy || readOnly || !type}>
+            <Button type="submit" disabled={busy || readOnly || !type || closed}>
               {busy ? m.checking : m.check}
             </Button>
             <Link href={`/${lang}/policies`} className="text-sm text-accent hover:underline">

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   useEffect,
   useLayoutEffect,
@@ -10,6 +11,7 @@ import {
 import { can, useRefreshSession, useSession } from "@/components/shell/session";
 import {
   hasModule,
+  useReadOnly,
   useSubscriptionRefusal,
 } from "@/components/shell/subscription";
 import { features } from "@/config/modules";
@@ -122,9 +124,129 @@ export function SettingsView(props: Props) {
         {deadlines && (
           <DeadlinesPanel {...props} editable={wholeOrganization} />
         )}
+        {wholeOrganization && <EmailPanel {...props} />}
         {wholeOrganization && <SubscriptionPanel {...props} />}
       </div>
     </>
+  );
+}
+
+/** Email for the whole organization, as the API reports it. */
+type EmailSetting = { enabled: boolean; delivery: "smtp" | "outbox" | (string & {}) };
+
+/**
+ * Email for the whole organization: on or off, and whether mail actually
+ * leaves (a mail service is configured) or is kept in the outbox. While
+ * the subscription is suspended it can be switched off, not on.
+ */
+function EmailPanel({ lang, t }: Props) {
+  const refusal = useSubscriptionRefusal();
+  const readOnly = useReadOnly();
+  const [email, setEmail] = useState<EmailSetting | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<Message | null>(null);
+  const s = t.settings;
+  const e = s.email;
+
+  useEffect(() => {
+    let current = true;
+    api<EmailSetting>("/settings/email")
+      .then((loaded) => {
+        if (!current) return;
+        setEmail(loaded);
+        setProblem(null);
+      })
+      .catch(
+        (err) =>
+          current &&
+          setProblem(statusOf(err) === 403 ? s.wholeOrganization : t.loadError),
+      );
+    return () => {
+      current = false;
+    };
+  }, [s, t]);
+
+  // Visited pages stay mounted: "Switched on." must not wait there.
+  useLayoutEffect(() => () => setMessage(null), []);
+
+  async function setOn(enabled: boolean) {
+    setBusy(true);
+    setMessage(null);
+    try {
+      setEmail(
+        await api<EmailSetting>("/settings/email", {
+          method: "PUT",
+          body: { enabled },
+        }),
+      );
+      setMessage({ kind: "ok", text: enabled ? e.switchedOn : e.switchedOff });
+    } catch (err) {
+      setMessage({
+        kind: "error",
+        text:
+          refusal(err) ??
+          (statusOf(err) === 403 ? s.wholeOrganization : s.error),
+      });
+    }
+    setBusy(false);
+  }
+
+  if (problem || !email) {
+    return (
+      <Panel title={e.title}>
+        <EmptyState>{problem ?? t.loading}</EmptyState>
+      </Panel>
+    );
+  }
+
+  const on = email.enabled;
+  // Suspended: off stays possible, on waits until it is active again.
+  const blocked = readOnly && !on;
+  return (
+    <Panel>
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3">
+        <h2 className="text-sm font-medium">{e.title}</h2>
+        <Pill tone={on ? "ok" : "neutral"}>{on ? e.on : e.off}</Pill>
+      </div>
+      <div className="flex flex-col gap-4 p-4">
+        <div className="flex flex-col gap-2 text-sm">
+          <p>{e.what}</p>
+          <p className="text-muted">{on ? e.onHelp : e.offHelp}</p>
+          <p className="text-muted">
+            <Link
+              href={`/${lang}/notifications/preferences`}
+              className="text-accent hover:underline"
+            >
+              {e.ownPreferences}
+            </Link>
+          </p>
+        </div>
+        {on && email.delivery === "outbox" && (
+          <p
+            role="note"
+            className="rounded-md border border-warn bg-warn-soft px-3 py-2 text-sm"
+          >
+            {e.outbox}
+          </p>
+        )}
+        {readOnly && (
+          <p className="text-sm text-muted">
+            {on ? e.suspendedOff : e.suspendedOn}
+          </p>
+        )}
+        <Said message={message} />
+        <div>
+          <Button
+            variant={on ? "secondary" : "primary"}
+            disabled={busy || blocked}
+            onClick={() => setOn(!on)}
+          >
+            {on ? e.switchOff : e.switchOn}
+          </Button>
+        </div>
+      </div>
+    </Panel>
   );
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, LogOut, Menu, Plus } from "lucide-react";
+import { Bell, LogOut, Menu, Plus, UserCog } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -46,6 +46,7 @@ export type ShellLabels = SidebarLabels & {
   language: string;
   notifications: string;
   notificationsUnread: string;
+  emailPreferences: string;
   unreadMany: string;
   subscription: SubscriptionText;
 };
@@ -194,6 +195,7 @@ export function AppShell({
     pick(text, lang, session.tenant.defaultLocale);
 
   const notificationsPath = `/${lang}/notifications`;
+  const preferencesPath = `/${lang}/notifications/preferences`;
   // A page of a module the client does not have says so, and nothing more:
   // the page itself is not drawn, so it asks the API for nothing.
   const pageModule = moduleOfPath(pathname.slice(`/${lang}`.length) || "/");
@@ -226,6 +228,28 @@ export function AppShell({
                 organization={inLang(session.tenant.name)}
                 permissions={session.permissions}
                 modules={session.tenant.modules}
+                footer={
+                  // On a phone the name is not in the bar: the person's
+                  // own settings are reached from the menu.
+                  <Link
+                    href={preferencesPath}
+                    onClick={() => setMenuOpen(false)}
+                    aria-current={
+                      pathname === preferencesPath ? "page" : undefined
+                    }
+                    className="flex items-center gap-3 rounded-md px-3 py-2 text-sm text-foreground hover:bg-line aria-[current=page]:bg-accent-soft aria-[current=page]:text-accent"
+                  >
+                    <UserCog className="size-4 shrink-0 text-muted" aria-hidden />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">
+                        {inLang(session.user.name)}
+                      </span>
+                      <span className="block text-xs text-muted">
+                        {labels.emailPreferences}
+                      </span>
+                    </span>
+                  </Link>
+                }
               />
 
               <div className="flex min-w-0 flex-1 flex-col">
@@ -292,9 +316,19 @@ export function AppShell({
                         {labels.signOutFailed}
                       </span>
                     )}
-                    <span className="ms-2 text-sm text-muted max-md:hidden">
+                    {/* The person's own settings: their email, from their
+                    name; on a phone, where the name is hidden, an icon. */}
+                    <Link
+                      href={preferencesPath}
+                      title={labels.emailPreferences}
+                      aria-current={
+                        pathname === preferencesPath ? "page" : undefined
+                      }
+                      className="ms-2 rounded-md px-2 py-1 text-sm text-muted hover:bg-surface hover:text-foreground aria-[current=page]:text-accent max-md:hidden"
+                    >
+                      <span className="sr-only">{`${labels.emailPreferences}: `}</span>
                       {inLang(session.user.name)}
-                    </span>
+                    </Link>
                     <button
                       type="button"
                       onClick={signOut}

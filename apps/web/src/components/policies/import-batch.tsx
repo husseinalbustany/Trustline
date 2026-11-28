@@ -26,6 +26,7 @@ import { pick, readForm, type Localized } from "@/lib/localized";
 import {
   documentPath,
   importPath,
+  todayIn,
   type Person,
   type PolicySettings,
 } from "@/lib/policies";
@@ -54,10 +55,12 @@ import {
   ImportWindowNote,
   importWindowOf,
   OriginalFields,
+  windowClosed,
   readSections,
   SectionsFields,
 } from "./import-form";
 import { PasswordPrompt } from "./password-prompt";
+import { Words } from "./sentence";
 import type { PoliciesProps } from "./types";
 import { useExplain } from "./use-explain";
 
@@ -158,8 +161,15 @@ function Batches({ lang, t, ready }: PoliciesProps & { ready: Ready }) {
   const readOnly = useReadOnly();
   const { lists, settings } = ready;
   const authoritative = settings?.authoritative ?? session.tenant.defaultLocale;
+  // Nothing can be imported once the window has closed.
+  const closed = windowClosed(importWindowOf(settings), todayIn(session.tenant.timeZone));
   const m = t.importing;
   const numbers = numberFormat(lang);
+  // Names in a row, each kept in its own direction: "type, area".
+  const unitList = (items: string[]) =>
+    new Intl.ListFormat(lang, { type: "unit" }).format(
+      items.map((x) => `\u2068${x}\u2069`),
+    );
   const inLang = (text: Localized | null | undefined) =>
     pick(text, lang, session.tenant.defaultLocale);
   const explainError = useExplain(t, lang, lists.types.flatMap((x) => x.sections));
@@ -257,7 +267,7 @@ function Batches({ lang, t, ready }: PoliciesProps & { ready: Ready }) {
       setFile(null);
       return setFileProblem(
         read.problem === "unknownColumns"
-          ? fill(m.fileProblems.unknownColumns, { columns: read.columns.join(", ") })
+          ? fill(m.fileProblems.unknownColumns, { columns: unitList(read.columns) })
           : m.fileProblems[read.problem],
       );
     }
@@ -318,7 +328,9 @@ function Batches({ lang, t, ready }: PoliciesProps & { ready: Ready }) {
       const fields = Array.isArray(p.fields) ? (p.fields as string[]) : [];
       const columns = [...new Set(fields.map((f) => columnOfField(f) ?? f))];
       return fill(m.invalidColumns, {
-        columns: columns.map((c) => m.columns[c as keyof typeof m.columns] ?? columnName(c)).join(", "),
+        columns: unitList(
+          columns.map((c) => m.columns[c as keyof typeof m.columns] ?? columnName(c)),
+        ),
       });
     }
     if (p.code === "duplicate_in_batch") {
@@ -349,7 +361,7 @@ function Batches({ lang, t, ready }: PoliciesProps & { ready: Ready }) {
                 type="file"
                 accept=".csv,.json,text/csv,application/json"
                 onChange={(e) => void choose(e)}
-                disabled={reading || readOnly}
+                disabled={reading || readOnly || closed}
                 className="sr-only"
               />
             </label>
@@ -361,10 +373,13 @@ function Batches({ lang, t, ready }: PoliciesProps & { ready: Ready }) {
           )}
           {file && (
             <p role="status" className="text-sm">
-              {fill(m.fileRead, {
-                file: file.name,
-                count: numbers.format(rows.length),
-              })}
+              <Words
+                text={m.fileRead}
+                values={{
+                  file: <bdi dir="auto">{file.name}</bdi>,
+                  count: numbers.format(rows.length),
+                }}
+              />
             </p>
           )}
         </div>

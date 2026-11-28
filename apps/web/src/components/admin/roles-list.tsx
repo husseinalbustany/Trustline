@@ -2,7 +2,7 @@
 
 import { Plus, TriangleAlert } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button-link";
 import { PageHeader } from "@/components/ui/page-header";
@@ -106,65 +106,81 @@ export function RolesList({ lang, t }: AdminProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {roles.map((role) => (
-                    <tr
-                      key={role.id}
-                      className="border-b border-line last:border-0"
-                    >
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Link
-                            href={`/${lang}/admin/roles/${role.id}`}
-                            className="font-medium hover:text-accent hover:underline"
-                          >
-                            {pick(
-                              role.name,
-                              lang,
-                              session.tenant.defaultLocale,
+                  {roles.map((role) => {
+                    // An approving role nobody holds: its approval steps
+                    // cannot be decided, so say what to do, across the row.
+                    const warn = role.assignments === 0 && routed.has(role.id);
+                    return (
+                      <Fragment key={role.id}>
+                        <tr
+                          className={
+                            warn ? "" : "border-b border-line last:border-0"
+                          }
+                        >
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Link
+                                href={`/${lang}/admin/roles/${role.id}`}
+                                className="font-medium hover:text-accent hover:underline"
+                              >
+                                {pick(
+                                  role.name,
+                                  lang,
+                                  session.tenant.defaultLocale,
+                                )}
+                              </Link>
+                              {role.isSystem && (
+                                <Badge>{t.roles.builtIn}</Badge>
+                              )}
+                            </div>
+                            {role.description && (
+                              <p className="mt-1 max-w-xl text-xs text-muted">
+                                {pick(
+                                  role.description,
+                                  lang,
+                                  session.tenant.defaultLocale,
+                                )}
+                              </p>
                             )}
-                          </Link>
-                          {role.isSystem && <Badge>{t.roles.builtIn}</Badge>}
-                        </div>
-                        {role.description && (
-                          <p className="mt-1 max-w-xl text-xs text-muted">
-                            {pick(
-                              role.description,
-                              lang,
-                              session.tenant.defaultLocale,
-                            )}
-                          </p>
-                        )}
-                        {/* An approving role nobody holds: its approval steps
-                            cannot be decided, so say what to do. */}
-                        {role.assignments === 0 && routed.has(role.id) && (
-                            <p className="mt-2 flex max-w-xl items-start gap-2 rounded-md border border-warn bg-warn-soft px-2 py-1.5 text-xs">
-                              <TriangleAlert
-                                className="mt-0.5 size-3.5 shrink-0 text-warn"
-                                aria-hidden
-                              />
-                              <span>
-                                {t.roles.nobodyApproves}{" "}
-                                <Link
-                                  href={`/${lang}/admin/users`}
-                                  className="font-medium text-accent hover:underline"
-                                >
-                                  {t.roles.giveToSomeone}
-                                </Link>
+                          </td>
+                          <td className="px-4 py-3 tabular-nums">
+                            {inUse(role)}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="tabular-nums">
+                              {role.assignments}
+                            </span>
+                            {role.assignments === 0 && (
+                              <span className="mt-1 block text-xs text-muted">
+                                {t.roles.nobodyYet}
                               </span>
-                            </p>
-                          )}
-                      </td>
-                      <td className="px-4 py-3 tabular-nums">{inUse(role)}</td>
-                      <td className="px-4 py-3">
-                        <span className="tabular-nums">{role.assignments}</span>
-                        {role.assignments === 0 && (
-                          <span className="mt-1 block text-xs whitespace-nowrap text-muted">
-                            {t.roles.nobodyYet}
-                          </span>
+                            )}
+                          </td>
+                        </tr>
+                        {warn && (
+                          <tr className="border-b border-line last:border-0">
+                            <td colSpan={3} className="px-4 pb-3">
+                              <p className="flex items-start gap-2 rounded-md border border-warn bg-warn-soft px-3 py-2 text-xs">
+                                <TriangleAlert
+                                  className="mt-0.5 size-3.5 shrink-0 text-warn"
+                                  aria-hidden
+                                />
+                                <span>
+                                  {t.roles.nobodyApproves}{" "}
+                                  <Link
+                                    href={`/${lang}/admin/users`}
+                                    className="font-medium text-accent hover:underline"
+                                  >
+                                    {t.roles.giveToSomeone}
+                                  </Link>
+                                </span>
+                              </p>
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                    </tr>
-                  ))}
+                      </Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

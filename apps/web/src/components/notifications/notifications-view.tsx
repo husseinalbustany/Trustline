@@ -1,6 +1,6 @@
 "use client";
 
-import { TriangleAlert } from "lucide-react";
+import { Mail, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useLayoutEffect, useState } from "react";
@@ -8,6 +8,7 @@ import { useSession, useUnread } from "@/components/shell/session";
 import { hasModule } from "@/components/shell/subscription";
 import { features } from "@/config/modules";
 import { Button } from "@/components/ui/button";
+import { ButtonLink } from "@/components/ui/button-link";
 import { Pill } from "@/components/ui/pill";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Panel } from "@/components/ui/panel";
@@ -336,13 +337,22 @@ export function NotificationsView({
         title={t.title}
         description={aboutIncidents ? t.description : t.descriptionGeneral}
         actions={
-          <Button
-            variant="secondary"
-            disabled={busy || !anyUnread}
-            onClick={markAll}
-          >
-            {t.markAll}
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <ButtonLink
+              variant="secondary"
+              href={`/${lang}/notifications/preferences`}
+            >
+              <Mail className="size-4" aria-hidden />
+              {t.preferencesLink}
+            </ButtonLink>
+            <Button
+              variant="secondary"
+              disabled={busy || !anyUnread}
+              onClick={markAll}
+            >
+              {t.markAll}
+            </Button>
+          </div>
         }
       />
 

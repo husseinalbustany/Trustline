@@ -1,7 +1,7 @@
 "use client";
 
 import { FileDown, FileStack } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { useSession } from "@/components/shell/session";
 import { Button } from "@/components/ui/button";
 import { ButtonLink } from "@/components/ui/button-link";
@@ -76,6 +76,17 @@ export function ImportLayout({
     </code>
   );
   const named = languageNameIn(lang);
+  // Pieces of the page in a row, joined as the reader's language joins them.
+  const listed = (items: ReactNode[]) =>
+    new Intl.ListFormat(lang, { type: "unit" })
+      .formatToParts(items.map((_, i) => String(i)))
+      .map((part, i) =>
+        part.type === "element" ? (
+          <Fragment key={i}>{items[Number(part.value)]}</Fragment>
+        ) : (
+          <Fragment key={i}>{part.value}</Fragment>
+        ),
+      );
 
   const codeList = (items: { key: string; code: string; name: string; extra?: ReactNode }[]) => (
     <ul className="flex flex-col gap-2 px-4 py-3 text-sm">
@@ -162,7 +173,9 @@ export function ImportLayout({
           <Panel title={y.columnsTitle}>
             <p className="px-4 pt-3 text-sm text-muted">
               {fill(y.columnsHelp, {
-                languages: locales.map((l) => l).join(", "),
+                languages: new Intl.ListFormat(lang, { type: "unit" }).format(
+                  locales.map((l) => `\u2066${l}\u2069`),
+                ),
                 main: named(defaultLocale),
               })}
             </p>
@@ -216,15 +229,16 @@ export function ImportLayout({
                 extra: (
                   <span className="text-xs text-muted">
                     {y.sectionKeys}{" "}
-                    {x.sections.map((s, i) => (
-                      <span key={s.key}>
-                        {i > 0 && ", "}
-                        <bdi dir="ltr" className="font-mono">
-                          {s.key}
-                        </bdi>{" "}
-                        <bdi>({inLang(s.name)}{s.required ? ` · ${t.editor.required}` : ""})</bdi>
-                      </span>
-                    ))}
+                    {listed(
+                      x.sections.map((s) => (
+                        <span key={s.key}>
+                          <bdi dir="ltr" className="font-mono">
+                            {s.key}
+                          </bdi>{" "}
+                          <bdi>({inLang(s.name)}{s.required ? ` · ${t.editor.required}` : ""})</bdi>
+                        </span>
+                      )),
+                    )}
                   </span>
                 ),
               })),

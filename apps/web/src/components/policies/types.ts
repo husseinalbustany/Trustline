@@ -2,6 +2,7 @@ import type { Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/dictionaries";
 import { codeOf, detailsOf, statusOf } from "@/lib/api";
 import { fill } from "@/lib/format";
+import { IMPORT_MAX_CHARACTERS, IMPORT_MAX_DOCUMENTS } from "@/lib/policy-import";
 
 export type PoliciesText = Dictionary["policies"];
 export type PoliciesProps = { lang: Locale; t: PoliciesText };
@@ -25,11 +26,14 @@ export function explain(
     list?: (items: string[]) => string;
     /** A day of the client's calendar, in words: "1 March 2027". */
     day?: (day: string) => string;
+    /** A number as the reader writes numbers: "600,000". */
+    count?: (value: number) => string;
   } = {},
 ): string {
   const errors = t.errors;
   const code = codeOf(err);
   const details = detailsOf(err);
+  const list = (items: string[]) => names.list?.(items) ?? items.join(", ");
   if (code === "unsupported_markup") {
     const problem = String(details.problem ?? "");
     const why = Object.hasOwn(t.markupProblems, problem)
@@ -46,7 +50,7 @@ export function explain(
       ? (details.sections as string[])
       : [];
     return fill(errors.missing_sections, {
-      sections: sections.map((s) => names.section?.(s) ?? s).join(", "),
+      sections: list(sections.map((s) => names.section?.(s) ?? s)),
       language: names.language?.(String(details.locale ?? "")) ?? "",
     });
   }
@@ -54,7 +58,17 @@ export function explain(
     typeof value === "number"
       ? (names.months?.(value) ?? String(value))
       : String(value ?? "");
-  const list = (items: string[]) => names.list?.(items) ?? items.join(", ");
+  if (code === "batch_too_large") {
+    // The limits as the API gives them, else those this app splits by.
+    const count = (value: unknown, otherwise: number) => {
+      const n = typeof value === "number" ? value : otherwise;
+      return names.count?.(n) ?? String(n);
+    };
+    return fill(errors.batch_too_large, {
+      documents: count(details.maxDocuments, IMPORT_MAX_DOCUMENTS),
+      characters: count(details.maxCharacters, IMPORT_MAX_CHARACTERS),
+    });
+  }
   if (code === "review_period_too_long") {
     return fill(errors.review_period_too_long, { max: months(details.max) });
   }

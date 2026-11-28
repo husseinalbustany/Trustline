@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { Badge } from "@/components/ui/badge";
 import {
   navigation,
@@ -30,6 +31,7 @@ export function Sidebar({
   open,
   onClose,
   organization,
+  footer,
   permissions,
   modules,
 }: {
@@ -44,6 +46,8 @@ export function Sidebar({
   /** Whether the drawer is open on small screens. Always shown on large ones. */
   open: boolean;
   onClose: () => void;
+  /** Shown under the menu on a phone, where the top bar has no room: the person's own links. */
+  footer?: ReactNode;
 }) {
   const under = (href: string) => {
     const full = `/${lang}${href}`;
@@ -157,6 +161,11 @@ export function Sidebar({
             </div>
           ))}
         </nav>
+        {footer && (
+          <div className="shrink-0 border-t border-line px-3 py-3 md:hidden">
+            {footer}
+          </div>
+        )}
       </aside>
     </>
   );
