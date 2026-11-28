@@ -13,6 +13,7 @@ import { useSession } from "@/components/shell/session";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
 import { codeOf } from "@/lib/api";
+import { afterSigningRefusal } from "@/lib/signing";
 import { textareaClass, type PoliciesText } from "./types";
 
 /**
@@ -55,6 +56,8 @@ export function PasswordPrompt({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsPin, setNeedsPin] = useState(session.signingMethod === "none");
+  // Locked after too many wrong PINs, until an administrator resets it.
+  const [locked, setLocked] = useState(false);
 
   // Hidden pages stay mounted: nothing typed, and no refusal, waits there.
   useLayoutEffect(() => {
@@ -74,11 +77,13 @@ export function PasswordPrompt({
     setBusy(true);
     setError(null);
     let said: string | null = null;
+    let refusal: Awaited<ReturnType<typeof afterSigningRefusal>> = null;
     try {
       await submit(password, note);
     } catch (err) {
       const code = codeOf(err);
       if (code === "signing_pin_required") setNeedsPin(true);
+      refusal = await afterSigningRefusal(err, lang);
       said =
         code === "wrong_password"
           ? t.errors.wrong_password
@@ -89,6 +94,9 @@ export function PasswordPrompt({
     // Emptied whatever the answer: a password is typed for one request.
     const input = el.elements.namedItem("password");
     if (input instanceof HTMLInputElement) input.value = "";
+    // Signed out: on the way to the sign-in page, which says why.
+    if (refusal === "gone") return el.reset();
+    if (refusal === "locked") setLocked(true);
     if (!said) el.reset();
     setError(said);
     setBusy(false);
@@ -127,6 +135,11 @@ export function PasswordPrompt({
           </Link>
         </p>
       )}
+      {locked ? (
+        <p role="alert" className="rounded-md border border-danger bg-danger-soft px-3 py-2 text-sm">
+          {t.errors.signing_pin_locked}
+        </p>
+      ) : (
       <Field
         label={pin ? t.signature.pin : t.signature.password}
         help={pin ? t.signature.pinHelp : t.signature.passwordHelp}
@@ -142,13 +155,14 @@ export function PasswordPrompt({
           className={inputClass}
         />
       </Field>
-      {error && (
+      )}
+      {error && !locked && (
         <p role="alert" className="text-sm text-danger">
           {error}
         </p>
       )}
       <div className="flex flex-wrap gap-2">
-        <Button type="submit" disabled={busy}>
+        <Button type="submit" disabled={busy || locked}>
           {busy ? t.signature.signing : confirm}
         </Button>
         {onCancel && (

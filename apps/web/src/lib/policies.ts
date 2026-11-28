@@ -258,6 +258,12 @@ export type Approval = {
 export type ImportConfirmation = {
   state: "awaiting" | "overdue" | "confirmed" | (string & {});
   dueOn: string;
+  /**
+   * Whom it is awaited from: the owner, moved with each new owner while it
+   * awaits. Null once the import itself confirmed it; absent from the print
+   * and the register.
+   */
+  dueFrom?: Named | null;
   confirmedAt: string | null;
   confirmedBy: Named | null;
   byImport: boolean;

@@ -93,13 +93,15 @@ describe('policies: the business decisions after quality review 3', () => {
     bench.owner.db
       .select({ actorId: auditLog.actorId, changes: auditLog.changes, entityId: auditLog.entityId })
       .from(auditLog)
-      .where(and(eq(auditLog.tenantId, h.id), eq(auditLog.action, action)));
+      .where(and(eq(auditLog.tenantId, h.id), eq(auditLog.action, action)))
+      .orderBy(auditLog.occurredAt);
 
   const told = async (userId: string, kind: string) =>
     bench.owner.db
       .select({ data: notifications.data, documentId: notifications.documentId })
       .from(notifications)
-      .where(and(eq(notifications.userId, userId), sql`${notifications.kind}::text = ${kind}`));
+      .where(and(eq(notifications.userId, userId), sql`${notifications.kind}::text = ${kind}`))
+      .orderBy(notifications.createdAt);
 
   async function staff(h: Hospital, name: string, role: string | null, homeUnit: string | null) {
     const person = await bench.createStaff(h, name, role ? { role, orgUnitId: null } : null);

@@ -287,7 +287,7 @@ function DocumentView({
           }`}
         >
           <ConfirmationPill t={t} c={doc.importConfirmation} />
-          <span>{confirmationLine(doc.importConfirmation)}</span>
+          <span>{confirmationLine(doc.importConfirmation, doc.owner.id)}</span>
         </div>
       )}
 
@@ -1040,7 +1040,11 @@ function DocumentActions({
             </div>
           )}
 
-          {doc.moves.includes("confirm_import") && doc.importConfirmation && (
+          {doc.moves.includes("confirm_import") &&
+            doc.importConfirmation &&
+            // Never the one who imported it, even made its owner since: the
+            // API refuses them (`importer_cannot_confirm`).
+            original?.importedBy.id !== session.user.id && (
             <div className="flex flex-col gap-2">
               <p className="text-sm font-medium">{t.confirmation.confirmTitle}</p>
               <p className="text-sm text-muted">

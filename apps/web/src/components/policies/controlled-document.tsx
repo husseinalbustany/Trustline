@@ -276,7 +276,7 @@ export function ControlledDocument({
           ))}
         </dl>
         {imported ? (
-          <ApprovedBefore lang={lang} t={t} before={before} />
+          <ApprovedBefore lang={lang} t={t} before={before} ownerId={c.owner.id} />
         ) : (
         <div className="border-t border-line px-4 py-3">
           <p className="text-sm font-medium">{d.approvals}</p>
@@ -427,10 +427,13 @@ function ApprovedBefore({
   lang,
   t,
   before,
+  ownerId,
 }: {
   lang: string;
   t: PoliciesText;
   before: NonNullable<DocumentVersion["control"]["approvedBeforeTrustline"]> | null;
+  /** The document's owner now, against whom a past confirmation is told. */
+  ownerId: string;
 }) {
   const session = useSession();
   const day = dayFormat(lang);
@@ -457,7 +460,7 @@ function ApprovedBefore({
           : []),
         // The owner's confirmation, on screen and on paper.
         ...(before.ownerConfirmation
-          ? [[t.confirmation.label, confirmationLine(before.ownerConfirmation)] as [string, ReactNode]]
+          ? [[t.confirmation.label, confirmationLine(before.ownerConfirmation, ownerId)] as [string, ReactNode]]
           : []),
         [
           m.originalKeptAt,

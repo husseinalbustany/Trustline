@@ -99,7 +99,8 @@ describe('policies: quality review 3', () => {
     bench.owner.db
       .select({ actorId: auditLog.actorId, changes: auditLog.changes, entityId: auditLog.entityId })
       .from(auditLog)
-      .where(and(eq(auditLog.tenantId, a.id), eq(auditLog.action, action)));
+      .where(and(eq(auditLog.tenantId, a.id), eq(auditLog.action, action)))
+      .orderBy(auditLog.occurredAt);
 
   beforeAll(async () => {
     bench = await testBench('polq3', run);

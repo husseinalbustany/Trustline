@@ -522,7 +522,8 @@ describe('modules and subscriptions', () => {
             eq(platformAuditLog.targetTenantId, off.id),
             eq(platformAuditLog.action, 'subscription_updated'),
           ),
-        );
+        )
+        .orderBy(platformAuditLog.createdAt);
       expect(platform.length).toBeGreaterThanOrEqual(3);
       expect(platform[0].details).toMatchObject({
         changes: { planId: { to: docs.id } },

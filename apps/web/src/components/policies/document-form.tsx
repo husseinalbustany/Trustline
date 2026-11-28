@@ -186,7 +186,15 @@ function DocumentForm({
   const [periodChanged, setPeriodChanged] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useLayoutEffect(() => () => setError(null), []);
+  // A refusal about the owner, said at the owner field too.
+  const [ownerError, setOwnerError] = useState<string | null>(null);
+  useLayoutEffect(
+    () => () => {
+      setError(null);
+      setOwnerError(null);
+    },
+    [],
+  );
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -197,6 +205,7 @@ function DocumentForm({
     if (!body) return setError(f.audienceUnitsMissing);
     setBusy(true);
     setError(null);
+    setOwnerError(null);
     try {
       if (!doc) {
         const days = Number(data.get("acknowledgeWithinDays") ?? 14);
@@ -234,6 +243,9 @@ function DocumentForm({
       return;
     } catch (err) {
       const code = codeOf(err);
+      // The one who imported it may not own it while its confirmation is
+      // awaited: they would confirm their own import.
+      if (code === "owner_is_importer") setOwnerError(t.errors.owner_is_importer);
       // A refusal of this module the dictionary has no words for yet,
       // about a version in progress: said in general terms.
       setError(
@@ -262,6 +274,7 @@ function DocumentForm({
           }
           onPeriodChange={setPeriodChanged}
           periodChanged={periodChanged}
+          ownerError={ownerError}
         />
       </ReadOnlyFieldset>
 
@@ -343,6 +356,7 @@ export function DocumentFields({
   periodChanged = false,
   onPeriodChange,
   reviewMonthsHelp,
+  ownerError = null,
 }: PoliciesProps & {
   lists: Lists;
   doc: PolicyDocument | null;
@@ -356,6 +370,8 @@ export function DocumentFields({
   onPeriodChange?: (changed: boolean) => void;
   /** Said under the review period instead of the usual help. */
   reviewMonthsHelp?: string;
+  /** Why the owner chosen was refused, said at the owner field. */
+  ownerError?: string | null;
 }) {
   const session = useSession();
   const f = t.form;
@@ -528,6 +544,7 @@ export function DocumentFields({
                   name="ownerId"
                   required
                   defaultValue={doc?.owner.id ?? session.user.id}
+                  aria-invalid={ownerError ? true : undefined}
                   className={inputClass}
                 >
                   {owners.map((p) => (
@@ -536,6 +553,11 @@ export function DocumentFields({
                     </option>
                   ))}
                 </select>
+                {ownerError && (
+                  <span role="alert" className="text-xs font-normal text-danger">
+                    {ownerError}
+                  </span>
+                )}
               </Field>
             </div>
             <Field label={f.ownerUnit} help={f.ownerUnitHelp}>

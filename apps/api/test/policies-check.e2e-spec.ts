@@ -240,6 +240,7 @@ describe('policies: the daily check, the module and the subscription', () => {
         .select({ id: signatures.id, contentHash: signatures.contentHash })
         .from(signatures)
         .where(eq(signatures.subjectId, bad.version.id))
+        .orderBy(signatures.signedAt)
         .limit(1);
       await bench.owner.db
         .update(signatures)

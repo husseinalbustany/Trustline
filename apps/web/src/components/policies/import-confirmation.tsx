@@ -37,21 +37,30 @@ export function ConfirmationPill({ t, c }: { t: PoliciesText; c: Confirmation })
   );
 }
 
-/** The same in a sentence: due by when, or by whom and when it was given. */
+/**
+ * The same in a sentence: due by when and from whom, or by whom and when it
+ * was given. Given the document's owner now, a confirmation given by
+ * someone else is said to be by the owner then.
+ */
 export function useConfirmationLine(lang: string, t: PoliciesText) {
   const session = useSession();
   const day = dayFormat(lang);
   const moment = dateTimeFormat(lang, session.tenant.timeZone);
-  return (c: Confirmation) => {
+  const nameOf = (person: Confirmation["confirmedBy"] | undefined) =>
+    pick(person?.name, lang, session.tenant.defaultLocale) ||
+    t.document.unknownPerson;
+  return (c: Confirmation, ownerId?: string) => {
     const state = stateOf(c);
-    return fill(t.confirmation.line[state], {
-      date:
-        state === "confirmed" && c.confirmedAt
-          ? moment.format(new Date(c.confirmedAt))
-          : (day(c.dueOn) ?? ""),
-      name:
-        pick(c.confirmedBy?.name, lang, session.tenant.defaultLocale) ||
-        t.document.unknownPerson,
-    });
+    const l = t.confirmation.line;
+    if (state === "confirmed") {
+      const then = !!ownerId && !!c.confirmedBy && c.confirmedBy.id !== ownerId;
+      return fill(then ? l.confirmedThen : l.confirmed, {
+        date: c.confirmedAt ? moment.format(new Date(c.confirmedAt)) : "",
+        name: nameOf(c.confirmedBy),
+      });
+    }
+    if (state === "byImport") return l.byImport;
+    const from = c.dueFrom ? (state === "overdue" ? l.overdueFrom : l.awaitingFrom) : l[state];
+    return fill(from, { date: day(c.dueOn) ?? "", name: nameOf(c.dueFrom) });
   };
 }

@@ -795,6 +795,7 @@ describe('policies after review 2', () => {
         .select({ id: signatures.id, contentHash: signatures.contentHash })
         .from(signatures)
         .where(eq(signatures.subjectId, version.id))
+        .orderBy(signatures.signedAt)
         .limit(1);
       await bench.owner.db.update(signatures).set({ contentHash: '0'.repeat(64) }).where(eq(signatures.id, signature.id));
       try {

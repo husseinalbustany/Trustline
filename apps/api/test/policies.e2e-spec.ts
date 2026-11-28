@@ -1,7 +1,7 @@
 import '../src/env.js';
 import { shiftDay } from '../src/i18n/time-zones.js';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import {
   approvalRouteSteps,
   approvalRunSteps,
@@ -1163,7 +1163,9 @@ describe('policies and procedures', () => {
       const failures = await bench.owner.db
         .select()
         .from(auditLog)
-        .where(and(eq(auditLog.actorId, quality.id), eq(auditLog.action, 'password_confirmation_failed')));
+        .where(and(eq(auditLog.actorId, quality.id), eq(auditLog.action, 'password_confirmation_failed')))
+        // The one just made first.
+        .orderBy(desc(auditLog.occurredAt));
       expect(failures[0].changes).toEqual({ locked: false, purpose: 'approval' });
       // The password is nowhere in the audit log.
       const { rows } = await bench.owner.db.execute<{ n: number }>(
@@ -1578,7 +1580,9 @@ describe('policies and procedures', () => {
       const [entry] = await bench.owner.db
         .select()
         .from(auditLog)
-        .where(and(eq(auditLog.entityId, doc.id), eq(auditLog.action, 'document_updated')));
+        .where(and(eq(auditLog.entityId, doc.id), eq(auditLog.action, 'document_updated')))
+        // The first change, of the title; the owning unit's came after it.
+        .orderBy(auditLog.occurredAt);
       expect(entry.changes).toMatchObject({ title: { from: { en: 'Handling a spill', ar: 'التعامل مع الانسكاب' }, to: { en: 'Handling any spill' } } });
       // The keyword is searched.
       expect((await listOf(writer.cookie, '&q=floor')).items.map((i) => i.id)).toContain(doc.id);

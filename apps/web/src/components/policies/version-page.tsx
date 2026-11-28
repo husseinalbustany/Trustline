@@ -427,7 +427,7 @@ function VersionView({
                       <dt className="text-xs text-muted">{t.confirmation.label}</dt>
                       <dd className="flex flex-col items-start gap-1">
                         <ConfirmationPill t={t} c={version.imported.confirmation} />
-                        <span>{confirmationLine(version.imported.confirmation)}</span>
+                        <span>{confirmationLine(version.imported.confirmation, version.control.owner.id)}</span>
                       </dd>
                     </div>
                   )}
