@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { ReviewerReads } from './reviewer-reads.interceptor.js';
 import { AuditController, AuditKeysController } from './audit.controller.js';
 import { AuditKeys } from './audit-keys.js';
 import { ApprovalsModule } from '../approvals/approvals.module.js';
@@ -13,7 +15,13 @@ import { TrailService } from './trail.service.js';
 @Module({
   imports: [ApprovalsModule],
   controllers: [AuditController, AuditKeysController],
-  providers: [AuditKeys, AuditChainCheck, TrailService],
-  exports: [AuditChainCheck],
+  providers: [
+    AuditKeys,
+    AuditChainCheck,
+    TrailService,
+    // Every read of an external reviewer is recorded, whichever module serves it.
+    { provide: APP_INTERCEPTOR, useClass: ReviewerReads },
+  ],
+  exports: [AuditChainCheck, AuditKeys],
 })
 export class AuditModule {}

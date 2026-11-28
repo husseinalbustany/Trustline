@@ -103,7 +103,7 @@ export class PlatformImportWindowController {
       await this.provisioning.auditImportWindowChange(tx, tenant.id, {
         ...change,
         platformAdminId: admin.id,
-        platformAdminEmail: admin.email,
+        platformAdminName: admin.name,
       });
       return this.view(tx, tenant);
     });

@@ -5,6 +5,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+import { SetMetadata } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { readCookie } from '../security/cookies.js';
@@ -24,7 +25,15 @@ export const SESSION_COOKIE = 'tl_session';
 export type AuthedRequest = Request & { auth: AuthContext };
 
 /** Methods that only read. Every other one is a write. */
-const READS = new Set(['GET', 'HEAD', 'OPTIONS']);
+export const READS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+const OPEN_TO_REVIEWERS_KEY = 'trustline:open-to-reviewers';
+/**
+ * A write an external reviewer may still make: signing out. Every other
+ * write is refused to them (403 `read_only_access`), whatever their role
+ * (docs/specs/audit-trail.md, "Read-only by construction").
+ */
+export const OpenToReviewers = () => SetMetadata(OPEN_TO_REVIEWERS_KEY, true);
 
 /**
  * Lets a request through only with a live hospital user session. The web app
@@ -86,6 +95,13 @@ export class SessionGuard implements CanActivate {
       )
     ) {
       throw suspendedRefusal();
+    }
+    if (
+      auth.user.kind === 'external_reviewer' &&
+      !READS.has(req.method) &&
+      !this.reflector.getAllAndOverride<boolean>(OPEN_TO_REVIEWERS_KEY, targets)
+    ) {
+      throw new ForbiddenException({ code: 'read_only_access' });
     }
     return true;
   }

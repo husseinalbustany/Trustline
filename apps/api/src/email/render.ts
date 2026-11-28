@@ -40,7 +40,16 @@ export type MailContent =
       number?: string;
       version?: number;
       step?: 'review' | 'approve';
+      /** The audit chain's head (audit_chain_head): its number and seal. */
+      count?: number;
+      hash?: string;
       href: string;
+    }
+  | {
+      /** An external reviewer's one-time sign-in code. Nothing else. */
+      category: 'sign_in_code';
+      code: string;
+      minutes: number;
     }
   | {
       category: 'weekly_digest';
@@ -62,8 +71,9 @@ export type MailEnvelope = {
   locale: Locale;
   /** The organization's name in the recipient's language. */
   organization: string;
-  unsubscribe: { href: string; switch: EmailSwitch };
-  preferencesHref: string;
+  /** None for a sign-in code, which nobody can switch off or ask for. */
+  unsubscribe: { href: string; switch: EmailSwitch } | null;
+  preferencesHref: string | null;
 };
 
 export type RenderedMail = { subject: string; text: string; html: string };
@@ -147,10 +157,16 @@ export function renderMail(content: MailContent, envelope: MailEnvelope): Render
       reference: content.reference ?? '',
       number: content.number ?? '',
       version: content.version ?? '',
+      count: content.count ?? '',
+      hash: content.hash ?? '',
     };
     subject = say(text.subject, values);
     body.push({ kind: 'text', text: say(text.body, values) });
     body.push({ kind: 'link', text: w.open, href: content.href });
+  } else if (content.category === 'sign_in_code') {
+    subject = w.signInCode.subject;
+    body.push({ kind: 'text', text: say(w.signInCode.body, { code: content.code }) });
+    body.push({ kind: 'text', text: say(w.signInCode.expires, { count: content.minutes }) });
   } else if (content.category === 'weekly_digest') {
     // Acknowledgements first, as before; the approval steps as a line of
     // their own, or alone when no acknowledgement is overdue. The subject
@@ -200,16 +216,20 @@ export function renderMail(content: MailContent, envelope: MailEnvelope): Render
   const footer: Paragraph[] = [
     { kind: 'text', text: say(w.footer.member, { organization: oneLine(envelope.organization) }) },
     { kind: 'text', text: w.footer.noDetails },
-    { kind: 'link', text: w.footer.preferences, href: envelope.preferencesHref },
-    {
+  ];
+  if (envelope.preferencesHref) {
+    footer.push({ kind: 'link', text: w.footer.preferences, href: envelope.preferencesHref });
+  }
+  if (envelope.unsubscribe) {
+    footer.push({
       kind: 'link',
       text:
         envelope.unsubscribe.switch === 'immediate'
           ? w.footer.unsubscribeImmediate
           : w.footer.unsubscribeDigest,
       href: envelope.unsubscribe.href,
-    },
-  ];
+    });
+  }
 
   subject = oneLine(subject);
   return {

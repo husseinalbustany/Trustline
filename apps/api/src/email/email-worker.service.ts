@@ -848,6 +848,12 @@ export class EmailWorker implements OnModuleDestroy {
         href: link('/notifications'),
       };
     }
+    if (kind === 'audit_chain_head') {
+      const seq = Number(data.seq);
+      const hash = typeof data.hash === 'string' && /^[0-9a-f]{64}$/.test(data.hash) ? data.hash : null;
+      if (!Number.isSafeInteger(seq) || seq < 1 || !hash) return null;
+      return { category: 'immediate', kind, count: seq, hash, href: link('/admin/audit') };
+    }
     if (kind === 'review_approval_requested') {
       const number = short(data.number);
       if (!number || !notification.documentId) return null;

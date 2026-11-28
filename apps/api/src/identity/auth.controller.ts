@@ -27,6 +27,7 @@ import {
 } from '../subscriptions/module.decorator.js';
 import { permissionInUse } from './permissions.js';
 import {
+  OpenToReviewers,
   SESSION_COOKIE,
   SessionGuard,
   type AuthedRequest,
@@ -49,6 +50,12 @@ const loginSchema = z.object({
 
 const inviteSchema = z.object({ org, token: z.string().min(1).max(200) });
 
+const codeSchema = z.strictObject({
+  org,
+  challenge: z.string().min(1).max(200),
+  code: z.string().regex(/^\d{6}$/),
+});
+
 const acceptSchema = inviteSchema.extend({
   password: z.string().min(MIN_PASSWORD_LENGTH).max(1024),
 });
@@ -68,11 +75,32 @@ export class AuthController {
     const parsed = loginSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException();
 
-    const token = await this.auth.login({ ...parsed.data, ip: req.ip ?? null });
-    if (!token) throw new UnauthorizedException();
+    const result = await this.auth.login({ ...parsed.data, ip: req.ip ?? null });
+    if (!result) throw new UnauthorizedException();
+    // An external reviewer: a one-time code was sent by email, to be given
+    // with this challenge to `POST /auth/login/code`.
+    if ('challenge' in result) return { code: 'one_time_code_sent', challenge: result.challenge };
+    return this.signedIn(res, result.token, parsed.data.client);
+  }
 
+  /** The second step of an external reviewer's sign-in. 401 for anything wrong. */
+  @Post('login/code')
+  @HttpCode(200)
+  async loginWithCode(
+    @Body() body: unknown,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const parsed = codeSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException();
+    const result = await this.auth.loginWithCode({ ...parsed.data, ip: req.ip ?? null });
+    if (!result) throw new UnauthorizedException();
+    return this.signedIn(res, result.token, result.client);
+  }
+
+  private signedIn(res: Response, token: string, client: 'web' | 'mobile') {
     // A mobile app keeps the token itself. A browser never sees it.
-    if (parsed.data.client === 'mobile') return { token };
+    if (client === 'mobile') return { token };
     res.cookie(SESSION_COOKIE, token, {
       ...sessionCookieOptions,
       maxAge: SESSION_HOURS * 3_600_000,
@@ -108,6 +136,7 @@ export class AuthController {
   @HttpCode(204)
   @UseGuards(SessionGuard)
   @OpenWhileSuspended()
+  @OpenToReviewers()
   async logout(
     @Req() req: AuthedRequest,
     @Res({ passthrough: true }) res: Response,

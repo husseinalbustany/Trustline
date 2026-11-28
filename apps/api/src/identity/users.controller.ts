@@ -384,6 +384,7 @@ export class UsersController {
           .for('update');
         if (!existing) throw new NotFoundException();
         await this.assertCanManage(tx, req, existing);
+        assertStaff(existing);
 
         // Only what differs from what is stored is written and recorded.
         const changes: Partial<typeof fields> = {};
@@ -415,6 +416,13 @@ export class UsersController {
         if (existing.status === 'disabled' && nextStatus) {
           await this.provisioning.makeRoomForUser(tx, tenant.id);
         }
+        // Enabled again, they hold what their roles give once more: whoever
+        // is given `policies.import` so is named to the others (security
+        // review 12, L6).
+        const importers =
+          existing.status === 'disabled' && nextStatus
+            ? await this.provisioning.importHolders(tx)
+            : null;
 
         // Someone may stay in a unit that was switched off since, but
         // nobody is moved into one, nor out of the actor's reach.
@@ -435,6 +443,9 @@ export class UsersController {
           await this.revokeSessions(tx, userId);
           // A link issued earlier must not work if they are enabled again.
           await this.provisioning.voidInvites(tx, userId);
+        }
+        if (importers) {
+          await this.provisioning.tellOfImportGrants(tx, tenant.id, actor.id, importers);
         }
 
         // Which fields changed, and for a move or a change of status, from
@@ -488,12 +499,13 @@ export class UsersController {
         // Locked, so two changes at once are made one after the other, and
         // what is compared below is what the user holds now.
         const [existing] = await tx
-          .select({ id: users.id, orgUnitId: users.orgUnitId })
+          .select({ id: users.id, orgUnitId: users.orgUnitId, kind: users.kind })
           .from(users)
           .where(eq(users.id, userId))
           .for('update');
         if (!existing) throw new NotFoundException();
         await this.assertCanManage(tx, req, existing);
+        assertStaff(existing);
         await whileSuspended(req, async () => {
           const held = await this.heldGrants(tx, userId);
           return parsed.data.roles.every((g) =>
@@ -547,6 +559,7 @@ export class UsersController {
         .where(eq(users.id, userId));
       if (!existing) throw new NotFoundException();
       await this.assertCanManage(tx, req, existing);
+      assertStaff(existing);
       if (existing.status === 'disabled') {
         throw new ConflictException({ code: 'user_disabled' });
       }
@@ -630,5 +643,16 @@ export class UsersController {
     const parsed = z.uuid().safeParse(id);
     if (!parsed.success) throw new NotFoundException();
     return parsed.data;
+  }
+}
+
+/**
+ * An external reviewer's account is changed only through its access
+ * (`/users/external`): never given another role, enabled again or sent a
+ * new link here. 409 `external_reviewer`.
+ */
+function assertStaff(user: { kind: string }) {
+  if (user.kind === 'external_reviewer') {
+    throw new ConflictException({ code: 'external_reviewer' });
   }
 }

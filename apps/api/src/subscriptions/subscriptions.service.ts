@@ -150,7 +150,7 @@ export class SubscriptionsService {
     tx: Transaction,
     tenantId: string,
     input: UpdateSubscriptionInput,
-    admin: { id: string; email: string },
+    admin: { id: string; name: string },
   ) {
     const [current] = await tx
       .select()
@@ -215,7 +215,7 @@ export class SubscriptionsService {
       await this.provisioning.auditSubscriptionChange(tx, tenantId, {
         ...seen,
         platformAdminId: admin.id,
-        platformAdminEmail: admin.email,
+        platformAdminName: admin.name,
       });
     }
     return { before, after, changes };

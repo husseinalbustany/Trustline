@@ -7,7 +7,9 @@
  * Placeholders, in braces: {reference} an incident's reference, {number} a
  * document's number, {version} a version number, {organization} the
  * organization's own name, {count}, {overdue} and {people} counts, {day} a
- * day. Nothing else is ever put into these texts.
+ * day, {hash} the seal of the audit chain's head (decision 5 of the audit
+ * trail), {code} a one-time sign-in code. Nothing else is ever put into
+ * these texts.
  */
 export type Wording = {
   /** The direction the language is written in. */
@@ -36,7 +38,11 @@ export type Wording = {
     signing_pin_changed: { subject: string; body: string };
     signing_pin_reset: { subject: string; body: string };
     signing_pin_locked: { subject: string; body: string };
+    /** The week's head of the audit chain: {count} its number, {hash} its seal. */
+    audit_chain_head: { subject: string; body: string };
   };
+  /** An external reviewer's one-time code: {code}, valid {count} minutes. */
+  signInCode: { subject: string; body: string; expires: string };
   weekly: {
     subject: string;
     body: string;

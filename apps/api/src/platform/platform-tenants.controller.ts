@@ -175,6 +175,13 @@ export class PlatformTenantsController {
           { slug: created.slug, plan: plan.code },
           tx,
         );
+        // And in the client's own log, its first entry.
+        await this.provisioning.auditClientCreated(tx, created.id, {
+          slug: created.slug,
+          plan: plan.code,
+          platformAdminId: req.platformAdmin.id,
+          platformAdminName: req.platformAdmin.name,
+        });
         return created;
       });
       // Safe to repeat: creating an administrator runs it again.
@@ -287,6 +294,14 @@ export class PlatformTenantsController {
           { changes },
           tx,
         );
+        // And in the client's own log, which it can read.
+        if (Object.keys(changes).length > 0) {
+          await this.provisioning.auditClientSettingsChanged(tx, tenantId, {
+            changes,
+            platformAdminId: req.platformAdmin.id,
+            platformAdminName: req.platformAdmin.name,
+          });
+        }
         if (after.status === 'suspended' && before.status !== 'suspended') {
           await this.provisioning.endAllAccess(appTx);
         }
@@ -388,7 +403,7 @@ export class PlatformTenantsController {
           user.id,
           {
             platformAdminId: req.platformAdmin.id,
-            platformAdminEmail: req.platformAdmin.email,
+            platformAdminName: req.platformAdmin.name,
           },
         );
         return {

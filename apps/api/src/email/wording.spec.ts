@@ -14,7 +14,7 @@ function texts(value: unknown, path = ''): Record<string, string> {
 const placeholders = (text: string) =>
   [...text.matchAll(/\{([^}]*)\}/g)].map((m) => m[1]).sort();
 
-const ALLOWED = ['count', 'day', 'number', 'organization', 'overdue', 'people', 'reference', 'version'];
+const ALLOWED = ['code', 'count', 'day', 'hash', 'number', 'organization', 'overdue', 'people', 'reference', 'version'];
 
 describe('email wording', () => {
   const english = texts(WORDING.en);

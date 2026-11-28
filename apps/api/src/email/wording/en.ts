@@ -55,6 +55,15 @@ export const en: Wording = {
       subject: 'Signing with your PIN is locked',
       body: 'After too many wrong signing PINs, signing with your PIN in Trustline is locked, and the session they were entered in was signed out. Ask your administrator to reset your PIN; if it was not you, say so.',
     },
+    audit_chain_head: {
+      subject: 'This week’s seal of your audit trail',
+      body: 'Your organization’s audit trail was checked and is unbroken up to entry {count}, whose seal is {hash}. Keep this email: if the trail before that entry were ever rewritten, this seal would no longer match.',
+    },
+  },
+  signInCode: {
+    subject: 'Your Trustline sign-in code',
+    body: 'Your sign-in code is {code}.',
+    expires: 'It can be used once, within {count} minutes. If you did not try to sign in, tell the organization that invited you.',
   },
   weekly: {
     subject: 'Overdue acknowledgements this week',

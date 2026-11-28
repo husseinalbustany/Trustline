@@ -25,6 +25,9 @@ export const IMMEDIATE: Partial<Record<NotificationKind, 'always' | 'serious'>> 
   // review 11): so that a change they did not make is seen.
   signing_pin_changed: 'always',
   signing_pin_locked: 'always',
+  // The week's head of the audit chain, to the Administrators (decision 5
+  // of the audit trail): a copy of it outside Trustline's hands.
+  audit_chain_head: 'always',
 };
 
 export type ImmediateKind =
@@ -36,7 +39,8 @@ export type ImmediateKind =
   | 'document_step_assigned'
   | 'review_approval_requested'
   | 'signing_pin_changed'
-  | 'signing_pin_locked';
+  | 'signing_pin_locked'
+  | 'audit_chain_head';
 
 export const IMMEDIATE_KINDS = Object.keys(IMMEDIATE) as ImmediateKind[];
 
@@ -74,6 +78,8 @@ export const SAFETY_WHILE_SUSPENDED: NotificationKind[] = [
   // About the person's own signing PIN: never held back.
   'signing_pin_changed',
   'signing_pin_locked',
+  // Evidence of the audit trail: never held back.
+  'audit_chain_head',
 ];
 
 /**
@@ -91,10 +97,15 @@ export const COMPULSORY_FOR_ASSIGNEES: NotificationKind[] = [
   'document_step_assigned',
   'review_approval_requested',
 ];
-/** Security notices about the person's own signing PIN: for everyone. */
+/**
+ * Security notices about the person's own signing PIN, for everyone; and
+ * the week's head of the audit chain, which goes to Administrators only and
+ * which they may not switch off (decided with the audit trail).
+ */
 export const COMPULSORY_FOR_EVERYONE: NotificationKind[] = [
   'signing_pin_changed',
   'signing_pin_locked',
+  'audit_chain_head',
 ];
 
 /** What the preferences answer says is always on, and why. */

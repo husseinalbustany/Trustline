@@ -57,6 +57,15 @@ export const fr: Wording = {
       subject: 'La signature par votre code est bloquée',
       body: 'Après trop de codes de signature erronés, la signature par votre code est bloquée dans Trustline, et la session où ils ont été saisis a été fermée. Demandez à votre administrateur de réinitialiser votre code ; si ce n’était pas vous, dites-le-lui.',
     },
+    audit_chain_head: {
+      subject: 'Le sceau de votre journal d’audit cette semaine',
+      body: 'Le journal d’audit de votre organisation a été vérifié et il est intact jusqu’à l’entrée {count}, dont le sceau est {hash}. Conservez ce message : si le journal antérieur à cette entrée était un jour réécrit, ce sceau ne correspondrait plus.',
+    },
+  },
+  signInCode: {
+    subject: 'Votre code de connexion à Trustline',
+    body: 'Votre code de connexion est {code}.',
+    expires: 'Il ne peut servir qu’une fois, dans les {count} minutes. Si vous n’avez pas tenté de vous connecter, prévenez l’organisation qui vous a invité.',
   },
   weekly: {
     subject: 'Prises de connaissance en retard cette semaine',

@@ -71,7 +71,8 @@ export class ProvisioningService {
     const [{ named }] = await tx
       .select({ named: count() })
       .from(users)
-      .where(ne(users.status, 'disabled'));
+      // An external reviewer is not a named user (decision 2).
+      .where(and(ne(users.status, 'disabled'), eq(users.kind, 'staff')));
     return named;
   }
 
@@ -563,6 +564,28 @@ export class ProvisioningService {
     await tx.execute(sql`
       insert into ${auditLog} (tenant_id, action, entity_type, entity_id, changes)
       values (${tenantId}, 'import_window_changed', 'tenant', ${tenantId}, ${JSON.stringify(changes)}::jsonb)
+    `);
+  }
+
+  /**
+   * What Trustline's staff did to the client itself, written in the
+   * client's own log too (docs/specs/audit-trail.md, item 3): the client
+   * made, and its settings changed (suspended or made active again, its
+   * time zone, its languages, its standard), with the staff member's name.
+   * As `auditSubscriptionChange`, for a transaction of the platform role.
+   */
+  async auditClientCreated(tx: Transaction, tenantId: string, changes: Record<string, unknown>) {
+    await tx.execute(sql`
+      insert into ${auditLog} (tenant_id, action, entity_type, entity_id, changes)
+      values (${tenantId}, 'client_created_by_platform', 'tenant', ${tenantId}, ${JSON.stringify(changes)}::jsonb)
+    `);
+  }
+
+  /** The other half of the above: what of the client was changed. */
+  async auditClientSettingsChanged(tx: Transaction, tenantId: string, changes: Record<string, unknown>) {
+    await tx.execute(sql`
+      insert into ${auditLog} (tenant_id, action, entity_type, entity_id, changes)
+      values (${tenantId}, 'client_settings_changed_by_platform', 'tenant', ${tenantId}, ${JSON.stringify(changes)}::jsonb)
     `);
   }
 

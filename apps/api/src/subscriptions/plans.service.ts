@@ -114,7 +114,7 @@ export class PlansService {
     tx: Transaction,
     id: string,
     input: UpdatePlanInput,
-    admin: { id: string; email: string },
+    admin: { id: string; name: string },
   ) {
     this.assertLanguages(input);
     const [locked] = await tx
@@ -170,7 +170,7 @@ export class PlansService {
           ...seen,
           planUpdated: after.code,
           platformAdminId: admin.id,
-          platformAdminEmail: admin.email,
+          platformAdminName: admin.name,
         },
       );
     }

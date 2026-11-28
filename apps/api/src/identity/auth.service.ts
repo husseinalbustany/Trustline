@@ -37,6 +37,9 @@ import type {
 import { hashToken, ProvisioningService } from './provisioning.service.js';
 import { buildScope, covers, type Scope } from './scope.js';
 import { SecurityNotices } from './security-notices.service.js';
+import { accessOpen } from './external-access.service.js';
+import { SignInCodes } from './sign-in-codes.service.js';
+import { dayOf, shiftDay, startOfDay } from '../i18n/time-zones.js';
 
 export const MAX_FAILED_ATTEMPTS = 5;
 
@@ -158,6 +161,12 @@ export type AuthContext = {
     name: Localized;
     email: string;
     orgUnitId: string | null;
+    /**
+     * `external_reviewer` for a surveyor's time-limited, read-only access
+     * (docs/specs/audit-trail.md), with its days; `staff` otherwise.
+     */
+    kind: 'staff' | 'external_reviewer';
+    access: { from: string; until: string } | null;
   };
   /** Everything the user's roles allow, wherever they were granted. */
   permissions: string[];
@@ -179,6 +188,7 @@ export class AuthService {
     private readonly provisioning: ProvisioningService,
     private readonly entitlements: EntitlementsService,
     private readonly notices: SecurityNotices,
+    private readonly codes: SignInCodes,
   ) {}
 
   private async burnTime(password: string) {
@@ -232,14 +242,19 @@ export class AuthService {
     };
   }
 
-  /** Returns a session token, or null if sign-in is refused for any reason. */
+  /**
+   * A session token; for an external reviewer, after the right password, a
+   * challenge instead, the one-time code going to them by email
+   * (`loginWithCode` finishes the sign-in); or null if sign-in is refused
+   * for any reason.
+   */
   async login(input: {
     org: string;
     email: string;
     password: string;
     client: 'web' | 'mobile';
     ip: string | null;
-  }): Promise<string | null> {
+  }): Promise<{ token: string } | { challenge: string } | null> {
     const tenant = await this.findTenant(input.org, true, 'core');
     if (!tenant) {
       await this.burnTime(input.password);
@@ -262,7 +277,7 @@ export class AuthService {
 
     const valid = await verifyPassword(input.password, user.passwordHash);
 
-    return this.tenantDb.withTenant(tenant.id, async (tx) => {
+    const outcome = await this.tenantDb.withTenant(tenant.id, async (tx) => {
       // Re-read under a row lock, so parallel guesses are counted one by one
       // and a lock set a moment ago is seen.
       const [fresh] = await tx
@@ -299,33 +314,105 @@ export class AuthService {
         return null;
       }
 
-      // The tenant id travels in the token so the session can be looked up
-      // under that tenant's row-level security.
-      const token = `${tenant.id}.${randomBytes(32).toString('base64url')}`;
-      await tx.delete(sessions).where(lt(sessions.expiresAt, new Date()));
-      await tx.insert(sessions).values({
-        tenantId: tenant.id,
-        userId: user.id,
-        tokenHash: hashToken(token),
-        client: input.client,
-        expiresAt: new Date(Date.now() + SESSION_HOURS * 3_600_000),
-      });
-      await tx
-        .update(users)
-        .set({ failedAttempts: 0, lockedUntil: null, lastSignInAt: new Date() })
-        .where(eq(users.id, user.id));
-      await this.provisioning.audit(
-        tx,
-        tenant.id,
-        user.id,
-        'sign_in',
-        'user',
-        user.id,
-        { client: input.client },
-        input.ip,
-      );
-      return token;
+      // An external reviewer: only within their days, and then with a
+      // one-time code by email as well (decision 2).
+      if (fresh.kind === 'external_reviewer') {
+        if (!accessOpen(fresh, dayOf(new Date(), tenant.timeZone))) {
+          await this.provisioning.audit(tx, tenant.id, user.id, 'sign_in_failed', 'user', user.id, {
+            locked: false,
+            reason: 'outside_access',
+          }, input.ip);
+          return null;
+        }
+        return { issued: await this.codes.issue(tx, tenant.id, user.id, input.client), user: fresh };
+      }
+      return { token: await this.openSession(tx, tenant, fresh, input.client, input.ip, null) };
     });
+    if (!outcome) return null;
+    if (!('issued' in outcome) || !outcome.issued) return { token: outcome.token! };
+    await this.codes.send(tenant, outcome.user, outcome.issued);
+    return { challenge: outcome.issued.challenge };
+  }
+
+  /**
+   * The second step of an external reviewer's sign-in: the challenge and
+   * the code they were sent. A session token, or null (wrong, used, expired,
+   * or out of their days). A wrong code is recorded as a failed sign-in.
+   */
+  async loginWithCode(input: { org: string; challenge: string; code: string; ip: string | null }) {
+    const tenant = await this.findTenant(input.org, true, 'core');
+    if (!tenant) return null;
+    return this.tenantDb.withTenant(tenant.id, async (tx) => {
+      const taken = await this.codes.take(tx, input.challenge, input.code);
+      if (!taken.userId) return null;
+      const [user] = await tx.select().from(users).where(eq(users.id, taken.userId)).for('update');
+      if (!taken.ok) {
+        await this.provisioning.audit(tx, tenant.id, taken.userId, 'sign_in_failed', 'user', taken.userId, {
+          locked: false,
+          reason: 'wrong_code',
+        }, input.ip);
+        return null;
+      }
+      if (
+        !user ||
+        user.status !== 'active' ||
+        user.kind !== 'external_reviewer' ||
+        !accessOpen(user, dayOf(new Date(), tenant.timeZone))
+      ) {
+        return null;
+      }
+      const client: 'web' | 'mobile' = taken.client === 'mobile' ? 'mobile' : 'web';
+      return {
+        token: await this.openSession(tx, tenant, user, client, input.ip, 'email_code'),
+        client,
+      };
+    });
+  }
+
+  /**
+   * Opens a session, in the sign-in's transaction: recorded, the failures
+   * counted back to none. An external reviewer's ends with their last day,
+   * on the client's clock, if that comes first.
+   */
+  private async openSession(
+    tx: Transaction,
+    tenant: typeof tenants.$inferSelect,
+    user: typeof users.$inferSelect,
+    client: 'web' | 'mobile',
+    ip: string | null,
+    secondFactor: 'email_code' | null,
+  ) {
+    // The tenant id travels in the token so the session can be looked up
+    // under that tenant's row-level security.
+    const token = `${tenant.id}.${randomBytes(32).toString('base64url')}`;
+    let expiresAt = new Date(Date.now() + SESSION_HOURS * 3_600_000);
+    if (user.kind === 'external_reviewer' && user.accessUntil) {
+      const end = startOfDay(shiftDay(user.accessUntil, 1), tenant.timeZone);
+      if (end < expiresAt) expiresAt = end;
+    }
+    await tx.delete(sessions).where(lt(sessions.expiresAt, new Date()));
+    await tx.insert(sessions).values({
+      tenantId: tenant.id,
+      userId: user.id,
+      tokenHash: hashToken(token),
+      client,
+      expiresAt,
+    });
+    await tx
+      .update(users)
+      .set({ failedAttempts: 0, lockedUntil: null, lastSignInAt: new Date() })
+      .where(eq(users.id, user.id));
+    await this.provisioning.audit(
+      tx,
+      tenant.id,
+      user.id,
+      'sign_in',
+      'user',
+      user.id,
+      secondFactor ? { client, secondFactor } : { client },
+      ip,
+    );
+    return token;
   }
 
   /** Who a session token belongs to, or null if it is not a live session. */
@@ -352,6 +439,9 @@ export class AuthService {
           ),
         );
       if (!row || row.user.status !== 'active') return null;
+      // An external reviewer's session holds only within their days, on
+      // every request (decision 2).
+      if (!accessOpen(row.user, dayOf(new Date(), tenant.timeZone))) return null;
       return this.contextIn(tx, tenant, row.user, token, row.createdAt);
     });
   }
@@ -431,6 +521,11 @@ export class AuthService {
         name: user.name,
         email: user.email,
         orgUnitId: user.orgUnitId,
+        kind: user.kind,
+        access:
+          user.kind === 'external_reviewer' && user.accessFrom && user.accessUntil
+            ? { from: user.accessFrom, until: user.accessUntil }
+            : null,
       },
       ...access,
     };
