@@ -4,6 +4,7 @@ import { AccessService } from './access.service.js';
 import { AuthController, SigningPinController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { ProvisioningService } from './provisioning.service.js';
+import { SecurityNotices } from './security-notices.service.js';
 import { RolesController } from './roles.controller.js';
 import { SessionGuard } from './session.guard.js';
 import { TenantSettingsService } from './tenant-settings.service.js';
@@ -19,6 +20,7 @@ import { UsersController } from './users.controller.js';
     AccessService,
     AuthService,
     ProvisioningService,
+    SecurityNotices,
     SessionGuard,
     TenantSettingsService,
   ],

@@ -34,6 +34,7 @@ import { OrgUnitsService } from '../organization/org-units.service.js';
 import type { Permission } from './permissions.js';
 import { ProvisioningService, type RoleGrant } from './provisioning.service.js';
 import { covers, mayGrant } from './scope.js';
+import { SecurityNotices } from './security-notices.service.js';
 import {
   requirePermission,
   SessionGuard,
@@ -132,6 +133,7 @@ export class UsersController {
     private readonly tenantDb: TenantDb,
     private readonly provisioning: ProvisioningService,
     private readonly orgUnits: OrgUnitsService,
+    private readonly notices: SecurityNotices,
   ) {}
 
   private async withRoles(tx: Transaction, userId?: string) {
@@ -546,6 +548,12 @@ export class UsersController {
       if (existing.status === 'disabled') {
         throw new ConflictException({ code: 'user_disabled' });
       }
+      // A person who signs through single sign-on, with a signing PIN, is
+      // given no password by a link an administrator holds (security review
+      // 11): it would let whoever holds the link sign as them.
+      if (existing.signingPinHash || existing.ssoSubject) {
+        throw new ConflictException({ code: 'signs_with_pin' });
+      }
       const purpose = existing.passwordHash ? 'password_reset' : 'invitation';
       const invite = await this.provisioning.createInvite(
         tx,
@@ -591,12 +599,21 @@ export class UsersController {
       if (!existing.signingPinHash) {
         throw new ConflictException({ code: 'no_signing_pin' });
       }
+      // Cleared, lock and count included: they set a new one after signing
+      // in again, and every session of theirs ends (security review 11).
       await tx
         .update(users)
-        .set({ signingPinHash: null, signingPinSetAt: null, updatedAt: new Date() })
+        .set({
+          signingPinHash: null,
+          signingPinSetAt: null,
+          signingPinFailures: 0,
+          signingPinLockedAt: null,
+          updatedAt: new Date(),
+        })
         .where(eq(users.id, userId));
+      await this.revokeSessions(tx, userId);
       await this.provisioning.audit(tx, tenant.id, actor.id, 'signing_pin_reset', 'user', userId, null);
-      await this.provisioning.tellAboutSigningPin(tx, tenant.id, userId, 'reset');
+      await this.notices.tell(tx, tenant.id, userId, { kind: 'signing_pin_changed', action: 'reset' });
     });
   }
 

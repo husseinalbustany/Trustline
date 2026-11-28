@@ -315,6 +315,10 @@ export class ImportsService {
             // decision 1); an importer who is the owner confirms it by
             // importing it.
             confirmationDueOn: shiftDay(today, IMPORT_CONFIRM_DAYS),
+            // From the owner; never from the importer, who confirms only
+            // by importing a document they own (security review 11).
+            confirmationDueFrom:
+              w.planned.input.ownerId === user.id ? null : w.planned.input.ownerId,
             ...(w.planned.input.ownerId === user.id && {
               confirmedAt: now,
               confirmedBy: user.id,

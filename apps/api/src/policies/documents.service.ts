@@ -353,7 +353,7 @@ export class DocumentsService {
     const decidesReview =
       !!pendingReview &&
       pendingReview.requestedBy.id !== viewer.userId &&
-      (await reviewApproversOf(tx, doc.ownerUnitId)).includes(viewer.userId);
+      (await reviewApproversOf(tx, doc.ownerUnitId, pendingReview.requestedBy.id)).includes(viewer.userId);
     const importConfirmation =
       published?.source === 'imported'
         ? await this.importConfirmationOf(tx, published.id, today)
@@ -1492,6 +1492,41 @@ export class DocumentsService {
           to: input.audience,
         };
       }
+      // A new owner of a document in force as imported, while its owner's
+      // confirmation is awaited (security review 11): never the importer,
+      // and the confirmation is then due from the new owner, who is told.
+      let confirmationTo: { importId: string; dueOn: string | null } | null = null;
+      if ('ownerId' in changes && doc.publishedVersionId) {
+        const [awaiting] = await tx
+          .select({
+            id: documentImports.id,
+            importedBy: documentImports.importedBy,
+            dueOn: documentImports.confirmationDueOn,
+            dueFrom: documentImports.confirmationDueFrom,
+          })
+          .from(documentImports)
+          .where(
+            and(
+              eq(documentImports.versionId, doc.publishedVersionId),
+              isNull(documentImports.confirmedAt),
+            ),
+          )
+          .for('update');
+        if (awaiting) {
+          if (awaiting.importedBy === input.ownerId) {
+            throw new ConflictException({ code: 'owner_is_importer', field: 'ownerId' });
+          }
+          await tx
+            .update(documentImports)
+            .set({ confirmationDueFrom: input.ownerId })
+            .where(eq(documentImports.id, awaiting.id));
+          (changes as Record<string, unknown>).confirmationDueFrom = {
+            from: awaiting.dueFrom,
+            to: input.ownerId,
+          };
+          confirmationTo = { importId: awaiting.id, dueOn: awaiting.dueOn };
+        }
+      }
       // A language of its own (business decision 5): as the organization's
       // setting, it changes no version; drafts follow it from now on, and
       // the answer and the audit entry say how many versions are in
@@ -1548,6 +1583,20 @@ export class DocumentsService {
           doc.id,
           { ...changes, ...(input.reason && { reason: input.reason }) },
         );
+      }
+      if (confirmationTo) {
+        await this.notifier.send(tx, tenant.id, { ...doc, ownerId: input.ownerId! }, user.id, [
+          {
+            kind: 'document_owner_assigned',
+            data: {
+              version: 1,
+              versionId: doc.publishedVersionId!,
+              confirmationDueOn: confirmationTo.dueOn ?? '',
+            },
+            to: [input.ownerId!],
+            about: 'published',
+          },
+        ]);
       }
       const after = await viewerOf(tx, auth, this.engine);
       const fresh = await loadDocument(tx, after, this.engine, doc.id);
@@ -2617,7 +2666,7 @@ export class DocumentsService {
       .from(documentTypes)
       .where(eq(documentTypes.id, doc.typeId));
     const approvers = type.noChangeNeedsApproval
-      ? (await reviewApproversOf(tx, doc.ownerUnitId)).filter((u) => u !== viewer.userId)
+      ? await reviewApproversOf(tx, doc.ownerUnitId, viewer.userId)
       : [];
     if (type.noChangeNeedsApproval && approvers.length === 0) {
       throw new ConflictException({ code: 'no_review_approver' });
@@ -2787,6 +2836,7 @@ export class DocumentsService {
     const [row] = await tx
       .select({
         dueOn: documentImports.confirmationDueOn,
+        dueFrom: documentImports.confirmationDueFrom,
         confirmedAt: documentImports.confirmedAt,
         confirmedBy: documentImports.confirmedBy,
         byImport: documentImports.confirmedByImport,
@@ -2795,10 +2845,14 @@ export class DocumentsService {
       .from(documentImports)
       .where(eq(documentImports.versionId, versionId));
     if (!row) return null;
-    const people = row.confirmedBy ? await this.names(tx, [row.confirmedBy]) : new Map();
+    const people = await this.names(tx, [row.confirmedBy, row.dueFrom]);
     return {
       state: confirmationState(row, today),
       dueOn: row.dueOn,
+      // Whom it is awaited from: the owner, moved with each new owner while
+      // it awaits (security review 11). A confirmation given stays the one
+      // given, by the owner then (`confirmedBy`).
+      dueFrom: row.dueFrom ? { id: row.dueFrom, name: people.get(row.dueFrom) ?? null } : null,
       confirmedAt: row.confirmedAt,
       confirmedBy: row.confirmedBy
         ? { id: row.confirmedBy, name: people.get(row.confirmedBy) ?? null }
@@ -2887,6 +2941,8 @@ export class DocumentsService {
         versionId: documentImports.versionId,
         signatureId: documentImports.signatureId,
         dueOn: documentImports.confirmationDueOn,
+        dueFrom: documentImports.confirmationDueFrom,
+        importedBy: documentImports.importedBy,
         confirmedAt: documentImports.confirmedAt,
       })
       .from(documentImports)
@@ -2895,6 +2951,14 @@ export class DocumentsService {
     if (!imported) throw new ConflictException({ code: 'not_imported' });
     if (imported.confirmedAt) {
       throw new ConflictException({ code: 'import_already_confirmed' });
+    }
+    // Never by the one who imported it, even made its owner since
+    // (security review 11); and only by whom it is due from.
+    if (imported.importedBy === viewer.userId) {
+      throw new ForbiddenException({ code: 'importer_cannot_confirm' });
+    }
+    if (imported.dueFrom && imported.dueFrom !== viewer.userId) {
+      throw new ForbiddenException({ code: 'not_owner' });
     }
     return { viewer, doc, imported };
   }
@@ -3067,7 +3131,7 @@ export class DocumentsService {
     if (pending.requestedBy === viewer.userId) {
       throw new ForbiddenException({ code: 'same_person', reason: 'requested' });
     }
-    if (!(await reviewApproversOf(tx, doc.ownerUnitId)).includes(viewer.userId)) {
+    if (!(await reviewApproversOf(tx, doc.ownerUnitId, pending.requestedBy)).includes(viewer.userId)) {
       throw new ForbiddenException({ code: 'not_review_approver' });
     }
     return { viewer, doc, pending };
@@ -3096,7 +3160,7 @@ export async function reviewsAwaitingFor(tx: Transaction, userId: string) {
   const mine: typeof rows = [];
   for (const row of rows) {
     if (row.requestedBy === userId) continue;
-    if ((await reviewApproversOf(tx, row.ownerUnitId)).includes(userId)) mine.push(row);
+    if ((await reviewApproversOf(tx, row.ownerUnitId, row.requestedBy)).includes(userId)) mine.push(row);
   }
   return mine;
 }
@@ -3114,10 +3178,15 @@ export function confirmationState(
  * Who signs a "no change" review of a document whose type asks for it
  * (business decision 6): the active holders of the built-in Approving
  * authority, granted for the whole organization or for the document's unit
- * or one above it; where there is none, the Administrators so granted, as
- * the starting route falls back to them.
+ * or one above it; where there is none but `requester`, the Administrators
+ * so granted (security review 11), as the starting route falls back to
+ * them. Never `requester`.
  */
-export async function reviewApproversOf(tx: Transaction, ownerUnitId: string) {
+export async function reviewApproversOf(
+  tx: Transaction,
+  ownerUnitId: string,
+  requester: string,
+) {
   for (const code of ['approving_authority', 'administrator']) {
     const { rows } = await tx.execute<{ id: string }>(sql`
       with recursive up (id, parent_id) as (
@@ -3130,7 +3199,8 @@ export async function reviewApproversOf(tx: Transaction, ownerUnitId: string) {
       join roles r on r.id = ra.role_id and r.is_system and r.code = ${code}
       join users u on u.id = ra.user_id and u.status = 'active'
       where ra.org_unit_id is null or ra.org_unit_id in (select id from up)`);
-    if (rows.length > 0) return rows.map((r) => r.id);
+    const others = rows.map((r) => r.id).filter((id) => id !== requester);
+    if (others.length > 0) return others;
   }
   return [];
 }

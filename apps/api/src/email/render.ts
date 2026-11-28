@@ -34,6 +34,8 @@ export type MailContent =
       kind: ImmediateKind;
       /** An incident's reference. */
       reference?: string;
+      /** What was done to a signing PIN: set, changed, reset. */
+      action?: 'set' | 'changed' | 'reset';
       /** A document's number, version and step. */
       number?: string;
       version?: number;
@@ -137,7 +139,9 @@ export function renderMail(content: MailContent, envelope: MailEnvelope): Render
         ? content.step === 'approve'
           ? 'document_step_approve'
           : 'document_step_review'
-        : content.kind;
+        : content.kind === 'signing_pin_changed'
+          ? (`signing_pin_${content.action ?? 'changed'}` as const)
+          : content.kind;
     const text = w.immediate[key];
     const values = {
       reference: content.reference ?? '',

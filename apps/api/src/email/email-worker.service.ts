@@ -39,6 +39,7 @@ import { DigestService } from './digest.service.js';
 import { EmailPreferencesService } from './email-preferences.service.js';
 import {
   COMPULSORY_FOR_ASSIGNEES,
+  COMPULSORY_FOR_EVERYONE,
   COMPULSORY_FOR_TRIAGERS,
   IMMEDIATE,
   SAFETY_WHILE_SUSPENDED,
@@ -716,6 +717,7 @@ export class EmailWorker implements OnModuleDestroy {
       row.category === 'immediate' &&
       !!kindOf_ &&
       (COMPULSORY_FOR_ASSIGNEES.includes(kindOf_) ||
+        COMPULSORY_FOR_EVERYONE.includes(kindOf_) ||
         (COMPULSORY_FOR_TRIAGERS.includes(kindOf_) && found.triages));
     if (!switches[which] && !compulsory) return { skip: 'opted_out' };
 
@@ -828,6 +830,18 @@ export class EmailWorker implements OnModuleDestroy {
       };
     }
     if (!IMMEDIATE[kind]) return null;
+    if (kind === 'signing_pin_changed' || kind === 'signing_pin_locked') {
+      const action =
+        data.action === 'set' || data.action === 'changed' || data.action === 'reset'
+          ? data.action
+          : undefined;
+      return {
+        category: 'immediate',
+        kind,
+        action,
+        href: link('/notifications'),
+      };
+    }
     if (kind === 'review_approval_requested') {
       const number = short(data.number);
       if (!number || !notification.documentId) return null;

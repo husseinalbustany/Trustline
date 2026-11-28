@@ -21,6 +21,10 @@ export const IMMEDIATE: Partial<Record<NotificationKind, 'always' | 'serious'>> 
   // A "no change" review awaiting the Approving authority's signature
   // (business decision 6): as an approval step assigned to them.
   review_approval_requested: 'always',
+  // The person's own signing PIN set, changed, reset or locked (security
+  // review 11): so that a change they did not make is seen.
+  signing_pin_changed: 'always',
+  signing_pin_locked: 'always',
 };
 
 export type ImmediateKind =
@@ -30,7 +34,9 @@ export type ImmediateKind =
   | 'incident_assigned'
   | 'sign_off_requested'
   | 'document_step_assigned'
-  | 'review_approval_requested';
+  | 'review_approval_requested'
+  | 'signing_pin_changed'
+  | 'signing_pin_locked';
 
 export const IMMEDIATE_KINDS = Object.keys(IMMEDIATE) as ImmediateKind[];
 
@@ -65,6 +71,9 @@ export const SAFETY_WHILE_SUSPENDED: NotificationKind[] = [
   'incident_assigned',
   'sign_off_requested',
   'acknowledgements_overdue_digest',
+  // About the person's own signing PIN: never held back.
+  'signing_pin_changed',
+  'signing_pin_locked',
 ];
 
 /**
@@ -81,6 +90,11 @@ export const COMPULSORY_FOR_TRIAGERS: NotificationKind[] = [
 export const COMPULSORY_FOR_ASSIGNEES: NotificationKind[] = [
   'document_step_assigned',
   'review_approval_requested',
+];
+/** Security notices about the person's own signing PIN: for everyone. */
+export const COMPULSORY_FOR_EVERYONE: NotificationKind[] = [
+  'signing_pin_changed',
+  'signing_pin_locked',
 ];
 
 /** What the preferences answer says is always on, and why. */

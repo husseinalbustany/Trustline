@@ -19,7 +19,8 @@ import {
 } from '../src/database/schema.js';
 import { TenantDb } from '../src/database/tenant-db.service.js';
 import { requireEnv } from '../src/env.js';
-import { pinTooSimple } from '../src/identity/auth.service.js';
+import { pinSecret, pinTooSimple } from '../src/identity/auth.service.js';
+import { verifyPassword } from '../src/security/passwords.js';
 import { shiftDay } from '../src/i18n/time-zones.js';
 import { PolicyCheck } from '../src/policies/policy-check.service.js';
 import {
@@ -301,6 +302,54 @@ describe('policies: the business decisions after quality review 3', () => {
     });
   });
 
+  describe('1. an owner change while the confirmation is awaited (security review 11)', () => {
+    it('makes it due from the new owner, who is told; and never makes the importer the owner', async () => {
+      const doc = (await importOne(quality.cookie, document({ number: `MOVE-${run}` })).expect(201)).body as Doc;
+      expect(doc.importConfirmation).toMatchObject({ state: 'awaiting', dueFrom: { id: owner.id } });
+      // To the importer: refused while it awaits.
+      expect(
+        (await patch(manager.cookie, `/documents/${doc.id}`, { ownerId: quality.id, revision: doc.revision }).expect(409)).body,
+      ).toEqual({ code: 'owner_is_importer', field: 'ownerId' });
+      // To someone else: due from them now, and they are told (by whoever
+      // made the change: nobody is told of their own).
+      const moved = (await patch(a.cookie, `/documents/${doc.id}`, { ownerId: manager.id, revision: doc.revision }).expect(200)).body as Doc;
+      expect(moved.importConfirmation).toMatchObject({ state: 'awaiting', dueFrom: { id: manager.id } });
+      expect(await told(manager.id, 'document_owner_assigned')).toEqual(
+        expect.arrayContaining([{ documentId: doc.id, data: expect.objectContaining({ confirmationDueOn: shiftDay(today, 30) }) }]),
+      );
+      expect((await auditOf('document_updated')).find((e) => e.entityId === doc.id)?.changes).toMatchObject({
+        confirmationDueFrom: { from: owner.id, to: manager.id },
+      });
+      // The former owner may no longer confirm; the new one may.
+      const now = (await get(manager.cookie, `/documents/${doc.id}`).expect(200)).body as Doc;
+      expect((await post(owner.cookie, `/documents/${doc.id}/confirm-import`, { password, revision: now.revision }).expect(403)).body.code).toBe('not_owner');
+      expect(now.moves).toContain('confirm_import');
+      // A reminder goes to the new owner even after the old one had theirs.
+      await bench.owner.db.execute(sql`update document_imports set confirmation_due_on = ${shiftDay(today, 5)}::date where document_id = ${doc.id}`);
+      await bench.app.get(PolicyCheck, { strict: false }).run(new Date(), [a.id]);
+      const reminded = await bench.owner.db
+        .select({ userId: notifications.userId })
+        .from(notifications)
+        .where(and(eq(notifications.documentId, doc.id), eq(notifications.kind, 'import_confirmation_due')));
+      expect(reminded.map((r) => r.userId).sort()).toEqual([manager.id, quality.id].sort());
+    });
+
+    it('is never given by the importer, whatever writes it', async () => {
+      const doc = (await importOne(quality.cookie, document({ number: `SELFCONF-${run}` })).expect(201)).body as Doc;
+      const app = createDatabase(requireEnv('APP_DATABASE_URL'));
+      try {
+        await expect(
+          new TenantDb(app.db).withTenant(a.id, (tx) =>
+            tx.execute(sql`update document_imports set confirmed_at = now(), confirmed_by = imported_by,
+              confirmation_signature_id = signature_id where document_id = ${doc.id}`),
+          ),
+        ).rejects.toMatchObject({ cause: { code: '23514', constraint: 'document_imports_importer_confirms' } });
+      } finally {
+        await app.pool.end();
+      }
+    });
+  });
+
   describe('4. the emails some people may not switch off', () => {
     it('are said in the preferences, with why', async () => {
       const prefs = (cookie: string) => http().get('/me/notification-preferences').set('Cookie', cookie).expect(200);
@@ -458,6 +507,43 @@ describe('policies: the business decisions after quality review 3', () => {
     });
   });
 
+  describe('6. who signs, and turning it off (security review 11)', () => {
+    it('falls back to the Administrators when the only Approving authority asked', async () => {
+      const doc = (await post(owner.cookie, '/documents', {
+        typeId: types.policy,
+        categoryId: categories.GOV,
+        title: { en: 'Owned by the authority' },
+        ownerId: authority.id,
+        ownerUnitId: dept,
+      }).expect(201)).body as Doc;
+      let v = (await get(owner.cookie, `/documents/${doc.id}/versions/${doc.inProgress!.id}`).expect(200)).body;
+      v = (await patch(owner.cookie, `/documents/${doc.id}/versions/${v.id}`, { revision: v.revision, content: { en: { purpose: 'P.', scope: 'S.', policy_statements: 'St.', responsibilities: 'R.' } } }).expect(200)).body;
+      v = (await post(owner.cookie, `/documents/${doc.id}/versions/${v.id}/submit`, { revision: v.revision }).expect(200)).body;
+      v = (await post(quality.cookie, `/documents/${doc.id}/versions/${v.id}/approve`, { password, revision: v.revision }).expect(200)).body;
+      v = (await post(authority.cookie, `/documents/${doc.id}/versions/${v.id}/approve`, { password, revision: v.revision }).expect(200)).body;
+      await post(owner.cookie, `/documents/${doc.id}/versions/${v.id}/publish`, { revision: v.revision }).expect(200);
+      await bench.owner.db.update(documents).set({ nextReviewOn: shiftDay(today, 20) }).where(eq(documents.id, doc.id));
+      const current = (await get(authority.cookie, `/documents/${doc.id}`).expect(200)).body as Doc;
+      const asked = (await post(authority.cookie, `/documents/${doc.id}/review`, { password, comment: 'Mine, unchanged.', revision: current.revision }).expect(200)).body;
+      expect(asked.reviewApproval).toMatchObject({ status: 'pending' });
+      expect(await told(a.adminId, 'review_approval_requested')).toEqual([expect.objectContaining({ documentId: doc.id })]);
+      expect(((await get(a.cookie, `/documents/${doc.id}`).expect(200)).body as Doc).moves).toContain('approve_review');
+    });
+
+    it('turned off for a type, tells the Approving authorities and the Administrators', async () => {
+      const [type] = (await get(a.cookie, '/types').expect(200)).body.filter((t: { code: string }) => t.code === 'policy');
+      await patch(quality.cookie, `/types/${type.id}`, { noChangeNeedsApproval: false, revision: type.revision }).expect(200);
+      for (const who of [authority.id, a.adminId]) {
+        expect(await told(who, 'review_approval_turned_off')).toEqual([
+          { documentId: null, data: { typeId: type.id, typeCode: 'policy', serious: false } },
+        ]);
+      }
+      expect(await told(quality.id, 'review_approval_turned_off')).toEqual([]);
+      const after = (await get(a.cookie, '/types').expect(200)).body.find((t: { code: string }) => t.code === 'policy');
+      await patch(quality.cookie, `/types/${type.id}`, { noChangeNeedsApproval: true, revision: after.revision }).expect(200);
+    });
+  });
+
   describe('8. what is never deleted', () => {
     it('acknowledgements, signatures and reviews cannot be deleted by the application, nor the people they name', async () => {
       // A document asking for acknowledgement, acknowledged; its reader then leaves.
@@ -476,6 +562,20 @@ describe('policies: the business decisions after quality review 3', () => {
         ]) {
           await expect(asApp(remove)).rejects.toMatchObject({ cause: { code: '42501' } });
         }
+        // Nor undone by an UPDATE (security review 11): an acknowledgement
+        // given keeps its time and signature, and a decided review stays
+        // decided.
+        await expect(
+          asApp((tx) =>
+            tx
+              .update(documentAcknowledgements)
+              .set({ acknowledgedAt: null, signatureId: null })
+              .where(eq(documentAcknowledgements.userId, reader.id)),
+          ),
+        ).rejects.toMatchObject({ cause: { code: '23514', constraint: 'document_acknowledgements_given_fixed' } });
+        await expect(
+          asApp((tx) => tx.execute(sql`update document_review_approvals set status = 'pending', decided_by = null, decided_at = null where status <> 'pending'`)),
+        ).rejects.toMatchObject({ cause: { code: '23514', constraint: 'document_review_approvals_decided_fixed' } });
       } finally {
         await app.pool.end();
       }
@@ -491,17 +591,38 @@ describe('policies: the business decisions after quality review 3', () => {
 
   describe('9. the signing PIN', () => {
     let sso: Staff; // signs in only through single sign-on: no password
+    let savedHash: string | null;
     let asked: Doc & { published: { id: string } };
+
+    /** A new session for the person, as single sign-on would give one. */
+    const signInAgain = async () => {
+      // The short lock of wrong attempts lapsed, as it does with time.
+      await bench.owner.db
+        .update(users)
+        .set({ passwordHash: savedHash, lockedUntil: null, failedAttempts: 0 })
+        .where(eq(users.id, sso.id));
+      const cookie = bench.cookieOf(await bench.login(a.slug, sso.email).expect(200));
+      await bench.owner.db.update(users).set({ passwordHash: null }).where(eq(users.id, sso.id));
+      sso = { ...sso, cookie };
+      return cookie;
+    };
+    const emailed = async (kind: string) =>
+      (
+        await bench.owner.db.execute<{ category: string; data: Record<string, unknown> }>(sql`
+          select q.category, n.data from email_queue q join notifications n on n.id = q.notification_id
+          where n.user_id = ${sso.id} and n.kind::text = ${kind} order by n.created_at`)
+      ).rows;
 
     beforeAll(async () => {
       sso = await staff(a, 'sso', 'reporter', dept);
+      [{ savedHash }] = await bench.owner.db.select({ savedHash: users.passwordHash }).from(users).where(eq(users.id, sso.id));
       // As a person of single sign-on has: a session, no password.
       await bench.owner.db.update(users).set({ passwordHash: null }).where(eq(users.id, sso.id));
       asked = (await importOne(quality.cookie, document({ number: `PIN-${run}`, acknowledgementRequired: true })).expect(201)).body;
     });
 
     const me = async (cookie: string) => (await http().get('/auth/me').set('Cookie', cookie).expect(200)).body.signingMethod;
-    const setPin = (cookie: string, pin: unknown) => http().put('/me/signing-pin').set('Cookie', cookie).send({ pin });
+    const setPin = (cookie: string, body: Record<string, unknown>) => http().put('/me/signing-pin').set('Cookie', cookie).send(body);
 
     it('tells how each person signs, and refuses a signature to one who has neither a password nor a PIN', async () => {
       expect(await me(owner.cookie)).toBe('password');
@@ -511,56 +632,94 @@ describe('policies: the business decisions after quality review 3', () => {
       ).toEqual({ code: 'signing_pin_required' });
     });
 
-    it('is set only by a person without a password, soon after signing in, and not too simple', async () => {
+    it('is set only by a person without a password, soon after signing in, and not easily guessed', async () => {
       await http().put('/me/signing-pin').send({ pin: '284619' }).expect(401);
-      expect((await setPin(owner.cookie, '284619').expect(409)).body.code).toBe('signs_with_password');
-      for (const pin of ['12345', '1234567890123', 'abcdef', 284619, '28461a']) await setPin(sso.cookie, pin).expect(400);
-      for (const pin of ['111111', '123456', '987654', '890123']) {
-        expect((await setPin(sso.cookie, pin).expect(400)).body.code).toBe('pin_too_simple');
+      expect((await setPin(owner.cookie, { pin: '284619' }).expect(409)).body.code).toBe('signs_with_password');
+      for (const pin of ['12345', '1234567890123', 'abcdef', 284619, '28461a']) await setPin(sso.cookie, { pin }).expect(400);
+      await setPin(sso.cookie, { pin: '284619', extra: 1 }).expect(400);
+      // Runs, repeats, mirrors, days and the most common (security review 11).
+      for (const pin of ['111111', '123456', '987654', '890123', '121212', '112233', '123123', '123321', '696969', '311290', '19800521', '000123', '147258']) {
+        expect(`${pin}: ${(await setPin(sso.cookie, { pin }).expect(400)).body.code}`).toBe(`${pin}: pin_too_simple`);
       }
       expect(pinTooSimple('284619')).toBe(false);
       // A sign-in more than ten minutes ago is not fresh enough.
       await bench.owner.db.execute(sql`update sessions set created_at = now() - interval '11 minutes' where user_id = ${sso.id}`);
-      expect((await setPin(sso.cookie, '284619').expect(403)).body.code).toBe('fresh_sign_in_required');
-      await bench.owner.db.update(sessions).set({ createdAt: new Date() }).where(eq(sessions.userId, sso.id));
-      await setPin(sso.cookie, '284619').expect(204);
+      expect((await setPin(sso.cookie, { pin: '284619' }).expect(403)).body.code).toBe('fresh_sign_in_required');
+      // Two sessions: setting the PIN in one ends the other.
+      const other = sso.cookie;
+      await signInAgain();
+      await setPin(sso.cookie, { pin: '284619' }).expect(204);
       expect(await me(sso.cookie)).toBe('pin');
+      await http().get('/auth/me').set('Cookie', other).expect(401);
       expect((await auditOf('signing_pin_set')).at(-1)).toMatchObject({ actorId: sso.id, entityId: sso.id, changes: { action: 'set' } });
       expect(await told(sso.id, 'signing_pin_changed')).toEqual([{ documentId: null, data: { action: 'set', serious: false } }]);
-      // Hashed: never the PIN itself.
+      // By an email they cannot switch off, too.
+      expect(await emailed('signing_pin_changed')).toEqual([{ category: 'immediate', data: { action: 'set', serious: false } }]);
+      // Hashed with the server's pepper: the PIN alone does not match it.
       const [row] = await bench.owner.db.select({ hash: users.signingPinHash }).from(users).where(eq(users.id, sso.id));
-      expect(row.hash).not.toContain('284619');
+      expect(await verifyPassword('284619', row.hash!)).toBe(false);
+      expect(await verifyPassword(pinSecret('284619'), row.hash!)).toBe(true);
     });
 
-    it('signs wherever a password would, with the same refusals', async () => {
+    it('signs wherever a password would, and an administrator sees nothing of it', async () => {
       const url = `/documents/${asked.id}/versions/${asked.published.id}/acknowledge`;
       expect((await post(sso.cookie, url, { password: '000999' }).expect(401)).body.code).toBe('wrong_password');
       await post(sso.cookie, url, { password: '284619' }).expect(200);
-      // An administrator sees no PIN.
       const shown = (await http().get(`/users/${sso.id}`).set('Cookie', a.cookie).expect(200)).body;
       expect(JSON.stringify(shown)).not.toMatch(/signingPin|pinHash/i);
     });
 
-    it('is reset by whoever manages the person, never set by them; audited and told', async () => {
+    it('is changed only with the current PIN', async () => {
+      expect((await setPin(sso.cookie, { pin: '582947' }).expect(400)).body.code).toBe('current_pin_required');
+      expect((await setPin(sso.cookie, { pin: '582947', currentPin: '000999' }).expect(401)).body.code).toBe('wrong_password');
+      await setPin(sso.cookie, { pin: '582947', currentPin: '284619' }).expect(204);
+      expect((await told(sso.id, 'signing_pin_changed')).map((n) => n.data.action)).toEqual(['set', 'changed']);
+    });
+
+    it('is not undone by a password link an administrator holds', async () => {
+      expect((await http().post(`/users/${sso.id}/invite`).set('Cookie', a.cookie).expect(409)).body.code).toBe('signs_with_pin');
+    });
+
+    it('locks after ten wrong PINs in all, whatever the short locks between, until it is reset', async () => {
+      const doc = (await importOne(quality.cookie, document({ number: `LOCK-${run}`, acknowledgementRequired: true })).expect(201)).body;
+      const url = `/documents/${doc.id}/versions/${doc.published.id}/acknowledge`;
+      for (let i = 1; i <= 9; i++) {
+        await post(sso.cookie, url, { password: '000999' }).expect(401);
+        // The short lock after five lapses, as it would with time.
+        await bench.owner.db.update(users).set({ lockedUntil: null }).where(eq(users.id, sso.id));
+      }
+      const locked = sso.cookie;
+      expect((await post(sso.cookie, url, { password: '000999' }).expect(403)).body.code).toBe('signing_pin_locked');
+      // The session it happened in is ended; they are told, by email too.
+      await http().get('/auth/me').set('Cookie', locked).expect(401);
+      expect(await told(sso.id, 'signing_pin_locked')).toEqual([{ documentId: null, data: { serious: false } }]);
+      expect((await emailed('signing_pin_locked')).map((r) => r.category)).toEqual(['immediate']);
+      expect((await auditOf('signing_pin_locked')).at(-1)).toMatchObject({ actorId: null, entityId: sso.id, changes: { failures: 10 } });
+      // Locked: even the right PIN, and changing it, are refused.
+      await signInAgain();
+      expect((await post(sso.cookie, url, { password: '582947' }).expect(403)).body.code).toBe('signing_pin_locked');
+      expect((await setPin(sso.cookie, { pin: '639271', currentPin: '582947' }).expect(403)).body.code).toBe('signing_pin_locked');
+    }, 60_000);
+
+    it('is reset by whoever manages the person, never set by them; audited, told, and every session ended', async () => {
       await http().delete(`/users/${sso.id}/signing-pin`).expect(401);
       await http().delete(`/users/${sso.id}/signing-pin`).set('Cookie', owner.cookie).expect(403);
       await http().delete(`/users/${sso.id}/signing-pin`).set('Cookie', b.cookie).expect(404);
+      const before = sso.cookie;
       await http().delete(`/users/${sso.id}/signing-pin`).set('Cookie', a.cookie).expect(204);
+      await http().get('/auth/me').set('Cookie', before).expect(401);
+      await signInAgain();
       expect(await me(sso.cookie)).toBe('none');
       expect((await http().delete(`/users/${sso.id}/signing-pin`).set('Cookie', a.cookie).expect(409)).body.code).toBe('no_signing_pin');
       expect((await auditOf('signing_pin_reset')).at(-1)).toMatchObject({ actorId: a.adminId, entityId: sso.id });
-      expect((await told(sso.id, 'signing_pin_changed')).map((n) => n.data.action)).toEqual(['set', 'reset']);
+      expect((await told(sso.id, 'signing_pin_changed')).map((n) => n.data.action)).toEqual(['set', 'changed', 'reset']);
+      expect((await emailed('signing_pin_changed')).map((r) => r.data.action)).toEqual(['set', 'changed', 'reset']);
       // Nothing lets an administrator set one.
       await http().put(`/users/${sso.id}/signing-pin`).set('Cookie', a.cookie).send({ pin: '284619' }).expect(404);
-    });
-
-    it('locks after too many wrong PINs, as a password does', async () => {
-      await bench.owner.db.update(sessions).set({ createdAt: new Date() }).where(eq(sessions.userId, sso.id));
-      await setPin(sso.cookie, '739154').expect(204);
-      const doc = (await importOne(quality.cookie, document({ number: `LOCK-${run}`, acknowledgementRequired: true })).expect(201)).body;
-      const url = `/documents/${doc.id}/versions/${doc.published.id}/acknowledge`;
-      for (let i = 0; i < 5; i++) await post(sso.cookie, url, { password: '000000' }).expect(401);
-      expect((await post(sso.cookie, url, { password: '739154' }).expect(401)).body.code).toBe('password_locked');
+      // The lock went with it: a new PIN signs.
+      await setPin(sso.cookie, { pin: '639271' }).expect(204);
+      const doc = (await importOne(quality.cookie, document({ number: `AFTER-${run}`, acknowledgementRequired: true })).expect(201)).body;
+      await post(sso.cookie, `/documents/${doc.id}/versions/${doc.published.id}/acknowledge`, { password: '639271' }).expect(200);
     });
   });
 });

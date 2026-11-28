@@ -53,6 +53,8 @@ export const NOTIFICATION_MODULE: Record<NotificationKind, ModuleKey> = {
   review_returned: 'policies',
   // About the person's own signing PIN: core.
   signing_pin_changed: 'core',
+  signing_pin_locked: 'core',
+  review_approval_turned_off: 'policies',
 };
 
 /** The kinds a client with these modules is shown. */

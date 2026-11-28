@@ -203,6 +203,12 @@ export const users = pgTable(
     // Never shown, and set only by the person.
     signingPinHash: text(),
     signingPinSetAt: timestamp({ withTimezone: true }),
+    // Wrong signing PINs since the last right one, whatever the lock in
+    // between (security review 11): at SIGNING_PIN_MAX_FAILURES, signing
+    // with the PIN is locked (`signing_pin_locked_at`) until an
+    // administrator resets it.
+    signingPinFailures: integer().notNull().default(0),
+    signingPinLockedAt: timestamp({ withTimezone: true }),
     ssoSubject: text(),
     failedAttempts: integer().notNull().default(0),
     lockedUntil: timestamp({ withTimezone: true }),
@@ -838,6 +844,13 @@ export const notificationKind = pgEnum('notification_kind', [
   'review_returned',
   // The person's signing PIN was set, changed or reset. About nothing else.
   'signing_pin_changed',
+  // Signing with the person's PIN was locked after too many wrong PINs
+  // (security review 11). About nothing else.
+  'signing_pin_locked',
+  // A document type no longer asks for the Approving authority's signature
+  // of a "no change" review (security review 11): to the Approving
+  // authorities and the Administrators. About the type, not a document.
+  'review_approval_turned_off',
 ]);
 
 // Something a user is told about an incident they can see. Stored so that it
@@ -900,7 +913,7 @@ export const notifications = pgTable(
     // new kind to be committed before it is created.
     check(
       'notifications_about_one_thing',
-      sql`(${t.incidentId} is null or ${t.documentId} is null) and (${t.incidentId} is not null or ${t.documentId} is not null or ${t.kind}::text in ('public_form_paused', 'acknowledgements_overdue_digest', 'email_turned_off', 'signing_pin_changed'))`,
+      sql`(${t.incidentId} is null or ${t.documentId} is null) and (${t.incidentId} is not null or ${t.documentId} is not null or ${t.kind}::text in ('public_form_paused', 'acknowledgements_overdue_digest', 'email_turned_off', 'signing_pin_changed', 'signing_pin_locked', 'review_approval_turned_off'))`,
     ),
     tenantIsolation(),
   ],
@@ -1973,6 +1986,9 @@ export const documentImports = pgTable(
     // this day, given with a signature (`import_confirmed`); or given by the
     // import itself when the importer is the owner.
     confirmationDueOn: date({ mode: 'string' }),
+    // Whom it is due from: the owner when imported, and each new owner
+    // while it awaits (security review 11). Never the importer.
+    confirmationDueFrom: uuid(),
     confirmedAt: timestamp({ withTimezone: true }),
     confirmedBy: uuid(),
     confirmationSignatureId: uuid(),
@@ -2015,6 +2031,11 @@ export const documentImports = pgTable(
     foreignKey({
       name: 'document_imports_imported_by_fk',
       columns: [t.tenantId, t.importedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'document_imports_confirmation_due_from_fk',
+      columns: [t.tenantId, t.confirmationDueFrom],
       foreignColumns: [users.tenantId, users.id],
     }),
     foreignKey({

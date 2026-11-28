@@ -32,6 +32,10 @@ export type Wording = {
     document_step_review: { subject: string; body: string };
     document_step_approve: { subject: string; body: string };
     review_approval_requested: { subject: string; body: string };
+    signing_pin_set: { subject: string; body: string };
+    signing_pin_changed: { subject: string; body: string };
+    signing_pin_reset: { subject: string; body: string };
+    signing_pin_locked: { subject: string; body: string };
   };
   weekly: {
     subject: string;

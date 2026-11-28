@@ -142,7 +142,11 @@ export class AuthController {
   }
 }
 
-const signingPinSchema = z.strictObject({ pin: z.string().max(40) });
+// The current PIN is asked to change one (security review 11).
+const signingPinSchema = z.strictObject({
+  pin: z.string().max(40),
+  currentPin: z.string().max(40).optional(),
+});
 
 /**
  * The person's own signing PIN (business decision 9), for a person who has
@@ -162,7 +166,7 @@ export class SigningPinController {
   async set(@Body() body: unknown, @Req() req: AuthedRequest) {
     const parsed = signingPinSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException();
-    await this.auth.setSigningPin(req.auth, parsed.data.pin, req.ip ?? null);
+    await this.auth.setSigningPin(req.auth, parsed.data, req.ip ?? null);
   }
 }
 

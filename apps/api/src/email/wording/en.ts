@@ -39,6 +39,22 @@ export const en: Wording = {
       subject: 'Document {number}: a review with no change awaits your signature',
       body: 'The owner of document {number} has confirmed at its periodic review that it needs no change. Its next review date moves once you sign.',
     },
+    signing_pin_set: {
+      subject: 'Your signing PIN was set',
+      body: 'A signing PIN was set for your account in Trustline, and your other sessions were signed out. If it was not you, tell your administrator at once.',
+    },
+    signing_pin_changed: {
+      subject: 'Your signing PIN was changed',
+      body: 'The signing PIN of your account in Trustline was changed, and your other sessions were signed out. If it was not you, tell your administrator at once.',
+    },
+    signing_pin_reset: {
+      subject: 'Your signing PIN was reset',
+      body: 'An administrator reset the signing PIN of your account in Trustline, and you were signed out. Sign in again to set a new one.',
+    },
+    signing_pin_locked: {
+      subject: 'Signing with your PIN is locked',
+      body: 'After too many wrong signing PINs, signing with your PIN in Trustline is locked, and the session they were entered in was signed out. Ask your administrator to reset your PIN; if it was not you, say so.',
+    },
   },
   weekly: {
     subject: 'Overdue acknowledgements this week',

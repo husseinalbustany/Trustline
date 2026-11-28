@@ -158,7 +158,11 @@ was queued:
    `incident_handed_over` when serious, `sentinel_flagged`) to those who
    triage, and approval steps to those assigned them (`document_step_assigned`,
    and `review_approval_requested`, a "no change" review awaiting the
-   Approving authority). The organization's switch still stops everything.
+   Approving authority), and to everyone, the security notices about their
+   own signing PIN (`signing_pin_changed` when it is set, changed or reset,
+   and `signing_pin_locked`, security review 11; sent while the
+   subscription is suspended too). The organization's switch still stops
+   everything.
    `GET /me/notification-preferences` answers `alwaysOn: [{ emails, reason }]`
    (`serious_incident_alerts` / `triages`, `approval_steps` /
    `decides_approval_steps`). An unsubscribe link switches the immediate

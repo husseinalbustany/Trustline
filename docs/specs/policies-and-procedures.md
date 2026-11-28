@@ -1382,3 +1382,48 @@ clients, each audited per client. Every new route answers:
    - Deleting after six years, if ever, is a task for later, run as the
      owner role with its own decision.
 9. **The signing PIN** for people with no password (`identity-signing-pin.md`).
+
+### Security review 11 of these decisions
+
+Migrations 0055 (generated) and 0056 (custom SQL) made these changes.
+
+- **Whom a confirmation is due from.**
+  - `document_imports.confirmation_due_from` is set to the owner when the
+    document is imported, and is never the importer.
+  - While the confirmation is awaited, a new owner (`PATCH`) makes it due
+    from them, and they are told. The change is in the document's history
+    (`confirmationDueFrom`).
+  - An owner change that would make the importer the owner is refused
+    (409 `owner_is_importer`).
+  - The importer never confirms with a signature (403
+    `importer_cannot_confirm`, and a database rule). Only one who owned the
+    document when importing it is confirmed by the import.
+  - Reminders go to whom it is due from, each once for each such owner.
+  - A confirmation once given stays the one given, by the owner then
+    (`confirmedBy`).
+- **0054's backfill corrected.** It had compared the importer with the
+  owner when 0054 ran. Where the owner at import time (the import's audit
+  entry) was not the importer, or is not known, the confirmation is awaited
+  again, due 30 days from the correction. Each client's log says what 0054
+  set and what 0056 corrected (`import_confirmations_backfilled_by_system`,
+  `import_confirmations_corrected_by_system`). Imports with no due day get
+  one.
+- **What is signed stays as signed.** An acknowledgement once given keeps
+  its time and signature (`document_acknowledgements_given_fixed`). A
+  decided "no change" review does not change
+  (`document_review_approvals_decided_fixed`). The retention test covers
+  UPDATE as well as DELETE.
+- **"No change" reviews.**
+  - Who signs leaves out the one who asked. When the only Approving
+    authority is that person, the Administrators sign.
+  - Turning `noChangeNeedsApproval` off for a type tells the Approving
+    authorities and the Administrators in the app
+    (`review_approval_turned_off`, `data: { typeId, typeCode }`), and is
+    audited as a type change.
+- **The signing PIN:** `identity-signing-pin.md`.
+- **For the business: a stand-in Quality officer.** An administrator can
+  still create an account with the Quality officer's role and hold its
+  sign-in link, and so import through it. Every step is audited. Whether to
+  forbid that, for example by having Trustline confirm the first Quality
+  officer, is the business's decision.
+

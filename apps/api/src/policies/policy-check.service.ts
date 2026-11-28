@@ -691,7 +691,8 @@ export class PolicyCheck implements OnModuleDestroy {
           documentId: documentImports.documentId,
           importedBy: documentImports.importedBy,
           dueOn: documentImports.confirmationDueOn,
-          ownerId: documents.ownerId,
+          // Whom it is due from: the owner now (security review 11).
+          dueFrom: sql<string>`coalesce(${documentImports.confirmationDueFrom}, ${documents.ownerId})`,
         })
         .from(documentImports)
         .innerJoin(
@@ -706,8 +707,11 @@ export class PolicyCheck implements OnModuleDestroy {
           and(
             isNull(documentImports.confirmedAt),
             sql`${documentImports.confirmationDueOn} <= ${shiftDay(today, IMPORT_REMIND_DAYS)}`,
+            // Each reminder once for each owner it is due from: a new owner
+            // is reminded too.
             sql`not exists (select from ${policyReminders} pr
               where pr.subject_id = ${documentImports.id}
+                and pr.period = coalesce(${documentImports.confirmationDueFrom}, ${documents.ownerId})::text
                 and pr.kind = case when ${documentImports.confirmationDueOn} < ${today}::date
                   then 'import_confirmation_overdue' else 'import_confirmation_due' end)`,
           ),
@@ -719,16 +723,16 @@ export class PolicyCheck implements OnModuleDestroy {
       for (const row of rows) {
         const overdue = !!row.dueOn && row.dueOn < today;
         // An overdue one first found overdue is not then reminded as due.
-        if (overdue) await this.claim(tx, tenantId, 'import_confirmation_due', row.importId);
+        if (overdue) await this.claim(tx, tenantId, 'import_confirmation_due', row.importId, row.dueFrom);
         const kind = overdue ? 'import_confirmation_overdue' : 'import_confirmation_due';
-        if (!(await this.claim(tx, tenantId, kind, row.importId))) continue;
+        if (!(await this.claim(tx, tenantId, kind, row.importId, row.dueFrom))) continue;
         const doc = docs.get(row.documentId);
         if (!doc) continue;
         notified += await this.notifier.send(tx, tenantId, doc, null, [
           {
             kind: 'import_confirmation_due',
             data: { dueOn: row.dueOn ?? '', overdue },
-            to: [row.ownerId, row.importedBy],
+            to: [row.dueFrom, row.importedBy],
             about: 'published',
           },
         ]);

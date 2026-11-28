@@ -12,6 +12,11 @@ export default defineConfig({
     // No test ever sends mail, whatever a developer's .env configures:
     // email goes to the outbox table (docs/specs/email.md). A test of the
     // SMTP sender talks to a server of its own on this machine.
-    env: { MAIL_TRANSPORT: 'outbox' },
+    env: {
+      MAIL_TRANSPORT: 'outbox',
+      // A pepper for the tests' signing PINs only: no real PIN is ever made
+      // with it (docs/specs/identity-signing-pin.md).
+      SIGNING_PIN_PEPPER: 'test-only-pepper-for-signing-pins-0000000000',
+    },
   },
 });

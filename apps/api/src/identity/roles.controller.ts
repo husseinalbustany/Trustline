@@ -97,8 +97,11 @@ export class RolesController {
   /**
    * Nobody builds a role that allows more than they may do themselves. A role
    * belongs to the hospital as a whole and can be granted anywhere in it, so
-   * each of its permissions must be one the actor holds for the whole
-   * organization: holding it for one department is not enough.
+   * each of its permissions must be one the actor may give for the whole
+   * organization (`mayGrant`): one they hold there, or `policies.import`,
+   * which whoever manages documents for the whole organization may give
+   * without holding it (business decision 1). Holding it for one
+   * department is not enough.
    */
   private assertWithinOwn(req: AuthedRequest, permissions?: Permission[]) {
     if (permissions?.some((p) => !mayGrant(req.auth, p, null))) {

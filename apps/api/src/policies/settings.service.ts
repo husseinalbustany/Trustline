@@ -15,6 +15,7 @@ import {
   documentTypes,
   documentVersions,
   roleAssignments,
+  notifications,
   roles,
   users,
   type DocumentSection,
@@ -207,6 +208,34 @@ export class PolicySettingsService {
         id,
         changes,
       );
+      // No longer asking for the Approving authority's signature of a "no
+      // change" review (security review 11): one person can then confirm a
+      // review alone, so those who would have signed are told.
+      if (changes.noChangeNeedsApproval && fields.noChangeNeedsApproval === false) {
+        const told = await tx
+          .selectDistinct({ id: users.id })
+          .from(users)
+          .innerJoin(roleAssignments, eq(roleAssignments.userId, users.id))
+          .innerJoin(roles, eq(roles.id, roleAssignments.roleId))
+          .where(
+            and(
+              eq(users.status, 'active'),
+              eq(roles.isSystem, true),
+              inArray(roles.code, ['approving_authority', 'administrator']),
+              sql`${users.id} <> ${auth.user.id}`,
+            ),
+          );
+        if (told.length > 0) {
+          await tx.insert(notifications).values(
+            told.map((u) => ({
+              tenantId: auth.tenant.id,
+              userId: u.id,
+              kind: 'review_approval_turned_off' as const,
+              data: { typeId: id, typeCode: before.code, serious: false },
+            })),
+          );
+        }
+      }
       return after;
     });
   }

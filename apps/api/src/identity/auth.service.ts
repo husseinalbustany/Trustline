@@ -1,10 +1,11 @@
-import { randomBytes } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
   Inject,
   Injectable,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { and, eq, gt, isNull, lt, sql } from 'drizzle-orm';
@@ -35,6 +36,7 @@ import type {
 } from '../subscriptions/modules.js';
 import { hashToken, ProvisioningService } from './provisioning.service.js';
 import { buildScope, covers, type Scope } from './scope.js';
+import { SecurityNotices } from './security-notices.service.js';
 
 export const MAX_FAILED_ATTEMPTS = 5;
 
@@ -43,15 +45,75 @@ const SIGNING_PIN = /^\d{6,12}$/;
 /** Setting a signing PIN needs a sign-in this recent, for this session. */
 export const SIGNING_PIN_FRESH_MS = 10 * 60_000;
 
+/** Wrong signing PINs, from the last right one, that lock PIN signing. */
+export const SIGNING_PIN_MAX_FAILURES = 10;
+
 /**
- * Whether a PIN is too easily guessed: all one digit, or digits going up
- * or down one at a time (123456, 987654, 890123).
+ * PINs too often chosen to be safe, beyond what the rules below catch
+ * (security review 11).
+ */
+const COMMON_PINS = new Set([
+  '000123', '102030', '111222', '112358', '121314', '123000', '123654',
+  '131313', '147258', '147852', '159357', '159753', '202020', '246810',
+  '258369', '258456', '314159', '369258', '456789', '520520', '741852',
+  '753951', '789456', '852456', '963741', '963852', '1234321', '13579',
+  '135790', '24680', '246802', '102938', '1029384756',
+]);
+
+/** Whether digits read as a day: DDMMYY, MMDDYY, YYMMDD and the 8-digit forms. */
+function looksLikeDate(pin: string) {
+  const ok = (d: number, m: number) => m >= 1 && m <= 12 && d >= 1 && d <= 31;
+  const n = (from: number, len: number) => Number(pin.slice(from, from + len));
+  if (pin.length === 6) {
+    return ok(n(0, 2), n(2, 2)) || ok(n(2, 2), n(0, 2)) || ok(n(4, 2), n(2, 2));
+  }
+  if (pin.length === 8) {
+    const year = (y: number) => y >= 1900 && y <= 2099;
+    return (
+      (year(n(4, 4)) && (ok(n(0, 2), n(2, 2)) || ok(n(2, 2), n(0, 2)))) ||
+      (year(n(0, 4)) && ok(n(6, 2), n(4, 2)))
+    );
+  }
+  return false;
+}
+
+/**
+ * Whether a PIN is too easily guessed (business decision 9, security
+ * review 11): fewer than three different digits; digits going up or down
+ * one at a time (123456, 987654, 890123); a block repeated (121212,
+ * 123123); each digit doubled (112233); the same read both ways (123321);
+ * a day (311290, 19800521); or one of the most common.
  */
 export function pinTooSimple(pin: string) {
   // Digits only (SIGNING_PIN): one character each.
   const digits = pin.split('').map(Number);
   const steps = digits.slice(1).map((d, i) => (d - digits[i] + 10) % 10);
-  return steps.every((s) => s === 0) || steps.every((s) => s === 1) || steps.every((s) => s === 9);
+  if (new Set(digits).size < 3) return true;
+  if (steps.every((s) => s === 1) || steps.every((s) => s === 9)) return true;
+  for (let size = 1; size <= pin.length / 2; size++) {
+    if (pin.length % size === 0 && pin.slice(0, size).repeat(pin.length / size) === pin) {
+      return true;
+    }
+  }
+  if (pin.length % 2 === 0 && /^(?:(\d)\1)+$/.test(pin)) return true;
+  if (pin === [...pin].reverse().join('')) return true;
+  if (looksLikeDate(pin)) return true;
+  return COMMON_PINS.has(pin);
+}
+
+/**
+ * What is hashed of a PIN (security review 11): an HMAC of it with the
+ * server's pepper (`SIGNING_PIN_PEPPER`, 32 characters or more, from the
+ * environment), so that a copy of the database alone does not give the
+ * PINs up to guessing. Without a pepper no PIN is set or checked (503
+ * `signing_pin_unavailable`).
+ */
+export function pinSecret(pin: string) {
+  const pepper = process.env.SIGNING_PIN_PEPPER?.trim() ?? '';
+  if (pepper.length < 32) {
+    throw new ServiceUnavailableException({ code: 'signing_pin_unavailable' });
+  }
+  return createHmac('sha256', pepper).update(`trustline.signing-pin.${pin}`).digest('base64url');
 }
 const LOCK_MINUTES = 15;
 export const SESSION_HOURS = 8;
@@ -116,6 +178,7 @@ export class AuthService {
     private readonly tenantDb: TenantDb,
     private readonly provisioning: ProvisioningService,
     private readonly entitlements: EntitlementsService,
+    private readonly notices: SecurityNotices,
   ) {}
 
   private async burnTime(password: string) {
@@ -401,6 +464,7 @@ export class AuthService {
           id: users.id,
           passwordHash: users.passwordHash,
           signingPinHash: users.signingPinHash,
+          signingPinLockedAt: users.signingPinLockedAt,
         })
         .from(users)
         .where(eq(users.id, auth.user.id)),
@@ -412,8 +476,14 @@ export class AuthService {
     if (user && !credential) {
       throw new ForbiddenException({ code: 'signing_pin_required' });
     }
+    const byPin = !!user && !user.passwordHash;
+    // Locked after SIGNING_PIN_MAX_FAILURES wrong PINs, until an
+    // administrator resets it (security review 11).
+    if (byPin && user.signingPinLockedAt) {
+      throw new ForbiddenException({ code: 'signing_pin_locked' });
+    }
     const valid = credential
-      ? await verifyPassword(password, credential)
+      ? await verifyPassword(byPin ? pinSecret(password) : password, credential)
       : (await this.burnTime(password), false);
     const outcome = await this.tenantDb.withTenant(tenantId, async (tx) => {
       // Under a row lock, as at sign-in: parallel guesses are counted one by
@@ -423,11 +493,14 @@ export class AuthService {
           status: users.status,
           passwordHash: users.passwordHash,
           signingPinHash: users.signingPinHash,
+          signingPinFailures: users.signingPinFailures,
+          signingPinLockedAt: users.signingPinLockedAt,
           lockedUntil: users.lockedUntil,
         })
         .from(users)
         .where(eq(users.id, auth.user.id))
         .for('update');
+      if (byPin && fresh?.signingPinLockedAt) return 'pin_locked' as const;
       const locked = !!fresh?.lockedUntil && fresh.lockedUntil > new Date();
       // The same credential as was checked, unchanged since.
       const stillValid =
@@ -437,16 +510,22 @@ export class AuthService {
       if (!locked && stillValid) {
         await tx
           .update(users)
-          .set({ failedAttempts: 0, lockedUntil: null })
+          .set({ failedAttempts: 0, lockedUntil: null, ...(byPin && { signingPinFailures: 0 }) })
           .where(eq(users.id, auth.user.id));
         return 'ok' as const;
       }
+      // Wrong PINs count up to SIGNING_PIN_MAX_FAILURES whatever the short
+      // locks in between, and only a right one sets them back.
+      const pinFailures = byPin && !locked ? (fresh?.signingPinFailures ?? 0) + 1 : 0;
+      const pinLocksNow = byPin && pinFailures >= SIGNING_PIN_MAX_FAILURES;
       if (!locked) {
         await tx
           .update(users)
           .set({
             failedAttempts: sql`case when ${users.failedAttempts} + 1 >= ${MAX_FAILED_ATTEMPTS} then 0 else ${users.failedAttempts} + 1 end`,
             lockedUntil: sql`case when ${users.failedAttempts} + 1 >= ${MAX_FAILED_ATTEMPTS} then now() + make_interval(mins => ${LOCK_MINUTES}) else ${users.lockedUntil} end`,
+            ...(byPin && { signingPinFailures: pinFailures }),
+            ...(pinLocksNow && { signingPinLockedAt: new Date() }),
           })
           .where(eq(users.id, auth.user.id));
       }
@@ -457,11 +536,27 @@ export class AuthService {
         'password_confirmation_failed',
         'user',
         auth.user.id,
-        { locked, purpose },
+        { locked, purpose, ...(byPin && { pin: true, pinFailures }), ...(pinLocksNow && { pinLocked: true }) },
         ip,
       );
+      if (pinLocksNow) {
+        // Whoever was guessing loses the session they guessed in, and the
+        // person is told, in the app and by an email they cannot switch off.
+        await tx
+          .update(sessions)
+          .set({ revokedAt: new Date() })
+          .where(eq(sessions.tokenHash, hashToken(auth.token)));
+        await this.provisioning.audit(tx, tenantId, null, 'signing_pin_locked', 'user', auth.user.id, {
+          failures: pinFailures,
+        });
+        await this.notices.tell(tx, tenantId, auth.user.id, { kind: 'signing_pin_locked' });
+        return 'pin_locked' as const;
+      }
       return locked ? ('locked' as const) : ('wrong' as const);
     });
+    if (outcome === 'pin_locked') {
+      throw new ForbiddenException({ code: 'signing_pin_locked' });
+    }
     if (outcome === 'locked') {
       throw new UnauthorizedException({ code: 'password_locked' });
     }
@@ -487,41 +582,72 @@ export class AuthService {
   }
 
   /**
-   * Sets or changes the person's own signing PIN (business decision 9):
-   * only for a person with no password, only within SIGNING_PIN_FRESH_MS of
-   * signing in for this session (403 `fresh_sign_in_required`), and only a
-   * PIN that is not too simple (400 `pin_too_simple`). Hashed as a
-   * password is, audited, and the person is told in Trustline.
+   * Sets or changes the person's own signing PIN (business decision 9,
+   * security review 11): only for a person with no password (409
+   * `signs_with_password`), only within SIGNING_PIN_FRESH_MS of signing in
+   * for this session (403 `fresh_sign_in_required`), only a PIN that is not
+   * too simple (400 `pin_too_simple`), and, to change one, with the current
+   * PIN (400 `current_pin_required`), checked and counted as any signature.
+   * The cheap checks come before any hashing. Hashed with the server's
+   * pepper; audited; the person's other sessions are ended; and they are
+   * told in the app and by an email they cannot switch off.
    */
-  async setSigningPin(auth: AuthContext, pin: string, ip: string | null) {
+  async setSigningPin(
+    auth: AuthContext,
+    input: { pin: string; currentPin?: string },
+    ip: string | null,
+  ) {
+    const { pin, currentPin } = input;
     if (!SIGNING_PIN.test(pin)) throw new BadRequestException();
     if (pinTooSimple(pin)) throw new BadRequestException({ code: 'pin_too_simple' });
-    const hash = await hashPassword(pin);
+    const [user] = await this.tenantDb.withTenant(auth.tenant.id, (tx) =>
+      tx
+        .select({ passwordHash: users.passwordHash, signingPinHash: users.signingPinHash })
+        .from(users)
+        .where(eq(users.id, auth.user.id)),
+    );
+    if (!user) throw new UnauthorizedException();
+    if (user.passwordHash) throw new ConflictException({ code: 'signs_with_password' });
+    await this.assertFreshSignIn(auth);
+    if (user.signingPinHash) {
+      if (!currentPin) throw new BadRequestException({ code: 'current_pin_required' });
+      await this.confirmPassword(auth, currentPin, 'signing_pin_change', ip);
+    }
+    const hash = await hashPassword(pinSecret(pin));
     await this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
-      const [user] = await tx
+      const [fresh] = await tx
         .select({
           passwordHash: users.passwordHash,
           signingPinHash: users.signingPinHash,
+          signingPinLockedAt: users.signingPinLockedAt,
         })
         .from(users)
         .where(eq(users.id, auth.user.id))
         .for('update');
-      if (!user) throw new UnauthorizedException();
-      if (user.passwordHash) {
-        throw new ConflictException({ code: 'signs_with_password' });
+      if (!fresh) throw new UnauthorizedException();
+      if (fresh.passwordHash) throw new ConflictException({ code: 'signs_with_password' });
+      // Changed or reset by someone else meanwhile: asked again.
+      if (fresh.signingPinHash !== user.signingPinHash) {
+        throw new ConflictException({ code: 'stale_signing_pin' });
       }
-      const [session] = await tx
-        .select({ createdAt: sessions.createdAt })
-        .from(sessions)
-        .where(eq(sessions.tokenHash, hashToken(auth.token)));
-      if (!session || session.createdAt.getTime() < Date.now() - SIGNING_PIN_FRESH_MS) {
-        throw new ForbiddenException({ code: 'fresh_sign_in_required' });
-      }
+      if (fresh.signingPinLockedAt) throw new ForbiddenException({ code: 'signing_pin_locked' });
       const action = user.signingPinHash ? 'changed' : 'set';
+      const now = new Date();
       await tx
         .update(users)
-        .set({ signingPinHash: hash, signingPinSetAt: new Date(), updatedAt: new Date() })
+        .set({ signingPinHash: hash, signingPinSetAt: now, signingPinFailures: 0, updatedAt: now })
         .where(eq(users.id, auth.user.id));
+      // Every other session of theirs ends: one someone else holds included.
+      await tx
+        .update(sessions)
+        .set({ revokedAt: now })
+        .where(
+          and(
+            eq(sessions.userId, auth.user.id),
+            isNull(sessions.revokedAt),
+            sql`${sessions.tokenHash} <> ${hashToken(auth.token)}`,
+          ),
+        );
       await this.provisioning.audit(
         tx,
         auth.tenant.id,
@@ -532,8 +658,27 @@ export class AuthService {
         { action },
         ip,
       );
-      await this.provisioning.tellAboutSigningPin(tx, auth.tenant.id, auth.user.id, action);
+      await this.notices.tell(tx, auth.tenant.id, auth.user.id, { kind: 'signing_pin_changed', action });
     });
+  }
+
+  /**
+   * 403 `fresh_sign_in_required` unless this session began within
+   * SIGNING_PIN_FRESH_MS. Single sign-on is not built: when it is, this
+   * must ask for a session of `method` 'sso' whose sign-in the identity
+   * provider confirmed by a forced re-authentication (its `auth_time`),
+   * not the session row's own time (docs/specs/identity-signing-pin.md).
+   */
+  private async assertFreshSignIn(auth: AuthContext) {
+    const [session] = await this.tenantDb.withTenant(auth.tenant.id, (tx) =>
+      tx
+        .select({ createdAt: sessions.createdAt })
+        .from(sessions)
+        .where(eq(sessions.tokenHash, hashToken(auth.token))),
+    );
+    if (!session || session.createdAt.getTime() < Date.now() - SIGNING_PIN_FRESH_MS) {
+      throw new ForbiddenException({ code: 'fresh_sign_in_required' });
+    }
   }
 
   async logout(auth: AuthContext) {

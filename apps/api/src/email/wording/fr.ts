@@ -41,6 +41,22 @@ export const fr: Wording = {
       subject: 'Document {number} : une révision sans modification attend votre signature',
       body: 'Le responsable du document {number} a confirmé lors de sa révision périodique qu’il n’a pas besoin de modification. Sa prochaine révision n’est fixée qu’après votre signature.',
     },
+    signing_pin_set: {
+      subject: 'Votre code de signature a été défini',
+      body: 'Un code de signature a été défini pour votre compte Trustline, et vos autres sessions ont été fermées. Si ce n’était pas vous, prévenez aussitôt votre administrateur.',
+    },
+    signing_pin_changed: {
+      subject: 'Votre code de signature a été modifié',
+      body: 'Le code de signature de votre compte Trustline a été modifié, et vos autres sessions ont été fermées. Si ce n’était pas vous, prévenez aussitôt votre administrateur.',
+    },
+    signing_pin_reset: {
+      subject: 'Votre code de signature a été réinitialisé',
+      body: 'Un administrateur a réinitialisé le code de signature de votre compte Trustline, et vous avez été déconnecté. Reconnectez-vous pour en définir un nouveau.',
+    },
+    signing_pin_locked: {
+      subject: 'La signature par votre code est bloquée',
+      body: 'Après trop de codes de signature erronés, la signature par votre code est bloquée dans Trustline, et la session où ils ont été saisis a été fermée. Demandez à votre administrateur de réinitialiser votre code ; si ce n’était pas vous, dites-le-lui.',
+    },
   },
   weekly: {
     subject: 'Prises de connaissance en retard cette semaine',
