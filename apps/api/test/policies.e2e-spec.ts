@@ -381,7 +381,8 @@ describe('policies and procedures', () => {
       const stored = await bench.owner.db
         .select()
         .from(signatures)
-        .where(eq(signatures.subjectId, version.id));
+        .where(eq(signatures.subjectId, version.id))
+        .orderBy(asc(signatures.signedAt));
       expect(stored.map((s) => s.meaning)).toEqual(['reviewed', 'approved']);
       expect(new Set(stored.map((s) => s.contentHash))).toEqual(
         new Set([done.contentHash]),
