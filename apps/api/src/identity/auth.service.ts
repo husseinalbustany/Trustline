@@ -26,7 +26,7 @@ import type { Localized } from '../i18n/locales.js';
 import { hashPassword, verifyPassword } from '../security/passwords.js';
 import {
   allows,
-  EntitlementsService,
+  EntitlementsService, exitWindowOf,
   issuedBeforeReset,
 } from '../subscriptions/entitlements.service.js';
 import type {
