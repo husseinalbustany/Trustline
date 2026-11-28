@@ -337,6 +337,20 @@
       "when": 1795829621910,
       "tag": "0047_email_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1795832435427,
+      "tag": "0048_import_window_and_recorded_language",
+      "breakpoints": true
+    },
+    {
+      "idx": 49,
+      "version": "7",
+      "when": 1795832443759,
+      "tag": "0049_import_window_grants_and_module_starts",
+      "breakpoints": true
     }
   ]
 }

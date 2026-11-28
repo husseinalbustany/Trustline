@@ -21,6 +21,23 @@ export function authoritativeLocale(
 }
 
 /**
+ * The authoritative language of one version (security review 7, finding
+ * 3): a draft follows the client's setting (`current`); a version sent for
+ * review, approved, published, superseded or withdrawn keeps the one
+ * recorded on it when it was sent or imported, whatever the setting has
+ * become since. A version left draft before languages were recorded, and
+ * sent by a release from before, has none, and follows the setting.
+ */
+export function versionAuthoritative(
+  version: { status: string; authoritativeLocale: string | null },
+  current: string,
+) {
+  return version.status !== 'draft' && version.authoritativeLocale
+    ? version.authoritativeLocale
+    : current;
+}
+
+/**
  * Where one section stands in one language:
  *
  * - `written`: it has text in this language (for the authoritative one,

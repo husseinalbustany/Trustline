@@ -2,6 +2,7 @@ import { Logger, type INestApplication } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import type { NextFunction, Request, Response } from 'express';
 import { DatabaseErrorFilter } from './database/database-error.filter.js';
+import { AuthService } from './identity/auth.service.js';
 import { importBodyParser } from './security/import-body.js';
 
 /**
@@ -93,6 +94,9 @@ export async function listen(
   return address;
 }
 
+/** The prefix every route is served under (main.ts); tests serve none. */
+export const API_PREFIX = 'api/v1';
+
 /** The unsubscribe link of an email, with or without the `/api/v1` prefix. */
 const UNSUBSCRIBE_PATH = /\/email\/unsubscribe\/[^/]+$/;
 
@@ -100,7 +104,10 @@ const UNSUBSCRIBE_PATH = /\/email\/unsubscribe\/[^/]+$/;
  * Settings every instance of the API needs, applied the same way when it is
  * served and when it is tested.
  */
-export function setupApp(app: INestApplication) {
+export function setupApp(
+  app: INestApplication,
+  options: { prefix?: string } = {},
+) {
   // Where a caller's address comes from. The API sits behind the web app,
   // which passes on the X-Forwarded-For header it was given: it neither
   // replaces it nor adds to it. So the address is true only if a proxy in
@@ -153,7 +160,14 @@ export function setupApp(app: INestApplication) {
 
   // Bodies are at most 100 kB (Nest's parser), except on the three routes
   // that import documents, which come whole: up to IMPORT_BODY_LIMIT, for
-  // a caller with a session (security/import-body.ts). Registered here, so
-  // before Nest's own parser, which then leaves a body already read.
-  app.use(importBodyParser());
+  // a caller whose session is live and who may import, looked up before
+  // the body is read (security/import-body.ts). Registered here, so before
+  // Nest's own parser, which then leaves a body already read.
+  const auth = app.get(AuthService, { strict: false });
+  app.use(
+    importBodyParser({
+      prefix: options.prefix ?? '',
+      resolve: (token) => auth.resolve(token),
+    }),
+  );
 }

@@ -337,6 +337,8 @@ export class PolicyCheck implements OnModuleDestroy {
             changeSummary: documentVersions.changeSummary,
             acknowledgementRequired: documentVersions.acknowledgementRequired,
             acknowledgeWithinDays: documentVersions.acknowledgeWithinDays,
+            authoritativeLocale: documentVersions.authoritativeLocale,
+            signsAuthoritativeLocale: documentVersions.signsAuthoritativeLocale,
           })
           .from(documentVersions)
           .where(eq(documentVersions.id, candidate.id))

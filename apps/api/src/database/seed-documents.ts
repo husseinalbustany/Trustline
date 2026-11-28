@@ -427,6 +427,10 @@ export async function seedDocuments(
           publishedAt: input.status === 'published' || input.status === 'superseded' ? at(input.on) : null,
           publishedBy: input.status === 'published' || input.status === 'superseded' ? people.owner : null,
           acknowledgementRequired: example.acknowledgementRequired ?? false,
+          // Recorded when sent, and signed with it (the seed sets no
+          // authoritative language: the client's main one).
+          authoritativeLocale: input.status === 'draft' ? null : tenant.defaultLocale,
+          signsAuthoritativeLocale: input.status !== 'draft',
         })
         .returning();
       if (input.status === 'draft' || !route) return version;
@@ -676,6 +680,8 @@ async function seedImported(
       effectiveOn,
       publishedAt: importedAt,
       publishedBy: at.importerId,
+      authoritativeLocale: tenant.defaultLocale,
+      signsAuthoritativeLocale: true,
     })
     .returning();
   await tx

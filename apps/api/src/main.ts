@@ -1,16 +1,17 @@
 import './env.js';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
-import { listen, setupApp } from './app.setup.js';
+import { API_PREFIX, listen, setupApp } from './app.setup.js';
 import { EmailWorker } from './email/email-worker.service.js';
 import { DeadlineCheck } from './incidents/deadline-check.service.js';
 import { PolicyCheck } from './policies/policy-check.service.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  setupApp(app);
+  // The prefix, so that what is matched by path is matched whole.
+  setupApp(app, { prefix: `/${API_PREFIX}` });
   // Versioned so web and mobile clients on an older release keep working.
-  app.setGlobalPrefix('api/v1');
+  app.setGlobalPrefix(API_PREFIX);
   app.enableShutdownHooks();
   // On this machine only, unless API_HOST says otherwise; and said in the
   // log, with how far the forwarding header is trusted: see app.setup.ts.

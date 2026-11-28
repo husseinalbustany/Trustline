@@ -119,3 +119,61 @@ export async function advanceSeries(
     .returning({ to: referenceCounters.lastNumber });
   return { from: held?.lastNumber ?? 0, to };
 }
+
+/**
+ * The value of a decimal digit of any script (`٣`, `३`, `3`): its place in
+ * its run of ten. Unicode puts each script's digits 0 to 9 in a row.
+ */
+function digitValue(digit: string) {
+  const cp = digit.codePointAt(0)!;
+  let zero = cp;
+  while (zero > 0 && /\p{Nd}/u.test(String.fromCodePoint(zero - 1))) zero -= 1;
+  return (cp - zero) % 10;
+}
+
+/**
+ * A number as Trustline keeps it (security review 7, finding 4): in NFKC
+ * (fullwidth letters and digits as their plain forms), every digit of any
+ * script as its ASCII digit, spaces made one. So `ＰＯＬ-ＧＯＶ-００７` and
+ * `POL-GOV-٠٠٧` are POL-GOV-007, and are found taken, and counted in its
+ * series, as that number is. The unique key on the number in any capitals
+ * then holds what is stored.
+ */
+export function normalizeNumber(value: string): string {
+  return value
+    .normalize('NFKC')
+    .replace(/\p{Nd}/gu, (d) => String(digitValue(d)))
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+// Scripts a document number may be written in. Han and the Japanese kana
+// count as one, as they are written together.
+const SCRIPTS: [string, RegExp][] = [
+  ['latin', /\p{Script=Latin}/u],
+  ['arabic', /\p{Script=Arabic}/u],
+  ['cyrillic', /\p{Script=Cyrillic}/u],
+  ['greek', /\p{Script=Greek}/u],
+  ['hebrew', /\p{Script=Hebrew}/u],
+  ['armenian', /\p{Script=Armenian}/u],
+  ['georgian', /\p{Script=Georgian}/u],
+  ['devanagari', /\p{Script=Devanagari}/u],
+  ['thai', /\p{Script=Thai}/u],
+  ['cjk', /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u],
+  ['hangul', /\p{Script=Hangul}/u],
+];
+
+/**
+ * Whether a number's letters come from more than one script, as
+ * `РОL-GOV-007` (a Cyrillic Р and О among Latin letters) does: what makes a
+ * number look like another one it is not. Digits and punctuation belong to
+ * no script.
+ */
+export function mixesScripts(value: string): boolean {
+  const seen = new Set<string>();
+  for (const letter of value.match(/\p{L}/gu) ?? []) {
+    seen.add(SCRIPTS.find(([, re]) => re.test(letter))?.[0] ?? 'other');
+    if (seen.size > 1) return true;
+  }
+  return false;
+}

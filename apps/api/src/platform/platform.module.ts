@@ -3,6 +3,7 @@ import { OrganizationModule } from '../organization/organization.module.js';
 import { PlatformAuthController } from './platform-auth.controller.js';
 import { PlatformAuthGuard } from './platform-auth.guard.js';
 import { PlatformAuthService } from './platform-auth.service.js';
+import { PlatformImportWindowController } from './platform-import-window.controller.js';
 import { PlatformPlansController } from './platform-plans.controller.js';
 import { PlatformSubscriptionsController } from './platform-subscriptions.controller.js';
 import { PlatformTenantsController } from './platform-tenants.controller.js';
@@ -16,6 +17,7 @@ import { PlatformTenantsController } from './platform-tenants.controller.js';
     PlatformTenantsController,
     PlatformPlansController,
     PlatformSubscriptionsController,
+    PlatformImportWindowController,
   ],
   providers: [PlatformAuthService, PlatformAuthGuard],
 })

@@ -199,6 +199,15 @@ export const DEFAULT_ROUTE_STEPS: {
   { position: 2, kind: 'approve', roleCode: 'approving_authority', dueInDays: 7 },
 ];
 
+/**
+ * Who approves in a starting route when the client has no built-in
+ * Approving authority (its own role holds that code): the Administrator,
+ * which approved in the starting route before business decision 2. A
+ * route is never made without an approval step (security review 7,
+ * finding 5).
+ */
+export const FALLBACK_APPROVER = 'administrator';
+
 /** "Approval of <type>s", per type code, in every language. */
 export const DEFAULT_ROUTE_NAMES: Record<string, Name> = {
   policy: {

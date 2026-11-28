@@ -352,8 +352,10 @@ export const auditLog = pgTable(
   (t) => [
     index('audit_log_entity_idx').on(t.tenantId, t.entityType, t.entityId),
     tenantIsolation(),
-    // The admin portal adds an entry when it changes what a client may use,
-    // in the same transaction as the change. It can neither read this log
+    // The admin portal adds an entry when it changes what a client may use
+    // (`subscription_changed`) or the window in which it may import its
+    // existing documents (`import_window_changed`), in the same transaction
+    // as the change. It can neither read this log
     // nor change it: it holds INSERT alone, on the tenant, action, entity
     // and changes only (migration 0035), so the id and the time are always
     // the database's own. And only that entry, as nobody of the client's:
@@ -362,7 +364,7 @@ export const auditLog = pgTable(
       as: 'permissive',
       for: 'insert',
       to: platformRole,
-      withCheck: sql`actor_id IS NULL AND ip_address IS NULL AND action = 'subscription_changed'`,
+      withCheck: sql`actor_id IS NULL AND ip_address IS NULL AND action IN ('subscription_changed', 'import_window_changed')`,
     }),
   ],
 );
@@ -1231,6 +1233,17 @@ export const documentVersions = pgTable(
     acknowledgementRequired: boolean().notNull().default(false),
     acknowledgeWithinDays: integer().notNull().default(14),
     source: documentVersionSource().notNull().default('written'),
+    // The language whose text stands, recorded when the version is sent for
+    // review or imported (security review 7, finding 3): every version that
+    // is no longer a draft is checked, flagged and shown against it, whatever
+    // the client's setting becomes. A draft follows the setting; this is
+    // written again each time it is sent. Null on a draft never sent.
+    authoritativeLocale: text(),
+    // Whether what is signed of the version includes `authoritative_locale`
+    // (policies/signed-content.ts): true for every version sent or imported
+    // since migration 0049. False for those it recorded the language of,
+    // whose signatures were made over the earlier form and stay valid.
+    signsAuthoritativeLocale: boolean().notNull().default(false),
     // As documents.revision, for the version's own changes and decisions
     // (409 `stale_version`).
     revision: integer().notNull().default(1),
@@ -1292,6 +1305,15 @@ export const documentVersions = pgTable(
     check(
       'document_versions_acknowledge_days',
       sql`${t.acknowledgeWithinDays} between 1 and 365`,
+    ),
+    check(
+      'document_versions_authoritative_locale',
+      sql`${t.authoritativeLocale} is null or ${t.authoritativeLocale} ~ '^[a-z]{2}$'`,
+    ),
+    // What is signed can include only a language that is recorded.
+    check(
+      'document_versions_signed_locale_recorded',
+      sql`not ${t.signsAuthoritativeLocale} or ${t.authoritativeLocale} is not null`,
     ),
     // What the daily check looks for: approved versions due to publish.
     index('document_versions_scheduled_idx')
@@ -2187,6 +2209,75 @@ export const subscriptions = pgTable(
     index('subscriptions_plan_idx').on(t.planId),
     tenantIsolation(),
     pgPolicy('subscriptions_platform', {
+      as: 'permissive',
+      for: 'all',
+      to: platformRole,
+      using: sql`true`,
+      withCheck: sql`true`,
+    }),
+  ],
+);
+
+/**
+ * The day each module was first switched on for a client: when it first
+ * became one of the modules its subscription gives, by whatever change
+ * (its plan, an add-on, a plan given the module, the subscription leaving
+ * cancelled). Written by the database itself (trigger
+ * `record_module_starts`, migration 0049) and never changed: switched off
+ * and on again, a module keeps its first day. The policies module reads it
+ * for the import window (security review 7, finding 2).
+ */
+export const moduleStarts = pgTable(
+  'module_starts',
+  {
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    module: text().notNull(),
+    // On the client's calendar.
+    startedOn: date({ mode: 'string' }).notNull(),
+    startedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: 'module_starts_pkey', columns: [t.tenantId, t.module] }),
+    check('module_starts_module', sql`${t.module} ~ '^[a-z_]{1,40}$'`),
+    tenantIsolation(),
+    pgPolicy('module_starts_platform', {
+      as: 'permissive',
+      for: 'select',
+      to: platformRole,
+      using: sql`true`,
+    }),
+  ],
+);
+
+/**
+ * When a client's window to import its existing documents closes, where
+ * Trustline's staff have set it (reopened or closed it, with a reason). No
+ * row: 90 days after the policies module was first switched on
+ * (policies/import-window.ts). Written by the admin portal only.
+ */
+export const policyImportWindows = pgTable(
+  'policy_import_windows',
+  {
+    tenantId: uuid()
+      .primaryKey()
+      .references(() => tenants.id),
+    // The last day imports are accepted, on the client's calendar.
+    closesOn: date({ mode: 'string' }).notNull(),
+    reason: text().notNull(),
+    setBy: uuid()
+      .notNull()
+      .references(() => platformAdmins.id),
+    setAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'policy_import_windows_reason',
+      sql`length(${t.reason}) between 1 and 500`,
+    ),
+    tenantIsolation(),
+    pgPolicy('policy_import_windows_platform', {
       as: 'permissive',
       for: 'all',
       to: platformRole,

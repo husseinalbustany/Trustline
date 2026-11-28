@@ -1,4 +1,6 @@
 import type { NextFunction, Request, Response } from 'express';
+import type { AuthContext } from '../identity/auth.service.js';
+import { covers } from '../identity/scope.js';
 import { SESSION_COOKIE } from '../identity/session.guard.js';
 import { readCookie } from './cookies.js';
 
@@ -14,42 +16,111 @@ import { readCookie } from './cookies.js';
  */
 export const IMPORT_BODY_LIMIT = 2 * 1024 * 1024;
 
-/** The import routes, with or without the `/api/v1` prefix. */
-const IMPORT_PATHS = /\/policies\/(?:imports(?:\/check)?|documents\/import)$/;
+/**
+ * How deeply arrays and objects may nest in such a body. An import is
+ * nested five deep at most (batch, documents, document, content, language);
+ * JSON.parse of a body nested deeper is work done for nobody.
+ */
+export const IMPORT_BODY_MAX_DEPTH = 64;
+
+/** The import routes, under the prefix the API is served at ('' or '/api/v1'). */
+const importPaths = (prefix: string) => {
+  if (!/^(?:\/[a-z0-9]+)*$/.test(prefix)) {
+    throw new Error(`Invalid API prefix: ${prefix}`);
+  }
+  return new RegExp(
+    `^${prefix}/policies/(?:imports(?:/check)?|documents/import)$`,
+  );
+};
+
+/**
+ * Whether JSON nests arrays and objects deeper than `max`, read byte by
+ * byte without parsing it: brackets inside strings are text. Every byte of
+ * a character beyond ASCII is 0x80 or more in UTF-8, so none is taken for a
+ * bracket or a quote.
+ */
+export function nestsDeeperThan(body: Buffer, max: number): boolean {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (const byte of body) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (byte === 0x5c) escaped = true;
+      else if (byte === 0x22) inString = false;
+      continue;
+    }
+    if (byte === 0x22) inString = true;
+    else if (byte === 0x5b || byte === 0x7b) {
+      depth += 1;
+      if (depth > max) return true;
+    } else if (byte === 0x5d || byte === 0x7d) depth -= 1;
+  }
+  return false;
+}
+
+export type ImportBodyOptions = {
+  /** The global prefix the API is served under: '/api/v1', or '' in tests. */
+  prefix?: string;
+  limit?: number;
+  maxDepth?: number;
+  /** Who a session token belongs to: AuthService.resolve. */
+  resolve: (token: string) => Promise<AuthContext | null>;
+};
 
 const answer = (res: Response, status: number, body: Record<string, unknown>) => {
   res.status(status).json(body);
 };
 
 /**
- * Reads the JSON body of the import routes up to IMPORT_BODY_LIMIT, for a
- * caller who presents a session (which the route's guard then checks as
- * for any route). Anything else, and every other route, is left to Nest's
- * own parser and its 100 kB: a caller without a session cannot send more
- * than that anywhere. Registered before Nest's parser, which then finds the
- * body read and leaves it.
+ * Reads the JSON body of the import routes up to IMPORT_BODY_LIMIT, only
+ * for a caller whose session is live and who may import (`policies.manage`
+ * for the whole organization), looked up as the route's guard does before
+ * a byte of the body is read (security review 7, finding 1). Anything
+ * else, and every other route, is left to Nest's own parser and its
+ * 100 kB; the route's guard then answers 401 or 403 as for any route. The
+ * path is matched whole, under the API's own prefix. Registered before
+ * Nest's parser, which then finds the body read and leaves it.
  *
  * UTF-8 JSON only, not compressed (415 otherwise); a body over the limit
- * is answered 413 `body_too_large` with the `max`, and one that is not
- * JSON 400.
+ * is answered 413 `body_too_large` with the `max`; one nested deeper than
+ * IMPORT_BODY_MAX_DEPTH 400 `body_too_deep` with the `max`, before it is
+ * parsed; and one that is not JSON 400.
  */
-export function importBodyParser(limit = IMPORT_BODY_LIMIT) {
+export function importBodyParser({
+  prefix = '',
+  limit = IMPORT_BODY_LIMIT,
+  maxDepth = IMPORT_BODY_MAX_DEPTH,
+  resolve,
+}: ImportBodyOptions) {
+  const paths = importPaths(prefix);
   return (req: Request, res: Response, next: NextFunction) => {
     if (
       req.method !== 'POST' ||
-      !IMPORT_PATHS.test(req.path) ||
+      !paths.test(req.path) ||
       !req.is('application/json')
     ) {
       next();
       return;
     }
-    const hasSession =
-      /^Bearer .+$/.test(req.headers.authorization ?? '') ||
-      !!readCookie(req, SESSION_COOKIE);
-    if (!hasSession) {
+    const bearer = req.headers.authorization?.match(/^Bearer (.+)$/)?.[1];
+    const token = bearer ?? readCookie(req, SESSION_COOKIE);
+    if (!token) {
       next();
       return;
     }
+    // Nothing of the body is read while this is looked up.
+    resolve(token).then(
+      (auth) => {
+        if (!auth || !covers(auth, 'policies.manage', null)) next();
+        else read(req, res, next);
+      },
+      // Whatever went wrong, the guard meets it again; the body is not read.
+      () => next(),
+    );
+  };
+
+  function read(req: Request, res: Response, next: NextFunction) {
     const encoding = String(req.headers['content-encoding'] ?? 'identity').toLowerCase();
     const charset = /charset=([^;]+)/i.exec(req.headers['content-type'] ?? '')?.[1];
     if (
@@ -90,9 +161,19 @@ export function importBodyParser(limit = IMPORT_BODY_LIMIT) {
     });
     req.on('end', () => {
       if (over) return;
+      const raw = Buffer.concat(chunks);
+      if (nestsDeeperThan(raw, maxDepth)) {
+        answer(res, 400, {
+          statusCode: 400,
+          message: 'Bad Request',
+          code: 'body_too_deep',
+          max: maxDepth,
+        });
+        return;
+      }
       let body: unknown;
       try {
-        body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        body = JSON.parse(raw.toString('utf8'));
       } catch {
         answer(res, 400, { statusCode: 400, message: 'Bad Request' });
         return;
@@ -106,5 +187,5 @@ export function importBodyParser(limit = IMPORT_BODY_LIMIT) {
       }
       over = true;
     });
-  };
+  }
 }

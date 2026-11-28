@@ -28,6 +28,7 @@ import {
   documentSettingsOf,
 } from './document-settings.js';
 import type { StepInput } from './input.js';
+import { importWindowOf, importWindowView } from './import-window.js';
 import { authoritativeLocale } from './languages.js';
 import { APPROVE_PERMISSION } from './visibility.js';
 
@@ -619,11 +620,18 @@ export class PolicySettingsService {
    */
   settings(auth: AuthContext) {
     return this.tenantDb.withTenant(auth.tenant.id, async (tx) =>
-      this.settingsView(auth, await documentSettingsOf(tx)),
+      this.settingsView(tx, auth, await documentSettingsOf(tx)),
     );
   }
 
-  private settingsView(
+  /**
+   * With the window in which existing documents may be imported
+   * (`importWindow`: the day the module was first switched on, the last
+   * day imports are accepted, the latest approval day accepted, and
+   * whether it is open), which Trustline's staff set.
+   */
+  private async settingsView(
+    tx: Transaction,
     auth: AuthContext,
     row: { maxReviewMonths: number; authoritativeLocale: string | null; revision: number },
   ) {
@@ -632,6 +640,7 @@ export class PolicySettingsService {
       authoritativeLocale: row.authoritativeLocale,
       authoritative: authoritativeLocale(auth.tenant, row),
       revision: row.revision,
+      importWindow: importWindowView(await importWindowOf(tx, auth.tenant)),
     };
   }
 
@@ -647,11 +656,12 @@ export class PolicySettingsService {
    * The authoritative language is one of the client's languages (400
    * `language_mismatch`), or null for its main language. Changing it
    * changes no version: what was written, sent, approved or published
-   * keeps its text, and runs in progress go on. From then on every
-   * version is checked, flagged and shown against the new language: a
-   * draft is sent for review only with its required sections and change
-   * summary written in it, and the language status of every version, the
-   * published ones included, is worked out against it. How many versions
+   * keeps its text, and runs in progress go on. From then on every draft
+   * is checked, flagged and shown against the new language, and is sent
+   * for review only with its required sections and change summary written
+   * in it. A version that is no longer a draft keeps the language recorded
+   * on it when it was sent or imported (security review 7, finding 3), so
+   * its flags and the text its readers fall back to do not change. How many versions
    * are in progress is said in the answer and kept in the audit entry, so
    * that the screen can tell whoever changed it.
    */
@@ -735,7 +745,7 @@ export class PolicySettingsService {
           changes.versionsInProgress = versionsInProgress;
         }
       }
-      if (Object.keys(set).length === 0) return this.settingsView(auth, before);
+      if (Object.keys(set).length === 0) return this.settingsView(tx, auth, before);
       const [after] = await tx
         .update(documentSettings)
         .set({
@@ -760,7 +770,7 @@ export class PolicySettingsService {
         changes,
       );
       return {
-        ...this.settingsView(auth, after),
+        ...(await this.settingsView(tx, auth, after)),
         ...(versionsInProgress && { versionsInProgress }),
       };
     });

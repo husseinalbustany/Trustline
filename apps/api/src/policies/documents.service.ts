@@ -63,7 +63,7 @@ import {
   assertReviewPeriod,
   authoritativeLocaleOf,
 } from './document-settings.js';
-import { languageStatus } from './languages.js';
+import { languageStatus, versionAuthoritative } from './languages.js';
 import type {
   AudienceInput,
   CreateInput,
@@ -110,6 +110,8 @@ const versionFields = {
   acknowledgementRequired: documentVersions.acknowledgementRequired,
   acknowledgeWithinDays: documentVersions.acknowledgeWithinDays,
   source: documentVersions.source,
+  authoritativeLocale: documentVersions.authoritativeLocale,
+  signsAuthoritativeLocale: documentVersions.signsAuthoritativeLocale,
   revision: documentVersions.revision,
   createdAt: documentVersions.createdAt,
   updatedAt: documentVersions.updatedAt,
@@ -873,7 +875,12 @@ export class DocumentsService {
       )
       .orderBy(desc(documentVersions.version))
       .limit(1);
-    const authoritative = await authoritativeLocaleOf(tx, auth.tenant);
+    // A draft against the setting as it stands; any other version against
+    // the language recorded when it was sent (or imported).
+    const authoritative = versionAuthoritative(
+      version,
+      await authoritativeLocaleOf(tx, auth.tenant),
+    );
     const languageView = languageStatus(
       version,
       previous ?? null,
@@ -986,6 +993,10 @@ export class DocumentsService {
         ...auth.tenant.locales.filter((l) => l !== authoritative),
       ]),
       languageStatus: languageView,
+      // Recorded when it was sent for review or imported, and kept: null
+      // on a draft, which follows the client's setting.
+      authoritativeLocale:
+        version.status === 'draft' ? null : version.authoritativeLocale,
       source: version.source,
       today,
       contentHash: contentHash(signedVersion(doc, version)),
@@ -1791,6 +1802,10 @@ export class DocumentsService {
         .set({
           status: 'in_review',
           contributors,
+          // The language it was checked against, kept with it from now on
+          // and signed with its text (security review 7, finding 3).
+          authoritativeLocale: authoritative,
+          signsAuthoritativeLocale: true,
           revision: sql`${documentVersions.revision} + 1`,
           updatedAt: now,
         })

@@ -10,6 +10,7 @@ import {
   optionalLocalizedText,
 } from '../i18n/locales.js';
 import { line, optionalText, text } from '../i18n/text.js';
+import { normalizeNumber } from './numbering.js';
 
 /**
  * What the routes of the policies module take. Every body is a strict
@@ -347,12 +348,16 @@ export const IMPORT_MAX_CHARS = 600_000;
 /**
  * A number as the original gives it: letters and digits of any script,
  * with spaces, `-`, `.`, `/`, `_` and brackets between them, at most 40
- * characters. Spaces in a row become one; the capitals are kept.
+ * characters once normalised (`normalizeNumber`); the capitals are kept.
+ * Letters of more than one script are refused by the service
+ * (`invalid_number`, `reason: mixed_scripts`).
  */
 const legacyNumber = z
   .string()
   .max(200)
-  .transform((v) => v.trim().replace(/\s+/g, ' '))
+  // As Trustline keeps it: NFKC, every digit as ASCII, spaces made one
+  // (numbering.ts). Checked, numbered and stored so.
+  .transform((v) => normalizeNumber(v))
   .pipe(
     z
       .string()

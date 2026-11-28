@@ -39,7 +39,19 @@ import {
   importDocumentSchema,
   type ImportDocumentInput,
 } from './input.js';
-import { advanceSeries, nextDocumentNumber, seriesOf } from './numbering.js';
+import {
+  assertImportWindowOpen,
+  importWindowOf,
+  importWindowView,
+  type ImportWindow,
+} from './import-window.js';
+import {
+  advanceSeries,
+  mixesScripts,
+  nextDocumentNumber,
+  normalizeNumber,
+  seriesOf,
+} from './numbering.js';
 import { Publisher } from './publisher.js';
 import { checkedSection } from './section-input.js';
 import { signedImport, type ImportedOriginal } from './signed-content.js';
@@ -70,6 +82,8 @@ type Planned = {
   series: { series: string; n: number } | null;
   /** Keys of the sections with no text in the authoritative language. */
   notWritten: string[];
+  /** The authoritative language, recorded on the version. */
+  authoritative: string;
 };
 
 /** The number a batch's problem names: as given, if it was. */
@@ -157,8 +171,11 @@ export class ImportsService {
     return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
       const planned = await this.plan(tx, auth, list);
       return {
+        // When imports close, and the latest approval day accepted.
+        window: importWindowView(await importWindowOf(tx, auth.tenant)),
         documents: planned.map((p) => ({
           index: p.index,
+          // Normalised (numbering.ts): as it will be kept.
           number: p.given,
           numberFrom: p.given ? ('given' as const) : ('trustline' as const),
           // The series whose counter it advances (a number given in
@@ -380,7 +397,7 @@ export class ImportsService {
     const highest = new Map<string, number>();
     for (const raw of list) {
       const number = numberOf(raw);
-      const found = number ? seriesOf(number) : null;
+      const found = number ? seriesOf(normalizeNumber(number)) : null;
       if (found && found !== 'tooLong') {
         highest.set(found.series, Math.max(highest.get(found.series) ?? 0, found.n));
       }
@@ -396,6 +413,10 @@ export class ImportsService {
   private async plan(tx: Transaction, auth: AuthContext, list: unknown[]) {
     const { tenant } = auth;
     const today = dayOf(new Date(), tenant.timeZone);
+    // Only while the window is open (403 `import_window_closed`), checked
+    // again in the transaction that writes.
+    const window = await importWindowOf(tx, tenant);
+    assertImportWindowOpen(window);
     const authoritative = await authoritativeLocaleOf(tx, tenant);
     const { maxReviewMonths } = await documentSettingsOf(tx);
     const latestReview = addMonths(today, maxReviewMonths);
@@ -432,6 +453,7 @@ export class ImportsService {
           authoritative,
           latestReview,
           maxReviewMonths,
+          window,
         });
         const key = p.series
           ? `${p.series.series}-${p.series.n}`
@@ -472,6 +494,7 @@ export class ImportsService {
       authoritative: string;
       latestReview: string;
       maxReviewMonths: number;
+      window: ImportWindow;
     },
   ): Promise<Planned> {
     const { tenant } = auth;
@@ -491,6 +514,15 @@ export class ImportsService {
     const effectiveOn = input.effectiveOn ?? input.approvedOn;
     if (input.approvedOn > at.today) {
       throw new BadRequestException({ code: 'approved_in_future' });
+    }
+    // Approved before Trustline: before the module was first switched on.
+    // Anything later goes through the route.
+    if (input.approvedOn >= at.window.startedOn) {
+      throw new BadRequestException({
+        code: 'approved_after_start',
+        latestApprovedOn: at.window.latestApprovedOn,
+        startedOn: at.window.startedOn,
+      });
     }
     if (effectiveOn < input.approvedOn) {
       throw new BadRequestException({ code: 'effective_before_approval' });
@@ -567,6 +599,9 @@ export class ImportsService {
     // zeros before its place); none given, Trustline numbers it.
     const given = input.number ?? null;
     let series: Planned['series'] = null;
+    if (given && mixesScripts(given)) {
+      throw new BadRequestException({ code: 'invalid_number', reason: 'mixed_scripts' });
+    }
     if (given) {
       const found = seriesOf(given);
       if (found === 'tooLong') {
@@ -597,6 +632,7 @@ export class ImportsService {
       given,
       series,
       notWritten,
+      authoritative: at.authoritative,
     };
   }
 
@@ -663,6 +699,9 @@ export class ImportsService {
         publishedBy: user.id,
         acknowledgementRequired: input.acknowledgementRequired,
         acknowledgeWithinDays: input.acknowledgeWithinDays,
+        // Recorded, and signed with the text (security review 7, finding 3).
+        authoritativeLocale: p.authoritative,
+        signsAuthoritativeLocale: true,
       })
       .returning();
     // In force, with the next review the original gives. Never reviewed

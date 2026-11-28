@@ -27,6 +27,7 @@ import {
   DEFAULT_DOCUMENT_TYPES,
   DEFAULT_ROUTE_NAMES,
   DEFAULT_ROUTE_STEPS,
+  FALLBACK_APPROVER,
 } from '../policies/defaults.js';
 import { EntitlementsService } from '../subscriptions/entitlements.service.js';
 import { SYSTEM_ROLES } from './permissions.js';
@@ -237,13 +238,34 @@ export class ProvisioningService {
         and(
           eq(roles.tenantId, tenantId),
           eq(roles.isSystem, true),
-          inArray(
-            roles.code,
-            DEFAULT_ROUTE_STEPS.map((s) => s.roleCode),
-          ),
+          inArray(roles.code, [
+            ...DEFAULT_ROUTE_STEPS.map((s) => s.roleCode),
+            FALLBACK_APPROVER,
+          ]),
         ),
       );
     const roleOf = new Map(builtIn.map((r) => [r.code, r.id]));
+    // The steps whose built-in role the client has. A client whose own role
+    // holds a step's code has no built-in one of that code (ensureSystemRoles
+    // leaves its role alone). A route is never made without an approval step
+    // (security review 7, finding 5): with no Approving authority, the
+    // Administrator approves, as the starting route did before it, and the
+    // audit entry says so. With neither, no route is made, and documents of
+    // the type cannot be sent until the client makes one (409 `no_route`).
+    let steps = DEFAULT_ROUTE_STEPS.filter((s) => roleOf.has(s.roleCode));
+    let fallback: { missing: string[]; approvedBy: string } | null = null;
+    if (!steps.some((s) => s.kind === 'approve')) {
+      if (!roleOf.has(FALLBACK_APPROVER)) return;
+      const approve = DEFAULT_ROUTE_STEPS.find((s) => s.kind === 'approve')!;
+      fallback = {
+        missing: DEFAULT_ROUTE_STEPS.filter((s) => !roleOf.has(s.roleCode)).map(
+          (s) => s.roleCode,
+        ),
+        approvedBy: FALLBACK_APPROVER,
+      };
+      steps = [...steps, { ...approve, roleCode: FALLBACK_APPROVER }];
+    }
+    steps = steps.map((s, i) => ({ ...s, position: i + 1 }));
     for (const type of types) {
       const [route] = await tx
         .insert(approvalRoutes)
@@ -254,8 +276,6 @@ export class ProvisioningService {
           documentTypeId: type.id,
         })
         .returning({ id: approvalRoutes.id });
-      const steps = DEFAULT_ROUTE_STEPS.filter((s) => roleOf.has(s.roleCode));
-      if (steps.length === 0) continue;
       await tx.insert(approvalRouteSteps).values(
         steps.map((s) => ({
           tenantId,
@@ -266,6 +286,27 @@ export class ProvisioningService {
           dueInDays: s.dueInDays,
         })),
       );
+      if (fallback) {
+        await this.audit(
+          tx,
+          tenantId,
+          null,
+          'approval_route_created',
+          'approval_route',
+          route.id,
+          {
+            documentTypeId: type.id,
+            startingRoute: true,
+            steps: steps.map((s) => ({
+              position: s.position,
+              kind: s.kind,
+              roleCode: s.roleCode,
+              dueInDays: s.dueInDays,
+            })),
+            fallback,
+          },
+        );
+      }
     }
   }
 
@@ -448,6 +489,23 @@ export class ProvisioningService {
    * actor and the address are the database's defaults. Not through
    * `insert()`, which names every column of the table.
    */
+  /**
+   * The other entry the admin portal writes in a client's own audit log:
+   * that Trustline's staff set the last day the client may import its
+   * existing documents (`import_window_changed`), with the reason. As
+   * `auditSubscriptionChange`, for a transaction of the platform role.
+   */
+  async auditImportWindowChange(
+    tx: Transaction,
+    tenantId: string,
+    changes: Record<string, unknown>,
+  ) {
+    await tx.execute(sql`
+      insert into ${auditLog} (tenant_id, action, entity_type, entity_id, changes)
+      values (${tenantId}, 'import_window_changed', 'tenant', ${tenantId}, ${JSON.stringify(changes)}::jsonb)
+    `);
+  }
+
   async auditSubscriptionChange(
     tx: Transaction,
     tenantId: string,
