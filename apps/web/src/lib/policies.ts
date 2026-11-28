@@ -21,6 +21,12 @@ export const versionStatuses = [
 export type VersionStatus = (typeof versionStatuses)[number] | (string & {});
 
 export type Confidentiality = "all_staff" | "restricted";
+
+/**
+ * How a document or a version came into Trustline: written here, or
+ * imported as approved before Trustline (its first version only).
+ */
+export type Source = "written" | "imported" | (string & {});
 export type ReviewState = "due" | "overdue" | null;
 
 /** A person or a unit as a record names them. The name may be gone. */
@@ -91,6 +97,12 @@ export type PolicyDocument = {
   nextReviewOn: string | null;
   lastReviewedOn: string | null;
   review: ReviewState;
+  /**
+   * In force as approved before Trustline: its next review is a re-issue
+   * through the route, not a confirmation that nothing changed.
+   */
+  reissueRequired: boolean;
+  source: Source;
   status: DocumentStatus;
   retiredAt: string | null;
   retiredBy: Named | null;
@@ -105,6 +117,8 @@ export type PolicyDocument = {
     effectiveOn: string | null;
     publishedAt: string | null;
     acknowledgementRequired: boolean;
+    source: Source;
+    approvedBeforeTrustline: boolean;
   } | null;
   inProgress: { id: string; version: number; status: VersionStatus } | null;
   myAcknowledgement: MyAcknowledgement | null;
@@ -131,6 +145,8 @@ export type DocumentListItem = {
   confidentiality: Confidentiality;
   /** Of the published version; null before the first is published. */
   version: number | null;
+  /** Of the version in force; null before the first is published. */
+  source: Source | null;
   effectiveOn: string | null;
   publishedAt: string | null;
   nextReviewOn: string | null;
@@ -217,6 +233,38 @@ export type Approval = {
   contentHash: string | null;
 };
 
+/** What the original of an imported version says of its approval. */
+export type ApprovedBeforeTrustline = {
+  /** The number as the original gives it; null when Trustline numbered it. */
+  numberAsGiven: string | null;
+  revisionLabel: string | null;
+  approvedOn: string;
+  /** As written on the original: one value, a transcription. */
+  approvedBy: string;
+  originalKeptAt: Localized;
+  effectiveOn: string;
+  nextReviewOn: string;
+  importedBy: Named;
+  importedAt: string;
+};
+
+export type ImportedVersion = Omit<
+  ApprovedBeforeTrustline,
+  "importedBy" | "importedAt"
+> & {
+  batch: { id: string; index: number; size: number };
+  sectionsNotWritten: { key: string; required: boolean }[];
+  importedBy: Named;
+  importedAt: string;
+  signature: {
+    id: string;
+    meaning: string;
+    signedBy: Named;
+    signedAt: string;
+    contentHash: string;
+  } | null;
+};
+
 export type DocumentVersion = {
   id: string;
   documentId: string;
@@ -243,6 +291,9 @@ export type DocumentVersion = {
   acknowledgementRequired: boolean;
   acknowledgeWithinDays: number;
   languageStatus: LanguageStatus | null;
+  source: Source;
+  /** Null unless it was imported as approved before Trustline. */
+  imported: ImportedVersion | null;
   today: string;
   control: {
     number: string;
@@ -254,7 +305,13 @@ export type DocumentVersion = {
     owner: Named;
     effectiveOn: string | null;
     nextReviewOn: string | null;
+    /** Null for an imported version, which nobody prepared in Trustline. */
+    preparedBy?: Named | null;
+    /** Through Trustline's route, or before Trustline as the original says. */
+    approvedThrough?: "trustline_route" | "before_trustline" | (string & {});
+    /** Always empty for an imported version: it went through no route. */
     approvals: Approval[];
+    approvedBeforeTrustline?: ApprovedBeforeTrustline | null;
   };
   run: Run | null;
   /** Every round of review, newest first, for those who see the runs. */
@@ -289,6 +346,7 @@ export type History = {
     id: string;
     version: number;
     status: VersionStatus;
+    source: Source;
     changeSummary: Localized | null;
     preparedAt: string | null;
     effectiveOn: string | null;
@@ -330,6 +388,8 @@ export type ReviewItem = {
   revision: number;
   mine: boolean;
   state: "due" | "overdue";
+  /** Approved before Trustline: its review is a re-issue through the route. */
+  reissue: boolean;
 };
 
 export type Measure = {
@@ -403,7 +463,16 @@ export type PolicyRole = {
   approves: boolean;
 };
 
-export type PolicySettings = { maxReviewMonths: number; revision: number };
+export type PolicySettings = {
+  maxReviewMonths: number;
+  /** As set: null for the organization's main language, whatever it is. */
+  authoritativeLocale: string | null;
+  /** The language whose text applies now. */
+  authoritative: string;
+  revision: number;
+  /** In the answer to a change of the language that applies. */
+  versionsInProgress?: { draft: number; in_review: number; approved: number };
+};
 
 export type ChangeField =
   | "title"
@@ -563,6 +632,9 @@ export function documentsExportPath(
   const text = query.toString();
   return `/policies/exports/documents${text ? `?${text}` : ""}`;
 }
+
+export const importPath = (lang: string, part: "" | "batch" | "layout" = "") =>
+  `/${lang}/policies/import${part ? `/${part}` : ""}`;
 
 export const documentPath = (lang: string, id: string) =>
   `/${lang}/policies/${id}`;
