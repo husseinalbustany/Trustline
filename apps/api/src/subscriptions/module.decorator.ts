@@ -4,6 +4,7 @@ import type { ModuleKey } from './modules.js';
 
 export const MODULE_KEY = 'trustline:module';
 export const OPEN_WHILE_SUSPENDED_KEY = 'trustline:open-while-suspended';
+export const OPEN_IN_EXIT_WINDOW_KEY = 'trustline:open-in-exit-window';
 
 /**
  * Says which module a controller's routes belong to. Every controller has
@@ -27,6 +28,15 @@ export const ForModule = (module: ModuleKey) => SetMetadata(MODULE_KEY, module);
  */
 export const OpenWhileSuspended = () =>
   SetMetadata(OPEN_WHILE_SUSPENDED_KEY, true);
+
+/**
+ * Lets a route answer during a cancelled client's exit window
+ * (docs/specs/data-export.md, "An exit window after cancellation"), when
+ * only holders of `data.export` for the whole organization may sign in:
+ * signing out, `/auth/me`, and the export routes. Every other route
+ * answers 403 `subscription_cancelled` (SessionGuard).
+ */
+export const OpenInExitWindow = () => SetMetadata(OPEN_IN_EXIT_WINDOW_KEY, true);
 
 /** The module a controller declares, if it declares one. */
 export const declaredModule = (controller: object): ModuleKey | undefined =>

@@ -156,6 +156,12 @@ export type AuthContext = {
       status: Exclude<SubscriptionStatus, 'cancelled'>;
       notice: null | 'past_due' | 'suspended';
     };
+    /**
+     * A cancelled client's exit window, while it is open and the user may
+     * export its data (docs/specs/data-export.md): its last day. Then only
+     * the routes marked `@OpenInExitWindow()` answer. Null otherwise.
+     */
+    exit: { until: string } | null;
   };
   user: {
     id: string;
@@ -206,7 +212,14 @@ export class AuthService {
    * (`'core'` for signing in), so a client without the module is answered
    * like one that does not exist.
    */
-  async findTenant(slug: string, forPassword: boolean, module: ModuleKey) {
+  async findTenant(
+    slug: string,
+    forPassword: boolean,
+    module: ModuleKey,
+    // Signing in alone: a cancelled client in its exit window is found,
+    // for its holders of `data.export` (docs/specs/data-export.md).
+    options: { exitWindow?: boolean } = {},
+  ) {
     const [tenant] = await this.db
       .select()
       .from(tenants)
@@ -216,7 +229,10 @@ export class AuthService {
     const entitlements = await this.tenantDb.withTenant(tenant.id, (tx) =>
       this.entitlements.of(tx, tenant.id),
     );
-    if (entitlements?.status === 'cancelled') return null;
+    if (entitlements?.status === 'cancelled') {
+      const open = options.exitWindow && exitWindowOf(entitlements, dayOf(new Date(), tenant.timeZone));
+      return open && module === 'core' ? tenant : null;
+    }
     if (!allows(entitlements, module)) return null;
     return tenant;
   }
@@ -263,7 +279,7 @@ export class AuthService {
     client: 'web' | 'mobile';
     ip: string | null;
   }): Promise<{ token: string } | { challenge: string } | null> {
-    const tenant = await this.findTenant(input.org, true, 'core');
+    const tenant = await this.findTenant(input.org, true, 'core', { exitWindow: true });
     if (!tenant) {
       await this.burnTime(input.password);
       return null;
@@ -341,6 +357,20 @@ export class AuthService {
           return null;
         }
         return { issued, user: fresh };
+      }
+      // A cancelled client in its exit window: only those who may export
+      // its data for the whole organization (docs/specs/data-export.md).
+      // Anyone else is refused as before it was open, and told nothing.
+      const entitlements = await this.entitlements.of(tx, tenant.id);
+      if (entitlements?.status === 'cancelled') {
+        const access = await this.accessOf(tx, fresh.id, fresh.kind);
+        if (fresh.kind !== 'staff' || !covers(access, 'data.export', null)) {
+          await this.provisioning.audit(tx, tenant.id, user.id, 'sign_in_failed', 'user', user.id, {
+            locked: false,
+            reason: 'subscription_cancelled',
+          }, input.ip);
+          return null;
+        }
       }
       return { token: await this.openSession(tx, tenant, fresh, input.client, input.ip, null) };
     });
@@ -510,13 +540,22 @@ export class AuthService {
     // subscription cancelled stays ended when either is made active
     // again, whether or not its revocation was written.
     const entitlements = await this.entitlements.of(tx, tenant.id);
-    if (entitlements?.status === 'cancelled') return null;
+    // Cancelled: nobody, but in the exit window those who may export its
+    // data for the whole organization (docs/specs/data-export.md), and
+    // only to the export screens.
+    let exit: { until: string } | null = null;
+    if (entitlements?.status === 'cancelled') {
+      const until = exitWindowOf(entitlements, dayOf(new Date(), tenant.timeZone));
+      if (!until || user.kind !== 'staff') return null;
+      exit = { until };
+    }
     if (issuedAt && issuedBeforeReset(issuedAt, tenant, entitlements)) {
       return null;
     }
-    const stored = entitlements?.status ?? 'active';
+    const stored = exit ? 'suspended' : (entitlements?.status ?? 'active');
 
     const access = await this.accessOf(tx, user.id, user.kind);
+    if (exit && !covers(access, 'data.export', null)) return null;
     const administers = covers(access, 'settings.manage', null);
     // What is commercial (a trial, a payment overdue) only to the
     // client's administrators; to anyone else it is active. A suspension
@@ -533,8 +572,9 @@ export class AuthService {
         accreditationStandard: tenant.accreditationStandard,
         publicReporting: tenant.publicReporting,
         timeZone: tenant.timeZone,
-        // No subscription (there should be none without): core only.
-        modules: entitlements?.modules ?? [],
+        // No subscription (there should be none without): core only. In
+        // the exit window, none: only the export routes answer.
+        modules: exit ? [] : (entitlements?.modules ?? []),
         subscription: {
           status,
           notice:
@@ -544,6 +584,7 @@ export class AuthService {
                 ? 'past_due'
                 : null,
         },
+        exit,
       },
       user: {
         id: user.id,

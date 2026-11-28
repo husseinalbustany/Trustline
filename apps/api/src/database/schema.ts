@@ -65,7 +65,11 @@ export const orgUnitType = pgEnum('org_unit_type', [
   'unit',
 ]);
 
-export const tenantStatus = pgEnum('tenant_status', ['active', 'suspended']);
+// `deleted`: the client's data deleted after its contract ended
+// (docs/specs/data-export.md, "At the end of a contract"): its row stays
+// as a stub, its identifier never reused, so Trustline's log keeps its
+// reference.
+export const tenantStatus = pgEnum('tenant_status', ['active', 'suspended', 'deleted']);
 
 export const signInMethod = pgEnum('sign_in_method', [
   'password',
@@ -459,7 +463,7 @@ export const auditLog = pgTable(
       as: 'permissive',
       for: 'insert',
       to: platformRole,
-      withCheck: sql`actor_id IS NULL AND ip_address IS NULL AND action IN ('subscription_changed', 'import_window_changed', 'client_created_by_platform', 'client_settings_changed_by_platform', 'ai_settings_changed')`,
+      withCheck: sql`actor_id IS NULL AND ip_address IS NULL AND action IN ('subscription_changed', 'import_window_changed', 'client_created_by_platform', 'client_settings_changed_by_platform', 'ai_settings_changed', 'contract_end_set')`,
     }),
   ],
 );
@@ -1121,6 +1125,14 @@ export const notificationKind = pgEnum('notification_kind', [
   // All of it is used: the feature pauses until `data.resetsOn`. Once a
   // month per feature.
   'ai_allowance_reached',
+  // The contract ends in 90, 30 or 7 days (`data.endsOn`, `data.days`): to
+  // the client's administrators and holders of `data.export`, in the app
+  // and by email, so that its data can be exported first.
+  'contract_ending',
+  // Someone was given `data.export` for the whole organization
+  // (`data.personId`): to the other Administrators, as for
+  // `policies.import`.
+  'data_export_granted',
 ]);
 
 // Something a user is told about an incident they can see. Stored so that it
@@ -1183,7 +1195,7 @@ export const notifications = pgTable(
     // new kind to be committed before it is created.
     check(
       'notifications_about_one_thing',
-      sql`(${t.incidentId} is null or ${t.documentId} is null) and (${t.incidentId} is not null or ${t.documentId} is not null or ${t.kind}::text in ('public_form_paused', 'acknowledgements_overdue_digest', 'email_turned_off', 'signing_pin_changed', 'signing_pin_locked', 'review_approval_turned_off', 'audit_chain_broken', 'policies_import_granted', 'external_access_changed', 'audit_chain_head', 'data_export_changed', 'ai_provider_changed', 'ai_allowance_warning', 'ai_allowance_reached'))`,
+      sql`(${t.incidentId} is null or ${t.documentId} is null) and (${t.incidentId} is not null or ${t.documentId} is not null or ${t.kind}::text in ('public_form_paused', 'acknowledgements_overdue_digest', 'email_turned_off', 'signing_pin_changed', 'signing_pin_locked', 'review_approval_turned_off', 'audit_chain_broken', 'policies_import_granted', 'external_access_changed', 'audit_chain_head', 'data_export_changed', 'ai_provider_changed', 'ai_allowance_warning', 'ai_allowance_reached', 'contract_ending', 'data_export_granted'))`,
     ),
     tenantIsolation(),
   ],
@@ -2693,11 +2705,22 @@ export const subscriptions = pgTable(
     // brings back none of what was issued before it was cancelled, nor
     // anything issued by a request that was under way when it was.
     accessResetAt: timestamp({ withTimezone: true }),
+    // The contract's end, its exit window and its retention
+    // (docs/specs/data-export.md, "At the end of a contract"), set by
+    // Trustline's staff. None changes a status by itself. The exit window
+    // is set to 90 days when the subscription is cancelled, unless staff
+    // set another; the data is kept until `retain_until` (the end of the
+    // exit window unless set), then deleted. The application reads the
+    // three.
+    endsOn: date({ mode: 'string' }),
+    exitUntil: date({ mode: 'string' }),
+    retainUntil: date({ mode: 'string' }),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index('subscriptions_plan_idx').on(t.planId),
+    check('subscriptions_retain_after_exit', sql`${t.retainUntil} is null or ${t.exitUntil} is null or ${t.retainUntil} >= ${t.exitUntil}`),
     tenantIsolation(),
     pgPolicy('subscriptions_platform', {
       as: 'permissive',
@@ -2895,6 +2918,9 @@ export const reportSettings = pgTable(
   ],
 );
 
+/** A contract contact's written request, as Trustline's staff record it. */
+export type WrittenRequest = { receivedOn: string; from: string; reference: string; note: string | null };
+
 export const dataExportReason = pgEnum('data_export_reason', ['contract_end', 'on_request']);
 export const dataExportStatus = pgEnum('data_export_status', [
   // Asked for, waiting for a second holder of `data.export`.
@@ -2945,6 +2971,13 @@ export const dataExports = pgTable(
     lapsesAt: timestamp({ withTimezone: true }).notNull(),
     approvedBy: uuid(),
     approvedAt: timestamp({ withTimezone: true }),
+    // Trustline's approval, for a client with one holder of `data.export`
+    // (decision 3): which staff member recorded it, when, and the contract
+    // contact's written request it was made on. It releases nothing to
+    // Trustline. Written only by `data_export_second_approval()`.
+    trustlineApprovedBy: uuid().references(() => platformAdmins.id),
+    trustlineApprovedAt: timestamp({ withTimezone: true }),
+    writtenRequest: jsonb().$type<WrittenRequest>(),
     refusedBy: uuid(),
     refusedAt: timestamp({ withTimezone: true }),
     refusedReason: text(),
@@ -3001,6 +3034,18 @@ export const dataExports = pgTable(
     // The worker's queue, client by client.
     index('data_exports_status_idx').on(t.tenantId, t.status),
     check('data_exports_not_self_approved', sql`${t.approvedBy} is null or ${t.approvedBy} <> ${t.requestedBy}`),
+    check(
+      'data_exports_one_approval',
+      sql`(${t.trustlineApprovedBy} is null or ${t.approvedBy} is null) and ((${t.trustlineApprovedBy} is null) = (${t.writtenRequest} is null))`,
+    ),
+    // Trustline's staff see an export's status, never who asked (names are
+    // the client's): the columns granted in a migration.
+    pgPolicy('data_exports_platform_read', {
+      as: 'permissive',
+      for: 'select',
+      to: platformRole,
+      using: sql`true`,
+    }),
     check('data_exports_downloads', sql`${t.downloads} between 0 and 5`),
     check('data_exports_note', sql`${t.note} is null or length(${t.note}) <= 1000`),
     tenantIsolation(),
@@ -3519,5 +3564,49 @@ export const draftingVersions = pgTable(
     }).onDelete('cascade'),
     check('drafting_versions_number', sql`${t.number} >= 1`),
     tenantIsolation(),
+  ],
+);
+
+export const clientDeletionStatus = pgEnum('client_deletion_status', ['requested', 'approved', 'done', 'cancelled']);
+
+/**
+ * Deleting a client's data after its contract's retention date
+ * (docs/specs/data-export.md, "After the exit window"): asked for by one
+ * member of Trustline's staff, approved by another, then carried out from
+ * the command line (`platform:delete-client`, as the owner), which writes
+ * the signed deletion certificate here. Trustline's own table, not the
+ * client's: the platform role reads and writes it, the application never.
+ */
+export const clientDeletions = pgTable(
+  'client_deletions',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    targetTenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    status: clientDeletionStatus().notNull().default('requested'),
+    requestedBy: uuid()
+      .notNull()
+      .references(() => platformAdmins.id),
+    requestedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    reason: text().notNull(),
+    // When no export was downloaded: the client's written instruction to
+    // delete all the same.
+    writtenInstruction: jsonb().$type<WrittenRequest>(),
+    approvedBy: uuid().references(() => platformAdmins.id),
+    approvedAt: timestamp({ withTimezone: true }),
+    cancelledAt: timestamp({ withTimezone: true }),
+    executedAt: timestamp({ withTimezone: true }),
+    // The deletion certificate, its fingerprint, and Trustline's signature.
+    certificate: jsonb().$type<Record<string, unknown>>(),
+    certificateSha256: text(),
+    signature: jsonb().$type<{ algorithm: 'Ed25519'; keyId: string; signature: string }>(),
+  },
+  (t) => [
+    uniqueIndex('client_deletions_one_open')
+      .on(t.targetTenantId)
+      .where(sql`${t.status} in ('requested', 'approved')`),
+    check('client_deletions_two_people', sql`${t.approvedBy} is null or ${t.approvedBy} <> ${t.requestedBy}`),
+    check('client_deletions_reason', sql`length(${t.reason}) between 1 and 1000`),
   ],
 );

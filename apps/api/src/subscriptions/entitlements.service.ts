@@ -29,6 +29,10 @@ export type Entitlements = {
    * one-time link issued before it is void. Null if it never did.
    */
   accessResetAt: Date | null;
+  /** The contract's end, the exit window's last day, and the retention date (data export). */
+  endsOn: string | null;
+  exitUntil: string | null;
+  retainUntil: string | null;
   /** The plan's modules and the add-ons, as stored. */
   planModules: ModuleCode[];
   addOnModules: ModuleCode[];
@@ -87,6 +91,9 @@ export class EntitlementsService {
         renewsOn: subscriptions.renewsOn,
         trialEndsOn: subscriptions.trialEndsOn,
         accessResetAt: subscriptions.accessResetAt,
+        endsOn: subscriptions.endsOn,
+        exitUntil: subscriptions.exitUntil,
+        retainUntil: subscriptions.retainUntil,
         addOnModules: subscriptions.addOnModules,
         limitOverrides: subscriptions.limitOverrides,
         planId: plans.id,
@@ -107,6 +114,9 @@ export class EntitlementsService {
       renewsOn: row.renewsOn,
       trialEndsOn: row.trialEndsOn,
       accessResetAt: row.accessResetAt,
+      endsOn: row.endsOn,
+      exitUntil: row.exitUntil,
+      retainUntil: row.retainUntil,
       ...effectiveEntitlements(row, row),
     };
   }
@@ -223,4 +233,21 @@ export function visibleChanges(before: Seen, after: Seen) {
     if (Object.keys(ai).length > 0) seen.aiAllowances = ai;
   }
   return Object.keys(seen).length > 0 ? seen : null;
+}
+
+/** The exit window's days after a subscription is cancelled, unless staff set another (business decision). */
+export const EXIT_WINDOW_DAYS = 90;
+
+/**
+ * The last day of a cancelled client's exit window, if it is open today on
+ * the client's calendar (docs/specs/data-export.md): the days in which
+ * holders of `data.export` for the whole organization may still sign in to
+ * export its data. Null otherwise.
+ */
+export function exitWindowOf(
+  entitlements: { status: string; exitUntil: string | null } | null,
+  today: string,
+): string | null {
+  if (!entitlements || entitlements.status !== 'cancelled' || !entitlements.exitUntil) return null;
+  return today <= entitlements.exitUntil ? entitlements.exitUntil : null;
 }
