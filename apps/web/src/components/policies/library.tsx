@@ -33,10 +33,12 @@ import {
   librarySorts,
   noLibraryFilters,
   readLibraryFilters,
+  todayIn,
   type DocumentCategory,
   type DocumentList,
   type DocumentType,
   type LibraryFilters,
+  type PolicySettings,
 } from "@/lib/policies";
 import {
   DocumentStatusPill,
@@ -45,6 +47,7 @@ import {
   ReviewPill,
   versionStatusWord,
 } from "./pills";
+import { importWindowOf, windowClosed } from "./import-form";
 import type { PoliciesProps } from "./types";
 import { useExplain } from "./use-explain";
 
@@ -66,6 +69,27 @@ export function Library({ lang, t }: PoliciesProps) {
   const [categories, setCategories] = useState<DocumentCategory[]>([]);
   const [units, setUnits] = useState<OrgUnit[]>([]);
   const [moreOpen, setMoreOpen] = useState<boolean | null>(null);
+  // Importing is offered only while the organization's window is open.
+  const importer = session.scope?.["policies.manage"] === "all";
+  const [importOpen, setImportOpen] = useState(false);
+  useEffect(() => {
+    if (!importer) return;
+    let current = true;
+    api<PolicySettings>("/policies/settings")
+      .then(
+        (settings) =>
+          current &&
+          setImportOpen(
+            !windowClosed(importWindowOf(settings), todayIn(session.tenant.timeZone)),
+          ),
+      )
+      .catch(() => {
+        // Without the settings the link is left out; the page says why.
+      });
+    return () => {
+      current = false;
+    };
+  }, [importer, session.tenant.timeZone]);
   const searchInput = useRef<HTMLInputElement>(null);
   const [exporting, setExporting] = useState(false);
   const [exported, setExported] = useState<{ ok: boolean; text: string } | null>(
@@ -192,7 +216,7 @@ export function Library({ lang, t }: PoliciesProps) {
           can(session, "policies.manage") && (
             <div className="flex flex-wrap gap-2">
               {/* Importing is for those who manage documents for all of it. */}
-              {session.scope?.["policies.manage"] === "all" && (
+              {session.scope?.["policies.manage"] === "all" && importOpen && (
                 <ButtonLink variant="secondary" href={importPath(lang)}>
                   <FileUp className="size-4" aria-hidden />
                   {t.importing.open}

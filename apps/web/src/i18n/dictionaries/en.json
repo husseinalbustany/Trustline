@@ -712,7 +712,8 @@
     "notIncluded": {
       "title": "Not part of your organization's subscription",
       "body": "Your organization's subscription does not include this part of Trustline, so there is nothing to show here. If you need it, ask your administrator.",
-      "back": "Go to the dashboard"
+      "back": "Go to the dashboard",
+      "bodyManager": "Your organization's subscription does not include this part of Trustline, so there is nothing to show here. To add it, contact Trustline: your subscription is shown in Settings."
     },
     "suspendedAcknowledge": "Acknowledging documents also works as usual."
   },
@@ -1609,6 +1610,7 @@
       "noChanges": "No section has changed in this language.",
       "changedCount": "{count} of {total} sections changed in this language.",
       "changed": "Changed",
+      "changedIn": "Changed in {language}",
       "unchanged": "No change",
       "lagging": "Not updated",
       "laggingHere": "Changed in {authoritative}, not updated in {language}.",
@@ -1759,7 +1761,8 @@
       "references": "References",
       "referencesHelp": "One per line, for example a standard and its clause.",
       "create": "Create and write the first version",
-      "save": "Save the details"
+      "save": "Save the details",
+      "noAccess": "Creating documents is for those who manage documents. Ask whoever manages them in your area."
     },
     "awaiting": {
       "title": "Awaiting me",
@@ -1977,9 +1980,9 @@
       "effective_in_future": "The date it came into force cannot be after today: an imported document is already in force. A document that comes into force later goes through the approval route.",
       "review_before_approval": "The next review must be after the approval date.",
       "review_date_too_far": "The next review can be at most {max} from today, your organization's longest review period: {date} at the latest.",
-      "invalid_number": "This number cannot be used. Use the number as written on the original, in Latin letters and digits, with spaces, -, ., / or _ between them: at most 40 characters.",
+      "invalid_number": "This number cannot be used. Use the number as written on the original, in Latin letters, or the letters of your organization's languages, and digits, with spaces, -, ., / or _ between them: at most 40 characters.",
       "number_script": "A document number can use only Latin letters, or the letters of your organization's languages, with digits and ⁦- . / _ ( )⁩. Write the number as it is on the original, with these characters.",
-      "number_mixed_scripts": "This number mixes letters of different scripts. Use the number as written on the original, in Latin letters and digits.",
+      "number_mixed_scripts": "This number mixes letters of different scripts. Use the number as written on the original, in Latin letters, or the letters of your organization's languages, and digits, without mixing them.",
       "number_taken": "Another document already has this number.",
       "number_taken_by": "Another document already has this number: {number}.",
       "content_required": "Write at least one section in {language}.",
@@ -2000,7 +2003,9 @@
       "no_assignee_give_role": "Give the role to someone",
       "no_assignee_open_routes": "Open the approval routes",
       "approved_after_start_since": "Your organization started managing its documents in Trustline on {date}. Only documents approved before then can be imported: create this one as a new document and send it through the approval route.",
-      "body_too_deep": "This file cannot be sent as it is: its contents are nested too deeply. Lay it out as the layout page shows and try again."
+      "body_too_deep": "This file cannot be sent as it is: its contents are nested too deeply. Lay it out as the layout page shows and try again.",
+      "no_assignee_role_manager": "Not sent for review yet: nobody can decide step {position} of its approval route ({kind}, by the role “{role}”). Nobody holds this role for this document's responsible area, or only someone who prepared this version does. Give the role “{role}” to the person who decides this step, then send the version again.",
+      "no_assignee_person_manager": "Not sent for review yet: step {position} of its approval route ({kind}) names {name}, who cannot decide it: their account is not active, no role of theirs allows it, or they prepared this version. Change the route in the document settings, then send the version again."
     },
     "importing": {
       "open": "Import documents",
@@ -2014,7 +2019,7 @@
       "original": "The original",
       "originalHelp": "As the signed original gives it. None of this can be changed after the import: a change is made through a new version.",
       "number": "Number on the original",
-      "numberHelp": "As written on the original, in Latin letters and digits. Leave empty for Trustline to number it.",
+      "numberHelp": "As written on the original, in Latin letters, or the letters of your organization's languages, and digits. Leave empty for Trustline to number it.",
       "revisionLabel": "Revision on the original",
       "revisionLabelHelp": "Optional, for example “Rev. 3”.",
       "approvedOn": "Approved on",
@@ -2144,7 +2149,7 @@
           "Dates are written as year-month-day, for example 2024-03-01.",
           "Several values in one column are separated by |, for example ICU|ER.",
           "“acknowledge” is yes or no; “confidentiality” is all_staff or restricted.",
-          "A number left empty is given by Trustline. A number given is kept as written on the original, in Latin letters and digits, and must not already be used."
+          "A number left empty is given by Trustline. A number given is kept as written on the original, in Latin letters, or the letters of your organization's languages, and digits, and must not already be used."
         ],
         "limits": "A batch holds at most {documents} documents and {characters} characters of text. A larger file is split into several batches, and each batch is a separate signature.",
         "columnsTitle": "Columns",

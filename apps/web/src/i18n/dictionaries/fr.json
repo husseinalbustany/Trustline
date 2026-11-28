@@ -712,7 +712,8 @@
     "notIncluded": {
       "title": "Ne fait pas partie de l’abonnement de votre établissement",
       "body": "L’abonnement de votre établissement ne comprend pas cette partie de Trustline : il n’y a donc rien à afficher ici. Si vous en avez besoin, adressez-vous à votre administrateur.",
-      "back": "Aller au tableau de bord"
+      "back": "Aller au tableau de bord",
+      "bodyManager": "L’abonnement de votre établissement ne comprend pas cette partie de Trustline : il n’y a donc rien à afficher ici. Pour l’ajouter, contactez Trustline ; votre abonnement figure dans les paramètres."
     },
     "suspendedAcknowledge": "La confirmation de prise de connaissance des documents fonctionne aussi normalement."
   },
@@ -1609,6 +1610,7 @@
       "noChanges": "Aucune section n’a changé dans cette langue.",
       "changedCount": "Sections modifiées dans cette langue : {count} sur {total}.",
       "changed": "Modifiée",
+      "changedIn": "Modifié en {language}",
       "unchanged": "Inchangée",
       "lagging": "Non mise à jour",
       "laggingHere": "Modifiée en {authoritative}, non mise à jour en {language}.",
@@ -1759,7 +1761,8 @@
       "references": "Références",
       "referencesHelp": "Une par ligne, par exemple une norme et son article.",
       "create": "Créer et rédiger la première version",
-      "save": "Enregistrer les informations"
+      "save": "Enregistrer les informations",
+      "noAccess": "La création de documents est réservée aux personnes qui gèrent les documents. Adressez-vous à la personne qui les gère dans votre entité."
     },
     "awaiting": {
       "title": "À traiter",
@@ -1977,9 +1980,9 @@
       "effective_in_future": "La date d’entrée en vigueur ne peut pas être postérieure à aujourd’hui : un document importé est déjà en vigueur. Un document qui entre en vigueur plus tard passe par le circuit d’approbation.",
       "review_before_approval": "La prochaine révision doit être postérieure à la date d’approbation.",
       "review_date_too_far": "La prochaine révision ne peut pas dépasser {max} à compter d’aujourd’hui, la périodicité la plus longue de votre établissement : le {date} au plus tard.",
-      "invalid_number": "Ce numéro ne peut pas être utilisé. Indiquez le numéro tel qu’il est écrit sur l’original, en lettres et chiffres latins, séparés au besoin par des espaces, -, ., / ou _ : 40 caractères au plus.",
+      "invalid_number": "Ce numéro ne peut pas être utilisé. Indiquez le numéro tel qu’il est écrit sur l’original, en lettres latines, ou celles des langues de votre établissement, et en chiffres, séparés au besoin par des espaces, -, ., / ou _ : 40 caractères au plus.",
       "number_script": "Un numéro de document ne peut contenir que des lettres latines, ou celles des langues de votre établissement, avec des chiffres et ⁦- . / _ ( )⁩. Écrivez le numéro de l’original avec ces caractères.",
-      "number_mixed_scripts": "Ce numéro mélange des lettres de plusieurs écritures. Indiquez le numéro tel qu’il est écrit sur l’original, en lettres et chiffres latins.",
+      "number_mixed_scripts": "Ce numéro mélange des lettres de plusieurs écritures. Indiquez le numéro tel qu’il est écrit sur l’original, en lettres latines, ou celles des langues de votre établissement, et en chiffres, sans les mélanger.",
       "number_taken": "Un autre document porte déjà ce numéro.",
       "number_taken_by": "Un autre document porte déjà ce numéro : {number}.",
       "content_required": "Rédigez au moins une section en {language}.",
@@ -2000,7 +2003,9 @@
       "no_assignee_give_role": "Donner le rôle à quelqu’un",
       "no_assignee_open_routes": "Ouvrir les circuits d’approbation",
       "approved_after_start_since": "Votre établissement a commencé à gérer ses documents dans Trustline le {date}. Seuls les documents approuvés avant cette date peuvent être importés : créez celui-ci comme nouveau document et soumettez-le au circuit d’approbation.",
-      "body_too_deep": "Ce fichier ne peut pas être envoyé tel quel : son contenu est imbriqué trop profondément. Préparez-le comme l’indique la page sur la préparation du fichier, puis réessayez."
+      "body_too_deep": "Ce fichier ne peut pas être envoyé tel quel : son contenu est imbriqué trop profondément. Préparez-le comme l’indique la page sur la préparation du fichier, puis réessayez.",
+      "no_assignee_role_manager": "Pas encore soumise à vérification : personne ne peut décider de l’étape {position} de son circuit d’approbation ({kind}, par le rôle « {role} »). Personne n’a ce rôle pour l’entité responsable de ce document, ou seule une personne qui a préparé cette version l’a. Donnez le rôle « {role} » à la personne qui décide de cette étape, puis soumettez de nouveau la version.",
+      "no_assignee_person_manager": "Pas encore soumise à vérification : l’étape {position} de son circuit d’approbation ({kind}) désigne {name}, qui ne peut pas en décider : son compte n’est pas actif, aucun de ses rôles ne le permet, ou cette personne a préparé cette version. Modifiez le circuit dans les paramètres des documents, puis soumettez de nouveau la version."
     },
     "importing": {
       "open": "Importer des documents",
@@ -2014,7 +2019,7 @@
       "original": "L’original",
       "originalHelp": "Tel que le donne l’original signé. Rien de cela ne peut être modifié après l’importation : une modification passe par une nouvelle version.",
       "number": "Numéro sur l’original",
-      "numberHelp": "Tel qu’il est écrit sur l’original, en lettres et chiffres latins. Laissez vide pour que Trustline le numérote.",
+      "numberHelp": "Tel qu’il est écrit sur l’original, en lettres latines, ou celles des langues de votre établissement, et en chiffres. Laissez vide pour que Trustline le numérote.",
       "revisionLabel": "Indice de révision sur l’original",
       "revisionLabelHelp": "Facultatif, par exemple « Rév. 3 ».",
       "approvedOn": "Approuvé le",
@@ -2144,7 +2149,7 @@
           "Les dates s’écrivent sous la forme année-mois-jour, par exemple 2024-03-01.",
           "Plusieurs valeurs dans une même colonne sont séparées par |, par exemple ICU|ER.",
           "« acknowledge » vaut yes ou no ; « confidentiality » vaut all_staff ou restricted.",
-          "Un numéro laissé vide est attribué par Trustline. Un numéro donné est conservé tel qu’il est écrit sur l’original, en lettres et chiffres latins, et ne doit pas être déjà utilisé."
+          "Un numéro laissé vide est attribué par Trustline. Un numéro donné est conservé tel qu’il est écrit sur l’original, en lettres latines, ou celles des langues de votre établissement, et en chiffres, et ne doit pas être déjà utilisé."
         ],
         "limits": "Un lot compte au plus {documents} documents et {characters} caractères de texte. Un fichier plus grand est réparti en plusieurs lots, et chaque lot est une signature distincte.",
         "columnsTitle": "Colonnes",

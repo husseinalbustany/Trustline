@@ -8,7 +8,7 @@ import {
   useState,
   type FormEvent,
 } from "react";
-import { canIn, useSession } from "@/components/shell/session";
+import { can, canIn, useSession } from "@/components/shell/session";
 import {
   ReadOnlyFieldset,
   useReadOnly,
@@ -71,9 +71,14 @@ export async function loadLists(): Promise<Lists> {
 
 /** A new document: its details, then its first version in the editor. */
 export function NewDocument({ lang, t }: PoliciesProps) {
+  const session = useSession();
+  // Documents are created by those who manage them somewhere; anyone else
+  // is told so, and nothing is asked of the API.
+  const manages = can(session, "policies.manage");
   const [lists, setLists] = useState<Lists | null>(null);
   const [problem, setProblem] = useState(false);
   useEffect(() => {
+    if (!manages) return;
     let current = true;
     loadLists()
       .then((l) => current && setLists(l))
@@ -81,11 +86,13 @@ export function NewDocument({ lang, t }: PoliciesProps) {
     return () => {
       current = false;
     };
-  }, []);
+  }, [manages]);
   return (
     <>
       <PageHeader title={t.form.newTitle} description={t.form.newDescription} />
-      {problem ? (
+      {!manages ? (
+        <EmptyState>{t.form.noAccess}</EmptyState>
+      ) : problem ? (
         <EmptyState>{t.loadError}</EmptyState>
       ) : !lists ? (
         <EmptyState>{t.loading}</EmptyState>

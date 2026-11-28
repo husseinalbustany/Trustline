@@ -29,6 +29,7 @@ import {
 import { pick, type Localized } from "@/lib/localized";
 import {
   documentPath,
+  headingTitle,
   shownLanguage,
   versionPath,
   type DocumentChange,
@@ -177,7 +178,7 @@ function DocumentView({
   return (
     <>
       <PageHeader
-        title={<bdi>{inLang(doc.title)}</bdi>}
+        title={<bdi>{headingTitle(doc.title, lang, shownIn, session.tenant.defaultLocale)}</bdi>}
         description={
           <>
             <bdi dir="ltr" className="whitespace-nowrap">
@@ -918,9 +919,9 @@ function DocumentActions({
             <div className="flex flex-col gap-2">
               <p className="text-sm font-medium">{x.periodicReview}</p>
               <p className="text-sm text-muted">
-                {doc.moves.includes("new_version")
-                  ? t.reissue.actionHelp
-                  : t.reissue.actionHelpBusy}
+                {/* "Continue it" only when a version is in progress; else
+                    what the re-issue is, whether or not it can start now. */}
+                {doc.inProgress ? t.reissue.actionHelpBusy : t.reissue.actionHelp}
               </p>
               {doc.moves.includes("new_version") && (
                 <div>

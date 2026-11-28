@@ -53,7 +53,8 @@ export function useSubmitRefusal(
       if (step.assignee.type === "role") {
         const fixes = can(session, "users.manage");
         return {
-          text: fill(e.no_assignee_role, {
+          // Whoever can give the role is told to, not to ask someone else.
+          text: fill(fixes ? e.no_assignee_role_manager : e.no_assignee_role, {
             ...values,
             role: pick(step.assignee.role.name, lang, session.tenant.defaultLocale),
           }),
@@ -63,8 +64,9 @@ export function useSubmitRefusal(
             : null,
         };
       }
+      const changesRoutes = session.scope?.["policies.manage"] === "all";
       return {
-        text: fill(e.no_assignee_person, {
+        text: fill(changesRoutes ? e.no_assignee_person_manager : e.no_assignee_person, {
           ...values,
           name:
             pick(step.assignee.user?.name, lang, session.tenant.defaultLocale) ||
@@ -72,7 +74,7 @@ export function useSubmitRefusal(
         }),
         warning: true,
         link:
-          session.scope?.["policies.manage"] === "all"
+          changesRoutes
             ? { href: `/${lang}/policies/settings?tab=routes`, label: e.no_assignee_open_routes }
             : null,
       };

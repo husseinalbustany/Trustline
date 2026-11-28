@@ -61,6 +61,8 @@ export type ImportWindow = {
   latestApprovedOn: string | null;
   /** The day the module was first switched on: approved before it. */
   startedOn: string | null;
+  /** Whether imports are accepted today, as the API says. */
+  open: boolean | null;
 };
 
 export function importWindowOf(settings: unknown): ImportWindow | null {
@@ -72,14 +74,15 @@ export function importWindowOf(settings: unknown): ImportWindow | null {
   const closesOn = day(w?.closesOn ?? w?.until ?? w?.endsOn ?? o.importWindowClosesOn);
   const latestApprovedOn = day(w?.latestApprovedOn ?? o.importLatestApprovedOn);
   const startedOn = day(w?.startedOn ?? w?.moduleStartedOn ?? o.policiesStartedOn);
+  const open = typeof w?.open === "boolean" ? w.open : null;
   return closesOn || latestApprovedOn || startedOn
-    ? { closesOn, latestApprovedOn, startedOn }
+    ? { closesOn, latestApprovedOn, startedOn, open }
     : null;
 }
 
 /** Whether the window has closed, by the client's calendar. */
 export const windowClosed = (w: ImportWindow | null, today: string) =>
-  !!w?.closesOn && w.closesOn < today;
+  w?.open === false || (!!w?.closesOn && w.closesOn < today);
 
 /** Said at the top of the import screens, when the API says when imports end. */
 export function ImportWindowNote({

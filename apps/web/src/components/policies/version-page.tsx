@@ -31,6 +31,7 @@ import { pick, type Localized } from "@/lib/localized";
 import {
   authoritativeOf,
   documentPath,
+  headingTitle,
   shownLanguage,
   todayIn,
   versionPath,
@@ -218,7 +219,7 @@ function VersionView({
       <PageHeader
         title={
           <>
-            <bdi>{inLang(doc.title)}</bdi>
+            <bdi>{headingTitle(doc.title, lang, shownIn, session.tenant.defaultLocale)}</bdi>
           </>
         }
         description={
@@ -499,10 +500,21 @@ function Comparison({
   const locale = shown ?? session.tenant.defaultLocale;
   const status = version.languageStatus;
   const languageName = languageNameIn(lang);
+  const authoritative = authoritativeOf(version, session.tenant.defaultLocale);
   const lags = (key: string) =>
     withLagging &&
     status?.sections.find((x) => x.key === key)?.locales[locale] === "lagging";
-  const changed = sections.filter((s) => s.locales[locale]?.changed).length;
+  // Not written in this language: its readers get the text of the language
+  // that applies, so the reviewer sees that text, and what changed in it.
+  const standIn = (section: SectionComparison) =>
+    locale !== authoritative &&
+    !version.content[locale]?.[section.key]?.trim() &&
+    version.content[authoritative]?.[section.key]?.trim()
+      ? (section.locales[authoritative] ?? { changed: false, lines: [] })
+      : null;
+  const changed = sections.filter(
+    (s) => s.locales[locale]?.changed || standIn(s)?.changed,
+  ).length;
   const behind = sections.filter((s) => lags(s.key)).length;
   return (
     <div className="flex flex-col gap-4">
@@ -524,7 +536,9 @@ function Comparison({
       )}
       <ol className="flex flex-col gap-4" lang={locale} dir={direction(locale)}>
         {sections.map((section, i) => {
-          const here = section.locales[locale];
+          const instead = standIn(section);
+          const here = instead ?? section.locales[locale];
+          const shownIn = instead ? authoritative : locale;
           const behindHere = lags(section.key);
           const title = `${i + 1}. ${pick(section.name, locale, session.tenant.defaultLocale)}`;
           return (
@@ -540,7 +554,11 @@ function Comparison({
                 <h3 lang={locale} dir={direction(locale)} className="text-sm font-semibold">
                   {title}
                 </h3>
-                {here?.changed ? (
+                {instead?.changed ? (
+                  <Pill tone="warn">
+                    {fill(r.changedIn, { language: languageName(authoritative) })}
+                  </Pill>
+                ) : here?.changed ? (
                   <Pill tone="warn">{r.changed}</Pill>
                 ) : behindHere ? (
                   <Pill tone="warn">{r.lagging}</Pill>
@@ -548,6 +566,18 @@ function Comparison({
                   <Pill tone="neutral">{here ? r.unchanged : r.empty}</Pill>
                 )}
               </div>
+              {instead && (
+                <p
+                  lang={lang}
+                  dir={direction(lang)}
+                  className="border-b border-line px-4 py-2 text-xs text-warn"
+                >
+                  {fill(t.document.sectionInOther, {
+                    language: languageName(locale),
+                    other: languageName(authoritative),
+                  })}
+                </p>
+              )}
               {behindHere && status && (
                 <p
                   lang={lang}
@@ -560,7 +590,7 @@ function Comparison({
                   })}
                 </p>
               )}
-              <div className="px-4 py-3">
+              <div className="px-4 py-3" lang={shownIn} dir={direction(shownIn)}>
                 {!here ? (
                   <p className="text-sm text-muted">{r.emptyHere}</p>
                 ) : here.changed ? (
@@ -596,7 +626,7 @@ function Comparison({
                       {r.showText}
                     </summary>
                     <div className="mt-2">
-                      <Markup text={version.content[locale]?.[section.key] ?? ""} />
+                      <Markup text={version.content[shownIn]?.[section.key] ?? ""} />
                     </div>
                   </details>
                 )}

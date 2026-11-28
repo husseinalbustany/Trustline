@@ -289,8 +289,14 @@ export function ControlledDocument({
         )}
       </header>
 
+      {/* Not written in the reader's language at all: said on paper too,
+          so a printed copy explains why its text is in another language. */}
       {notInMine && hasLocale(lang) && (
-        <p className="rounded-md bg-surface px-3 py-2 text-sm text-muted print:hidden">
+        <p
+          className={`rounded-md bg-surface px-3 py-2 text-sm text-muted print:border print:border-line ${
+            version.languages.includes(lang) ? "print:hidden" : ""
+          }`}
+        >
           {version.languages.includes(lang)
             ? fill(d.shownIn, { language: languageName(textLang) })
             : fill(d.notInYourLanguage, {

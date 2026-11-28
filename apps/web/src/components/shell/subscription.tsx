@@ -127,12 +127,18 @@ export function NotInSubscription({
   lang: string;
   t: SubscriptionText;
 }) {
+  // Whoever manages the organization's settings is not told to ask an
+  // administrator: they are one, and the subscription is Trustline's.
+  const session = useContext(SessionContext);
+  const manager = session?.scope?.["settings.manage"] === "all";
   return (
     <div className="mx-auto flex max-w-xl flex-col items-center gap-3 py-16 text-center">
       <h1 className="text-xl font-semibold ltr:tracking-tight">
         {t.notIncluded.title}
       </h1>
-      <p className="text-sm text-muted">{t.notIncluded.body}</p>
+      <p className="text-sm text-muted">
+        {manager ? t.notIncluded.bodyManager : t.notIncluded.body}
+      </p>
       <Link
         href={`/${lang}/dashboard`}
         className="mt-2 text-sm text-accent hover:underline"

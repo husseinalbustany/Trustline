@@ -660,6 +660,22 @@ export function shownLanguage(
 }
 
 /**
+ * A document's title for its page heading: in the reader's language when
+ * it is written in it, else in the language its text is shown in (as the
+ * control block names it), else the client's main language.
+ */
+export function headingTitle(
+  title: Localized,
+  reader: string,
+  shownIn: string | null,
+  defaultLocale: string,
+): string {
+  const of = (locale: string | null) =>
+    locale ? (title[locale]?.trim() ?? "") : "";
+  return of(reader) || of(shownIn) || of(defaultLocale) || Object.values(title).find(Boolean) || "";
+}
+
+/**
  * The language whose text applies to a version: the one recorded on it
  * when it was sent for review, once the API gives it (a version in review
  * or published keeps it whatever the setting becomes), else the one its
