@@ -143,6 +143,11 @@ export function explain(
       ? fill(errors.import_window_closed_on, { date: day(closed) })
       : errors.import_window_closed;
   }
+  // A number with letters of a script it may not use: only Latin, or the
+  // scripts of the organization's languages.
+  if (code === "invalid_number" && details.reason === "script") {
+    return errors.number_script;
+  }
   // A number mixing scripts, whether said by its own code or as the
   // reason of `invalid_number`.
   const script = /mixed_script|script_mix|scripts/;

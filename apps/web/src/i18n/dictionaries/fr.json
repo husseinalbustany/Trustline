@@ -1978,6 +1978,7 @@
       "review_before_approval": "La prochaine révision doit être postérieure à la date d’approbation.",
       "review_date_too_far": "La prochaine révision ne peut pas dépasser {max} à compter d’aujourd’hui, la périodicité la plus longue de votre établissement : le {date} au plus tard.",
       "invalid_number": "Ce numéro ne peut pas être utilisé. Indiquez le numéro tel qu’il est écrit sur l’original, en lettres et chiffres latins, séparés au besoin par des espaces, -, ., / ou _ : 40 caractères au plus.",
+      "number_script": "Un numéro de document ne peut contenir que des lettres latines, ou celles des langues de votre établissement, avec des chiffres et ⁦- . / _ ( )⁩. Écrivez le numéro de l’original avec ces caractères.",
       "number_mixed_scripts": "Ce numéro mélange des lettres de plusieurs écritures. Indiquez le numéro tel qu’il est écrit sur l’original, en lettres et chiffres latins.",
       "number_taken": "Un autre document porte déjà ce numéro.",
       "number_taken_by": "Un autre document porte déjà ce numéro : {number}.",

@@ -1978,6 +1978,7 @@
       "review_before_approval": "The next review must be after the approval date.",
       "review_date_too_far": "The next review can be at most {max} from today, your organization's longest review period: {date} at the latest.",
       "invalid_number": "This number cannot be used. Use the number as written on the original, in Latin letters and digits, with spaces, -, ., / or _ between them: at most 40 characters.",
+      "number_script": "A document number can use only Latin letters, or the letters of your organization's languages, with digits and ⁦- . / _ ( )⁩. Write the number as it is on the original, with these characters.",
       "number_mixed_scripts": "This number mixes letters of different scripts. Use the number as written on the original, in Latin letters and digits.",
       "number_taken": "Another document already has this number.",
       "number_taken_by": "Another document already has this number: {number}.",
