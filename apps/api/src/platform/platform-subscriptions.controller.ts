@@ -98,6 +98,11 @@ export class PlatformSubscriptionsController {
           await this.provisioning.endAllAccess(appTx);
           await this.openExitWindow(tx, tenantId, req.platformAdmin);
         }
+        // Made active again: the exit window and the retention of a
+        // cancellation that is over are cleared (security review 20, M4).
+        if (result.before.status === 'cancelled' && result.after.status !== 'cancelled') {
+          await this.clearExitWindow(tx, tenantId, req.platformAdmin);
+        }
         return result.after;
       }),
     );
@@ -116,19 +121,44 @@ export class PlatformSubscriptionsController {
       .from(subscriptions)
       .innerJoin(tenants, eq(tenants.id, subscriptions.tenantId))
       .where(eq(subscriptions.tenantId, tenantId));
-    if (!row || row.exitUntil) return;
-    const exitUntil = shiftDay(dayOf(new Date(), row.timeZone), EXIT_WINDOW_DAYS);
+    if (!row) return;
+    // A window already set that ends today or later stands; one that has
+    // ended, from an earlier cancellation, gives way to a new one (security
+    // review 20, M4).
+    const today = dayOf(new Date(), row.timeZone);
+    if (row.exitUntil && row.exitUntil >= today) return;
+    const exitUntil = shiftDay(today, EXIT_WINDOW_DAYS);
     const retainUntil = row.retainUntil && row.retainUntil >= exitUntil ? row.retainUntil : exitUntil;
     await tx.update(subscriptions).set({ exitUntil, retainUntil }).where(eq(subscriptions.tenantId, tenantId));
-    await this.auth.audit(admin.id, 'exit_window_set', tenantId, { from: null, to: exitUntil }, tx);
+    await this.auth.audit(admin.id, 'exit_window_set', tenantId, { from: row.exitUntil, to: exitUntil }, tx);
     if (retainUntil !== row.retainUntil) {
       await this.auth.audit(admin.id, 'retention_set', tenantId, { from: row.retainUntil, to: retainUntil }, tx);
     }
     await tx.execute(sql`
       insert into audit_log (tenant_id, action, entity_type, entity_id, changes)
       values (${tenantId}, 'contract_end_set', 'tenant', ${tenantId}, ${JSON.stringify({
-        exitUntil: { from: null, to: exitUntil },
+        exitUntil: { from: row.exitUntil, to: exitUntil },
         ...(retainUntil !== row.retainUntil && { retainUntil: { from: row.retainUntil, to: retainUntil } }),
+        platformAdminId: admin.id,
+        platformAdminName: admin.name,
+      })}::jsonb)`);
+  }
+
+  /** The exit window and retention cleared, in both logs, when a cancelled client is made active again. */
+  private async clearExitWindow(tx: Transaction, tenantId: string, admin: { id: string; name: string }) {
+    const [row] = await tx
+      .select({ exitUntil: subscriptions.exitUntil, retainUntil: subscriptions.retainUntil })
+      .from(subscriptions)
+      .where(eq(subscriptions.tenantId, tenantId));
+    if (!row || (!row.exitUntil && !row.retainUntil)) return;
+    await tx.update(subscriptions).set({ exitUntil: null, retainUntil: null }).where(eq(subscriptions.tenantId, tenantId));
+    if (row.exitUntil) await this.auth.audit(admin.id, 'exit_window_set', tenantId, { from: row.exitUntil, to: null }, tx);
+    if (row.retainUntil) await this.auth.audit(admin.id, 'retention_set', tenantId, { from: row.retainUntil, to: null }, tx);
+    await tx.execute(sql`
+      insert into audit_log (tenant_id, action, entity_type, entity_id, changes)
+      values (${tenantId}, 'contract_end_set', 'tenant', ${tenantId}, ${JSON.stringify({
+        ...(row.exitUntil && { exitUntil: { from: row.exitUntil, to: null } }),
+        ...(row.retainUntil && { retainUntil: { from: row.retainUntil, to: null } }),
         platformAdminId: admin.id,
         platformAdminName: admin.name,
       })}::jsonb)`);

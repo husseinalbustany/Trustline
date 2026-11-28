@@ -1,4 +1,7 @@
 import { generateKeyPairSync, randomBytes } from 'node:crypto';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { defineConfig } from 'vitest/config';
 
 // A key for the audit chain's checkpoints, made afresh for each run: no
@@ -12,6 +15,9 @@ const exportKey = generateKeyPairSync('ed25519')
   .privateKey.export({ type: 'pkcs8', format: 'der' })
   .toString('base64');
 const storageKey = randomBytes(32).toString('base64');
+// Where the run's archives are kept: a directory of its own, named, as a
+// deployment names its storage (security review 20, L3).
+const storageDir = mkdtempSync(join(tmpdir(), 'trustline-exports-test-'));
 
 export default defineConfig({
   // Resolves the path aliases declared in tsconfig.json, including the ones
@@ -35,6 +41,7 @@ export default defineConfig({
       EXPORT_SIGNING_KEY: exportKey,
       EXPORT_PREVIOUS_PUBLIC_KEYS: '',
       EXPORT_STORAGE_KEY: storageKey,
+      EXPORT_STORAGE_DIR: storageDir,
       // No test ever calls a real AI provider: every request is answered by
       // the fake one (ai/providers.ts), which is also what a test run gets
       // whatever is set, and a real adapter built under test throws.

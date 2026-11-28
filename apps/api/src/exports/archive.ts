@@ -75,6 +75,14 @@ type Tenant = {
   created_at: string;
 };
 
+/** An exported table whose columns are not decided in coverage-columns.ts. */
+export class UndecidedTable extends Error {
+  constructor(table: string) {
+    super(`columns not decided: ${table}`);
+    this.name = 'UndecidedTable';
+  }
+}
+
 /** A file of lines, written as fast as the disk takes them. */
 class Lines {
   private readonly out: WriteStream;
@@ -405,13 +413,10 @@ export class ArchiveBuilder {
     // 19, L2).
     const listed = EXPORTED_COLUMNS[table] ?? [];
     const columns = all.filter((c) => listed.includes(c.name) && !Object.hasOwn(coverage.omit, c.name));
-    // A table whose columns are not decided yet goes empty, never broken:
-    // coverage.spec.ts fails until it is decided.
-    if (columns.length === 0) {
-      const out = await Lines.at(join(files, `${coverage.file}.jsonl`));
-      await out.close();
-      return 0;
-    }
+    // A table whose columns are not decided yet fails the export, with its
+    // kind recorded, rather than going out empty under a signed manifest
+    // (security review 20, L7). coverage.spec.ts fails first.
+    if (columns.length === 0) throw new UndecidedTable(table);
     const valueOf = (c: Column) =>
       c.type.startsWith('timestamp') && !c.type.endsWith('[]')
         ? `to_char(${quote(c.name)} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
@@ -443,7 +448,7 @@ export class ArchiveBuilder {
         order by ${keyList} limit ${asked}`);
       let bytes = 0;
       for (const r of rows) {
-        bytes += r.line.length;
+        bytes += Buffer.byteLength(r.line, 'utf8');
         await out.write(r.line);
       }
       if (rows.length < asked) break;

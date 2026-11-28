@@ -346,6 +346,22 @@ export class AuthService {
         return null;
       }
 
+      // A cancelled client in its exit window: only those who may export
+      // its data for the whole organization (docs/specs/data-export.md).
+      // Anyone else is refused as before it was open, and told nothing:
+      // an external reviewer too, before any code is sent (security
+      // review 20, L1).
+      const entitlements = await this.entitlements.of(tx, tenant.id);
+      if (entitlements?.status === 'cancelled') {
+        const access = await this.accessOf(tx, fresh.id, fresh.kind);
+        if (fresh.kind !== 'staff' || !mayExport(access)) {
+          await this.provisioning.audit(tx, tenant.id, user.id, 'sign_in_failed', 'user', user.id, {
+            locked: false,
+            reason: 'subscription_cancelled',
+          }, input.ip);
+          return null;
+        }
+      }
       // An external reviewer: only within their days, and then with a
       // one-time code by email as well (decision 2).
       if (fresh.kind === 'external_reviewer') {
@@ -365,20 +381,6 @@ export class AuthService {
           return null;
         }
         return { issued, user: fresh };
-      }
-      // A cancelled client in its exit window: only those who may export
-      // its data for the whole organization (docs/specs/data-export.md).
-      // Anyone else is refused as before it was open, and told nothing.
-      const entitlements = await this.entitlements.of(tx, tenant.id);
-      if (entitlements?.status === 'cancelled') {
-        const access = await this.accessOf(tx, fresh.id, fresh.kind);
-        if (fresh.kind !== 'staff' || !mayExport(access)) {
-          await this.provisioning.audit(tx, tenant.id, user.id, 'sign_in_failed', 'user', user.id, {
-            locked: false,
-            reason: 'subscription_cancelled',
-          }, input.ip);
-          return null;
-        }
       }
       return { token: await this.openSession(tx, tenant, fresh, input.client, input.ip, null) };
     });

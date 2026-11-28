@@ -11,6 +11,8 @@ import { refusalOf } from './platform-contract.controller.js';
 
 /** The certificate's format, as it says itself. */
 export const CERTIFICATE_FORMAT = { format: 'trustline-deletion-certificate', version: 1 } as const;
+/** What a certificate's signature is of: this, then the certificate's exact bytes. */
+export const CERTIFICATE_PREFIX = Buffer.from('trustline-deletion-certificate-v1\n', 'utf8');
 
 const quote = (name: string) => `"${name.replaceAll('"', '""')}"`;
 
@@ -43,7 +45,16 @@ export async function deleteClient(
   storage: ExportStorage,
 ) {
   if (!keys.signer) throw new Error('EXPORT_SIGNING_KEY must hold a valid Ed25519 private key: a certificate is signed');
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.backupsExpireOn)) throw new Error('backupsExpireOn must be a day (YYYY-MM-DD)');
+  // A real day (security review 20, L6): today or later, checked in the
+  // client's calendar below.
+  const day = /^(\d{4})-(\d{2})-(\d{2})$/.exec(input.backupsExpireOn);
+  const asDate = day ? new Date(Date.UTC(Number(day[1]), Number(day[2]) - 1, Number(day[3]))) : null;
+  if (!day || !asDate || asDate.toISOString().slice(0, 10) !== input.backupsExpireOn) {
+    throw new Error('backupsExpireOn must be a real day (YYYY-MM-DD)');
+  }
+  // Where the archives are, named: never a temporary directory by default
+  // (security review 20, L3).
+  if (!storage.configured) throw new Error('EXPORT_STORAGE_DIR must name the storage of this deployment');
   const done = await db.transaction(async (tx) => {
     const { rows: found } = await tx.execute<{
       id: string;
@@ -73,16 +84,19 @@ export async function deleteClient(
       subscription: string;
       exit_until: string | null;
       retain_until: string | null;
+      cancelled_at: Date | null;
     }>(sql`
       select t.slug, t.status::text as status, t.time_zone, s.status::text as subscription,
-             s.exit_until::text as exit_until, s.retain_until::text as retain_until
+             s.exit_until::text as exit_until, s.retain_until::text as retain_until, s.access_reset_at as cancelled_at
       from tenants t join subscriptions s on s.tenant_id = t.id
       where t.id = ${tenantId}
       for update of t, s`);
     const client = clients[0];
     if (!client) throw new Error('no such client, or no subscription');
     const { rows: downloads } = await tx.execute<{ n: number }>(
-      sql`select count(*)::int as n from data_exports where tenant_id = ${tenantId} and downloads > 0`,
+      // Only an export downloaded since the cancellation (security review 20, M4).
+      sql`select count(*)::int as n from data_exports where tenant_id = ${tenantId} and downloads > 0
+        and last_downloaded_at >= ${client.cancelled_at ?? new Date(0)}`,
     );
     const today = dayOf(new Date(), client.time_zone);
     const refusal = refusalOf(
@@ -97,6 +111,10 @@ export async function deleteClient(
       !!deletion.written_instruction,
     );
     if (refusal) throw new Error(`refused: ${refusal}`);
+    if (input.backupsExpireOn < today) throw new Error('backupsExpireOn is before today');
+    // The archives first, here where the storage is (security review 20,
+    // L3): what is removed is said in the certificate.
+    const archivesRemoved = await storage.removeClient(tenantId);
 
     // What the chain stood at, before it goes.
     const { rows: heads } = await tx.execute<{ seq: string; hash: string }>(
@@ -158,16 +176,25 @@ export async function deleteClient(
           : null,
       },
       lastBackupExpiresOn: input.backupsExpireOn,
+      archivesRemoved,
+      // What is kept (security review 20, L5): the client's identifier and
+      // id, as a stub; Trustline's own log of what its staff did about the
+      // client, which names them and the contract contacts of its written
+      // requests; and this certificate.
+      kept: ['client identifier and id', 'Trustline log entries about the client', 'this certificate'],
       requestedBy: deletion.requester,
       approvedBy: deletion.approver,
       writtenInstruction: deletion.written_instruction ?? null,
     };
     const bytes = Buffer.from(`${JSON.stringify(certificate, null, 2)}\n`, 'utf8');
-    const signed = keys.sign(bytes)!;
+    // Signed with its own prefix, so that no signature of a manifest can
+    // stand for a certificate's (security review 20, L9).
+    const signed = keys.sign(Buffer.concat([CERTIFICATE_PREFIX, bytes]))!;
     const sha256 = createHash('sha256').update(bytes).digest('hex');
     const signature = { algorithm: 'Ed25519' as const, keyId: signed.keyId, signature: signed.signature };
     await tx.execute(sql`
       update client_deletions set status = 'done', executed_at = now(), certificate = ${bytes.toString('utf8')}::jsonb,
+        certificate_text = ${bytes.toString('utf8')},
         certificate_sha256 = ${sha256}, signature = ${JSON.stringify(signature)}::jsonb
       where id = ${deletion.id}`);
     await tx.execute(sql`
@@ -176,8 +203,6 @@ export async function deleteClient(
         ${JSON.stringify({ deletionId: deletion.id, certificateSha256: sha256, rowsDeletedInAll: certificate.rowsDeletedInAll })}::jsonb)`);
     return { tenantId, exportIds, certificate: bytes, sha256, signature };
   });
-  // The archives left: past the database, in storage.
-  await storage.removeClient(done.tenantId);
   return done;
 }
 

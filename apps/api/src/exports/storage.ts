@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import { createReadStream, createWriteStream } from 'node:fs';
-import { chmod, mkdir, open, rm, stat } from 'node:fs/promises';
+import { createReadStream, createWriteStream, existsSync } from 'node:fs';
+import { chmod, mkdir, open, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { pipeline } from 'node:stream/promises';
@@ -36,11 +36,15 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 export class ExportStorage {
   private readonly logger = new Logger(ExportStorage.name);
   readonly root: string;
+  /** Whether the root was named for this deployment, and exists. */
+  readonly configured: boolean;
   private readonly storageKey: Buffer;
   readonly problem: string | null;
 
   constructor() {
-    this.root = resolve(process.env[STORAGE_DIR_VARIABLE]?.trim() || join(tmpdir(), 'trustline-exports'));
+    const named = process.env[STORAGE_DIR_VARIABLE]?.trim();
+    this.root = resolve(named || join(tmpdir(), 'trustline-exports'));
+    this.configured = !!named && existsSync(this.root);
     const value = process.env[STORAGE_KEY_VARIABLE]?.trim();
     const key = value ? Buffer.from(value, 'base64') : null;
     if (key && key.length === 32) {
@@ -140,10 +144,16 @@ export class ExportStorage {
     await rm(this.pathOf(`work/${tenantId}/${exportId}`), { recursive: true, force: true });
   }
 
-  /** Deletes everything kept of a client (its deletion; the tests' clean-up). */
+  /** Deletes everything kept of a client (its deletion; the tests' clean-up): how many archive files went. */
   async removeClient(tenantId: string) {
-    await rm(this.pathOf(tenantId), { recursive: true, force: true });
+    const dir = this.pathOf(tenantId);
+    let files = 0;
+    if (existsSync(dir)) {
+      for (const entry of await readdir(dir, { recursive: true, withFileTypes: true })) if (entry.isFile()) files++;
+    }
+    await rm(dir, { recursive: true, force: true });
     await rm(this.pathOf(`work/${tenantId}`), { recursive: true, force: true });
+    return files;
   }
 
   /** A path inside the root, from ids and attempt numbers only. */

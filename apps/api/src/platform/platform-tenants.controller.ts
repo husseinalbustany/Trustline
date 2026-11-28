@@ -263,6 +263,9 @@ export class PlatformTenantsController {
           .where(eq(tenants.id, tenantId))
           .for('update');
         if (!before) throw new NotFoundException();
+        // A deleted client is a stub: nothing of it changes (security
+        // review 20, L5).
+        if (before.status === 'deleted') throw new ConflictException({ code: 'client_deleted' });
         this.assertLanguages({ ...before, ...values });
         // Going to or from suspended voids every session and link issued
         // until now: by the database's clock, as a session's own time is,
