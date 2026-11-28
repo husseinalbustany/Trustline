@@ -201,8 +201,8 @@ function renderText(body: Paragraph[], footer: Paragraph[], w: Wording) {
   const rtl = w.dir === 'rtl';
   const block = (p: Paragraph) => {
     if (p.kind === 'text') return p.text;
-    if (p.kind === 'link') return `${p.text}: ${p.href}`;
-    return p.items.map((item) => `- ${itemText(item, w, rtl)}: ${item.href}`).join('\n');
+    if (p.kind === 'link') return `${p.text}${w.colon}${p.href}`;
+    return p.items.map((item) => `- ${itemText(item, w, rtl)}${w.colon}${item.href}`).join('\n');
   };
   return [
     ...body.map(block).filter((b) => b !== ''),

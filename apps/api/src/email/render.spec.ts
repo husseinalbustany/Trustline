@@ -6,7 +6,7 @@ const envelope = (locale: 'en' | 'ar' | 'fr' = 'en'): MailEnvelope => ({
   locale,
   organization: 'Example Organization',
   unsubscribe: { href: `${BASE}/api/v1/email/unsubscribe/v1.abc.def`, switch: 'immediate' },
-  preferencesHref: `${BASE}/${locale}/notifications`,
+  preferencesHref: `${BASE}/${locale}/notifications/preferences`,
 });
 
 const assigned = {
@@ -116,5 +116,35 @@ describe('rendering an email', () => {
     );
     expect(mail.text).toContain('Acknowledgements overdue: 7');
     expect(mail.text).toContain('People concerned: 3');
+  });
+
+  it('puts U+00A0 before every colon of a French plain text, on link and reference lines too (regression 2, D5)', () => {
+    const items = [
+      { label: 'WI-OPS-051', href: `${BASE}/fr/policies/1`, overdue: true },
+      { label: 'INC-2026-00007', href: `${BASE}/fr/incidents/2` },
+    ];
+    const mails = [
+      renderMail({ ...assigned, href: `${BASE}/fr/incidents/3` }, envelope('fr')),
+      renderMail(
+        {
+          category: 'daily_digest',
+          day: '2026-11-28',
+          href: `${BASE}/fr/dashboard`,
+          sections: [{ key: 'acknowledge', count: 2, items }],
+        },
+        { ...envelope('fr'), unsubscribe: { href: `${BASE}/u`, switch: 'digest' } },
+      ),
+      renderMail({ category: 'weekly_digest', overdue: 3, people: 2, href: `${BASE}/fr/policies/overdue` }, envelope('fr')),
+    ];
+    for (const { text } of mails) {
+      // Every colon but those of an address (`https://`).
+      const bare = [...text.replaceAll('://', '').matchAll(/(.):/gu)].map((m) => m[1]);
+      expect(bare.length).toBeGreaterThan(2);
+      expect(new Set(bare)).toEqual(new Set(['\u00a0']));
+    }
+    expect(mails[1].text).toContain(`- WI-OPS-051 (en retard)\u00a0: ${BASE}/fr/policies/1`);
+    expect(mails[0].text).toContain(`Ouvrir dans Trustline\u00a0: ${BASE}/fr/incidents/3`);
+    // English keeps its plain colon.
+    expect(renderMail(assigned, envelope()).text).toContain(`Open in Trustline: ${assigned.href}`);
   });
 });

@@ -8,8 +8,9 @@ they are (`incident-safeguards-and-deadlines.md`, section 5, and
 the same events. It never tells anyone about something they would not be
 notified of in the app.
 
-The API builds all of this. The web screens (the preferences page and the
-organization switch) are not built yet.
+The API builds all of this. The web app has the screens: each person's
+email preferences (`/<lang>/notifications/preferences`), and the
+organization's switch in its administration settings.
 
 ## 1. What is sent
 
@@ -140,7 +141,8 @@ was queued:
 **Unsubscribe link.** Every email has one, for its own kind (immediate or
 digest). It is a signed, expiring token (HMAC-SHA256 with
 `EMAIL_LINK_SECRET`, valid 90 days) naming the organization, the person, the
-switch, when it was issued and the expiry. Nothing else is in it. A link
+switch, the language of the email it came in (so that its page is in that
+language), when it was issued and the expiry. Nothing else is in it. A link
 issued before the person last switched that kind back on no longer works
 for it (security review 8, L2): an old email cannot switch off again what
 the person chose to have. When a link switches something off, the person
@@ -404,7 +406,6 @@ log) is kept elsewhere.
 
 ## Not built yet
 
-The preferences screen and the organization switch in the web app. An email
-for an overdue approval step. Choosing the digest hour per organization.
+An email for an overdue approval step. Choosing the digest hour per organization.
 Delivery reports (bounces), and other transports beyond SMTP (an HTTP API of
 a mail service can be added as another `MailSender`).

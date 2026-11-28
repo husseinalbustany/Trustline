@@ -6,6 +6,7 @@ export const fr: Wording = {
   dir: 'ltr',
   greeting: 'Bonjour,',
   open: 'Ouvrir dans Trustline',
+  colon: ' : ',
   overdue: 'en retard',
   immediate: {
     incident_reported: {

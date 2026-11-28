@@ -558,8 +558,8 @@ then decided in "Built: decisions 1 to 3", at the end.
 
 - The owner asking a manager to retire a document: there is no route; the
   owner tells a manager, who retires it.
-- Email: the weekly digest of overdue acknowledgements is in the app only
-  until the mail decision (Q8).
+- Email: built since, by decision 4 (`email.md`); the weekly digest of
+  overdue acknowledgements is emailed to the managers it is written for.
 - The owner unit head as an assignee, and `required` other than 1, as the
   spec says.
 
@@ -834,7 +834,11 @@ See "Acknowledgement" above: only acknowledgements past their due date.
 ## Built: decisions 1 to 3
 
 What the API builds of the three decisions above (decision 4, email, is
-built in its own spec, `email.md`). The web screens for them are not built yet. Migrations 0044 (schema, generated) and 0045
+built in its own spec, `email.md`). The web app has the screens for them:
+importing one document and a batch (with the page on preparing the file),
+the Approving authority in the roles, and the language that applies in
+the settings; and the admin portal sets each client's import window
+(security review 7). Migrations 0044 (schema, generated) and 0045
 (grants, triggers, the role and the routes of existing clients, custom
 SQL), both additive: nothing the release running before them does is
 refused. Each new route answers 401 without a session, 403 without its

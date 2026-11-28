@@ -274,7 +274,8 @@ The `policies` module: one library of each client's controlled documents
 (policies, procedures, work instructions), each with a number for life
 (`PRC-SAF-014`), versions, approval with signatures, publication,
 acknowledgement by the people it applies to, and periodic review. The
-database and the API are built; the screens are not.
+database, the API and the screens are built, the import of existing
+documents included.
 
 - **The cycle:** a manager drafts a version, section by section in each of
   the client's languages (Markdown limited to paragraphs, lists, bold and
@@ -311,15 +312,16 @@ database and the API are built; the screens are not.
 The rules, what was decided while building, and every route are in
 `docs/specs/policies-and-procedures.md` ("Built: database and API").
 
-Not built yet: the screens, an owner asking to retire, notifications for
-an overdue approval step, and everything the spec leaves out of this
+Not built yet: an owner asking to retire, notifications for an overdue
+approval step, and everything the spec leaves out of this
 release (uploads, attachments, delegation, a server-made PDF).
 
 ## Email
 
 Notifications are also sent by email (core, every client): what cannot
 wait, at once, and each morning a digest of what waits for the person. The
-API builds it; the screens for the preferences and the switch are not built.
+API builds it, and the web app has each person's preferences
+(`/<lang>/notifications/preferences`) and the organization's switch.
 
 - **At once:** a serious incident reported or handed over (to those who may
   triage it), an incident made a sentinel event, an incident assigned to

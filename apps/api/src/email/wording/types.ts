@@ -16,6 +16,11 @@ export type Wording = {
   greeting: string;
   /** The link to the item. */
   open: string;
+  /**
+   * Between a label and what follows it on a line of the plain text (a
+   * link, a reference): ": ", or in French "\u00a0: " (regression 2, D5).
+   */
+  colon: string;
   /** Said after a reference whose deadline has passed. */
   overdue: string;
   immediate: {

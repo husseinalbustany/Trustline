@@ -4,6 +4,7 @@ export const ar: Wording = {
   dir: 'rtl',
   greeting: 'مرحبًا،',
   open: 'الفتح في Trustline',
+  colon: ': ',
   overdue: 'تجاوز الموعد',
   immediate: {
     incident_reported: {
