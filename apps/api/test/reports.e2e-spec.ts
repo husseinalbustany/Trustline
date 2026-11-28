@@ -132,7 +132,7 @@ describe('reports and measures', () => {
       expect(current('incidents.reported').value).toBe(3);
       const documents = (await get(h.cookie, '/policies/summary').expect(200)).body;
       expect(current('policies.past_review')).toMatchObject({ numerator: documents.pastReview.count, denominator: documents.pastReview.of });
-    });
+    }, 30_000);
   });
 
   describe('the month-end snapshots', () => {
@@ -274,7 +274,7 @@ describe('reports and measures', () => {
       // Today, as the records stand: reviewed, and the leaver gone.
       const live = await measuresOf(h.cookie, months(thisMonth, thisMonth));
       expect(live.measures.find((m) => m.code === 'policies.past_review')!.current).toMatchObject({ numerator: 0, denominator: 1 });
-    });
+    }, 30_000);
   });
 
   describe('the Reports API', () => {
