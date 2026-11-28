@@ -19,7 +19,10 @@
     "unreadMany": "99+",
     "emailPreferences": "Your email preferences",
     "reviewerTitle": "Read-only access until {date}",
-    "reviewerHelp": "You are an external reviewer: you can read and download, but not change anything. What you open is recorded in the audit trail."
+    "reviewerHelp": "You are an external reviewer: you can read and download, but not change anything. What you open is recorded in the audit trail.",
+    "exitTitle": "Your organization's contract has ended. You can export its data until {day}.",
+    "exitOnly": "Only the data export is open now.",
+    "exitLink": "Go to the data export"
   },
   "nav": {
     "groups": {
@@ -632,7 +635,6 @@
       "ai_provider_changed": "Trustline changed who processes AI requests for: {features}. See where they are processed now.",
       "ai_allowance_warning": "AI, {feature}: {used} of this month's {allowance} used. It starts again on {resetsOn}.",
       "ai_allowance_reached": "AI, {feature}: this month's allowance of {allowance} is used up. It is paused until {resetsOn}; you can still write by hand.",
-      "other": "There is an update on {reference}.",
       "data_export_changed": {
         "requested": "A full export of your organization's data was requested. Open it to see who asked; if you do not expect it, refuse it.",
         "approved": "A full export of your organization's data was approved.",
@@ -643,7 +645,10 @@
         "downloaded": "A full export of your organization's data was downloaded.",
         "failed": "A full export of your organization's data could not be made.",
         "other": "A full export of your organization's data changed."
-      }
+      },
+      "contract_ending": "Your organization's contract with Trustline ends on {day}. You can export its data before then.",
+      "data_export_granted": "{name} was given permission to export all of the organization's data.",
+      "other": "There is an update on {reference}."
     },
     "descriptionGeneral": "What has happened that concerns you. A notification names no one.",
     "emptyGeneral": "You have no notifications yet. When something happens that concerns you, it appears here.",
@@ -1243,6 +1248,89 @@
         "echo": "The fake provider says each request back.",
         "scripted": "A test's own scripted answers."
       }
+    },
+    "contract": {
+      "title": "Contract end and deletion",
+      "exitOpen": "Exit window open",
+      "exportDownloaded": "A full export was downloaded",
+      "noExportDownloaded": "No full export downloaded yet",
+      "dates": "Dates",
+      "datesHelp": "Empty for none. Cancelling the subscription opens a 90-day exit window unless one is set. Retention must end after the exit window.",
+      "endsOn": "Contract ends on",
+      "exitUntil": "Export possible until",
+      "retainUntil": "Data kept until",
+      "saveDates": "Save the dates",
+      "datesSaved": "The dates are saved, and recorded in the client's audit trail.",
+      "exports": "Full exports",
+      "noExports": "None yet.",
+      "requestedAt": "Asked for {time}",
+      "trustlineApproved": "Approved by Trustline {time}",
+      "downloads": "Downloads: {count}, last {time}",
+      "exportStatus": {
+        "requested": "Waiting for approval",
+        "approved": "Approved",
+        "refused": "Refused",
+        "lapsed": "Lapsed",
+        "cancelled": "Cancelled",
+        "making": "Being made",
+        "ready": "Ready",
+        "failed": "Could not be made",
+        "expired": "Expired"
+      },
+      "approveOpen": "Approve on a written request",
+      "approveHelp": "Only when no second holder at the client can approve it. Record the written request it rests on.",
+      "receivedOn": "Received on",
+      "from": "From",
+      "reference": "Its reference",
+      "note": "Note",
+      "approve": "Approve the export",
+      "approved": "Approved. The client is told.",
+      "cancel": "Cancel",
+      "deletion": "Deleting the client",
+      "deletionHelp": "Two members of staff: one asks, another approves. The deletion itself runs from the command line and writes a signed certificate.",
+      "reason": "Reason",
+      "instruction": "The client's written instruction",
+      "instructionHelp": "Optional: its reference, if the client asked in writing.",
+      "askDeletion": "Ask for the deletion",
+      "deletionAsked": "Asked for. Another member of staff must approve it.",
+      "deletionStatus": {
+        "requested": "Waiting for a second member of staff",
+        "approved": "Approved: to be run",
+        "done": "Done",
+        "cancelled": "Cancelled"
+      },
+      "deletionReason": "Reason: {reason}",
+      "writtenInstruction": "Written instruction: {text}",
+      "deletionRequested": "Asked for by {name}, {time}",
+      "deletionApproved": "Approved by {name}, {time}",
+      "approveDeletion": "Approve the deletion",
+      "cancelDeletion": "Cancel the deletion",
+      "deletionApprovedDone": "Approved. Run it from the command line.",
+      "deletionCancelled": "The deletion is cancelled.",
+      "runIt": "Run it from the command line, with the day the backups expire:",
+      "executed": "Deleted {time}.",
+      "certificateSha": "The certificate's SHA-256 fingerprint:",
+      "certificate": "Download the signed certificate",
+      "notDeletable": "It cannot be deleted yet: {why}",
+      "retainedUntil": "Its data is kept until {day}.",
+      "deletable": {
+        "already_deleted": "it is already deleted.",
+        "not_cancelled": "its subscription is not cancelled.",
+        "no_retention_date": "no retention date is set.",
+        "before_retention": "its retention has not ended.",
+        "no_export_downloaded": "no full export of its data was downloaded."
+      },
+      "errors": {
+        "invalid_dates": "The data must be kept until after the exit window ends.",
+        "not_alone": "Another holder at the client can approve it: Trustline approves only when no one else can.",
+        "lapsed": "This request lapsed without approval.",
+        "stale_export": "This export changed in the meantime. Reload the page.",
+        "deletion_in_progress": "A deletion is already under way.",
+        "same_person": "You asked for this deletion: another member of staff must approve it.",
+        "stale_deletion": "This deletion changed in the meantime. Reload the page.",
+        "invalid": "Check the fields: something is missing or not in the right form.",
+        "generic": "Could not do this. Try again."
+      }
     }
   },
   "auth": {
@@ -1704,7 +1792,7 @@
       }
     },
     "permissionWarnings": {
-      "data.export": "This gives everything the organization holds in Trustline: reporters' names, internal comments, restricted documents and the whole audit trail. A full export needs two people who hold it: one asks, the other approves. Give it only to those who will answer for the data once it leaves Trustline."
+      "data.export": "This gives everything the organization holds in Trustline: reporters' names, internal comments, restricted documents and the whole audit trail. It works only together with “See who reported an incident”, for the whole organization. A full export needs two people who hold it: one asks, the other approves. Give it only to those who will answer for the data once it leaves Trustline."
     }
   },
   "policies": {
@@ -3068,7 +3156,8 @@
       "data_export_failed": "Full data export could not be made",
       "data_export_downloaded": "Full data export downloaded",
       "data_export_expired": "Full data export expired",
-      "data_export_approved_by_trustline": "Full data export approved by Trustline, on a written request"
+      "data_export_approved_by_trustline": "Full data export approved by Trustline, on a written request",
+      "contract_end_set": "Contract end dates set by Trustline"
     },
     "areas": {
       "sign_in": "Sign-in",
@@ -3562,7 +3651,7 @@
   "dataExport": {
     "title": "Full data export",
     "description": "Everything the organization holds in Trustline, in one archive: for the end of a contract, or when the organization asks for its data.",
-    "noAccess": "The full data export is for those who hold “Ask for, approve and download a full export of the organization's data” for the whole organization.",
+    "noAccess": "The full data export is for those who hold, for the whole organization, both “Ask for, approve and download a full export of the organization's data” and “See who reported an incident”.",
     "loading": "Loading…",
     "formerUser": "a former user",
     "password": "Your password",
@@ -3584,7 +3673,8 @@
       "language": "Language of the archive",
       "languageHelp": "The READMEs, file headings and document pages are in this language.",
       "passwordHelp": "Asking is signed with your password.",
-      "submit": "Ask for the export"
+      "submit": "Ask for the export",
+      "seeReporter": "Only those who also hold “See who reported an incident” for the whole organization can ask for, approve or download it, since it names every reporter."
     },
     "list": {
       "title": "Exports",
@@ -3600,7 +3690,9 @@
       "ready": "Ready: {size}. It can be downloaded until {expires}, {left} more times.",
       "snapshot": "Data as at {time}",
       "downloads": "Downloads so far: {count}",
-      "sha": "The archive's SHA-256 fingerprint:"
+      "sha": "The archive's SHA-256 fingerprint:",
+      "approvedByTrustline": "Approved by Trustline on the written request of {from} ({reference}, received {day}). Only the person who asked may download it.",
+      "failedStopped": "It stopped while being made, at its last try. Trustline has been told; ask for it again later."
     },
     "status": {
       "requested": "Waiting for approval",
@@ -3665,7 +3757,9 @@
       "expired": "This export has expired and was deleted. Ask for a new export.",
       "notFound": "This export no longer exists. Reload the page.",
       "invalid": "Check the fields: something is missing or too long.",
-      "generic": "Could not do this. Try again."
+      "generic": "Could not do this. Try again.",
+      "approver_not_independent": "You cannot approve this export: your account or your permission was given by the person who asked, or less than 7 days ago. Another administrator must approve it.",
+      "archive_unavailable": "This archive cannot be opened. Ask for a new export. This try was not counted."
     }
   }
 }

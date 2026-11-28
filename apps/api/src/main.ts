@@ -12,6 +12,7 @@ import { MeasureSnapshotCheck } from './reports/measure-snapshot.check.js';
 import { EXPORT_SIGNING_KEY_VARIABLE, ExportKeys } from './exports/export-keys.js';
 import { ExportWorker } from './exports/export-worker.service.js';
 import { ContractNotices } from './exports/contract-notices.check.js';
+import { PdfRenderer } from './policies/pdf/renderer.js';
 import { ExportStorage, STORAGE_DIR_VARIABLE, STORAGE_KEY_VARIABLE } from './exports/storage.js';
 import { RiskCheck } from './risks/risk-check.service.js';
 
@@ -80,5 +81,7 @@ async function bootstrap() {
   app.get(ExportWorker, { strict: false }).start();
   // The notices 90, 30 and 7 days before a contract ends, every hour.
   app.get(ContractNotices, { strict: false }).start();
+  // What the PDFs lack here, said once (docs/specs/document-pdf.md).
+  app.get(PdfRenderer, { strict: false }).warn();
 }
 await bootstrap();

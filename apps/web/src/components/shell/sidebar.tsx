@@ -34,6 +34,7 @@ export function Sidebar({
   footer,
   permissions,
   modules,
+  only,
 }: {
   lang: Locale;
   pathname: string;
@@ -48,6 +49,8 @@ export function Sidebar({
   onClose: () => void;
   /** Shown under the menu on a phone, where the top bar has no room: the person's own links. */
   footer?: ReactNode;
+  /** When set, only these items (the exit window: the data export). */
+  only?: string[];
 }) {
   const under = (href: string) => {
     const full = `/${lang}${href}`;
@@ -66,6 +69,7 @@ export function Sidebar({
       ...group,
       items: group.items.filter(
         (item) =>
+          (!only || only.includes(item.key)) &&
           moduleOn(modules, item.module ?? "core") &&
           (!item.permissions ||
             item.permissions.some((p) => permissions.includes(p))),

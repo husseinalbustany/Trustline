@@ -50,6 +50,7 @@ export const ar: AuditWording = {
     document_version_withdrawn: 'سحب إصدار',
     document_publish_scheduled: 'جدولة النشر',
     document_published: 'نشر إصدار',
+    document_pdf_made: "إعداد ملف PDF لوثيقة",
     document_retired: 'إيقاف العمل بوثيقة',
     document_reviewed: 'تسجيل المراجعة الدورية',
     document_review_requested: 'إرسال المراجعة الدورية للاعتماد',
@@ -226,6 +227,9 @@ export const ar: AuditWording = {
     units: { percent: "{value}%", seconds: "{value} ثانية" },
     languages: { en: "الإنجليزية", ar: "العربية", fr: "الفرنسية" },
     fields: {
+      languages: "اللغات",
+      pages: "عدد الصفحات",
+      sha256: "البصمة (SHA-256)",
       endsOn: "انتهاء العقد",
       exitUntil: "آخر يوم في فترة الخروج",
       retainUntil: "حفظ البيانات حتى",

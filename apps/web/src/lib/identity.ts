@@ -27,6 +27,11 @@ export type Session = {
        */
       notice: "past_due" | "suspended" | null;
     };
+    /**
+     * The exit window, once the contract has ended: until the last day its
+     * data may be exported. Only the export page works then.
+     */
+    exit?: { until: string } | null;
   };
   user: {
     id: string;

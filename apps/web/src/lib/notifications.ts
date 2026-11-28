@@ -73,6 +73,8 @@ export type Notification = {
     kind?: string;
     /** With `audit_chain_broken`: the first entry that does not hold, when known. */
     firstBadSeq?: number;
+    /** With `contract_ending`: the contract's last day (and `days` left). */
+    endsOn?: string;
     /** With the AI notices: which features, and how much of an allowance is used. */
     feature?: string;
     features?: string;
@@ -85,7 +87,7 @@ export type Notification = {
     checkedOn?: string;
     /** With `document_step_assigned`: review or approve. */
     step?: string;
-    /** With `review_due`: 60, 30 or 7 days before. */
+    /** With `review_due`: 60, 30 or 7 days before; with `contract_ending`, 90, 30 or 7. */
     days?: number;
     /**
      * With `review_due` and `review_overdue`: the document was approved

@@ -24,6 +24,7 @@ import { limitOf } from "@/lib/api";
 import { numberFormat } from "@/lib/format";
 import type { Plan } from "@/lib/platform-api";
 import { ClientAi } from "./client-ai";
+import { ClientContract } from "./client-contract";
 import { ClientImportWindow } from "./client-import-window";
 import { ClientSubscription } from "./client-subscription";
 import type { ModuleNames } from "./module-words";
@@ -425,6 +426,8 @@ export function ClientForm({
             />
 
             <ClientAi lang={lang} t={t} tenantId={client.id} />
+
+            <ClientContract lang={lang} t={t} tenantId={client.id} />
 
             <Panel title={t.administrator.title}>
               <form

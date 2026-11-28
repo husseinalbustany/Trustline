@@ -33,10 +33,11 @@ import type { AuditText } from "./types";
 const PAGE_SIZE = 50;
 
 /** The areas of a module the client does not have are not offered. */
-const areaModule: Partial<Record<AuditArea, "incidents" | "policies">> = {
+const areaModule: Partial<Record<AuditArea, "incidents" | "policies" | "risks">> = {
   incidents: "incidents",
   documents: "policies",
   exports: "policies",
+  risks: "risks",
 };
 
 /** Where a record of each kind is opened, when the reader may open it. */
@@ -51,7 +52,11 @@ const recordPath = (lang: string, type: string, id: string) =>
           ? `/${lang}/admin/roles/${id}`
           : type === "org_unit"
             ? `/${lang}/admin/organization/${id}`
-            : null;
+            : type === "risk"
+              ? `/${lang}/risks/${id}`
+              : type === "action"
+                ? `/${lang}/risks/actions/${id}`
+                : null;
 
 /**
  * The client's audit trail, newest first, as it was recorded: filtered by

@@ -14,6 +14,8 @@ import {
 } from './policies.controller.js';
 import { PolicyCheck } from './policy-check.service.js';
 import { Publisher } from './publisher.js';
+import { DocumentPdfService } from './pdf/document-pdf.service.js';
+import { PdfRenderer } from './pdf/renderer.js';
 import { PolicySettingsService } from './settings.service.js';
 
 /**
@@ -34,9 +36,11 @@ import { PolicySettingsService } from './settings.service.js';
     PolicyCheck,
     PolicySettingsService,
     Publisher,
+    PdfRenderer,
+    DocumentPdfService,
   ],
   // For the email digest: what waits for a person, as their screens show
   // it; for other modules, what they may show of a document they link to.
-  exports: [LibraryService, DocumentsService, LinkedDocuments],
+  exports: [LibraryService, DocumentsService, LinkedDocuments, PdfRenderer],
 })
 export class PoliciesModule {}

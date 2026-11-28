@@ -50,6 +50,7 @@ export const en: AuditWording = {
     document_version_withdrawn: 'Version withdrawn',
     document_publish_scheduled: 'Publication scheduled',
     document_published: 'Version published',
+    document_pdf_made: "Document printed to PDF",
     document_retired: 'Document retired',
     document_reviewed: 'Periodic review recorded',
     document_review_requested: 'Periodic review sent for approval',
@@ -226,6 +227,9 @@ export const en: AuditWording = {
     units: { percent: "{value}%", seconds: "{value} s" },
     languages: { en: "English", ar: "Arabic", fr: "French" },
     fields: {
+      languages: "Languages",
+      pages: "Pages",
+      sha256: "Fingerprint (SHA-256)",
       endsOn: "Contract ends",
       exitUntil: "Last day of the exit window",
       retainUntil: "Data kept until",

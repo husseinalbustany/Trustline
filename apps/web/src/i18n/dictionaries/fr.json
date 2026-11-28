@@ -19,7 +19,10 @@
     "unreadMany": "99+",
     "emailPreferences": "Vos préférences d’e-⁠mail",
     "reviewerTitle": "Accès en lecture seule jusqu’au {date}",
-    "reviewerHelp": "Vous êtes évaluateur externe : vous pouvez consulter et télécharger, mais rien modifier. Ce que vous ouvrez est enregistré dans le journal d’audit."
+    "reviewerHelp": "Vous êtes évaluateur externe : vous pouvez consulter et télécharger, mais rien modifier. Ce que vous ouvrez est enregistré dans le journal d’audit.",
+    "exitTitle": "Le contrat de votre établissement a pris fin. Vous pouvez en exporter les données jusqu’au {day}.",
+    "exitOnly": "Seule l’exportation des données reste ouverte.",
+    "exitLink": "Aller à l’exportation des données"
   },
   "nav": {
     "groups": {
@@ -632,7 +635,6 @@
       "ai_provider_changed": "Trustline a changé qui traite les demandes d’IA pour : {features}. Voyez où elles sont traitées désormais.",
       "ai_allowance_warning": "IA, {feature} : {used} utilisés sur les {allowance} du mois. L’allocation repart le {resetsOn}.",
       "ai_allowance_reached": "IA, {feature} : l’allocation du mois ({allowance}) est épuisée ; l’IA est suspendue jusqu’au {resetsOn}. La rédaction à la main reste possible.",
-      "other": "Du nouveau concernant l’incident {reference}.",
       "data_export_changed": {
         "requested": "Une exportation complète des données de votre établissement a été demandée. Ouvrez-la pour voir qui l’a demandée ; si vous ne l’attendiez pas, refusez-la.",
         "approved": "Une exportation complète des données de votre établissement a été approuvée.",
@@ -643,7 +645,10 @@
         "downloaded": "L’exportation complète des données de votre établissement a été téléchargée.",
         "failed": "L’exportation complète des données de votre établissement n’a pas pu être préparée.",
         "other": "L’exportation complète des données de votre établissement a changé."
-      }
+      },
+      "contract_ending": "Le contrat de votre établissement avec Trustline prend fin le {day}. Vous pouvez en exporter les données d’ici là.",
+      "data_export_granted": "{name} a reçu la permission d’exporter toutes les données de l’établissement.",
+      "other": "Du nouveau concernant l’incident {reference}."
     },
     "descriptionGeneral": "Ce qui s’est passé et vous concerne. Une notification ne nomme personne.",
     "emptyGeneral": "Vous n’avez encore aucune notification. Dès qu’il se passe quelque chose qui vous concerne, cela apparaît ici.",
@@ -1243,6 +1248,89 @@
         "echo": "Le fournisseur fictif renvoie chaque demande telle quelle.",
         "scripted": "Réponses programmées par un test."
       }
+    },
+    "contract": {
+      "title": "Fin de contrat et suppression",
+      "exitOpen": "Période de sortie ouverte",
+      "exportDownloaded": "Une exportation complète a été téléchargée",
+      "noExportDownloaded": "Aucune exportation complète téléchargée",
+      "dates": "Dates",
+      "datesHelp": "Vide : aucune date. L’annulation de l’abonnement ouvre une période de sortie de 90 jours si aucune n’est fixée. La conservation doit finir après la période de sortie.",
+      "endsOn": "Fin du contrat le",
+      "exitUntil": "Exportation possible jusqu’au",
+      "retainUntil": "Données conservées jusqu’au",
+      "saveDates": "Enregistrer les dates",
+      "datesSaved": "Les dates sont enregistrées, et inscrites dans le journal d’audit du client.",
+      "exports": "Exportations complètes",
+      "noExports": "Aucune pour l’instant.",
+      "requestedAt": "Demandée le {time}",
+      "trustlineApproved": "Approuvée par Trustline le {time}",
+      "downloads": "Téléchargements : {count}, le dernier le {time}",
+      "exportStatus": {
+        "requested": "En attente d’approbation",
+        "approved": "Approuvée",
+        "refused": "Refusée",
+        "lapsed": "Expirée sans approbation",
+        "cancelled": "Annulée",
+        "making": "En préparation",
+        "ready": "Prête",
+        "failed": "Échec",
+        "expired": "Expirée"
+      },
+      "approveOpen": "Approuver sur demande écrite",
+      "approveHelp": "Uniquement quand aucun second titulaire chez le client ne peut l’approuver. Indiquez la demande écrite sur laquelle elle repose.",
+      "receivedOn": "Reçue le",
+      "from": "De",
+      "reference": "Sa référence",
+      "note": "Remarque",
+      "approve": "Approuver l’exportation",
+      "approved": "Approuvée. Le client est prévenu.",
+      "cancel": "Annuler",
+      "deletion": "Suppression du client",
+      "deletionHelp": "Deux membres de l’équipe : l’un demande, l’autre approuve. La suppression elle-même s’exécute en ligne de commande et produit un certificat signé.",
+      "reason": "Motif",
+      "instruction": "Instruction écrite du client",
+      "instructionHelp": "Facultatif : sa référence, si le client l’a demandé par écrit.",
+      "askDeletion": "Demander la suppression",
+      "deletionAsked": "Demandée. Un autre membre de l’équipe doit l’approuver.",
+      "deletionStatus": {
+        "requested": "En attente d’un second membre",
+        "approved": "Approuvée : à exécuter",
+        "done": "Effectuée",
+        "cancelled": "Annulée"
+      },
+      "deletionReason": "Motif : {reason}",
+      "writtenInstruction": "Instruction écrite : {text}",
+      "deletionRequested": "Demandée par {name}, {time}",
+      "deletionApproved": "Approuvée par {name}, {time}",
+      "approveDeletion": "Approuver la suppression",
+      "cancelDeletion": "Annuler la suppression",
+      "deletionApprovedDone": "Approuvée. Exécutez-la en ligne de commande.",
+      "deletionCancelled": "La suppression est annulée.",
+      "runIt": "Exécutez-la en ligne de commande, avec la date d’expiration des sauvegardes :",
+      "executed": "Supprimé le {time}.",
+      "certificateSha": "Empreinte SHA-256 du certificat :",
+      "certificate": "Télécharger le certificat signé",
+      "notDeletable": "Il ne peut pas encore être supprimé : {why}",
+      "retainedUntil": "Ses données sont conservées jusqu’au {day}.",
+      "deletable": {
+        "already_deleted": "il est déjà supprimé.",
+        "not_cancelled": "son abonnement n’est pas annulé.",
+        "no_retention_date": "aucune date de conservation n’est fixée.",
+        "before_retention": "sa période de conservation n’est pas terminée.",
+        "no_export_downloaded": "aucune exportation complète de ses données n’a été téléchargée."
+      },
+      "errors": {
+        "invalid_dates": "Les données doivent être conservées au-delà de la fin de la période de sortie.",
+        "not_alone": "Un autre titulaire chez le client peut l’approuver : Trustline n’approuve que si personne d’autre ne le peut.",
+        "lapsed": "Cette demande a expiré sans approbation.",
+        "stale_export": "Cette exportation a changé entre-temps. Rechargez la page.",
+        "deletion_in_progress": "Une suppression est déjà en cours.",
+        "same_person": "Vous avez demandé cette suppression : un autre membre de l’équipe doit l’approuver.",
+        "stale_deletion": "Cette suppression a changé entre-temps. Rechargez la page.",
+        "invalid": "Vérifiez les champs : il manque quelque chose ou un format n’est pas correct.",
+        "generic": "Impossible d’effectuer cette action. Réessayez."
+      }
     }
   },
   "auth": {
@@ -1704,7 +1792,7 @@
       }
     },
     "permissionWarnings": {
-      "data.export": "Cette permission donne accès à tout ce que l’établissement détient dans Trustline : noms des déclarants, commentaires internes, documents restreints et journal d’audit complet. Une exportation complète demande deux titulaires : l’un la demande, l’autre l’approuve. Ne la donnez qu’aux personnes qui répondront des données une fois sorties de Trustline."
+      "data.export": "Cette permission donne accès à tout ce que l’établissement détient dans Trustline : noms des déclarants, commentaires internes, documents restreints et journal d’audit complet. Elle ne fonctionne qu’avec « Voir qui a déclaré un incident », pour tout l’établissement. Une exportation complète demande deux titulaires : l’un la demande, l’autre l’approuve. Ne la donnez qu’aux personnes qui répondront des données une fois sorties de Trustline."
     }
   },
   "policies": {
@@ -3024,7 +3112,7 @@
       "data_export_failed": "Échec de la préparation de l’exportation complète des données",
       "data_export_downloaded": "Téléchargement de l’exportation complète des données",
       "data_export_expired": "Expiration de l’exportation complète des données",
-      "data_export_approved_by_trustline": "Approbation de l’exportation complète des données par Trustline, sur demande écrite",
+      "data_export_approved_by_trustline": "Approbation par Trustline de l’exportation complète des données, sur demande écrite",
       "risk_created": "Ajout d’un risque",
       "risk_updated": "Modification d’un risque",
       "risk_proposal_accepted": "Inscription au registre d’un risque proposé",
@@ -3068,7 +3156,8 @@
       "risk_incident_linked": "Liaison d’un incident à un risque",
       "risk_incident_unlinked": "Suppression du lien entre un incident et un risque",
       "risk_approval_route_created": "Création d’un circuit d’approbation des risques",
-      "risk_approval_route_updated": "Modification d’un circuit d’approbation des risques"
+      "risk_approval_route_updated": "Modification d’un circuit d’approbation des risques",
+      "contract_end_set": "Dates de fin de contrat fixées par Trustline"
     },
     "areas": {
       "sign_in": "Connexion",
@@ -3562,7 +3651,7 @@
   "dataExport": {
     "title": "Exportation complète des données",
     "description": "Tout ce que l’établissement détient dans Trustline, dans une seule archive : en fin de contrat, ou lorsque l’établissement demande ses données.",
-    "noAccess": "L’exportation complète des données est réservée aux personnes qui détiennent « Demander, approuver et télécharger une exportation complète des données de l’établissement » pour tout l’établissement.",
+    "noAccess": "L’exportation complète des données est réservée aux personnes qui détiennent, pour tout l’établissement, à la fois « Demander, approuver et télécharger une exportation complète des données de l’établissement » et « Voir qui a déclaré un incident ».",
     "loading": "Chargement…",
     "formerUser": "un ancien utilisateur",
     "password": "Votre mot de passe",
@@ -3584,7 +3673,8 @@
       "language": "Langue de l’archive",
       "languageHelp": "Les fichiers LISEZ-MOI, les en-têtes et les pages des documents sont dans cette langue.",
       "passwordHelp": "La demande est signée avec votre mot de passe.",
-      "submit": "Demander l’exportation"
+      "submit": "Demander l’exportation",
+      "seeReporter": "Seules les personnes qui détiennent aussi « Voir qui a déclaré un incident » pour tout l’établissement peuvent la demander, l’approuver ou la télécharger, car elle nomme chaque déclarant."
     },
     "list": {
       "title": "Exportations",
@@ -3600,7 +3690,9 @@
       "ready": "Prête : {size}. Téléchargeable jusqu’au {expires}, encore {left} fois.",
       "snapshot": "Données arrêtées au {time}",
       "downloads": "Téléchargements effectués : {count}",
-      "sha": "Empreinte SHA-256 de l’archive :"
+      "sha": "Empreinte SHA-256 de l’archive :",
+      "approvedByTrustline": "Approuvée par Trustline sur la demande écrite de {from} ({reference}, reçue le {day}). Seule la personne qui l’a demandée peut la télécharger.",
+      "failedStopped": "Elle s’est arrêtée pendant sa préparation, à la dernière tentative. Trustline a été prévenu ; redemandez-la plus tard."
     },
     "status": {
       "requested": "En attente d’approbation",
@@ -3665,7 +3757,9 @@
       "expired": "Cette exportation a expiré et a été supprimée. Demandez-en une nouvelle.",
       "notFound": "Cette exportation n’existe plus. Rechargez la page.",
       "invalid": "Vérifiez les champs : il manque quelque chose ou un texte est trop long.",
-      "generic": "Impossible d’effectuer cette action. Réessayez."
+      "generic": "Impossible d’effectuer cette action. Réessayez.",
+      "approver_not_independent": "Vous ne pouvez pas approuver cette exportation : votre compte ou votre permission a été donné par la personne qui l’a demandée, ou il y a moins de 7 jours. Un autre administrateur doit l’approuver.",
+      "archive_unavailable": "Cette archive ne peut pas être ouverte. Demandez une nouvelle exportation. Cette tentative n’a pas été comptée."
     }
   }
 }

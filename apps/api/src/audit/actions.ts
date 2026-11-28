@@ -152,6 +152,8 @@ export const AUDIT_ACTIONS = {
   document_version_withdrawn: code('documents', 'document', ['versionId', 'version', 'status', 'runId', 'reason']),
   document_publish_scheduled: code('documents', 'document', ['versionId', 'version', 'effectiveOn']),
   document_published: code('documents', 'document', ['versionId', 'version', 'effectiveOn', 'supersededVersionId', 'nextReviewOn', 'acknowledgementsAsked', 'byScheduledCheck']),
+  // A version made into a PDF (docs/specs/document-pdf.md): one or two languages.
+  document_pdf_made: code('documents', 'document', ['versionId', 'version', 'languages', 'locale', 'pages', 'sha256']),
   document_retired: code('documents', 'document', ['status', 'reason', 'withdrawnVersionId']),
   document_reviewed: code('documents', 'document', ['outcome', 'nextReviewOn', 'signatureId', 'contentHash', 'comment']),
   document_review_requested: code('documents', 'document', ['outcome', 'dueOn', 'approvers', 'signatureId', 'contentHash', 'comment']),

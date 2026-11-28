@@ -10,7 +10,7 @@ import { EmptyState, Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
 import type { Dictionary } from "@/i18n/dictionaries";
 import { api, ApiError, codeOf, statusOf } from "@/lib/api";
-import { dateTimeFormat, fill, languageNameIn, numberFormat } from "@/lib/format";
+import { dateTimeFormat, dayFormat, fill, languageNameIn, numberFormat } from "@/lib/format";
 import { pick, type Localized } from "@/lib/localized";
 
 type Text = Dictionary["dataExport"];
@@ -43,6 +43,11 @@ type Export = {
   downloads: number;
   downloadsLeft: number;
   revision: number;
+  /** Approved by Trustline on a written request, when no second holder could. */
+  approvedByTrustline?: {
+    at: string;
+    writtenRequest: { receivedOn: string; from: string; reference: string; note: string | null };
+  } | null;
   may: { approve: boolean; refuse: boolean; cancel: boolean; download: boolean };
 };
 
@@ -76,6 +81,9 @@ function explain(t: Text, err: unknown): string {
  */
 export function DataExport({ lang, t }: { lang: string; t: Text }) {
   const session = useSession();
+  // The API also asks for "See who reported an incident" for the whole
+  // organization, which the session does not list for a client without the
+  // incidents module (as in the exit window): it says so with a 403.
   const allowed = session.scope?.["data.export"] === "all";
   const [items, setItems] = useState<Export[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
@@ -158,6 +166,7 @@ export function DataExport({ lang, t }: { lang: string; t: Text }) {
                 <div className="flex flex-col gap-1">
                   <p>{t.request.everything}</p>
                   <p className="font-medium">{t.request.twoPeople}</p>
+                  <p>{t.request.seeReporter}</p>
                   <p>{t.request.responsibility}</p>
                 </div>
               </div>
@@ -349,6 +358,15 @@ function ExportRow({
         <p className="text-muted">{fill(t.list.lapses, { time: when(x.lapsesAt) })}</p>
       )}
       {x.approvedBy && <p className="text-muted">{fill(t.list.approved, { name: name(x.approvedBy), time: when(x.approvedAt) })}</p>}
+      {x.approvedByTrustline && (
+        <p className="text-muted">
+          {fill(t.list.approvedByTrustline, {
+            from: x.approvedByTrustline.writtenRequest.from,
+            reference: x.approvedByTrustline.writtenRequest.reference,
+            day: dayFormat(lang)(x.approvedByTrustline.writtenRequest.receivedOn) ?? "",
+          })}
+        </p>
+      )}
       {x.refusedBy && (
         <p className="text-muted">
           {fill(t.list.refused, { name: name(x.refusedBy), time: when(x.refusedAt) })}{" "}
@@ -357,7 +375,9 @@ function ExportRow({
       )}
       {x.cancelledAt && <p className="text-muted">{fill(t.list.cancelled, { time: when(x.cancelledAt) })}</p>}
       {x.status === "making" && x.phase && <p>{fill(t.list.phase, { phase: phases[x.phase] ?? x.phase })}</p>}
-      {x.status === "failed" && <p className="text-danger">{t.list.failed}</p>}
+      {x.status === "failed" && (
+        <p className="text-danger">{x.failure === "stopped" ? t.list.failedStopped : t.list.failed}</p>
+      )}
       {x.status === "ready" && (
         <p>
           {fill(t.list.ready, {

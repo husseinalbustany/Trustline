@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   ForbiddenException,
@@ -26,6 +27,7 @@ import {
 } from '../subscriptions/module.decorator.js';
 import { CSV_CONTENT_TYPE } from './csv.js';
 import { DocumentsService } from './documents.service.js';
+import { DocumentPdfService } from './pdf/document-pdf.service.js';
 import { ImportsService } from './imports.service.js';
 import {
   acknowledgeSchema,
@@ -123,6 +125,16 @@ const includeInactiveQuery = z.preprocess(
   }),
 );
 
+/** A PDF's languages (comma-separated) and page language. */
+const pdfQuery = z.strictObject({
+  languages: z
+    .string()
+    .max(20)
+    .transform((v) => v.split(',').map((l) => l.trim()).filter(Boolean))
+    .optional(),
+  locale: z.string().max(5).optional(),
+});
+
 /**
  * The library of controlled documents: documents, their versions, their
  * approval, publishing, acknowledgement and periodic review, and what
@@ -143,6 +155,7 @@ export class PoliciesController {
     private readonly documents: DocumentsService,
     private readonly library: LibraryService,
     private readonly imports: ImportsService,
+    private readonly pdfs: DocumentPdfService,
   ) {}
 
   @Get('documents')
@@ -467,6 +480,31 @@ export class PoliciesController {
   ) {
     requireAnyOf(req, ANY_POLICIES);
     return this.documents.getVersion(req.auth, parseId(id), parseId(versionId));
+  }
+
+  /**
+   * A version as a PDF (docs/specs/document-pdf.md): `languages`, one or
+   * two of its languages; `locale`, the page's language. The version in
+   * force for any reader, any other only with full sight (404). Audited.
+   */
+  @Get('documents/:id/versions/:versionId/pdf')
+  async pdf(
+    @Param('id') id: string,
+    @Param('versionId') versionId: string,
+    @Query() query: unknown,
+    @Req() req: AuthedRequest,
+    @Res() res: Response,
+  ) {
+    requireAnyOf(req, ANY_POLICIES);
+    const parsed = pdfQuery.safeParse(query);
+    if (!parsed.success) throw new BadRequestException();
+    const file = await this.pdfs.make(req.auth, parseId(id), parseId(versionId), parsed.data, req.ip ?? null);
+    res.status(200);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Content-SHA256', file.sha256);
+    res.end(file.pdf);
   }
 
   @Patch('documents/:id/versions/:versionId')

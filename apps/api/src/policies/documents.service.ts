@@ -801,6 +801,25 @@ export class DocumentsService {
     });
   }
 
+  /**
+   * A version for its PDF (docs/specs/document-pdf.md, "Who may have it"),
+   * with its document, as their routes give them: the version in force for
+   * anyone who may read the document; any other only with full sight of it.
+   * 404 otherwise.
+   */
+  printable(auth: AuthContext, id: string, versionId: string) {
+    return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
+      const viewer = await viewerOf(tx, auth, this.engine);
+      const doc = await this.find(tx, viewer, id);
+      const version = await this.versionOf(tx, doc, versionId);
+      if (version.id !== doc.publishedVersionId && !doc.access.full) throw new NotFoundException();
+      return {
+        document: await this.detail(tx, auth, viewer, doc),
+        version: await this.versionView(tx, auth, viewer, doc, version),
+      };
+    });
+  }
+
   /** A version of this document the viewer may see; 404 otherwise. */
   private async versionOf(
     tx: Transaction,

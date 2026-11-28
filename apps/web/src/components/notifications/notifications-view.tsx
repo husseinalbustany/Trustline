@@ -73,6 +73,8 @@ const ownPlace = new Set([
   "ai_allowance_warning",
   "ai_allowance_reached",
   "data_export_changed",
+  "contract_ending",
+  "data_export_granted",
 ]);
 
 /** The AI notices: about the organization's AI settings. */
@@ -287,10 +289,14 @@ export function NotificationsView({
                         ? `/${lang}/admin/users/external`
                         : aboutAi.has(n.kind)
                           ? `/${lang}/admin/settings/ai`
-                          : n.kind === "data_export_changed" &&
+                          : (n.kind === "data_export_changed" || n.kind === "contract_ending") &&
                               session.scope?.["data.export"] === "all"
                             ? `/${lang}/admin/data-export`
-                            : null;
+                            : n.kind === "data_export_granted" &&
+                                n.person &&
+                                can(session, "users.manage")
+                              ? `/${lang}/admin/users/${n.person.id}`
+                              : null;
     const title = doc?.canOpen && doc.title
       ? pick(doc.title, lang, session.tenant.defaultLocale)
       : null;
@@ -321,6 +327,7 @@ export function NotificationsView({
       used: numbers.format(n.data?.used ?? 0),
       allowance: numbers.format(n.data?.allowance ?? 0),
       resetsOn: day(n.data?.resetsOn) ?? "",
+      day: day(n.data?.endsOn) ?? "",
       kind: (t.auditBreaks as Record<string, string>)[n.data?.kind ?? ""] ?? "",
       name:
         pick(n.person?.name, lang, session.tenant.defaultLocale) ||

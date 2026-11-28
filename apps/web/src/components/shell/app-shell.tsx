@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Eye, LogOut, Menu, Plus, UserCog } from "lucide-react";
+import { Bell, Eye, LockKeyhole, LogOut, Menu, Plus, UserCog } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -50,6 +50,9 @@ export type ShellLabels = SidebarLabels & {
   unreadMany: string;
   reviewerTitle: string;
   reviewerHelp: string;
+  exitTitle: string;
+  exitOnly: string;
+  exitLink: string;
   subscription: SubscriptionText;
 };
 
@@ -202,6 +205,8 @@ export function AppShell({
   // the page itself is not drawn, so it asks the API for nothing.
   const pageModule = moduleOfPath(pathname.slice(`/${lang}`.length) || "/");
   const included = hasModule(session, pageModule);
+  const exit = session.tenant.exit ?? null;
+  const onExportPage = pathname.startsWith(`/${lang}/admin/data-export`);
   const bellLabel = unread
     ? fill(labels.notificationsUnread, {
         count: numberFormat(lang).format(unread),
@@ -230,6 +235,7 @@ export function AppShell({
                 organization={inLang(session.tenant.name)}
                 permissions={session.permissions}
                 modules={session.tenant.modules}
+                only={exit ? ["dataExport"] : undefined}
                 footer={
                   // On a phone the name is not in the bar: the person's
                   // own settings are reached from the menu.
@@ -348,10 +354,13 @@ export function AppShell({
                   className="flex-1 px-4 py-6 sm:px-6 lg:px-8 print:p-0"
                 >
                   <div className="mx-auto w-full max-w-6xl">
-                    <SubscriptionBanner
-                      session={session}
-                      t={labels.subscription}
-                    />
+                    {/* In the exit window its own notice says what still works. */}
+                    {!exit && (
+                      <SubscriptionBanner
+                        session={session}
+                        t={labels.subscription}
+                      />
+                    )}
                     {/* Someone from outside, for a few days: what they may
                     do, and until when. */}
                     {isReviewer(session) && session.user.access && (
@@ -370,7 +379,27 @@ export function AppShell({
                         </div>
                       </div>
                     )}
-                    {included ? (
+                    {/* The contract has ended: its data can still be exported,
+                    and nothing else is open. */}
+                    {exit && (
+                      <div
+                        role="note"
+                        className="mb-6 flex items-start gap-3 rounded-lg border border-warn bg-warn-soft px-4 py-3 text-sm print:hidden"
+                      >
+                        <LockKeyhole className="mt-0.5 size-4 shrink-0 text-warn" aria-hidden />
+                        <p className="font-medium">
+                          {fill(labels.exitTitle, { day: dayFormat(lang)(exit.until) ?? "" })}
+                        </p>
+                      </div>
+                    )}
+                    {exit && !onExportPage ? (
+                      <div className="mx-auto flex max-w-xl flex-col items-center gap-3 py-16 text-center">
+                        <p className="text-sm text-muted">{labels.exitOnly}</p>
+                        <Link href={`/${lang}/admin/data-export`} className="text-sm text-accent hover:underline">
+                          {labels.exitLink}
+                        </Link>
+                      </div>
+                    ) : included ? (
                       children
                     ) : (
                       <NotInSubscription lang={lang} t={labels.subscription} />
