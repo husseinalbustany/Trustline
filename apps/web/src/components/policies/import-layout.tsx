@@ -70,7 +70,7 @@ export function ImportLayout({
       words: examples,
     });
 
-  const code = (text: string) => (
+  const code = (text: ReactNode) => (
     <code dir="ltr" className="rounded bg-surface px-1.5 py-0.5 font-mono text-xs break-all">
       {text}
     </code>
@@ -174,11 +174,23 @@ export function ImportLayout({
                 >
                   <span className="flex flex-wrap items-center gap-2">
                     {code(
-                      column === "section"
-                        ? `section.<${y.sectionKeyWord}>.<${y.languageWord}>`
-                        : perLanguageColumns.includes(column)
-                          ? `${column}.<${y.languageWord}>`
-                          : column,
+                      column === "section" ? (
+                        <>
+                          {"section.<"}
+                          <bdi>{y.sectionKeyWord}</bdi>
+                          {">.<"}
+                          <bdi>{y.languageWord}</bdi>
+                          {">"}
+                        </>
+                      ) : perLanguageColumns.includes(column) ? (
+                        <>
+                          {`${column}.<`}
+                          <bdi>{y.languageWord}</bdi>
+                          {">"}
+                        </>
+                      ) : (
+                        column
+                      ),
                     )}
                     <span className="font-medium">{m.columns[column]}</span>
                     {requiredColumns.includes(column) ? (

@@ -43,7 +43,7 @@ import {
 import { ControlledDocument, LanguageSwitch } from "./controlled-document";
 import { Markup } from "./markup";
 import { PasswordPrompt } from "./password-prompt";
-import { VersionStatusPill } from "./pills";
+import { ImportedPill, VersionStatusPill } from "./pills";
 import { RefusalNote } from "./refusal-note";
 import { isStale, textareaClass, type PoliciesProps } from "./types";
 import { Sentence } from "./sentence";
@@ -232,7 +232,12 @@ function VersionView({
             </span>
           </>
         }
-        actions={<VersionStatusPill t={t} status={version.status} />}
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <VersionStatusPill t={t} status={version.status} />
+            {version.source === "imported" && <ImportedPill t={t} />}
+          </div>
+        }
       />
 
       {decided && (
