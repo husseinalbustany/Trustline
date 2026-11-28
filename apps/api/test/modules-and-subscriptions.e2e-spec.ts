@@ -1764,8 +1764,10 @@ describe('modules and subscriptions', () => {
       .filter((s) => !/^\s*GRANT/m.test(s.replace(/--.*$/gm, '')));
 
     it('all have a subscription', async () => {
+      // A deleted client is a stub with none of its rows, its subscription
+      // included (data-export.md, "After the exit window").
       const { rows } = await bench.owner.db.execute(
-        sql`select t.slug from tenants t where not exists (select from subscriptions s where s.tenant_id = t.id)`,
+        sql`select t.slug from tenants t where t.status <> 'deleted' and not exists (select from subscriptions s where s.tenant_id = t.id)`,
       );
       expect(rows).toEqual([]);
     });

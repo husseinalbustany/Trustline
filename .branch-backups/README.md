@@ -14,3 +14,10 @@ Restore with, for example:
 
     git fetch .branch-backups/risk-management-api.bundle risk-management-api:risk-management-api
     git fetch .branch-backups/ai-insights-assistant.bundle worktree-agent-a401760666624b587:ai-insights-assistant
+
+Also kept here, so they survive a restart:
+- `held-migrations/`: Ziad's draft migration for security review 20 (main's
+  code already needs it). Regenerate and renumber after the risk branch's
+  migrations when merging.
+- `contracts/`: the API contracts the web engineer works from.
+- `reviews/`: every security, language and quality review with its decisions.
