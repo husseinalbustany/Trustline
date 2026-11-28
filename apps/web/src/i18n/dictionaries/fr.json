@@ -1237,6 +1237,11 @@
         "connection_inactive": "{feature} : cette connexion est inactive. Choisissez-en une autre.",
         "invalid": "Vérifiez les champs : il manque quelque chose ou un format n’est pas correct.",
         "generic": "Impossible d’enregistrer. Réessayez."
+      },
+      "fakeAnswers": {
+        "sample": "Réponses d’exemple du fournisseur fictif, pas d’un vrai modèle.",
+        "echo": "Le fournisseur fictif renvoie chaque demande telle quelle.",
+        "scripted": "Réponses programmées par un test."
       }
     }
   },

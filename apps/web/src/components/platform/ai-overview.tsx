@@ -33,6 +33,8 @@ type PlatformAi = {
   month: string;
   spentUsd: number;
   mode: "fake" | "real" | (string & {});
+  /** In fake mode, what the fake answers with; null in real mode. */
+  fakeAnswers?: "sample" | "echo" | "scripted" | (string & {}) | null;
   updatedAt: string | null;
 };
 
@@ -145,14 +147,24 @@ export function AiOverview({ lang, t }: PlatformProps) {
   async function test(c: Connection) {
     setTested((was) => ({ ...was, [c.id]: a.testing }));
     try {
-      const r = await platformApi<{ works: boolean | null; credentialsPresent: boolean; mode: string }>(
+      const r = await platformApi<{
+        works: boolean | null;
+        credentialsPresent: boolean;
+        mode: string;
+        fakeAnswers?: string | null;
+      }>(
         `/ai/connections/${c.id}/test`,
         { method: "POST", body: {} },
       );
       const said = [
         r.mode === "fake" ? a.test.fake : r.works ? a.test.works : a.test.fails,
+        r.mode === "fake" && r.fakeAnswers
+          ? ((a.fakeAnswers as Record<string, string>)[r.fakeAnswers] ?? "")
+          : "",
         r.credentialsPresent ? a.test.credentialPresent : a.test.credentialMissing,
-      ].join(" ");
+      ]
+        .filter(Boolean)
+        .join(" ");
       setTested((was) => ({ ...was, [c.id]: said }));
     } catch (err) {
       setTested((was) => ({ ...was, [c.id]: aiRefusal(t, err) }));
@@ -169,9 +181,12 @@ export function AiOverview({ lang, t }: PlatformProps) {
       ) : (
         <div className="mt-6 flex flex-col gap-6">
           {settings.mode === "fake" && (
-            <p role="note" className="rounded-lg border border-warn bg-warn-soft px-4 py-3 text-sm font-medium">
-              {a.fakeMode}
-            </p>
+            <div role="note" className="flex flex-col gap-1 rounded-lg border border-warn bg-warn-soft px-4 py-3 text-sm">
+              <p className="font-medium">{a.fakeMode}</p>
+              {settings.fakeAnswers && (
+                <p>{(a.fakeAnswers as Record<string, string>)[settings.fakeAnswers] ?? settings.fakeAnswers}</p>
+              )}
+            </div>
           )}
 
           <Panel title={a.spending}>

@@ -533,6 +533,27 @@
       "when": 1795866312202,
       "tag": "0075_risk_management_grants_rules_and_existing_clients",
       "breakpoints": true
+    },
+    {
+      "idx": 76,
+      "version": "7",
+      "when": 1795868295280,
+      "tag": "0076_contract_end_and_deletion",
+      "breakpoints": true
+    },
+    {
+      "idx": 77,
+      "version": "7",
+      "when": 1795868318607,
+      "tag": "0077_contract_end_grants_and_second_approval",
+      "breakpoints": true
+    },
+    {
+      "idx": 78,
+      "version": "7",
+      "when": 1795868320106,
+      "tag": "0078_approving_authority_reworded",
+      "breakpoints": true
     }
   ]
 }

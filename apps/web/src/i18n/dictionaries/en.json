@@ -1237,6 +1237,11 @@
         "connection_inactive": "{feature}: this connection is inactive. Choose another connection.",
         "invalid": "Check the fields: something is missing or not in the right form.",
         "generic": "Could not save. Try again."
+      },
+      "fakeAnswers": {
+        "sample": "Sample answers from the fake provider, not a real model.",
+        "echo": "The fake provider says each request back.",
+        "scripted": "A test's own scripted answers."
       }
     }
   },
