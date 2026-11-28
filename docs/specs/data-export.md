@@ -748,9 +748,13 @@ built. Reviews are still due: `security-reviewer` after steps 2 and 3, and
 
 ## Built (steps 6 and 7, API)
 
-The migrations are drafted (generated from `schema.ts`, plus custom grants
-and a function). They are added to `drizzle/` once the branches before them
-have merged. The web page and the portal's screens are not built.
+The migrations are:
+- 0076, generated from `schema.ts`;
+- 0077, custom: the grants, and `data_export_second_approval()`;
+- 0078, the Approving authority's description reworded by language review
+  11, audited per client.
+
+The web page and the portal's screens are not built.
 
 - **The contract's dates:**
   - Trustline's staff set `subscriptions.ends_on`, `exit_until` and
@@ -817,8 +821,7 @@ have merged. The web page and the portal's screens are not built.
   (`data_export_granted`). It goes to neither the person given it nor the
   one who gave it, as for `policies.import`
   (`ProvisioningService.tellOfWatchedGrants`).
-- **Tests:** `test/contract-end.e2e-spec.ts`, run against a scratch
-  database with the drafts applied:
+- **Tests:** `test/contract-end.e2e-spec.ts`:
   - the dates and their audit;
   - the notices;
   - the grant notice;
