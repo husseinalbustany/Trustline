@@ -56,7 +56,7 @@ describe('full data export', () => {
   const independentAdmin = async (h: Hospital, suffix: string): Promise<Staff> => {
     if (!makers.has(h.id)) makers.set(h.id, await bench.createStaff(h, `maker${suffix}`, { role: 'administrator', orgUnitId: null }));
     const made = await bench.createStaff({ ...h, cookie: makers.get(h.id)!.cookie }, suffix, { role: 'administrator', orgUnitId: null });
-    await bench.owner.db.execute(sql`update users set created_at = now() - interval '8 days' where id = ${made.id}`);
+    await bench.owner.db.execute(sql`update users set created_at = now() - interval '8 days', password_changed_at = now() - interval '8 days' where id = ${made.id}`);
     await bench.owner.db.execute(sql`update role_assignments set granted_at = now() - interval '8 days' where user_id = ${made.id}`);
     return made;
   };
@@ -70,7 +70,7 @@ describe('full data export', () => {
     // The first administrators, made by Trustline more than 7 days ago:
     // each may approve what another asks (security review 19, M3).
     for (const h of [a, b]) {
-      await bench.owner.db.execute(sql`update users set created_at = now() - interval '8 days' where id = ${h.adminId}`);
+      await bench.owner.db.execute(sql`update users set created_at = now() - interval '8 days', password_changed_at = now() - interval '8 days' where id = ${h.adminId}`);
       await bench.owner.db.execute(sql`update role_assignments set granted_at = now() - interval '8 days' where user_id = ${h.adminId}`);
     }
     // Administrators made by Trustline, more than 7 days ago: a second
@@ -193,6 +193,34 @@ describe('full data export', () => {
         code: 'approver_not_independent',
         reason: 'account_by_requester',
       });
+      // Nor by an account made this week, a grant made this week, an
+      // account whose password was set this week or for which the
+      // requester made a sign-in link, nor through a role widened this week
+      // (security review 20, M1).
+      const reason = async (who: Staff) => (await post(who.cookie, `/${asked.id}/approve`, { password, revision: asked.revision }).expect(403)).body.reason;
+      const maker = makers.get(a.id)!;
+      const fresh = await bench.createStaff({ ...a, cookie: maker.cookie }, 'fresh', { role: 'administrator', orgUnitId: null });
+      expect(await reason(fresh)).toBe('account_new');
+      await bench.owner.db.execute(sql`update users set created_at = now() - interval '8 days', password_changed_at = now() - interval '8 days' where id = ${fresh.id}`);
+      expect(await reason(fresh)).toBe('grant_new');
+      await bench.owner.db.execute(sql`update role_assignments set granted_at = now() - interval '8 days' where user_id = ${fresh.id}`);
+      await bench.owner.db.execute(sql`update users set password_changed_at = now() where id = ${fresh.id}`);
+      expect(await reason(fresh)).toBe('password_recent');
+      await bench.owner.db.execute(sql`update users set password_changed_at = now() - interval '8 days' where id = ${fresh.id}`);
+      await http().post(`/users/${fresh.id}/invite`).set('Cookie', a.cookie).send({}).expect((r) => expect([200, 201]).toContain(r.status));
+      expect(await reason(fresh)).toBe('link_by_requester');
+      await bench.createRole(a, 'widened', ['policies.view']);
+      const widened = await bench.createStaff({ ...a, cookie: maker.cookie }, 'widened', { role: 'widened', orgUnitId: null });
+      await bench.owner.db.execute(sql`update users set created_at = now() - interval '8 days', password_changed_at = now() - interval '8 days' where id = ${widened.id}`);
+      await bench.owner.db.execute(sql`update role_assignments set granted_at = now() - interval '8 days' where user_id = ${widened.id}`);
+      const roleId = (await bench.owner.db.execute<{ id: string }>(sql`select id from roles where tenant_id = ${a.id} and code = 'widened'`)).rows[0].id;
+      await http()
+        .patch(`/roles/${roleId}`)
+        .set('Cookie', a.cookie)
+        .send({ permissions: ['policies.view', 'data.export', 'incidents.see_reporter'] })
+        .expect(200);
+      const widenedCookie = bench.cookieOf(await bench.login(a.slug, widened.email).expect(200));
+      expect(await reason({ ...widened, cookie: widenedCookie })).toBe('role_widened');
       // Not without the right to see who reported, for the whole
       // organization: the archive names them (L1).
       await bench.createRole(a, 'exporternoreporter', ['data.export']);

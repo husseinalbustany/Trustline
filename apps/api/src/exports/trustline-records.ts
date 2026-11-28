@@ -71,6 +71,7 @@ export const TRUSTLINE_RECORD_DETAILS: Record<string, (d: Details) => unknown> =
   exit_window_set: keys('from', 'to'),
   retention_set: keys('from', 'to'),
   second_approval_recorded: keys('exportId', 'writtenRequest'),
+  second_approval_request_recorded: keys('exportId', 'writtenRequest'),
   client_deletion_requested: keys('deletionId', 'reason', 'writtenInstruction'),
   client_deletion_approved: keys('deletionId'),
   client_deletion_cancelled: keys('deletionId'),
