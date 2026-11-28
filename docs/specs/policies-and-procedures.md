@@ -1149,3 +1149,86 @@ contract is in the API engineer's notes to the web engineer.
    `startingRoute: true`, `fallback: { missing, approvedBy }`) says so.
    With neither, no route is made.
 
+
+## Built: quality review 3
+
+What the API built after the quality review of the finished module (the
+lead's decisions). Migration 0052, generated and additive: two columns of
+`document_imports`, their check, and the notification kind
+`document_owner_assigned`. Each new route answers 401 without a session,
+403 without its permission, 404 for a record of another client or out of
+the caller's reach, and 400 for anything but its strict input. Every export
+is audited.
+
+1. **The original's last review (M2).** An import takes `lastReviewedOn?`,
+   as the original says: not before `approvedOn` (400
+   `reviewed_before_approval`), not after today (400 `reviewed_in_future`).
+   The next review must come after it (400 `review_before_last_review`) and
+   no later than the later of `approvedOn` and `lastReviewedOn` plus the
+   client's longest review period (400 `review_date_too_far`, with
+   `latest`, `maxReviewMonths` and `from`, the day it is counted from). So
+   an old document cannot be given a fresh review date by being imported:
+   one whose review has passed is imported as it stands, overdue. Kept in
+   `document_imports.last_reviewed_on`.
+2. **Differences from the original (M3).** An import takes `differences?`,
+   plain text per language (2,000 characters; the client's languages, 400
+   `language_mismatch` with `field: 'differences'`), as for where the
+   original is kept. The import signature covers it: what is signed is that
+   the text matches the approved original, except as noted there. Both new
+   fields are in what the importer signs (`signedImport`) when given, and
+   only then, so a signature over an import made before keeps its hash; the
+   batch's `listHash` covers each signature's hash. Both are answered in
+   `imported` and in `control.approvedBeforeTrustline` (with
+   `sectionsNotInOriginal`, for the reader's view and the print), and are
+   the last two columns of the master list ("Last reviewed on the
+   original", "Differences from the original").
+3. **The register of imports (S1).** `GET /imports` (`page`, `pageSize` to
+   500) and `GET /exports/imports?locale=` (CSV), for `policies.manage` for
+   the whole organization: every import, newest first, with the number and
+   title, the number and revision on the original, approved on and by, last
+   reviewed on, where the original is kept, the differences, who imported
+   it and when, its batch (`id`, `index`, `size`, `listHash`) and the
+   fingerprint of its signature. The export is audited
+   (`imports_exported`).
+4. **The library's filters (S1).** `source=imported|written` (where the
+   version in force came from) and `reissueDue=true` (in force as
+   imported, its review within 60 days or past), on the screen and in the
+   master list.
+5. **The owner is told (S1)** when an import makes them owner of a
+   document (`document_owner_assigned`, in the app): its periodic review,
+   and its re-issue, are theirs. Not when they imported it themselves.
+6. **Overdue approval steps by email (S2):** in the daily digest of those
+   who manage documents, and counted in the weekly email to managers
+   (`email.md`).
+7. **Acknowledgements as files (S5).**
+   - `GET /exports/acknowledgements/overdue?locale=`: the late list as a
+     CSV (person, employee number for those whose accounts the caller
+     manages, area, document number, title, version, due on, days
+     overdue), for `policies.view_all` or `policies.manage`. Audited
+     (`overdue_acknowledgements_exported`).
+   - `GET /people/:userId/acknowledgements` (`page`, `pageSize`) and
+     `GET /people/:userId/acknowledgements/export?locale=`: one person's
+     record, for `policies.manage` over the person's own unit (for a person
+     with none, over the whole organization); 404 otherwise. Every version
+     they were asked to acknowledge, newest first: document and version
+     (not named where the caller may not open them, as on the late list),
+     asked on, due on, acknowledged at, `state` (acknowledged, pending,
+     overdue) and `late` (acknowledged after the due day, or not and the
+     day has passed). People who have left are included. The export is
+     audited (`person_acknowledgements_exported`, about the person).
+8. **Who has switched email off (S3, the minimum).** `GET
+   /settings/email/opt-outs`, for `settings.manage` for the whole
+   organization: each active person with a switch off, by name, with
+   `reliedOn: { approves, triages }` (whether they decide approval steps,
+   or triage incidents, in the modules the client has). `GET
+   /me/notification-preferences` answers the same `reliedOn`, so that the
+   screen can warn before such a person switches the immediate emails off.
+   Which emails are compulsory for which role waits for the business
+   (question 4).
+9. **"Confirm no change" only when the review is due.** Within 60 days of
+   the due date, or after it; otherwise 409 `review_not_due` with `dueOn`
+   and `opensOn`, checked before the password, and `confirm_review` is not
+   among the document's moves. Reversible if the business answers question
+   6 otherwise.
+10. **The original's revision for the print header:**
+    `control.originalRevision` ("Version 1 (Rev. 4 on the original)").

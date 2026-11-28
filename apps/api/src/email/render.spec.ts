@@ -111,7 +111,7 @@ describe('rendering an email', () => {
 
   it('gives the weekly digest as counts only', () => {
     const mail = renderMail(
-      { category: 'weekly_digest', overdue: 7, people: 3, href: `${BASE}/en/policies/overdue` },
+      { category: 'weekly_digest', overdue: 7, people: 3, stepsOverdue: 0, href: `${BASE}/en/policies/overdue` },
       envelope(),
     );
     expect(mail.text).toContain('Acknowledgements overdue: 7');
@@ -134,7 +134,7 @@ describe('rendering an email', () => {
         },
         { ...envelope('fr'), unsubscribe: { href: `${BASE}/u`, switch: 'digest' } },
       ),
-      renderMail({ category: 'weekly_digest', overdue: 3, people: 2, href: `${BASE}/fr/policies/overdue` }, envelope('fr')),
+      renderMail({ category: 'weekly_digest', overdue: 3, people: 2, stepsOverdue: 0, href: `${BASE}/fr/policies/overdue` }, envelope('fr')),
     ];
     for (const { text } of mails) {
       // Every colon but those of an address (`https://`).
@@ -146,5 +146,26 @@ describe('rendering an email', () => {
     expect(mails[0].text).toContain(`Ouvrir dans Trustline\u00a0: ${BASE}/fr/incidents/3`);
     // English keeps its plain colon.
     expect(renderMail(assigned, envelope()).text).toContain(`Open in Trustline: ${assigned.href}`);
+  });
+
+  it('gives the overdue approval steps in the weekly email, alone or after the acknowledgements (quality review 3, S2)', () => {
+    const alone = renderMail(
+      { category: 'weekly_digest', overdue: 0, people: 0, stepsOverdue: 2, href: `${BASE}/en/dashboard` },
+      envelope(),
+    );
+    expect(alone.subject).toBe('Approval steps overdue this week');
+    expect(alone.text).toContain('Approval steps overdue: 2');
+    expect(alone.text).not.toContain('Acknowledgements overdue');
+    const both = renderMail(
+      { category: 'weekly_digest', overdue: 4, people: 3, stepsOverdue: 1, href: `${BASE}/en/policies/overdue` },
+      envelope(),
+    );
+    expect(both.subject).toBe('Overdue acknowledgements this week');
+    expect(both.text).toContain('Acknowledgements overdue: 4');
+    expect(both.text).toContain('Approval steps overdue: 1');
+    // In French, with its spaces.
+    expect(
+      renderMail({ category: 'weekly_digest', overdue: 0, people: 0, stepsOverdue: 2, href: `${BASE}/fr/dashboard` }, envelope('fr')).text,
+    ).toContain('Étapes d’approbation en retard\u00a0: 2');
   });
 });

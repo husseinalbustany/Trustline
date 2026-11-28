@@ -99,6 +99,13 @@ export class EmailSettingsController {
     return this.preferences.organization(req.auth);
   }
 
+  /** Who has switched off which kind of email (quality review 3, S3). */
+  @Get('email/opt-outs')
+  optOuts(@Req() req: AuthedRequest) {
+    requireEverywhere(req, 'settings.manage');
+    return this.preferences.optOuts(req.auth);
+  }
+
   @Put('email')
   @OpenWhileSuspended()
   async set(@Body() body: unknown, @Req() req: AuthedRequest) {

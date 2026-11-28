@@ -10,7 +10,10 @@ import {
   count,
   eq,
   ilike,
+  desc,
   inArray,
+  lt,
+  ne,
   or,
   sql,
   type SQL,
@@ -23,6 +26,8 @@ import {
   approvalRunSteps,
   documentAcknowledgements,
   documentCategories,
+  documentImportBatches,
+  documentImports,
   documents,
   documentTypes,
   documentVersions,
@@ -55,6 +60,7 @@ import { REVIEW_DUE_DAYS, reviewState } from './documents.service.js';
 import {
   ACKNOWLEDGEMENT_HEADINGS,
   DOCUMENT_LIST_HEADINGS,
+  IMPORT_REGISTER_HEADINGS,
   EXPORT_VALUES,
   type ExportValue,
 } from './export-wording.js';
@@ -86,6 +92,12 @@ export const MEASURES = {
   /** Acknowledgement completion: at least this share, in percent. */
   acknowledgedAtLeast: 90,
 };
+
+/**
+ * How far ahead of its review an imported document counts as due for its
+ * re-issue (the `reissueDue` filter): the time its owner is reminded from.
+ */
+export const REISSUE_DUE_DAYS = 60;
 
 /** The most rows a file holds: far more than any client's library. */
 export const EXPORT_MAX_ROWS = 50_000;
@@ -189,6 +201,16 @@ export class LibraryService {
           : undefined,
       input.appliesToMe ? inAudience(viewer) : undefined,
       input.awaitingMyAcknowledgement ? this.awaitingMine(viewer) : undefined,
+      input.source
+        ? sql`exists (select from ${documentVersions} pv
+            where pv.id = ${documents.publishedVersionId} and pv.source = ${input.source})`
+        : undefined,
+      input.reissueDue
+        ? sql`${documents.status} = 'active'
+            and ${documents.nextReviewOn} <= ${shiftDay(today, REISSUE_DUE_DAYS)}
+            and exists (select from ${documentVersions} pv
+              where pv.id = ${documents.publishedVersionId} and pv.source = 'imported')`
+        : undefined,
     );
     const published = alias(documentVersions, 'published');
     const title = sql`coalesce(${documents.title} ->> ${auth.tenant.defaultLocale}, ${documents.number})`;
@@ -251,6 +273,11 @@ export class LibraryService {
         // Where the version in force came from: `imported` is approved
         // before Trustline, and is re-issued at its review.
         source: published.source,
+        // For the export: what the original said, of the version in force.
+        originalLastReviewedOn: sql<string | null>`(select di.last_reviewed_on::text
+          from ${documentImports} di where di.version_id = ${documents.publishedVersionId})`,
+        differences: sql<Localized | null>`(select di.differences
+          from ${documentImports} di where di.version_id = ${documents.publishedVersionId})`,
       })
       .from(documents)
       .innerJoin(documentTypes, eq(documentTypes.id, documents.typeId))
@@ -284,6 +311,8 @@ export class LibraryService {
           lastReviewedOn: _last,
           reviewMonths: _months,
           acknowledgementRequired: _ack,
+          originalLastReviewedOn: _original,
+          differences: _differences,
           ...row
         }) => ({
           ...row,
@@ -378,6 +407,8 @@ export class LibraryService {
           h.inProgressStatus,
           // Last, so that the columns of files taken before keep their place.
           h.approvedBeforeTrustline,
+          h.originalLastReviewedOn,
+          h.differences,
         ],
         rows.map((r) => {
           const review = reviewState(r, today);
@@ -407,6 +438,8 @@ export class LibraryService {
             r.version === null
               ? null
               : words[r.source === 'imported' ? 'yes' : 'no'],
+            r.originalLastReviewedOn,
+            r.differences ? name(r.differences) : null,
           ];
         }),
       );
@@ -1003,68 +1036,13 @@ export class LibraryService {
     const today = dayOf(new Date(), auth.tenant.timeZone);
     return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
       const viewer = await viewerOf(tx, auth, this.engine);
-      const unit = alias(orgUnits, 'unit');
-      const where = and(
-        sql`${documentAcknowledgements.acknowledgedAt} is null`,
-        sql`${documentAcknowledgements.dueOn} < ${today}`,
-        eq(documents.status, 'active'),
-        eq(users.status, 'active'),
-        within(viewer.fullReach, users.orgUnitId),
-      );
-      const base = () =>
-        tx
-          .select({ total: count() })
-          .from(documentAcknowledgements)
-          .innerJoin(
-            documents,
-            eq(documents.publishedVersionId, documentAcknowledgements.versionId),
-          )
-          .innerJoin(users, eq(users.id, documentAcknowledgements.userId))
-          .where(where);
-      const [{ total }] = await base();
-      const canOpen = visible(viewer, this.engine);
-      const rows = await tx
-        .select({
-          user: { id: users.id, name: users.name },
-          orgUnit: { id: unit.id, name: unit.name },
-          document: {
-            id: documents.id,
-            number: documents.number,
-          },
-          title: sql<Localized | null>`case when ${canOpen} then ${documents.title} end`,
-          canOpen: sql<boolean>`${canOpen}`,
-          version: {
-            id: documentVersions.id,
-            version: documentVersions.version,
-          },
-          dueOn: documentAcknowledgements.dueOn,
-        })
-        .from(documentAcknowledgements)
-        .innerJoin(
-          documents,
-          eq(documents.publishedVersionId, documentAcknowledgements.versionId),
-        )
-        .innerJoin(
-          documentVersions,
-          eq(documentVersions.id, documentAcknowledgements.versionId),
-        )
-        .innerJoin(users, eq(users.id, documentAcknowledgements.userId))
-        .leftJoin(unit, eq(unit.id, users.orgUnitId))
-        .where(where)
-        .orderBy(
-          asc(documentAcknowledgements.dueOn),
-          // Documents the caller may not open sort after the others of the
-          // same day, by nothing of theirs: the order tells no number.
-          sql`case when ${canOpen} then ${documents.number} end nulls last`,
-          sql`${users.name} ->> ${auth.tenant.defaultLocale}`,
-          asc(users.id),
-          asc(documentAcknowledgements.id),
-        )
-        .limit(input.pageSize)
-        .offset((input.page - 1) * input.pageSize);
+      const { total, rows } = await this.overdueRows(tx, auth, viewer, today, {
+        limit: input.pageSize,
+        offset: (input.page - 1) * input.pageSize,
+      });
       return {
         today,
-        items: rows.map(({ title, canOpen: open, document, version, ...r }) => ({
+        items: rows.map(({ title, canOpen: open, document, version, employeeNumber: _n, ...r }) => ({
           ...r,
           orgUnit: r.orgUnit?.id ? r.orgUnit : null,
           // A document the caller may not open is not named at all: not its
@@ -1078,5 +1056,508 @@ export class LibraryService {
       };
     });
   }
-}
 
+  /** The overdue acknowledgements of `overdueAcknowledgements`, a page of them. */
+  private async overdueRows(
+    tx: Transaction,
+    auth: AuthContext,
+    viewer: Viewer,
+    today: string,
+    page: { limit: number; offset: number },
+  ) {
+    const unit = alias(orgUnits, 'unit');
+    const where = and(
+      sql`${documentAcknowledgements.acknowledgedAt} is null`,
+      sql`${documentAcknowledgements.dueOn} < ${today}`,
+      eq(documents.status, 'active'),
+      eq(users.status, 'active'),
+      within(viewer.fullReach, users.orgUnitId),
+    );
+    const [{ total }] = await tx
+      .select({ total: count() })
+      .from(documentAcknowledgements)
+      .innerJoin(
+        documents,
+        eq(documents.publishedVersionId, documentAcknowledgements.versionId),
+      )
+      .innerJoin(users, eq(users.id, documentAcknowledgements.userId))
+      .where(where);
+    const canOpen = visible(viewer, this.engine);
+    const rows = await tx
+      .select({
+        user: { id: users.id, name: users.name },
+        employeeNumber: users.employeeNumber,
+        orgUnit: { id: unit.id, name: unit.name },
+        document: {
+          id: documents.id,
+          number: documents.number,
+        },
+        title: sql<Localized | null>`case when ${canOpen} then ${documents.title} end`,
+        canOpen: sql<boolean>`${canOpen}`,
+        version: {
+          id: documentVersions.id,
+          version: documentVersions.version,
+        },
+        dueOn: documentAcknowledgements.dueOn,
+      })
+      .from(documentAcknowledgements)
+      .innerJoin(
+        documents,
+        eq(documents.publishedVersionId, documentAcknowledgements.versionId),
+      )
+      .innerJoin(
+        documentVersions,
+        eq(documentVersions.id, documentAcknowledgements.versionId),
+      )
+      .innerJoin(users, eq(users.id, documentAcknowledgements.userId))
+      .leftJoin(unit, eq(unit.id, users.orgUnitId))
+      .where(where)
+      .orderBy(
+        asc(documentAcknowledgements.dueOn),
+        // Documents the caller may not open sort after the others of the
+        // same day, by nothing of theirs: the order tells no number.
+        sql`case when ${canOpen} then ${documents.number} end nulls last`,
+        sql`${users.name} ->> ${auth.tenant.defaultLocale}`,
+        asc(users.id),
+        asc(documentAcknowledgements.id),
+      )
+      .limit(page.limit)
+      .offset(page.offset);
+    return { total, rows };
+  }
+
+  /**
+   * The late acknowledgements list as a CSV file (quality review 3, S5):
+   * every row of `overdueAcknowledgements`, in the caller's language. A
+   * document the caller may not open is not named, as on screen; the
+   * employee number only for people whose accounts the caller manages.
+   * Audited.
+   */
+  exportOverdueAcknowledgements(auth: AuthContext, input: { locale?: Locale }) {
+    const { timeZone, defaultLocale } = auth.tenant;
+    const today = dayOf(new Date(), timeZone);
+    return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
+      const viewer = await viewerOf(tx, auth, this.engine);
+      const locale = await this.fileLocale(tx, auth, input.locale);
+      const { rows } = await this.overdueRows(tx, auth, viewer, today, {
+        limit: EXPORT_MAX_ROWS,
+        offset: 0,
+      });
+      const h = ACKNOWLEDGEMENT_HEADINGS[locale];
+      const name = (text: Localized | null | undefined) =>
+        pickText(text, locale, defaultLocale);
+      const body = csv(
+        [h.person, h.employeeNumber, h.area, h.number, h.title, h.version, h.dueOn, h.daysOverdue],
+        rows.map((r) => [
+          name(r.user.name),
+          covers(auth, 'users.manage', r.orgUnit?.id ?? null) ? r.employeeNumber : null,
+          r.orgUnit?.id ? name(r.orgUnit.name) : null,
+          r.canOpen ? r.document.number : null,
+          r.canOpen ? name(r.title) : null,
+          r.canOpen ? r.version.version : null,
+          r.dueOn,
+          daysBetween(r.dueOn, today),
+        ]),
+      );
+      await this.provisioning.audit(
+        tx,
+        auth.tenant.id,
+        auth.user.id,
+        'overdue_acknowledgements_exported',
+        'tenant',
+        auth.tenant.id,
+        { locale, rows: rows.length },
+      );
+      return { body, fileName: csvFileName('acknowledgements-overdue', today) };
+    });
+  }
+
+  /**
+   * One person's acknowledgement record (quality review 3, S5): every
+   * document version they were asked to acknowledge, with when it was due,
+   * when they acknowledged it and whether that was late. For those who
+   * manage documents for the person's own unit (or the whole organization,
+   * for a person with none); anyone else gets 404, as for a person who is
+   * not there. People who have left are included, as their records stand.
+   * A document the caller may not open is not named, as on the late list.
+   */
+  personAcknowledgements(
+    auth: AuthContext,
+    userId: string,
+    input: { page: number; pageSize: number },
+  ) {
+    const today = dayOf(new Date(), auth.tenant.timeZone);
+    return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
+      const viewer = await viewerOf(tx, auth, this.engine);
+      const person = await this.personInReach(tx, viewer, userId);
+      const { total, rows } = await this.recordRows(tx, viewer, person.id, {
+        limit: input.pageSize,
+        offset: (input.page - 1) * input.pageSize,
+      });
+      return {
+        today,
+        person: {
+          id: person.id,
+          name: person.name,
+          status: person.status,
+          orgUnit: person.orgUnitId ? { id: person.orgUnitId, name: person.unitName } : null,
+        },
+        items: rows.map((r) => this.recordItem(r, today, auth.tenant.timeZone)),
+        total,
+      };
+    });
+  }
+
+  /** The record of `personAcknowledgements` as a CSV file. Audited. */
+  exportPersonAcknowledgements(
+    auth: AuthContext,
+    userId: string,
+    input: { locale?: Locale },
+  ) {
+    const { timeZone, defaultLocale } = auth.tenant;
+    const today = dayOf(new Date(), timeZone);
+    return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
+      const viewer = await viewerOf(tx, auth, this.engine);
+      const person = await this.personInReach(tx, viewer, userId);
+      const locale = await this.fileLocale(tx, auth, input.locale);
+      const { rows } = await this.recordRows(tx, viewer, person.id, {
+        limit: EXPORT_MAX_ROWS,
+        offset: 0,
+      });
+      const words = EXPORT_VALUES[locale];
+      const h = ACKNOWLEDGEMENT_HEADINGS[locale];
+      const name = (text: Localized | null | undefined) =>
+        pickText(text, locale, defaultLocale);
+      const account =
+        person.status === 'active'
+          ? 'account.active'
+          : person.status === 'invited'
+            ? 'account.invited'
+            : 'account.left';
+      const body = csv(
+        [
+          h.person,
+          h.employeeNumber,
+          h.area,
+          h.account,
+          h.number,
+          h.title,
+          h.version,
+          h.versionStatus,
+          h.assignedOn,
+          h.dueOn,
+          h.state,
+          h.acknowledgedAt,
+          h.late,
+          h.signatureFingerprint,
+        ],
+        rows.map((r) => {
+          const item = this.recordItem(r, today, timeZone);
+          return [
+            name(person.name),
+            covers(auth, 'users.manage', person.orgUnitId) ? person.employeeNumber : null,
+            person.unitName ? name(person.unitName) : null,
+            words[account],
+            item.document?.number ?? null,
+            item.document ? name(item.document.title) : null,
+            item.version?.version ?? null,
+            item.version ? words[`version.${item.version.status}` as ExportValue] : null,
+            dayOf(r.assignedAt, timeZone),
+            r.dueOn,
+            words[`ack.${item.state}`],
+            r.acknowledgedAt ? momentIn(r.acknowledgedAt, timeZone) : null,
+            words[item.late ? 'yes' : 'no'],
+            r.canOpen ? r.contentHash : null,
+          ];
+        }),
+      );
+      await this.provisioning.audit(
+        tx,
+        auth.tenant.id,
+        auth.user.id,
+        'person_acknowledgements_exported',
+        'user',
+        person.id,
+        { locale, rows: rows.length },
+      );
+      return { body, fileName: csvFileName('acknowledgements-person', today) };
+    });
+  }
+
+  /**
+   * The person, if the caller manages documents for their unit (or for the
+   * whole organization); 404 otherwise, as for a person who is not there.
+   */
+  private async personInReach(tx: Transaction, viewer: Viewer, userId: string) {
+    const unit = alias(orgUnits, 'unit');
+    const [person] = await tx
+      .select({
+        id: users.id,
+        name: users.name,
+        status: users.status,
+        orgUnitId: users.orgUnitId,
+        employeeNumber: users.employeeNumber,
+        unitName: unit.name,
+      })
+      .from(users)
+      .leftJoin(unit, eq(unit.id, users.orgUnitId))
+      .where(and(eq(users.id, userId), within(viewer.manageReach, users.orgUnitId)));
+    if (!person) throw new NotFoundException();
+    return person;
+  }
+
+  /** A person's acknowledgements, newest asked first. */
+  private async recordRows(
+    tx: Transaction,
+    viewer: Viewer,
+    userId: string,
+    page: { limit: number; offset: number },
+  ) {
+    const where = eq(documentAcknowledgements.userId, userId);
+    const [{ total }] = await tx
+      .select({ total: count() })
+      .from(documentAcknowledgements)
+      .where(where);
+    const canOpen = visible(viewer, this.engine);
+    const rows = await tx
+      .select({
+        documentId: documents.id,
+        number: documents.number,
+        title: documents.title,
+        canOpen: sql<boolean>`coalesce(${canOpen}, false)`,
+        versionId: documentVersions.id,
+        version: documentVersions.version,
+        versionStatus: documentVersions.status,
+        assignedAt: documentAcknowledgements.assignedAt,
+        dueOn: documentAcknowledgements.dueOn,
+        acknowledgedAt: documentAcknowledgements.acknowledgedAt,
+        contentHash: signatures.contentHash,
+      })
+      .from(documentAcknowledgements)
+      .innerJoin(
+        documentVersions,
+        eq(documentVersions.id, documentAcknowledgements.versionId),
+      )
+      .innerJoin(documents, eq(documents.id, documentVersions.documentId))
+      .leftJoin(signatures, eq(signatures.id, documentAcknowledgements.signatureId))
+      .where(where)
+      .orderBy(
+        desc(documentAcknowledgements.assignedAt),
+        asc(documentAcknowledgements.id),
+      )
+      .limit(page.limit)
+      .offset(page.offset);
+    return { total, rows };
+  }
+
+  private recordItem(
+    r: Awaited<ReturnType<LibraryService['recordRows']>>['rows'][number],
+    today: string,
+    timeZone: string,
+  ) {
+    const acknowledgedOn = r.acknowledgedAt ? dayOf(r.acknowledgedAt, timeZone) : null;
+    return {
+      // Not named at all where the caller may not open it.
+      document: r.canOpen
+        ? { id: r.documentId, number: r.number, title: r.title }
+        : null,
+      version: r.canOpen
+        ? { id: r.versionId, version: r.version, status: r.versionStatus }
+        : null,
+      assignedAt: r.assignedAt,
+      dueOn: r.dueOn,
+      acknowledgedAt: r.acknowledgedAt,
+      state: (r.acknowledgedAt
+        ? 'acknowledged'
+        : r.dueOn < today
+          ? 'overdue'
+          : 'pending') as 'acknowledged' | 'overdue' | 'pending',
+      // Acknowledged after the day it was due, or not and the day passed.
+      late: acknowledgedOn ? acknowledgedOn > r.dueOn : r.dueOn < today,
+    };
+  }
+
+  /**
+   * The approval steps overdue on versions of documents the caller manages
+   * (quality review 3, S2): for the managers' daily digest, as `myApprovals`
+   * is for those who decide them. Numbers and versions only.
+   */
+  overdueSteps(auth: AuthContext) {
+    return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
+      const viewer = await viewerOf(tx, auth, this.engine);
+      const rows = await tx
+        .select({
+          document: { id: documents.id, number: documents.number },
+          version: { id: documentVersions.id, version: documentVersions.version },
+          position: approvalRunSteps.position,
+          kind: approvalRunSteps.kind,
+          dueAt: approvalRunSteps.dueAt,
+        })
+        .from(approvalRunSteps)
+        .innerJoin(
+          approvalRuns,
+          and(
+            eq(approvalRuns.id, approvalRunSteps.runId),
+            eq(approvalRuns.status, 'in_progress'),
+            eq(approvalRuns.subjectType, 'document_version'),
+          ),
+        )
+        .innerJoin(
+          documentVersions,
+          and(
+            eq(documentVersions.id, approvalRuns.subjectId),
+            eq(documentVersions.status, 'in_review'),
+          ),
+        )
+        .innerJoin(documents, eq(documents.id, documentVersions.documentId))
+        .where(
+          and(
+            eq(approvalRunSteps.status, 'pending'),
+            lt(approvalRunSteps.dueAt, new Date()),
+            ne(documents.status, 'retired'),
+            within(viewer.manageReach, documents.ownerUnitId),
+          ),
+        )
+        .orderBy(asc(approvalRunSteps.dueAt), asc(documents.number));
+      return { items: rows, total: rows.length };
+    });
+  }
+
+  /**
+   * The register of imports (quality review 3, S1): every document imported
+   * as approved before Trustline, with what its original says, who imported
+   * it and when, and its batch with the fingerprint of the list the one
+   * password re-entry covered. Newest first. For those who manage documents
+   * for the whole organization, as importing is.
+   */
+  imports(auth: AuthContext, input: { page: number; pageSize: number }) {
+    this.assertWholeOrganization(auth);
+    return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
+      const [{ total }] = await tx.select({ total: count() }).from(documentImports);
+      const rows = await this.importRows(tx, {
+        limit: input.pageSize,
+        offset: (input.page - 1) * input.pageSize,
+      });
+      const people = await this.namesOf(tx, rows.map((r) => r.importedBy));
+      return {
+        items: rows.map(({ importedBy, ...r }) => ({
+          ...r,
+          importedBy: { id: importedBy, name: people.get(importedBy) ?? null },
+        })),
+        total,
+      };
+    });
+  }
+
+  /** The register of imports as a CSV file, in the caller's language. Audited. */
+  exportImports(auth: AuthContext, input: { locale?: Locale }) {
+    this.assertWholeOrganization(auth);
+    const { timeZone, defaultLocale } = auth.tenant;
+    const today = dayOf(new Date(), timeZone);
+    return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
+      const locale = await this.fileLocale(tx, auth, input.locale);
+      const rows = await this.importRows(tx, { limit: EXPORT_MAX_ROWS, offset: 0 });
+      const people = await this.namesOf(tx, rows.map((r) => r.importedBy));
+      const h = IMPORT_REGISTER_HEADINGS[locale];
+      const name = (text: Localized | null | undefined) =>
+        pickText(text, locale, defaultLocale);
+      const body = csv(
+        [
+          h.number,
+          h.title,
+          h.originalNumber,
+          h.revisionLabel,
+          h.approvedOn,
+          h.approvedBy,
+          h.lastReviewedOn,
+          h.originalKeptAt,
+          h.differences,
+          h.importedBy,
+          h.importedAt,
+          h.batch,
+          h.batchListHash,
+          h.signatureFingerprint,
+        ],
+        rows.map((r) => [
+          r.number,
+          name(r.title),
+          r.numberAsGiven,
+          r.revisionLabel,
+          r.approvedOn,
+          r.approvedBy,
+          r.lastReviewedOn,
+          name(r.originalKeptAt),
+          r.differences ? name(r.differences) : null,
+          name(people.get(r.importedBy)),
+          momentIn(r.importedAt, timeZone),
+          r.batch.id,
+          r.batch.listHash,
+          r.contentHash,
+        ]),
+      );
+      await this.provisioning.audit(
+        tx,
+        auth.tenant.id,
+        auth.user.id,
+        'imports_exported',
+        'tenant',
+        auth.tenant.id,
+        { locale, rows: rows.length },
+      );
+      return { body, fileName: csvFileName('imports', today) };
+    });
+  }
+
+  private importRows(tx: Transaction, page: { limit: number; offset: number }) {
+    return tx
+      .select({
+        documentId: documents.id,
+        number: documents.number,
+        title: documents.title,
+        versionId: documentImports.versionId,
+        numberAsGiven: documentImports.numberAsGiven,
+        revisionLabel: documentImports.revisionLabel,
+        approvedOn: documentImports.approvedOn,
+        approvedBy: documentImports.approvedBy,
+        lastReviewedOn: documentImports.lastReviewedOn,
+        originalKeptAt: documentImports.originalKeptAt,
+        differences: documentImports.differences,
+        effectiveOn: documentImports.effectiveOn,
+        nextReviewOn: documentImports.nextReviewOn,
+        importedBy: documentImports.importedBy,
+        importedAt: documentImports.importedAt,
+        batch: {
+          id: documentImportBatches.id,
+          index: documentImports.batchIndex,
+          size: documentImportBatches.size,
+          listHash: documentImportBatches.listHash,
+        },
+        signatureId: documentImports.signatureId,
+        contentHash: signatures.contentHash,
+      })
+      .from(documentImports)
+      .innerJoin(documents, eq(documents.id, documentImports.documentId))
+      .innerJoin(
+        documentImportBatches,
+        eq(documentImportBatches.id, documentImports.batchId),
+      )
+      .innerJoin(signatures, eq(signatures.id, documentImports.signatureId))
+      .orderBy(
+        desc(documentImports.importedAt),
+        asc(documentImports.batchId),
+        asc(documentImports.batchIndex),
+      )
+      .limit(page.limit)
+      .offset(page.offset);
+  }
+
+  /** 403 unless the caller manages documents for the whole organization. */
+  private assertWholeOrganization(auth: AuthContext) {
+    if (!covers(auth, 'policies.manage', null)) {
+      throw new ForbiddenException({
+        code: 'missing_permission',
+        permission: 'policies.manage',
+      });
+    }
+  }
+}

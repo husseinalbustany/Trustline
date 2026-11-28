@@ -38,12 +38,17 @@ export type Wording = {
     overdue: string;
     people: string;
     open: string;
+    /** With no acknowledgement overdue, only approval steps. */
+    stepsSubject: string;
+    stepsBody: string;
+    stepsOverdue: string;
   };
   daily: {
     subject: string;
     intro: string;
     acknowledge: string;
     approve: string;
+    stepsOverdue: string;
     reviews: string;
     incidents: string;
     incidentsOverdue: string;

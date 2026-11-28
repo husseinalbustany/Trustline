@@ -810,6 +810,9 @@ export const notificationKind = pgEnum('notification_kind', [
   // Once a week, to the managers of the units whose people have
   // acknowledgements overdue: how many. About no one document.
   'acknowledgements_overdue_digest',
+  // An import made the recipient the owner of a document (quality review
+  // 3, S1): its periodic review, and its re-issue, are theirs.
+  'document_owner_assigned',
   // An email's unsubscribe link switched a kind of email off, so that the
   // person sees it in Trustline (security review 8, L2): `data.switch`.
   // About nothing else.
@@ -1836,6 +1839,13 @@ export const documentImports = pgTable(
     originalKeptAt: jsonb().$type<Localized>().notNull(),
     effectiveOn: date({ mode: 'string' }).notNull(),
     nextReviewOn: date({ mode: 'string' }).notNull(),
+    // When the original was last reviewed, as it says (quality review 3,
+    // M2): the next review is counted from it, or from the approval.
+    lastReviewedOn: date({ mode: 'string' }),
+    // Where the text in Trustline differs from the original ("Table 2
+    // written as a list"), per language (quality review 3, M3). Signed with
+    // the import: the text matches the original except as noted here.
+    differences: jsonb().$type<Localized>(),
     // Sections with no text in the authoritative language when imported.
     sectionsNotWritten: text()
       .array()
@@ -1886,6 +1896,10 @@ export const documentImports = pgTable(
     check(
       'document_imports_dates',
       sql`${t.effectiveOn} >= ${t.approvedOn} and ${t.nextReviewOn} > ${t.approvedOn}`,
+    ),
+    check(
+      'document_imports_last_reviewed',
+      sql`${t.lastReviewedOn} is null or (${t.lastReviewedOn} >= ${t.approvedOn} and ${t.nextReviewOn} > ${t.lastReviewedOn})`,
     ),
     tenantIsolation(),
   ],

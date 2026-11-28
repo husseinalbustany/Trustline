@@ -272,7 +272,7 @@ export class PolicyCheck implements OnModuleDestroy {
     done.assigned += joined.assigned;
     done.notified += joined.notified;
     if (this.stopping) return done;
-    done.notified += await this.sendDigests(client.id, today);
+    done.notified += await this.sendDigests(client.id, today, now);
     return done;
   }
 
@@ -744,14 +744,17 @@ export class PolicyCheck implements OnModuleDestroy {
    * or one above it (granted for a unit, not for the whole organization);
    * where no one does, or the person has no unit, those who manage
    * documents for the whole organization. Active people only, on the
-   * version in force of each active document. Returns, for each manager,
-   * how many acknowledgements and people are overdue.
+   * version in force of each active document. And, since quality review 3
+   * (S2), each manager of a document with an approval step overdue, as the
+   * in-app notice of it goes. Returns, for each manager, how many
+   * acknowledgements and people are overdue, and how many steps.
    */
-  private async digestRecipients(tx: Transaction, today: string) {
+  private async digestRecipients(tx: Transaction, today: string, now: Date) {
     const { rows } = await tx.execute<{
       manager_id: string;
       overdue: number;
       people: number;
+      steps_overdue: number;
     }>(sql`
       with recursive overdue as (
         select a.id, a.user_id, u.org_unit_id
@@ -783,11 +786,54 @@ export class PolicyCheck implements OnModuleDestroy {
         join roles r on r.id = ra.role_id and 'policies.manage' = any(r.permissions)
         join users m on m.id = ra.user_id and m.status = 'active'
         where not exists (select from scoped s where s.ack_id = o.id)
+      ),
+      acks as (
+        select manager_id, count(distinct ack_id)::int as overdue, count(distinct user_id)::int as people
+        from (select * from scoped union all select * from everywhere) routed
+        group by manager_id
+      ),
+      -- The approval steps overdue (quality review 3, S2), to whoever is
+      -- told of each in the app: those who manage the document, through a
+      -- grant for its unit, one above it, or the whole organization.
+      steps as (
+        select s.id as step_id, d.owner_unit_id
+        from approval_run_steps s
+        join approval_runs r on r.id = s.run_id
+          and r.status = 'in_progress' and r.subject_type = 'document_version'
+        join document_versions v on v.id = r.subject_id and v.status = 'in_review'
+        join documents d on d.id = v.document_id and d.status <> 'retired'
+        where s.status = 'pending' and s.due_at < ${now.toISOString()}::timestamptz
+      ),
+      steps_up (step_id, id, parent_id) as (
+        select s.step_id, ou.id, ou.parent_id
+        from steps s join org_units ou on ou.id = s.owner_unit_id
+        union
+        select su.step_id, p.id, p.parent_id
+        from steps_up su join org_units p on p.id = su.parent_id
+      ),
+      step_managers as (
+        select su.step_id, ra.user_id as manager_id
+        from steps_up su
+        join role_assignments ra on ra.org_unit_id = su.id
+        join roles r on r.id = ra.role_id and 'policies.manage' = any(r.permissions)
+        join users m on m.id = ra.user_id and m.status = 'active'
+        union
+        select s.step_id, ra.user_id
+        from steps s
+        join role_assignments ra on ra.org_unit_id is null
+        join roles r on r.id = ra.role_id and 'policies.manage' = any(r.permissions)
+        join users m on m.id = ra.user_id and m.status = 'active'
+      ),
+      step_counts as (
+        select manager_id, count(distinct step_id)::int as steps_overdue
+        from step_managers group by manager_id
       )
-      select manager_id, count(distinct ack_id)::int as overdue, count(distinct user_id)::int as people
-      from (select * from scoped union all select * from everywhere) routed
-      group by manager_id
-      order by manager_id`);
+      select coalesce(a.manager_id, sc.manager_id) as manager_id,
+             coalesce(a.overdue, 0) as overdue,
+             coalesce(a.people, 0) as people,
+             coalesce(sc.steps_overdue, 0) as steps_overdue
+      from acks a full join step_counts sc on sc.manager_id = a.manager_id
+      order by 1`);
     return rows;
   }
 
@@ -795,10 +841,10 @@ export class PolicyCheck implements OnModuleDestroy {
    * Sends this week's digest to each manager who has acknowledgements
    * overdue among their people and has not had it this week. Counts only.
    */
-  private sendDigests(tenantId: string, today: string) {
+  private sendDigests(tenantId: string, today: string, now: Date) {
     const week = isoWeekOf(today);
     return this.inClient(tenantId, async (tx) => {
-      const recipients = await this.digestRecipients(tx, today);
+      const recipients = await this.digestRecipients(tx, today, now);
       const due: { userId: string; data: Record<string, string | number> }[] =
         [];
       for (const r of recipients) {
@@ -807,7 +853,12 @@ export class PolicyCheck implements OnModuleDestroy {
         }
         due.push({
           userId: r.manager_id,
-          data: { overdue: r.overdue, people: r.people, week },
+          data: {
+            overdue: r.overdue,
+            people: r.people,
+            stepsOverdue: r.steps_overdue,
+            week,
+          },
         });
       }
       return this.notifier.sendDigest(tx, tenantId, due);

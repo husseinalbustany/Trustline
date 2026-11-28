@@ -87,6 +87,12 @@ export const IN_PROGRESS: VersionStatus[] = ['draft', 'in_review', 'approved'];
 
 /** How far ahead a review counts as due in the library and the summary. */
 export const REVIEW_DUE_DAYS = 30;
+/**
+ * How long before its due date a periodic review may be confirmed as
+ * needing no change (quality review 3): from then on, or once it has
+ * passed. Before, the review is not due (409 `review_not_due`).
+ */
+export const REVIEW_CONFIRM_DAYS = 60;
 
 const versionFields = {
   id: documentVersions.id,
@@ -327,7 +333,9 @@ export class DocumentsService {
     if (
       (access.manages || access.owner) &&
       doc.status === 'active' &&
-      !reissueRequired
+      !reissueRequired &&
+      !!doc.nextReviewOn &&
+      doc.nextReviewOn <= shiftDay(today, REVIEW_CONFIRM_DAYS)
     ) {
       moves.push('confirm_review');
     }
@@ -1053,10 +1061,20 @@ export class DocumentsService {
               originalKeptAt: imported.originalKeptAt,
               effectiveOn: imported.effectiveOn,
               nextReviewOn: imported.nextReviewOn,
+              // Quality review 3: the original's last review (M2), and
+              // where the text differs from it (M3), which the import
+              // signature covers.
+              lastReviewedOn: imported.lastReviewedOn,
+              differences: imported.differences,
+              // The sections the original came without, in the version's
+              // order: the reader's view and the print say so.
+              sectionsNotInOriginal: imported.sectionsNotWritten,
               importedBy: imported.importedBy,
               importedAt: imported.importedAt,
             }
           : null,
+        // For the print header: "Version 1 (Rev. 4 on the original)".
+        originalRevision: imported?.revisionLabel ?? null,
       },
       imported,
       run: seesRuns && latest ? runView(latest) : null,
@@ -1098,6 +1116,8 @@ export class DocumentsService {
         originalKeptAt: documentImports.originalKeptAt,
         effectiveOn: documentImports.effectiveOn,
         nextReviewOn: documentImports.nextReviewOn,
+        lastReviewedOn: documentImports.lastReviewedOn,
+        differences: documentImports.differences,
         sectionsNotWritten: documentImports.sectionsNotWritten,
         signatureId: documentImports.signatureId,
         importedBy: documentImports.importedBy,
@@ -1124,6 +1144,8 @@ export class DocumentsService {
       originalKeptAt: row.originalKeptAt,
       effectiveOn: row.effectiveOn,
       nextReviewOn: row.nextReviewOn,
+      lastReviewedOn: row.lastReviewedOn,
+      differences: row.differences,
       sectionsNotWritten: version.sections
         .filter((s) => missing.has(s.key))
         .map((s) => ({ key: s.key, required: s.required })),
@@ -2433,6 +2455,17 @@ export class DocumentsService {
       .from(documentVersions)
       .where(eq(documentVersions.id, doc.publishedVersionId!));
     if (published?.source === 'imported') throw refuse.reissueRequired();
+    // Only within REVIEW_CONFIRM_DAYS of its due date, or after it: a
+    // review confirmed the day after publishing would move the next one on
+    // with nobody having looked.
+    const today = dayOf(new Date(), auth.tenant.timeZone);
+    if (doc.nextReviewOn && doc.nextReviewOn > shiftDay(today, REVIEW_CONFIRM_DAYS)) {
+      throw new ConflictException({
+        code: 'review_not_due',
+        dueOn: doc.nextReviewOn,
+        opensOn: shiftDay(doc.nextReviewOn, -REVIEW_CONFIRM_DAYS),
+      });
+    }
     return { viewer, doc };
   }
 

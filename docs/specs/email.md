@@ -62,6 +62,7 @@ midnight) is dropped as `expired`, since the next morning has its own.
 |---|---|---|
 | Documents to acknowledge | published versions they are asked to acknowledge and have not, overdue ones marked | policies |
 | Documents to review or approve | approval steps that are theirs to decide, overdue ones marked | policies |
+| Approval steps overdue | for those who manage documents: the pending steps past their due time on versions of the documents they manage (quality review 3, S2) | policies |
 | Periodic reviews due | documents they own whose review is within 60 days or past; and, for those who manage documents, reviews that are past | policies |
 | Incidents assigned to them | open incidents assigned to them, overdue ones marked, with how many are overdue | incidents |
 
@@ -71,12 +72,22 @@ the person sees on the screens ("Awaiting me", "Reviews", the library
 filtered to "awaiting my acknowledgement", incidents "assigned to me"). They
 are worked out when the digest is sent, with the same visibility rules.
 
-### Weekly: overdue acknowledgements, to managers
+### Weekly: overdue acknowledgements and approval steps, to managers
 
 When the policies daily check writes the weekly
 `acknowledgements_overdue_digest` (the first run of each ISO week), an email
 with the same counts is queued for each manager it goes to. It links to the
 overdue acknowledgements screen.
+
+Since quality review 3 (S2) it also counts the approval steps overdue on the
+documents each manager manages (`data.stepsOverdue`), and goes to the
+managers who have only those: the managers who are told of each overdue
+step in the app, through a grant for the document's unit, one above it, or
+the whole organization. An email with acknowledgements overdue keeps its
+subject and adds a line for the steps; one with steps only says "Approval
+steps overdue this week" and links to the dashboard. Counts only, as
+before. Approval steps are not emailed while the subscription is
+suspended, in the weekly email as in the digest: the count is left out.
 
 ## 2. What an email says
 
@@ -406,6 +417,6 @@ log) is kept elsewhere.
 
 ## Not built yet
 
-An email for an overdue approval step. Choosing the digest hour per organization.
+Choosing the digest hour per organization.
 Delivery reports (bounces), and other transports beyond SMTP (an HTTP API of
 a mail service can be added as another `MailSender`).

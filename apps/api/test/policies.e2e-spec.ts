@@ -1,4 +1,5 @@
 import '../src/env.js';
+import { shiftDay } from '../src/i18n/time-zones.js';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { and, asc, eq, sql } from 'drizzle-orm';
 import {
@@ -1337,11 +1338,12 @@ describe('policies and procedures', () => {
 
     it('makes a new version from the published one, compared section by section, and supersedes it when published', async () => {
       const { doc, version } = await published();
+      // No `confirm_review` yet: its review is a full period away (quality
+      // review 3: confirmed only within 60 days of it).
       expect((await get(writer.cookie, `/documents/${doc.id}`).expect(200)).body.moves).toEqual([
         'edit',
         'new_version',
         'retire',
-        'confirm_review',
       ]);
       const v2 = (await post(writer.cookie, `/documents/${doc.id}/versions`).expect(201)).body as Version;
       expect(v2).toMatchObject({ version: 2, status: 'draft' });
@@ -1479,10 +1481,20 @@ describe('policies and procedures', () => {
       expect(
         (await post(writer.cookie, `/documents/${doc.id}/review`, { password, comment, revision: 1 }).expect(409)).body.code,
       ).toBe('stale_document');
+      // Just published, its review is not due: refused before the password
+      // is asked (quality review 3), with when it may be confirmed.
+      expect(
+        (await post(writer.cookie, `/documents/${doc.id}/review`, { password, comment, revision: current.revision }).expect(409)).body,
+      ).toEqual({
+        code: 'review_not_due',
+        dueOn: current.nextReviewOn,
+        opensOn: shiftDay(current.nextReviewOn, -60),
+      });
+      expect(current.moves).not.toContain('confirm_review');
+      await bench.owner.db.execute(sql`update documents set next_review_on = current_date - 3 where id = ${doc.id}`);
       expect(
         (await post(writer.cookie, `/documents/${doc.id}/review`, { password: 'nope', comment, revision: current.revision }).expect(401)).body.code,
       ).toBe('wrong_password');
-      await bench.owner.db.execute(sql`update documents set next_review_on = current_date - 3 where id = ${doc.id}`);
       const due = (await get(writer.cookie, '/reviews').expect(200)).body;
       expect(due.items.find((i: { id: string }) => i.id === doc.id)).toMatchObject({ state: 'overdue', mine: true });
       const reviewed = (

@@ -49,19 +49,34 @@ export type ImportedOriginal = {
   originalKeptAt: Localized;
   effectiveOn: string;
   nextReviewOn: string;
+  /** When the original was last reviewed, if it says (quality review 3, M2). */
+  lastReviewedOn: string | null;
+  /** Where the text differs from the original (quality review 3, M3). */
+  differences: Localized | null;
 };
 
 /**
  * What the importer of a document signs (meaning `imported`): that the
- * version holds the text of the original approved before Trustline, and
- * what the original says of its approval. The version as an approval signs
+ * version holds the text of the original approved before Trustline, except
+ * as the differences say (quality review 3, M3), and what the original
+ * says of its approval and last review. The version as an approval signs
  * it, with those details beside it.
  */
 export const signedImport = (
   doc: Parameters<typeof signedVersion>[0],
   version: Parameters<typeof signedVersion>[1],
   original: ImportedOriginal,
-) => ({
-  ...signedVersion(doc, version),
-  importedOriginal: original,
-});
+) => {
+  // The original's last review and the differences from it are signed
+  // when they are given, and only then: an import made before they could
+  // be keeps the hash it was signed with.
+  const { lastReviewedOn, differences, ...said } = original;
+  return {
+    ...signedVersion(doc, version),
+    importedOriginal: {
+      ...said,
+      ...(lastReviewedOn !== null && { lastReviewedOn }),
+      ...(differences !== null && { differences }),
+    },
+  };
+};

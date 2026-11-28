@@ -30,6 +30,8 @@ export const DOCUMENT_LIST_HEADINGS: Words<
   | 'acknowledgementRequired'
   | 'inProgressVersion'
   | 'inProgressStatus'
+  | 'originalLastReviewedOn'
+  | 'differences'
 > = {
   en: {
     number: 'Number',
@@ -50,6 +52,8 @@ export const DOCUMENT_LIST_HEADINGS: Words<
     approvedBeforeTrustline: 'Approved before Trustline',
     inProgressVersion: 'Version in progress',
     inProgressStatus: 'Status of the version in progress',
+    originalLastReviewedOn: 'Last reviewed on the original',
+    differences: 'Differences from the original',
   },
   ar: {
     number: 'الرقم',
@@ -70,6 +74,8 @@ export const DOCUMENT_LIST_HEADINGS: Words<
     approvedBeforeTrustline: 'معتمدة قبل Trustline',
     inProgressVersion: 'الإصدار قيد الإعداد',
     inProgressStatus: 'حالة الإصدار قيد الإعداد',
+    originalLastReviewedOn: 'آخر مراجعة في الأصل',
+    differences: 'الاختلافات عن الأصل',
   },
   fr: {
     number: 'Numéro',
@@ -90,6 +96,8 @@ export const DOCUMENT_LIST_HEADINGS: Words<
     approvedBeforeTrustline: 'Approuvé avant Trustline',
     inProgressVersion: 'Version en cours',
     inProgressStatus: 'Statut de la version en cours',
+    originalLastReviewedOn: 'Dernière révision sur l’original',
+    differences: 'Écarts par rapport à l’original',
   },
 };
 
@@ -107,6 +115,9 @@ export const ACKNOWLEDGEMENT_HEADINGS: Words<
   | 'state'
   | 'acknowledgedAt'
   | 'signatureFingerprint'
+  | 'title'
+  | 'late'
+  | 'daysOverdue'
 > = {
   en: {
     number: 'Document number',
@@ -122,6 +133,9 @@ export const ACKNOWLEDGEMENT_HEADINGS: Words<
     state: 'Where it stands',
     acknowledgedAt: 'Acknowledged at',
     signatureFingerprint: 'Fingerprint of what was signed',
+    title: 'Document title',
+    late: 'Late',
+    daysOverdue: 'Days overdue',
   },
   ar: {
     number: 'رقم الوثيقة',
@@ -137,6 +151,9 @@ export const ACKNOWLEDGEMENT_HEADINGS: Words<
     state: 'الوضع',
     acknowledgedAt: 'تاريخ الإقرار',
     signatureFingerprint: 'البصمة الرقمية لما وُقِّع',
+    title: 'عنوان الوثيقة',
+    late: 'بعد الموعد',
+    daysOverdue: 'أيام التأخر',
   },
   fr: {
     number: 'Numéro du document',
@@ -151,6 +168,76 @@ export const ACKNOWLEDGEMENT_HEADINGS: Words<
     dueOn: 'Attendu le',
     state: 'Situation',
     acknowledgedAt: 'Confirmé le',
+    signatureFingerprint: 'Empreinte de ce qui a été signé',
+    title: 'Titre du document',
+    late: 'En retard',
+    daysOverdue: 'Jours de retard',
+  },
+};
+
+/** The register of imports (quality review 3, S1). */
+export const IMPORT_REGISTER_HEADINGS: Words<
+  | 'number'
+  | 'title'
+  | 'originalNumber'
+  | 'revisionLabel'
+  | 'approvedOn'
+  | 'approvedBy'
+  | 'lastReviewedOn'
+  | 'originalKeptAt'
+  | 'differences'
+  | 'importedBy'
+  | 'importedAt'
+  | 'batch'
+  | 'batchListHash'
+  | 'signatureFingerprint'
+> = {
+  en: {
+    number: 'Number',
+    title: 'Title',
+    originalNumber: 'Number on the original',
+    revisionLabel: 'Revision on the original',
+    approvedOn: 'Approved on',
+    approvedBy: 'Approved by (as on the original)',
+    lastReviewedOn: 'Last reviewed on the original',
+    originalKeptAt: 'Where the signed original is kept',
+    differences: 'Differences from the original',
+    importedBy: 'Imported by',
+    importedAt: 'Imported at',
+    batch: 'Batch',
+    batchListHash: 'Fingerprint of the batch',
+    signatureFingerprint: 'Fingerprint of what was signed',
+  },
+  ar: {
+    number: 'الرقم',
+    title: 'العنوان',
+    originalNumber: 'الرقم في الأصل',
+    revisionLabel: 'رقم التنقيح في الأصل',
+    approvedOn: 'تاريخ الاعتماد',
+    approvedBy: 'مَن اعتمدها (كما ورد في الأصل)',
+    lastReviewedOn: 'آخر مراجعة في الأصل',
+    originalKeptAt: 'مكان حفظ الأصل الموقَّع',
+    differences: 'الاختلافات عن الأصل',
+    importedBy: 'استوردها',
+    importedAt: 'تاريخ الاستيراد',
+    batch: 'الدفعة',
+    batchListHash: 'البصمة الرقمية للدفعة',
+    signatureFingerprint: 'البصمة الرقمية لما وُقِّع',
+  },
+  fr: {
+    number: 'Numéro',
+    title: 'Titre',
+    originalNumber: 'Numéro sur l’original',
+    revisionLabel: 'Indice de révision sur l’original',
+    approvedOn: 'Approuvé le',
+    approvedBy: 'Approuvé par (selon l’original)',
+    lastReviewedOn: 'Dernière révision sur l’original',
+    originalKeptAt: 'Lieu de conservation de l’original signé',
+    differences: 'Écarts par rapport à l’original',
+    importedBy: 'Importé par',
+    importedAt: 'Importé le',
+    batch: 'Lot',
+    batchListHash: 'Empreinte du lot',
     signatureFingerprint: 'Empreinte de ce qui a été signé',
   },
 };

@@ -6,7 +6,12 @@ import { fill, WORDING, type Wording } from './wording/index.js';
 /** One reference in a digest, with the link to it. */
 export type DigestItem = { label: string; href: string; overdue?: boolean };
 
-export type DigestSectionKey = 'acknowledge' | 'approve' | 'reviews' | 'incidents';
+export type DigestSectionKey =
+  | 'acknowledge'
+  | 'approve'
+  | 'stepsOverdue'
+  | 'reviews'
+  | 'incidents';
 
 export type DigestSection = {
   key: DigestSectionKey;
@@ -39,6 +44,8 @@ export type MailContent =
       category: 'weekly_digest';
       overdue: number;
       people: number;
+      /** Approval steps overdue on documents they manage (quality review 3, S2). */
+      stepsOverdue: number;
       href: string;
     }
   | {
@@ -141,11 +148,19 @@ export function renderMail(content: MailContent, envelope: MailEnvelope): Render
     body.push({ kind: 'text', text: say(text.body, values) });
     body.push({ kind: 'link', text: w.open, href: content.href });
   } else if (content.category === 'weekly_digest') {
-    subject = w.weekly.subject;
-    body.push({ kind: 'text', text: w.weekly.body });
-    body.push({ kind: 'text', text: say(w.weekly.overdue, { overdue: content.overdue }) });
-    body.push({ kind: 'text', text: say(w.weekly.people, { people: content.people }) });
-    body.push({ kind: 'link', text: w.weekly.open, href: content.href });
+    // Acknowledgements first, as before; the approval steps as a line of
+    // their own, or alone when no acknowledgement is overdue.
+    const acks = content.overdue > 0;
+    subject = acks ? w.weekly.subject : w.weekly.stepsSubject;
+    body.push({ kind: 'text', text: acks ? w.weekly.body : w.weekly.stepsBody });
+    if (acks) {
+      body.push({ kind: 'text', text: say(w.weekly.overdue, { overdue: content.overdue }) });
+      body.push({ kind: 'text', text: say(w.weekly.people, { people: content.people }) });
+    }
+    if (content.stepsOverdue > 0) {
+      body.push({ kind: 'text', text: say(w.weekly.stepsOverdue, { count: content.stepsOverdue }) });
+    }
+    body.push({ kind: 'link', text: acks ? w.weekly.open : w.daily.open, href: content.href });
   } else {
     const day = formatDay(content.day, envelope.locale);
     subject = fill(w.daily.subject, { day: rtl ? `${FSI}${day}${PDI}` : day });

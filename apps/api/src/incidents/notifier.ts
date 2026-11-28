@@ -45,6 +45,7 @@ export const NOTIFICATION_MODULE: Record<NotificationKind, ModuleKey> = {
   document_step_overdue: 'policies',
   document_publish_failed: 'policies',
   acknowledgements_overdue_digest: 'policies',
+  document_owner_assigned: 'policies',
   // About the person's own email (an unsubscribe link was used): core.
   email_turned_off: 'core',
 };

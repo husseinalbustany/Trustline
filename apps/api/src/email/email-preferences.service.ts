@@ -1,10 +1,13 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { eq, sql } from 'drizzle-orm';
+import { and, asc, eq, or, sql } from 'drizzle-orm';
 import type { Transaction } from '../database/client.js';
 import {
   emailPreferences,
   emailSettings,
   notifications,
+  roleAssignments,
+  roles,
+  users,
 } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
 import type { AuthContext } from '../identity/auth.service.js';
@@ -65,7 +68,55 @@ export class EmailPreferencesService {
       language:
         language && auth.tenant.locales.includes(language) ? language : null,
       organizationEnabled: await this.organizationEnabled(tx),
+      // What the immediate emails are for in this person's work (quality
+      // review 3, S3): whether they decide approval steps, or triage
+      // incidents, in the modules the organization has. The screen warns
+      // before such a person switches them off.
+      reliedOn: reliedOnOf(auth),
     };
+  }
+
+  /**
+   * Who has switched off which kind of email (quality review 3, S3), for
+   * whoever manages the settings of the whole organization: each active
+   * person with a switch off, by name, with what the immediate emails are
+   * for in their work. Names only: no address.
+   */
+  optOuts(auth: AuthContext) {
+    const holds = (permission: string) =>
+      sql<boolean>`exists (select from ${roleAssignments} ra join ${roles} r on r.id = ra.role_id
+        where ra.user_id = ${users.id} and ${permission} = any(r.permissions))`;
+    const { modules } = auth.tenant;
+    return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
+      const rows = await tx
+        .select({
+          id: users.id,
+          name: users.name,
+          immediate: emailPreferences.immediate,
+          digest: emailPreferences.digest,
+          approves: holds('policies.approve'),
+          triages: holds('incidents.triage'),
+        })
+        .from(emailPreferences)
+        .innerJoin(users, eq(users.id, emailPreferences.userId))
+        .where(
+          and(
+            eq(users.status, 'active'),
+            or(eq(emailPreferences.immediate, false), eq(emailPreferences.digest, false)),
+          ),
+        )
+        .orderBy(sql`${users.name} ->> ${auth.tenant.defaultLocale}`, asc(users.id));
+      return {
+        items: rows.map(({ approves, triages, ...r }) => ({
+          ...r,
+          reliedOn: {
+            approves: approves && modules.includes('policies'),
+            triages: triages && modules.includes('incidents'),
+          },
+        })),
+        total: rows.length,
+      };
+    });
   }
 
   get(auth: AuthContext) {
@@ -271,4 +322,15 @@ export class EmailPreferencesService {
       return { enabled, delivery: this.sender.mode };
     });
   }
+}
+
+/** What the immediate emails are for in a person's work, in the modules they have. */
+function reliedOnOf(auth: AuthContext) {
+  const { modules } = auth.tenant;
+  return {
+    approves:
+      modules.includes('policies') && auth.permissions.includes('policies.approve'),
+    triages:
+      modules.includes('incidents') && auth.permissions.includes('incidents.triage'),
+  };
 }

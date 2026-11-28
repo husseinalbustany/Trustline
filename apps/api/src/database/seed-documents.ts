@@ -697,6 +697,8 @@ async function seedImported(
     originalKeptAt: inLanguages(IMPORTED.originalKeptAt, tenant.locales),
     effectiveOn,
     nextReviewOn,
+    lastReviewedOn: null,
+    differences: null,
   };
   const hash = contentHash(signedImport(doc, version, original));
   const [signature] = await tx

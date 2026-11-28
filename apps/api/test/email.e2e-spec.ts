@@ -227,6 +227,9 @@ describe('email', () => {
         digest: true,
         language: null,
         organizationEnabled: true,
+        // A quality officer decides approval steps and triages (quality
+        // review 3, S3): the screen warns before they switch these off.
+        reliedOn: { approves: true, triages: true },
       });
     });
 
@@ -255,6 +258,7 @@ describe('email', () => {
         digest: true,
         language: 'ar',
         organizationEnabled: true,
+        reliedOn: { approves: true, triages: true },
       });
       await setPreferences(arabic.cookie, { language: 'ar' }).expect(200);
       const entries = (await auditOf(a, 'notification_preferences_changed')).slice(before);

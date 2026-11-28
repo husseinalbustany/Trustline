@@ -886,13 +886,13 @@ describe('policies after review 2', () => {
         const week = isoWeekOf(dayOf(now, 'UTC'));
         // The department's manager, for the one on the ward.
         expect(await digests(cManager)).toEqual([
-          { documentId: null, data: { overdue: 1, people: 1, week, serious: false } },
+          { documentId: null, data: { overdue: 1, people: 1, stepsOverdue: 0, week, serious: false } },
         ]);
         // The one with no unit goes to those who manage documents for the
         // whole organization; the one on the ward does not, as their unit
         // has a manager of its own.
         expect(await digests(cWriter)).toEqual([
-          { documentId: null, data: { overdue: 1, people: 1, week, serious: false } },
+          { documentId: null, data: { overdue: 1, people: 1, stepsOverdue: 0, week, serious: false } },
         ]);
         // Neither reader is told of it.
         expect(await digests(onWard)).toEqual([]);

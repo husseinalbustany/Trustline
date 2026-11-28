@@ -248,6 +248,77 @@ export class PoliciesController {
     );
   }
 
+  /** The late acknowledgements list as a CSV file (quality review 3, S5). */
+  @Get('exports/acknowledgements/overdue')
+  async exportOverdue(
+    @Query() query: unknown,
+    @Req() req: AuthedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    requireAnyOf(req, FIGURES);
+    const input = parse(acknowledgementExportQuery, query);
+    return sendCsv(res, await this.library.exportOverdueAcknowledgements(req.auth, input));
+  }
+
+  /**
+   * The register of imports (quality review 3, S1), for those who manage
+   * documents for the whole organization: every document imported as
+   * approved before Trustline, with its original's details, importer,
+   * time and batch.
+   */
+  @Get('imports')
+  importRegister(@Query() query: unknown, @Req() req: AuthedRequest) {
+    requireEverywhere(req, 'policies.manage');
+    return this.library.imports(req.auth, parse(overdueQuery, query));
+  }
+
+  /** The same as a CSV file. Audited. */
+  @Get('exports/imports')
+  async exportImports(
+    @Query() query: unknown,
+    @Req() req: AuthedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    requireEverywhere(req, 'policies.manage');
+    const input = parse(acknowledgementExportQuery, query);
+    return sendCsv(res, await this.library.exportImports(req.auth, input));
+  }
+
+  /**
+   * One person's acknowledgement record (quality review 3, S5), for those
+   * who manage documents for the person's unit: 404 for anyone else, and
+   * for a person of another organization.
+   */
+  @Get('people/:userId/acknowledgements')
+  personAcknowledgements(
+    @Param('userId') userId: string,
+    @Query() query: unknown,
+    @Req() req: AuthedRequest,
+  ) {
+    requirePermission(req, 'policies.manage');
+    return this.library.personAcknowledgements(
+      req.auth,
+      parseId(userId),
+      parse(overdueQuery, query),
+    );
+  }
+
+  /** The same as a CSV file, everything of it. Audited. */
+  @Get('people/:userId/acknowledgements/export')
+  async exportPersonAcknowledgements(
+    @Param('userId') userId: string,
+    @Query() query: unknown,
+    @Req() req: AuthedRequest,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    requirePermission(req, 'policies.manage');
+    const input = parse(acknowledgementExportQuery, query);
+    return sendCsv(
+      res,
+      await this.library.exportPersonAcknowledgements(req.auth, parseId(userId), input),
+    );
+  }
+
   @Get('documents/:id')
   get(@Param('id') id: string, @Req() req: AuthedRequest) {
     requireAnyOf(req, ANY_POLICIES);

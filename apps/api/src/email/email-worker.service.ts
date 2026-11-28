@@ -740,6 +740,13 @@ export class EmailWorker implements OnModuleDestroy {
       }
       const built = this.contentOf(kind, notification, link);
       if (!built) return { skip: 'gone' };
+      // While suspended, approval steps wait (they cannot be decided): the
+      // weekly email says nothing of them, and goes only for what it has
+      // left (quality review 3, S2).
+      if (built.category === 'weekly_digest' && suspended) {
+        if (built.overdue === 0) return { skip: 'suspended' };
+        built.stepsOverdue = 0;
+      }
       content = built;
     }
 
@@ -794,11 +801,15 @@ export class EmailWorker implements OnModuleDestroy {
     const short = (v: unknown) =>
       typeof v === 'string' && v.length > 0 && v.length <= 80 ? v : null;
     if (kind === 'acknowledgements_overdue_digest') {
+      const overdue = Number(data.overdue) || 0;
       return {
         category: 'weekly_digest',
-        overdue: Number(data.overdue) || 0,
+        overdue,
         people: Number(data.people) || 0,
-        href: link('/policies/overdue'),
+        stepsOverdue: Number(data.stepsOverdue) || 0,
+        // Where the late acknowledgements are listed; with none, the
+        // dashboard, which leads to the approvals.
+        href: link(overdue > 0 ? '/policies/overdue' : '/dashboard'),
       };
     }
     if (!IMMEDIATE[kind]) return null;

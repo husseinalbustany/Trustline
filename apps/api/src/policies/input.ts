@@ -52,6 +52,12 @@ const libraryFilters = {
   review: z.enum(['due', 'overdue']).optional(),
   appliesToMe: flag.default(false),
   awaitingMyAcknowledgement: flag.default(false),
+  // Where the version in force came from: `imported`, approved before
+  // Trustline; `written`, through Trustline's route (quality review 3, S1).
+  source: z.enum(['imported', 'written']).optional(),
+  // In force as imported, with its review (its re-issue) within
+  // REISSUE_DUE_DAYS or past: the re-issue workload to plan.
+  reissueDue: flag.default(false),
   sort: z
     .enum(['number', 'title', 'next_review', 'recently_published'])
     .default('number'),
@@ -398,8 +404,16 @@ export const importDocumentSchema = z.strictObject({
   originalKeptAt: localizedText(300),
   // The day it took effect: the approval day unless given.
   effectiveOn: z.iso.date().optional(),
+  // When the original was last reviewed, as it says, if it was since its
+  // approval: the next review is counted from it (quality review 3, M2).
+  lastReviewedOn: z.iso.date().optional(),
   // Its next review, as the original or the register gives it.
   nextReviewOn: z.iso.date(),
+  // Where the text here differs from the original, in plain words per
+  // language ("Table 2 written as a list; the flowchart of appendix B is
+  // not reproduced, see the original"): signed with it (quality review 3,
+  // M3).
+  differences: localizedText(2000).optional(),
   content: importContent,
   acknowledgementRequired: z.boolean().default(false),
   acknowledgeWithinDays: z.number().int().min(1).max(365).default(14),

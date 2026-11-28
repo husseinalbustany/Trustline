@@ -38,6 +38,7 @@ export class DigestService {
       const awaiting = await this.library.list(auth, {
         appliesToMe: false,
         awaitingMyAcknowledgement: true,
+        reissueDue: false,
         sort: 'number',
         page: 1,
         pageSize: DIGEST_ITEMS,
@@ -69,6 +70,28 @@ export class DigestService {
             label: s.document.number,
             href: link(`/policies/${s.document.id}/versions/${s.version.id}`),
             overdue: s.overdue,
+          })),
+        });
+      }
+    }
+
+    // For those who manage documents: the approval steps overdue on the
+    // documents they manage (quality review 3, S2), so that a stalled
+    // approval reaches someone who rarely signs in.
+    if (
+      modules.includes('policies') &&
+      !safetyOnly &&
+      auth.permissions.includes('policies.manage')
+    ) {
+      const steps = await this.library.overdueSteps(auth);
+      if (steps.total > 0) {
+        sections.push({
+          key: 'stepsOverdue',
+          count: steps.total,
+          items: steps.items.slice(0, DIGEST_ITEMS).map((s) => ({
+            label: s.document.number,
+            href: link(`/policies/${s.document.id}/versions/${s.version.id}`),
+            overdue: true,
           })),
         });
       }

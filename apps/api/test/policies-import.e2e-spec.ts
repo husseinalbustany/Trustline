@@ -255,10 +255,13 @@ describe('policies: importing documents, the approving authority, the authoritat
       expect(await refusedFor({ effectiveOn: shiftDay(today, -401) })).toEqual({ code: 'effective_before_approval' });
       expect(await refusedFor({ effectiveOn: shiftDay(today, 3) })).toEqual({ code: 'effective_in_future' });
       expect(await refusedFor({ nextReviewOn: shiftDay(today, -400) })).toEqual({ code: 'review_before_approval' });
-      expect(await refusedFor({ nextReviewOn: addMonths(today, 37) })).toEqual({
+      // At most the longest review period from its approval (quality
+      // review 3, M2): an old document gets no fresh review date.
+      expect(await refusedFor({ nextReviewOn: addMonths(shiftDay(today, -400), 37) })).toEqual({
         code: 'review_date_too_far',
-        latest: addMonths(today, 36),
+        latest: addMonths(shiftDay(today, -400), 36),
         maxReviewMonths: 36,
+        from: shiftDay(today, -400),
       });
       expect(await refusedFor({ reviewMonths: 48 })).toEqual({ code: 'review_period_too_long', max: 36 });
       // None of it asked for the password, nor counted it.
@@ -329,7 +332,7 @@ describe('policies: importing documents, the approving authority, the authoritat
       // with the authoritative language recorded on it (security review 7,
       // finding 3).
       const original = (control.approvedBeforeTrustline as Record<string, unknown>);
-      const { importedBy: _by, importedAt: _at, ...said } = original;
+      const { importedBy: _by, importedAt: _at, sectionsNotInOriginal: _missing, ...said } = original;
       expect(version.authoritativeLocale).toBe('en');
       expect(details.signature.contentHash).toBe(
         contentHash(
@@ -683,7 +686,11 @@ describe('policies: importing documents, the approving authority, the authoritat
       // confirmed again from now on.
       const doc = (await get(writer.cookie, `/documents/${imported.id}`).expect(200)).body as Doc;
       expect(doc).toMatchObject({ source: 'imported', reissueRequired: false, published: { version: 2, source: 'written', approvedBeforeTrustline: false } });
-      expect(doc.moves).toContain('confirm_review');
+      // Not yet: its next review is a full period away, and a review is
+      // confirmed only within 60 days of it (quality review 3).
+      expect(doc.moves).not.toContain('confirm_review');
+      await bench.owner.db.update(documents).set({ nextReviewOn: shiftDay(today, 30) }).where(eq(documents.id, imported.id));
+      expect(((await get(writer.cookie, `/documents/${imported.id}`).expect(200)).body as Doc).moves).toContain('confirm_review');
       const [review] = await bench.owner.db.select().from(documentReviews).where(eq(documentReviews.documentId, imported.id));
       expect(review).toMatchObject({ outcome: 'revised', dueOn: shiftDay(today, 200) });
       // The imported version stays in the history as it was.
@@ -719,9 +726,16 @@ describe('policies: importing documents, the approving authority, the authoritat
         .split('\r\n')
         .filter((line) => line !== '')
         .map((line) => [...line.matchAll(/"((?:[^"]|"")*)"/g)].map((m) => m[1]));
-      expect(rows[0].at(-1)).toBe('Approved before Trustline');
-      expect(rows.find((r) => r[0] === late.number)!.at(-1)).toBe('Yes');
-      expect(rows.find((r) => r[0] === 'REISSUE-1')!.at(-1)).toBe('No');
+      // After it, since quality review 3, what the original says of its
+      // last review and its differences, so earlier columns keep their place.
+      expect(rows[0].slice(-3)).toEqual([
+        'Approved before Trustline',
+        'Last reviewed on the original',
+        'Differences from the original',
+      ]);
+      const column = rows[0].indexOf('Approved before Trustline');
+      expect(rows.find((r) => r[0] === late.number)![column]).toBe('Yes');
+      expect(rows.find((r) => r[0] === 'REISSUE-1')![column]).toBe('No');
     });
   });
 

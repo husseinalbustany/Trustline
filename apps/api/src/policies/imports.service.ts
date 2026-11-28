@@ -420,7 +420,6 @@ export class ImportsService {
     assertImportWindowOpen(window);
     const authoritative = await authoritativeLocaleOf(tx, tenant);
     const { maxReviewMonths } = await documentSettingsOf(tx);
-    const latestReview = addMonths(today, maxReviewMonths);
     const problems: ImportProblem[] = [];
     const planned: Planned[] = [];
     // Each number once in the batch, whatever its capitals and zeros.
@@ -452,7 +451,6 @@ export class ImportsService {
         const p = await this.planOne(tx, auth, index, parsed.data, {
           today,
           authoritative,
-          latestReview,
           maxReviewMonths,
           window,
         });
@@ -493,7 +491,6 @@ export class ImportsService {
     at: {
       today: string;
       authoritative: string;
-      latestReview: string;
       maxReviewMonths: number;
       window: ImportWindow;
     },
@@ -506,6 +503,12 @@ export class ImportsService {
       throw new BadRequestException({
         code: 'language_mismatch',
         field: 'originalKeptAt',
+      });
+    }
+    if (input.differences && !fitsLanguages(input.differences, tenant)) {
+      throw new BadRequestException({
+        code: 'language_mismatch',
+        field: 'differences',
       });
     }
     // The days, on the client's calendar: approved and in force already,
@@ -531,14 +534,34 @@ export class ImportsService {
     if (effectiveOn > at.today) {
       throw new BadRequestException({ code: 'effective_in_future' });
     }
+    // Last reviewed on the original: after its approval, and not ahead of
+    // today (quality review 3, M2).
+    const lastReviewedOn = input.lastReviewedOn ?? null;
+    if (lastReviewedOn && lastReviewedOn < input.approvedOn) {
+      throw new BadRequestException({ code: 'reviewed_before_approval' });
+    }
+    if (lastReviewedOn && lastReviewedOn > at.today) {
+      throw new BadRequestException({ code: 'reviewed_in_future' });
+    }
+    // The next review comes after the later of the two, and no further from
+    // it than the longest review period: an old document cannot be given a
+    // fresh review date by being imported, which would hide that its review
+    // has passed. One already past is accepted, and shown overdue.
+    const reviewedFrom = lastReviewedOn ?? input.approvedOn;
     if (input.nextReviewOn <= input.approvedOn) {
       throw new BadRequestException({ code: 'review_before_approval' });
     }
-    if (input.nextReviewOn > at.latestReview) {
+    if (lastReviewedOn && input.nextReviewOn <= lastReviewedOn) {
+      throw new BadRequestException({ code: 'review_before_last_review' });
+    }
+    const latestReview = addMonths(reviewedFrom, at.maxReviewMonths);
+    if (input.nextReviewOn > latestReview) {
       throw new BadRequestException({
         code: 'review_date_too_far',
-        latest: at.latestReview,
+        latest: latestReview,
         maxReviewMonths: at.maxReviewMonths,
+        // The day it is counted from: the approval, or the last review.
+        from: reviewedFrom,
       });
     }
 
@@ -731,6 +754,8 @@ export class ImportsService {
       originalKeptAt: input.originalKeptAt,
       effectiveOn: p.effectiveOn,
       nextReviewOn: input.nextReviewOn,
+      lastReviewedOn: input.lastReviewedOn ?? null,
+      differences: input.differences ?? null,
     };
     const signature = await this.signatures.sign(tx, tenant.id, {
       userId: user.id,
@@ -739,6 +764,22 @@ export class ImportsService {
       subjectId: version.id,
       content: signedImport(doc, version, original),
     });
+    // Its owner is told that its periodic review, and its re-issue, are
+    // theirs now (quality review 3, S1): nobody else would tell them.
+    await this.notifier.send(
+      tx,
+      tenant.id,
+      { ...doc, status: 'active' },
+      user.id,
+      [
+        {
+          kind: 'document_owner_assigned',
+          data: { version: 1, versionId: version.id },
+          to: [doc.ownerId],
+          about: 'published',
+        },
+      ],
+    );
     let asked = 0;
     if (input.acknowledgementRequired) {
       const dueOn = shiftDay(today, input.acknowledgeWithinDays);
