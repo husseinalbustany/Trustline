@@ -8,6 +8,7 @@ import {
   MAX_ATTEMPTS,
 } from '../src/email/email-worker.service.js';
 import { MailQueue } from '../src/email/mail-queue.service.js';
+import { ProvisioningService } from '../src/identity/provisioning.service.js';
 import {
   MAIL_CONFIG,
   MailFailure,
@@ -381,7 +382,7 @@ describe('email', () => {
       // In the language the person chose, right to left.
       const inArabic = mails.find((m) => m.user_id === arabic.id)!;
       expect(inArabic.html_body).toContain('<html lang="ar" dir="rtl">');
-      expect(inArabic.subject).toBe(`بلاغ عن حادثة جسيمة: \u2066${serious.reference}\u2069`);
+      expect(inArabic.subject).toBe(`بلاغ عن حادث خطير: \u2066${serious.reference}\u2069`);
       expect(inArabic.text_body).toContain(`/ar/incidents/${serious.id}`);
       // Sent once: a second run finds nothing to do.
       expect(await work()).toMatchObject({ kept: 0, skipped: 0 });
@@ -637,6 +638,101 @@ describe('email', () => {
       expect(rows.every((r) => r.status === 'failed' && r.reason === 'refused' && r.attempts === 1)).toBe(true);
     });
 
+    it('tries again, and stops sending for the run, when the server refuses the login', async () => {
+      // nodemailer's own shape of a refused login: it calls it permanent.
+      const refusedLogin = () =>
+        Object.assign(new Error('Invalid login'), { code: 'EAUTH', responseCode: 535, permanent: true, command: 'AUTH PLAIN' });
+      await report(nurse, { harmLevel: 'severe' });
+      const count = (await queue()).length;
+      expect(count).toBeGreaterThan(1);
+      const { sender, asked } = failing(refusedLogin);
+      worker.sender = sender;
+      const done = await work();
+      expect(done).toMatchObject({ loginRefused: true, retried: 1, givenUp: 0 });
+      // Tried once, for one email: the others went back as they were.
+      expect(asked).toHaveLength(1);
+      const rows = await queue();
+      expect(rows.filter((r) => r.status === 'pending' && r.attempts === 1 && r.last_error === 'EAUTH')).toHaveLength(1);
+      expect(rows.filter((r) => r.status === 'pending' && r.attempts === 0)).toHaveLength(count - 1);
+      expect(rows.some((r) => r.status === 'failed')).toBe(false);
+      // Mended: everything goes.
+      worker.sender = outbox;
+      expect(await work(new Date(Date.now() + 2 * MINUTE))).toMatchObject({ kept: count, loginRefused: false });
+    });
+
+    it('reads the organization’s switch for each email, not once a run', async () => {
+      for (let i = 0; i < 2; i++) await report(nurse, { harmLevel: 'severe' });
+      const handed: string[] = [];
+      worker.sender = {
+        mode: 'outbox',
+        send: async (mail) => {
+          handed.push(mail.queueId);
+          // Switched off for the organization while the run goes on.
+          await bench.owner.db.execute(
+            sql`insert into email_settings (tenant_id, enabled) values (${a.id}, false)
+                on conflict (tenant_id) do update set enabled = false`,
+          );
+          await outbox.send(mail);
+        },
+        close: () => Promise.resolve(),
+      };
+      try {
+        await work();
+        expect(handed).toHaveLength(1);
+        const reasons = (await queue()).map((r) => r.reason).filter(Boolean);
+        expect(new Set(reasons)).toEqual(new Set(['organization_off']));
+      } finally {
+        await bench.owner.db.execute(sql`update email_settings set enabled = true where tenant_id = ${a.id}`);
+      }
+    });
+
+    it('cannot point at another hospital’s notification or queue row', async () => {
+      await report(nurse, { harmLevel: 'severe' });
+      const [theirs] = (
+        await bench.owner.db.execute<{ id: string }>(sql`select id from notifications where tenant_id = ${a.id} limit 1`)
+      ).rows;
+      const [row] = await queue();
+      // As the owner, past row-level security, as a foreign key is checked.
+      await expect(
+        bench.owner.db.execute(
+          sql`insert into email_queue (tenant_id, user_id, category, notification_id) values (${b.id}, ${b.adminId}, 'immediate', ${theirs.id})`,
+        ),
+      ).rejects.toThrow();
+      await expect(
+        bench.owner.db.execute(
+          sql`insert into email_outbox (tenant_id, queue_id, to_address, subject, text_body, html_body, headers)
+              values (${b.id}, ${row.id}, 'x@test.invalid', 's', 't', 'h', '{}'::jsonb)`,
+        ),
+      ).rejects.toThrow();
+    });
+
+    it('sends what cannot wait, and deletes what is past keeping, when the digests cannot be queued', async () => {
+      await report(nurse, { harmLevel: 'severe' });
+      const count = (await queue()).length;
+      await bench.owner.db.execute(
+        sql`update email_settings set digests_queued_on = null where tenant_id = ${a.id}`,
+      );
+      // Something old enough to delete.
+      await bench.owner.db.execute(
+        sql`insert into email_queue (tenant_id, user_id, category, period, status, updated_at)
+            values (${a.id}, ${quality.id}, 'daily_digest', '2020-01-01', 'sent', now() - interval '31 days')`,
+      );
+      const provisioning = bench.app.get(ProvisioningService);
+      const spy = vi.spyOn(provisioning, 'activeUserIds').mockRejectedValue(new Error('boom'));
+      worker.digestHour = 0;
+      try {
+        const done = await work();
+        expect(done).toMatchObject({ kept: count, queued: 0 });
+        expect(done.failed).toBeGreaterThan(0);
+      } finally {
+        spy.mockRestore();
+        worker.digestHour = 24;
+      }
+      const rows = await queue();
+      expect(rows.some((r) => r.category === 'daily_digest')).toBe(false);
+      expect(rows.every((r) => r.status === 'sent')).toBe(true);
+    });
+
     it('sends each email once, with several processes at work at the same moment', async () => {
       for (let i = 0; i < 3; i++) await report(nurse, { harmLevel: 'severe' });
       const count = (await queue()).length;
@@ -664,9 +760,15 @@ describe('email', () => {
         sql`update email_queue set status = 'sending', attempts = 1, claimed_until = now() + interval '10 minutes' where tenant_id = ${a.id}`,
       );
       expect(await work()).toMatchObject({ kept: 0 });
-      const later = new Date(Date.now() + 11 * MINUTE);
+      // A run whose own clock is ahead takes over nothing: a claim lapses by
+      // the database's clock only (security review 8).
+      expect(await work(new Date(Date.now() + 11 * MINUTE))).toMatchObject({ kept: 0 });
+      // Lapsed by the database's clock: taken over.
+      await bench.owner.db.execute(
+        sql`update email_queue set claimed_until = now() - interval '1 second' where tenant_id = ${a.id}`,
+      );
       const count = (await queue()).length;
-      expect(await work(later)).toMatchObject({ kept: count });
+      expect(await work()).toMatchObject({ kept: count });
       expect((await queue()).every((r) => r.status === 'sent' && r.attempts === 2)).toBe(true);
     });
 
@@ -769,6 +871,37 @@ describe('email', () => {
       await setPreferences(quality.cookie, { immediate: true }).expect(200);
     });
 
+    it('tells the person in Trustline, and stops working once they switch that kind back on', async () => {
+      // The link was used above: the person was told, once.
+      const notices = (
+        await bench.owner.db.execute<{ kind: string; data: Record<string, unknown> }>(
+          sql`select kind, data from notifications where tenant_id = ${a.id} and user_id = ${quality.id} and kind = 'email_turned_off'`,
+        )
+      ).rows;
+      expect(notices).toEqual([{ kind: 'email_turned_off', data: { switch: 'immediate', serious: false } }]);
+      // Switched back on since (above): the old link no longer works, on
+      // the page or in one click, and changes nothing.
+      const shown = await page(token).expect(404);
+      expect(shown.text).toContain('This link is not valid or has expired.');
+      await oneClick(token).expect(404);
+      expect((await preferences(quality.cookie).expect(200)).body.immediate).toBe(true);
+      // One issued since works.
+      const fresh = signUnsubscribe(config.linkSecret, {
+        tenantId: a.id,
+        userId: quality.id,
+        switch: 'immediate',
+        locale: 'en',
+      });
+      await page(fresh).expect(200);
+      // The other kind was never switched back on: its old links still hold.
+      const digestLink = signUnsubscribe(
+        config.linkSecret,
+        { tenantId: a.id, userId: quality.id, switch: 'digest', locale: 'en' },
+        new Date(Date.now() - HOUR),
+      );
+      await page(digestLink).expect(200);
+    });
+
     it('takes no other input', async () => {
       await http().post(`/email/unsubscribe/${token}`).send({ 'List-Unsubscribe': 'Two-Clicks' }).expect(400);
       await http().post(`/email/unsubscribe/${token}`).type('form').send('switch=digest').expect(400);
@@ -859,7 +992,7 @@ describe('email', () => {
 
       const mails = await kept();
       const nurses = mails.find((m) => m.user_id === nurse.id && m.category === 'daily_digest')!;
-      expect(nurses.subject).toMatch(/^What waits for you in Trustline: \d{4}-\d{2}-\d{2}$/);
+      expect(nurses.subject).toMatch(/^What waits for you in Trustline: [A-Z][a-z]{2} \d{1,2}, \d{4}$/);
       // This one, and the sentinel event assigned to the nurse above.
       expect(nurses.text_body).toContain('Incidents assigned to you: 2');
       expect(nurses.text_body).toContain(`- ${reference}: http://localhost:3000/en/incidents/${id}`);

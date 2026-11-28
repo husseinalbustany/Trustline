@@ -268,6 +268,8 @@ describe('policies after review 2', () => {
         authoritativeLocale: null,
         authoritative: 'en',
         revision: 1,
+        // When existing documents may be imported (security review 7).
+        importWindow: expect.objectContaining({ open: true }),
       });
       await http().patch('/policies/settings').send({ maxReviewMonths: 48, revision: 1 }).expect(401);
       // Only for the whole organization.
@@ -287,7 +289,7 @@ describe('policies after review 2', () => {
       });
       // Lowered to 24 once the type is lowered, the policy type kept at 24.
       const set = (await patch(writer.cookie, '/settings', { maxReviewMonths: 48, revision: 1 }).expect(200)).body;
-      expect(set).toEqual({ maxReviewMonths: 48, authoritativeLocale: null, authoritative: 'en', revision: 2 });
+      expect(set).toEqual({ maxReviewMonths: 48, authoritativeLocale: null, authoritative: 'en', revision: 2, importWindow: expect.objectContaining({ open: true }) });
       const [entry] = await bench.owner.db
         .select({ actorId: auditLog.actorId, changes: auditLog.changes })
         .from(auditLog)
@@ -299,6 +301,7 @@ describe('policies after review 2', () => {
         authoritativeLocale: null,
         authoritative: 'en',
         revision: 1,
+        importWindow: expect.objectContaining({ open: true }),
       });
 
       // Within it, documents and types.

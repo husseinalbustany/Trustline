@@ -271,34 +271,14 @@ export class AuthService {
   }
 
   /**
-   * What a person may see and do now, as if they were signed in, for work
-   * done on their behalf in the background (the email digest: what waits
-   * for them is what their screens would show them). Null unless the
-   * client is active, its subscription not cancelled, and the person
-   * active. Never for answering a request: a request has a session.
-   */
-  async backgroundContextOf(
-    tenantId: string,
-    userId: string,
-  ): Promise<AuthContext | null> {
-    const [tenant] = await this.db
-      .select()
-      .from(tenants)
-      .where(eq(tenants.id, tenantId));
-    if (!tenant || tenant.status !== 'active') return null;
-    return this.tenantDb.withTenant(tenant.id, async (tx) => {
-      const [user] = await tx.select().from(users).where(eq(users.id, userId));
-      if (!user || user.status !== 'active') return null;
-      return this.contextIn(tx, tenant, user, '', null);
-    });
-  }
-
-  /**
    * The context of an active user of an active client, in a transaction of
    * that client. `issuedAt`: when the session was, to be refused if it is
-   * from before the client or its subscription was last reset.
+   * from before the client or its subscription was last reset; null only
+   * for BackgroundContext (email/background-context.ts), which builds one
+   * with no session for the email digest and is provided to EmailModule
+   * alone. Everything else gets a context from `resolve`, with a session.
    */
-  private async contextIn(
+  async contextIn(
     tx: Transaction,
     tenant: typeof tenants.$inferSelect,
     user: typeof users.$inferSelect,

@@ -37,14 +37,18 @@ export const MAIL_CONFIG = Symbol('MAIL_CONFIG');
 
 /**
  * A message not handed over. `retry`: nothing says it was refused for good
- * (no answer, a temporary refusal); `permanent`: the server refused it and
- * would again. `code` is the error's code or the server's reply code, never
- * its text, which can hold an address.
+ * (no answer, a temporary refusal, or a refusal of the server or of the
+ * sender rather than of this message); `permanent`: the server refused this
+ * message or its recipient and would again. `code` is the error's code or
+ * the server's reply code, never its text, which can hold an address.
+ * `stopsSending`: the server refused the login itself, so that every other
+ * message would be refused the same way: nothing more is sent this run.
  */
 export class MailFailure extends Error {
   constructor(
     readonly outcome: 'retry' | 'permanent',
     readonly code: string,
+    readonly stopsSending = false,
   ) {
     super(`Mail not sent (${code})`);
     this.name = 'MailFailure';
@@ -53,25 +57,37 @@ export class MailFailure extends Error {
 
 const CODE = /^[A-Za-z0-9_]{1,40}$/;
 
-/** How an error from the SMTP client is taken: see MailFailure. */
+// The login refused, or no login offered: the configuration, not the message.
+const LOGIN_REFUSED = new Set(['EAUTH', 'ENOAUTH']);
+
+/**
+ * How an error from the SMTP client is taken (security review 8, M1).
+ * Permanent only when the server refused this message or this recipient
+ * with a 5xx reply: `EENVELOPE` on RCPT TO, or `EMESSAGE` (the message
+ * itself, after DATA). Everything else is tried again, whatever its reply
+ * code or nodemailer's own `permanent`: a refused or missing login
+ * (`EAUTH` 535, `ENOAUTH`, 530), TLS, the protocol, the connection, and a
+ * refusal of the sender at MAIL FROM (550, 553), all of which a corrected
+ * configuration or a recovered server fixes for every message at once.
+ */
 export function classifySmtpError(error: unknown): MailFailure {
   if (error instanceof MailFailure) return error;
   const e = (error ?? {}) as {
     code?: unknown;
     responseCode?: unknown;
-    permanent?: unknown;
+    command?: unknown;
   };
   const reply = typeof e.responseCode === 'number' ? e.responseCode : null;
   const own = typeof e.code === 'string' && CODE.test(e.code) ? e.code : null;
-  const code = reply !== null ? String(reply) : (own ?? 'unknown');
-  // A permanent refusal: 5xx, except 503 (the session's state, not the
-  // message). Anything else may go through later: a 4xx, no answer at all,
-  // a connection that could not be made, credentials refused (which a
-  // corrected configuration fixes).
+  const command = typeof e.command === 'string' ? e.command.toUpperCase() : '';
+  const login = own !== null && LOGIN_REFUSED.has(own);
+  // The code that says most: a login refused by name, else the reply.
+  const code = login ? own : reply !== null ? String(reply) : (own ?? 'unknown');
+  const aboutThisMessage =
+    (own === 'EENVELOPE' && command.startsWith('RCPT')) || own === 'EMESSAGE';
   const permanent =
-    e.permanent === true ||
-    (reply !== null && reply >= 500 && reply < 600 && reply !== 503);
-  return new MailFailure(permanent ? 'permanent' : 'retry', code);
+    aboutThisMessage && reply !== null && reply >= 500 && reply < 600;
+  return new MailFailure(permanent ? 'permanent' : 'retry', code, login);
 }
 
 /** Through an SMTP server, over a small pool of connections. */

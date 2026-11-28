@@ -1059,8 +1059,77 @@ it:
   every version is checked, flagged and shown against the new language: a
   draft is sent only with its required sections and change summary in it,
   a version in review or approved goes on as it is (what its approvers
-  signed is every language of it), and the language status of every
-  version, published ones included, is worked out against the new
-  language. The answer says how many versions are in progress
+  signed is every language of it). A version that is no longer a draft
+  keeps the language recorded on it when it was sent or imported (security
+  review 7, below), so its language status does not change. The answer says how many versions are in progress
   (`versionsInProgress: { draft, in_review, approved }`, when the language
   that stands changed), and so does the audit entry.
+
+## Built: security review 7
+
+What the API changed after the security review of the import (the lead's
+decisions). Migrations 0048 (generated: two tables and two columns, the
+widened check of the portal's audit entries) and 0049 (custom SQL: grants,
+the trigger that records when a module is first switched on, the
+backfills, the database rule of 0041 extended), both additive. The web
+contract is in the API engineer's notes to the web engineer.
+
+1. **The large body of the import routes** (2 MB, where every other route
+   takes 100 kB) is read only once the session is looked up, as the guard
+   does, and found live and holding `policies.manage` for the whole
+   organization. Anything else, a credential that is no session included,
+   gets the 100 kB of every other route and then the guard's own answer.
+   The path is matched whole, under the prefix the API is served at
+   (`^/api/v1/policies/(?:imports(?:/check)?|documents/import)$`). A body
+   nested more than 64 deep is refused (400 `body_too_deep`, `max`) before
+   it is parsed.
+2. **Imports are for migration only.**
+   - An imported document's approval day must be before the day the
+     policies module was first switched on for the client (400
+     `approved_after_start`, with `latestApprovedOn` and `startedOn`; in a
+     batch, as that document's problem).
+   - Imports, and their check, are accepted only while the import window
+     is open: by default from that day to the 90th day, counting the
+     first; otherwise to the last day Trustline's staff set (403
+     `import_window_closed`, with `closedOn`, `latestApprovedOn`,
+     `startedOn`). `GET /settings` gives it as `importWindow: { startedOn,
+     closesOn, latestApprovedOn, open }`, and `POST /imports/check`
+     answers it as `window`.
+   - The first day of each module is recorded by the database
+     (`module_starts`, trigger `record_module_starts`) whenever a client
+     gains it, by its plan, an add-on, a plan given the module, or its
+     subscription leaving cancelled. Switched off and on again, a module
+     keeps its first day. For the clients that had the policies module
+     already, the day is the earlier of their first document and the day of
+     migration 0049.
+   - `GET` and `PUT /platform/tenants/:id/import-window` (admin portal):
+     `PUT { closesOn, reason }` (reason 1 to 500 characters) sets the last
+     day, from the day before the module's first day (closed from the
+     start) to a year and a day ahead (400 `invalid_closes_on` with
+     `earliest`, `latest`; 409 `policies_never_on`). Audited in the
+     platform log (`import_window_set`) and in the client's own
+     (`import_window_changed`, with the member of staff), in the same
+     transaction.
+   - No second person confirms an import: the business may add it.
+3. **The authoritative language is recorded on the version** when it is
+   sent for review, and on an imported version. Every version that is no
+   longer a draft is checked, flagged and shown against it; a draft follows
+   the setting. New signatures cover it (`signedVersion` adds
+   `authoritativeLocale` where `signs_authoritative_locale`); the versions
+   that had left draft before were recorded by migration 0049 with the
+   language that stood then and keep the earlier form, so every signature
+   made before stays valid. The database keeps both columns fixed once the
+   version leaves draft, as it keeps the text. Versions answer
+   `authoritativeLocale` (null on a draft).
+4. **Numbers are kept normalised**: NFKC, every digit of any script as its
+   ASCII digit, spaces made one, before the taken check, the series and the
+   counter, and stored so, which the unique key on the number in any
+   capitals then holds. A number whose letters mix scripts is refused (400
+   `invalid_number`, `reason: 'mixed_scripts'`). The check answers the
+   normalised number.
+5. **A starting route always ends with an approval**: with no built-in
+   Approving authority (a client's own role holds that code), the
+   Administrator approves, and the audit entry (`approval_route_created`,
+   `startingRoute: true`, `fallback: { missing, approvedBy }`) says so.
+   With neither, no route is made.
+

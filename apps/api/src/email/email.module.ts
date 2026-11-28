@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { IncidentsModule } from '../incidents/incidents.module.js';
 import { PoliciesModule } from '../policies/policies.module.js';
+import { BackgroundContext } from './background-context.js';
 import { DigestService } from './digest.service.js';
 import { EmailWorker } from './email-worker.service.js';
 
@@ -10,6 +11,7 @@ import { EmailWorker } from './email-worker.service.js';
  */
 @Module({
   imports: [IncidentsModule, PoliciesModule],
-  providers: [DigestService, EmailWorker],
+  // BackgroundContext is this module's alone: exported to nothing.
+  providers: [BackgroundContext, DigestService, EmailWorker],
 })
 export class EmailModule {}

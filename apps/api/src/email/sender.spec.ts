@@ -5,9 +5,13 @@ import { classifySmtpError, MailFailure, SmtpSender, type OutgoingMail } from '.
 
 /**
  * An SMTP server of the test's own, on this machine, that answers RCPT TO
- * as told and keeps what it is sent. No mail leaves the machine.
+ * (and MAIL FROM, and a login when it offers one) as told and keeps what it
+ * is sent. No mail leaves the machine.
  */
-async function fakeSmtp(rcptReply = '250 OK') {
+async function fakeSmtp(
+  rcptReply = '250 OK',
+  { mailReply = '250 OK', authReply }: { mailReply?: string; authReply?: string } = {},
+) {
   const received: { envelope: string[]; data: string }[] = [];
   const server: Server = createServer((socket: Socket) => {
     let buffer = '';
@@ -35,10 +39,12 @@ async function fakeSmtp(rcptReply = '250 OK') {
         const line = buffer.slice(0, end);
         buffer = buffer.slice(end + 2);
         const verb = line.slice(0, 4).toUpperCase();
-        if (verb === 'EHLO' || verb === 'HELO') socket.write('250-localhost\r\n250 8BITMIME\r\n');
+        if (verb === 'EHLO' || verb === 'HELO') {
+          socket.write(authReply ? '250-localhost\r\n250-AUTH PLAIN\r\n250 8BITMIME\r\n' : '250-localhost\r\n250 8BITMIME\r\n');
+        } else if (verb === 'AUTH') socket.write(`${authReply ?? '503 no auth'}\r\n`);
         else if (verb === 'MAIL') {
           envelope.push(line);
-          socket.write('250 OK\r\n');
+          socket.write(`${mailReply}\r\n`);
         } else if (verb === 'RCPT') {
           envelope.push(line);
           socket.write(`${rcptReply}\r\n`);
@@ -58,9 +64,10 @@ async function fakeSmtp(rcptReply = '250 OK') {
   return { server, port: (server.address() as AddressInfo).port, received };
 }
 
-const senderFor = (port: number) =>
+const senderFor = (port: number, credentials: Record<string, string> = {}) =>
   new SmtpSender(
     mailConfig({
+      ...credentials,
       SMTP_HOST: '127.0.0.1',
       SMTP_PORT: String(port),
       SMTP_TLS: 'none',
@@ -133,6 +140,31 @@ describe('the SMTP sender', () => {
     }
   });
 
+  it('says to try again, and to stop sending, when the server refuses the login', async () => {
+    const smtp = await fakeSmtp('250 OK', { authReply: '535 5.7.8 Authentication credentials invalid' });
+    const sender = senderFor(smtp.port, { SMTP_USER: 'trustline', SMTP_PASSWORD: 'not-the-password' });
+    try {
+      const error = await sender.send(mail).catch((e: unknown) => e);
+      expect(error).toMatchObject({ outcome: 'retry', code: 'EAUTH', stopsSending: true });
+      expect(smtp.received).toEqual([]);
+    } finally {
+      await sender.close();
+      smtp.server.close();
+    }
+  });
+
+  it('says to try again when the server refuses the sender, which is not this message’s doing', async () => {
+    const smtp = await fakeSmtp('250 OK', { mailReply: '553 5.7.1 Sender address rejected' });
+    const sender = senderFor(smtp.port);
+    try {
+      const error = await sender.send(mail).catch((e: unknown) => e);
+      expect(error).toMatchObject({ outcome: 'retry', code: '553', stopsSending: false });
+    } finally {
+      await sender.close();
+      smtp.server.close();
+    }
+  });
+
   it('says to try again when the server cannot be reached', async () => {
     const smtp = await fakeSmtp();
     const { port } = smtp;
@@ -152,16 +184,29 @@ describe('the SMTP sender', () => {
 
 describe('classifying a failure', () => {
   it.each([
-    [{ responseCode: 421, code: 'EENVELOPE' }, 'retry', '421'],
-    [{ responseCode: 503, code: 'EPROTOCOL' }, 'retry', '503'],
-    [{ responseCode: 554, code: 'EMESSAGE' }, 'permanent', '554'],
-    [{ code: 'ECONNECTION' }, 'retry', 'ECONNECTION'],
-    [{ code: 'EAUTH' }, 'retry', 'EAUTH'],
-    [{ code: 'a code with spaces and an@address' }, 'retry', 'unknown'],
-    [{ permanent: true, responseCode: 552 }, 'permanent', '552'],
-    [new Error('boom'), 'retry', 'unknown'],
-    [null, 'retry', 'unknown'],
-  ])('%j', (error, outcome, code) => {
-    expect(classifySmtpError(error)).toMatchObject({ outcome, code });
+    // This message or this recipient, refused for good.
+    [{ responseCode: 550, code: 'EENVELOPE', command: 'RCPT TO' }, 'permanent', '550', false],
+    [{ responseCode: 554, code: 'EMESSAGE', command: 'DATA' }, 'permanent', '554', false],
+    // For now.
+    [{ responseCode: 421, code: 'EENVELOPE', command: 'RCPT TO' }, 'retry', '421', false],
+    [{ responseCode: 451, code: 'EMESSAGE', command: 'DATA' }, 'retry', '451', false],
+    // The configuration or the server, whatever the reply code and
+    // nodemailer's own `permanent` say (security review 8, M1): the login
+    // refused (nodemailer's own shape), no login, TLS, the protocol, the
+    // connection, and the sender refused at MAIL FROM.
+    [{ code: 'EAUTH', responseCode: 535, permanent: true, command: 'AUTH PLAIN' }, 'retry', 'EAUTH', true],
+    [{ code: 'ENOAUTH', permanent: true }, 'retry', 'ENOAUTH', true],
+    [{ code: 'EENVELOPE', responseCode: 530, permanent: true, command: 'MAIL FROM' }, 'retry', '530', false],
+    [{ code: 'EENVELOPE', responseCode: 550, permanent: true, command: 'MAIL FROM' }, 'retry', '550', false],
+    [{ code: 'EENVELOPE', responseCode: 553, permanent: true, command: 'MAIL FROM' }, 'retry', '553', false],
+    [{ code: 'ETLS', responseCode: 554, permanent: true }, 'retry', '554', false],
+    [{ code: 'EPROTOCOL', responseCode: 503 }, 'retry', '503', false],
+    [{ code: 'ECONNECTION' }, 'retry', 'ECONNECTION', false],
+    [{ permanent: true, responseCode: 552 }, 'retry', '552', false],
+    [{ code: 'a code with spaces and an@address' }, 'retry', 'unknown', false],
+    [new Error('boom'), 'retry', 'unknown', false],
+    [null, 'retry', 'unknown', false],
+  ])('%j', (error, outcome, code, stopsSending) => {
+    expect(classifySmtpError(error)).toMatchObject({ outcome, code, stopsSending });
   });
 });

@@ -103,6 +103,14 @@ The same rules as the in-app notifications:
   no link to anywhere except Trustline itself.
 - **Neutral for any organization:** "your organization", never "hospital".
   The organization's own name is shown in the footer.
+- **Dates and terms as in the app** (language review 7): the digest's day
+  is written as the web app writes a day in that language (medium style,
+  Latin digits: "Nov 28, 2026", « 28 nov. 2026 », 28/11/2026), the day
+  being the organization's own. The terms are the app's: in Arabic «حادث»,
+  «خطير», «حدث جسيم», «كُلِّف», «الإقرار بالاطلاع», «اعتماد الإغلاق»; in
+  French « vérification », « révision périodique », « prise de
+  connaissance », « e-mail », with U+00A0 before « : » and U+202F before
+  « ? ».
 - **The wording** is in `apps/api/src/email/wording/<lang>.ts`, one file per
   language with identical keys and placeholders. `wording.spec.ts` checks
   this.
@@ -132,7 +140,12 @@ was queued:
 **Unsubscribe link.** Every email has one, for its own kind (immediate or
 digest). It is a signed, expiring token (HMAC-SHA256 with
 `EMAIL_LINK_SECRET`, valid 90 days) naming the organization, the person, the
-switch and the expiry. Nothing else is in it. Opening the link shows a page
+switch, when it was issued and the expiry. Nothing else is in it. A link
+issued before the person last switched that kind back on no longer works
+for it (security review 8, L2): an old email cannot switch off again what
+the person chose to have. When a link switches something off, the person
+is told in Trustline (in-app notification `email_turned_off`, `data.switch`),
+so that a link used by someone else does not pass unseen. Opening the link shows a page
 with one button, because a link that acted on a plain GET would be clicked
 by the link scanners many mail systems run. A mail client's own unsubscribe
 button posts to the same address and works in one click (RFC 8058). The page
@@ -210,8 +223,9 @@ for the life of the process (the log says so).
   clients.
 - **Once, with any number of API processes.** A process claims a row by
   setting it to `sending` and adding one to `attempts`, for rows it has
-  locked with `SKIP LOCKED`, for 15 minutes from the clock (not from when
-  its run began). Then it sends, outside any transaction, and
+  locked with `SKIP LOCKED`, for 15 minutes by the database's clock, which
+  every process shares, as is the test of a lapsed claim (security review
+  8): no process's own clock, fast or slow, can take over a claim early. Then it sends, outside any transaction, and
   records the outcome only while the row is still `sending` with that
   attempt number. A second process never sees a claimed row as free. Just
   before each send the claim is renewed for 15 minutes from then, on the
@@ -226,7 +240,25 @@ for the life of the process (the log says so).
   message.
 - **Retries and backoff.** No answer, or a temporary refusal (4xx), is
   tried again after 1, 5, 30 and 120 minutes. After 5 attempts it is
-  `failed`. A permanent refusal (5xx) is `failed` at once. An email still
+  `failed`. Only a refusal of this message or its recipient is `failed` at
+  once: a 5xx to RCPT TO (`EENVELOPE`) or to the message (`EMESSAGE`).
+  Everything else is tried again, whatever its reply code and nodemailer's
+  own `permanent` (security review 8, M1): a refused or missing login
+  (`EAUTH` 535, `ENOAUTH`, 530), TLS, the protocol, the connection, and a
+  refusal of the sender at MAIL FROM (550, 553). These are the
+  configuration's or the server's, and fixing them fixes every message. A
+  refused login also stops the run: the email it happened to is tried
+  again later, every other one claimed goes back to the queue as it was,
+  nothing more is sent to any client until the next run, and the log says
+  to check `SMTP_USER` and `SMTP_PASSWORD`.
+- **Read for each email.** The organization's switch, the subscription and
+  its modules are read as each email is prepared (security review 8, L1),
+  so switching email off, a module off or a suspension counts from the next
+  email, not the next run.
+- **Each client's steps are apart** (security review 8, L4): its digests,
+  then its queue, then its retention. A digest that cannot be queued holds
+  back neither what cannot wait nor the deletion of what is past keeping;
+  each failure is logged with the client. An email still
   unsent 24 hours after it was queued is dropped as `expired`. A digest
   that is a day old says nothing useful.
 - **What is logged:** one line per run that handled email (sent, kept in
@@ -266,13 +298,27 @@ with grants for `trustline_app` only in migration 0047 (custom SQL):
   scheduled, so each day is scheduled once.
 - `email_preferences`: one row per person who has changed a switch. No row
   means both are on.
-- `email_queue`: one row per email to send. Its notification (cascade), or
+- `email_queue`: one row per email to send. Its notification (cascade, by
+  a key of the tenant and the notification: security review 8, L3), or
   for a digest its day. One per notification, one daily digest per person
   per day (unique indexes). It has its status, attempts, next attempt, the
   reason it was skipped or failed, and the error code. Never the content or
   the address.
 - `email_outbox`: what would have been sent, in outbox mode: address,
-  subject, text, HTML and headers. One per queue row.
+  subject, text, HTML and headers. One per queue row, by a key of the
+  tenant and the row.
+
+Migration 0050 (generated, with the indexes put before the keys that need
+them by hand) makes both keys composite with the tenant, adds the unique
+indexes they point to (`notifications (tenant_id, id)` and `email_queue
+(tenant_id, id)`), the times each switch was last turned back on
+(`email_preferences.immediate_on_since`, `digest_on_since`), and the
+notification kind `email_turned_off`. A key is checked past row-level
+security, so one of the id alone could have named another tenant's row.
+The index on notifications, which may be large, is built concurrently by
+`migrate.ts` before the migrations run (a migration runs in a transaction,
+where that cannot be done); the migration makes it only if it is not
+there.
 
 **Audit:** changing one's preferences (`notification_preferences_changed`,
 with what changed and `via: 'settings' | 'unsubscribe_link'`), and switching
@@ -316,12 +362,15 @@ log) is kept elsewhere.
   `nothing_waiting`, `expired`, `gone`) or `failed` (`refused`, `gave_up`).
 - **The daily digest links to the dashboard** (`/<lang>/dashboard`), and
   each reference to its item. The preferences link leads to
-  `/<lang>/notifications`, where the web app is to put the switches.
+  `/<lang>/notifications/preferences`, the web app's email preferences
+  screen (language review 7, M6).
 - **Who sees whom in the digest** is decided by the screens' own services
   (`IncidentsService.list`, `LibraryService.list`, `myApprovals`,
-  `reviewsDue`), called as the person through
-  `AuthService.backgroundContextOf`. This builds the person's access as a
-  session would, with no session, and only for work in the background.
+  `reviewsDue`), called as the person through `BackgroundContext`
+  (`email/background-context.ts`). This builds the person's access as a
+  session would, with no session, and only for work in the background. It
+  is a provider of EmailModule's own, exported to nothing (security review
+  8), so no other module can build a context without a session.
 - **The unsubscribe link posts a form.** The API takes JSON bodies only,
   except a form posted to `/email/unsubscribe/:token` (`app.setup.ts`), which
   is what RFC 8058 has mail clients send. It needs no session and acts on the

@@ -11,7 +11,7 @@ export type LinkTo = (path: string) => string;
 /**
  * What waits for one person, for their daily digest (docs/specs/email.md,
  * section 1): the same lists their screens show them, asked of the services
- * that show them, as that person (AuthService.backgroundContextOf), so that
+ * that show them, as that person (BackgroundContext), so that
  * the digest can hold nothing they could not see. References and counts
  * only: each item is a number or a reference and a link.
  *

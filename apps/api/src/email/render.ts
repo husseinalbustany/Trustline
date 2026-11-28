@@ -66,6 +66,25 @@ export const DIGEST_ITEMS = 10;
 // right-to-left text.
 const LRI = '\u2066';
 const PDI = '\u2069';
+// A first-strong isolate: a date written as the language writes it keeps
+// that direction, set apart from the text around it.
+const FSI = '\u2068';
+
+/**
+ * A calendar day ("2026-11-28") as the web app shows it in this language
+ * (language review 7, E16): medium style, Latin digits. The day is already
+ * the organization's (worked out on its clock when the digest was made), so
+ * it is shown as it is, on no clock.
+ */
+export function formatDay(day: string, locale: Locale): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return day;
+  const date = new Date(`${day}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return day;
+  return new Intl.DateTimeFormat(
+    new Intl.Locale(locale, { numberingSystem: 'latn' }).toString(),
+    { dateStyle: 'medium', timeZone: 'UTC' },
+  ).format(date);
+}
 
 /** Text for HTML, escaped for an element or an attribute. */
 export const escapeHtml = (value: string) =>
@@ -128,7 +147,8 @@ export function renderMail(content: MailContent, envelope: MailEnvelope): Render
     body.push({ kind: 'text', text: say(w.weekly.people, { people: content.people }) });
     body.push({ kind: 'link', text: w.weekly.open, href: content.href });
   } else {
-    subject = say(w.daily.subject, { day: content.day });
+    const day = formatDay(content.day, envelope.locale);
+    subject = fill(w.daily.subject, { day: rtl ? `${FSI}${day}${PDI}` : day });
     body.push({ kind: 'text', text: w.daily.intro });
     for (const section of content.sections) {
       body.push({ kind: 'text', text: say(w.daily[section.key], { count: section.count }) });

@@ -16,12 +16,8 @@ export type Wording = {
   greeting: string;
   /** The link to the item. */
   open: string;
-  /** Said after an incident's reference when it is serious. */
-  serious: string;
   /** Said after a reference whose deadline has passed. */
   overdue: string;
-  /** Said of a document's version, after its number. */
-  version: string;
   immediate: {
     incident_reported: { subject: string; body: string };
     incident_handed_over: { subject: string; body: string };

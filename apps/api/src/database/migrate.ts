@@ -32,6 +32,7 @@ export async function runMigrations() {
       );
     }
 
+    await buildConcurrently(db);
     await migrate(db, {
       migrationsFolder: resolve(import.meta.dirname, '../../drizzle'),
     });
@@ -48,6 +49,38 @@ export async function runMigrations() {
     }
   } finally {
     await pool.end();
+  }
+}
+
+/**
+ * Indexes on tables that may already be large, built before the migrations
+ * without holding writes back (CONCURRENTLY, which cannot run in the
+ * transaction the migrations run in). The migration that needs each makes
+ * it only if it is not there, so a new database, whose table is empty,
+ * gets it from the migration. An index left invalid by a build that was
+ * interrupted is dropped and built again.
+ */
+const CONCURRENT_INDEXES = [
+  {
+    // Migration 0050: the key email_queue_notification_fk points to it.
+    name: 'notifications_tenant_id_id_key',
+    table: 'notifications',
+    create:
+      'create unique index concurrently if not exists "notifications_tenant_id_id_key" on "notifications" using btree ("tenant_id", "id")',
+  },
+];
+
+async function buildConcurrently(db: ReturnType<typeof createDatabase>['db']) {
+  for (const index of CONCURRENT_INDEXES) {
+    const { rows } = await db.execute<{ table: boolean; valid: boolean | null }>(sql`
+      select to_regclass(${`public.${index.table}`}) is not null as table,
+             (select i.indisvalid from pg_index i
+               where i.indexrelid = to_regclass(${`public.${index.name}`})) as valid`);
+    if (!rows[0].table) continue;
+    if (rows[0].valid === false) {
+      await db.execute(sql.raw(`drop index concurrently if exists "${index.name}"`));
+    }
+    if (rows[0].valid !== true) await db.execute(sql.raw(index.create));
   }
 }
 

@@ -45,7 +45,8 @@ describe('rendering an email', () => {
     expect(mail.html).toContain('<html lang="ar" dir="rtl">');
     expect(mail.html).toContain('<body dir="rtl"');
     expect(mail.subject).toContain('\u2066INC-2026-00042\u2069');
-    expect(mail.text).toContain('أُسندت إليك الحادثة');
+    // The app's own words (language review 7, E4).
+    expect(mail.text).toContain('تم تكليفك بمعالجة الحادث');
   });
 
   it('escapes what it is given, and keeps the subject on one line', () => {
@@ -67,7 +68,7 @@ describe('rendering an email', () => {
       href: `${BASE}/fr/policies/x`,
     };
     expect(renderMail({ ...base, step: 'review' }, envelope('fr')).subject).toBe(
-      'Le document PRC-SAF-014 attend votre revue',
+      'Le document PRC-SAF-014 attend votre vérification',
     );
     const approve = renderMail({ ...base, step: 'approve' }, envelope());
     expect(approve.subject).toBe('Document PRC-SAF-014 awaits your approval');
@@ -89,7 +90,15 @@ describe('rendering an email', () => {
       },
       { ...envelope(), unsubscribe: { href: `${BASE}/u`, switch: 'digest' } },
     );
-    expect(mail.subject).toBe('What waits for you in Trustline: 2026-11-28');
+    // The day as the app shows it in each language (language review 7, E16).
+    expect(mail.subject).toBe('What waits for you in Trustline: Nov 28, 2026');
+    const day = (locale: 'ar' | 'fr') =>
+      renderMail(
+        { category: 'daily_digest', day: '2026-11-28', href: `${BASE}/${locale}/dashboard`, sections: [] },
+        { ...envelope(locale), unsubscribe: { href: `${BASE}/u`, switch: 'digest' } },
+      ).subject;
+    expect(day('fr')).toBe('Ce qui vous attend dans Trustline\u00a0: 28 nov. 2026');
+    expect(day('ar')).toBe('ما ينتظرك في Trustline: \u206828\u200f/11\u200f/2026\u2069');
     expect(mail.text).toContain('Incidents assigned to you: 12');
     expect(mail.text).toContain('Of these, overdue: 1');
     expect(mail.text).toContain('- INC-2026-00001 (overdue):');

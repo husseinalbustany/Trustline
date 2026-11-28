@@ -1,7 +1,11 @@
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
 import type { Transaction } from '../database/client.js';
-import { emailPreferences, emailSettings } from '../database/schema.js';
+import {
+  emailPreferences,
+  emailSettings,
+  notifications,
+} from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
 import type { AuthContext } from '../identity/auth.service.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
@@ -142,24 +146,54 @@ export class EmailPreferencesService {
       }
     }
     if (Object.keys(changes).length > 0) {
+      const now = new Date();
       await tx
         .update(emailPreferences)
-        .set({ ...switches, updatedAt: new Date() })
+        .set({
+          ...switches,
+          // Switched back on: every unsubscribe link issued until now stops
+          // working for it (security review 8, L2).
+          ...(changes.immediate?.to === true && { immediateOnSince: now }),
+          ...(changes.digest?.to === true && { digestOnSince: now }),
+          updatedAt: now,
+        })
         .where(eq(emailPreferences.userId, userId));
     }
     return changes;
   }
 
   /**
+   * Whether a link still works: it names a person who is there, and was
+   * issued after they last switched that kind back on (security review 8,
+   * L2), so that a link from an old email cannot switch off again what the
+   * person chose to have.
+   */
+  private async linkHolds(tx: Transaction, claim: UnsubscribeClaim) {
+    const [mailbox] = await this.provisioning.mailboxesOf(tx, [claim.userId]);
+    if (!mailbox) return false;
+    const [row] = await tx
+      .select({
+        immediateOnSince: emailPreferences.immediateOnSince,
+        digestOnSince: emailPreferences.digestOnSince,
+      })
+      .from(emailPreferences)
+      .where(eq(emailPreferences.userId, claim.userId));
+    const onSince =
+      claim.switch === 'immediate' ? row?.immediateOnSince : row?.digestOnSince;
+    return !onSince || claim.issuedAt >= onSince.getTime();
+  }
+
+  /**
    * What an unsubscribe link does: switches off one kind of email for the
-   * person it names, in the organization it names, and audits it as theirs.
-   * False if there is no such person there (a token signed for another
-   * organization's person finds nobody). Already off, it writes nothing.
+   * person it names, in the organization it names, audits it as theirs,
+   * and tells them in Trustline (`email_turned_off`), so that a link used by
+   * someone else does not pass unseen. False if the link no longer holds
+   * (`linkHolds`; a token signed for another organization's person finds
+   * nobody). Already off, it writes nothing.
    */
   unsubscribe(claim: UnsubscribeClaim, ip: string | null) {
     return this.tenantDb.withTenant(claim.tenantId, async (tx) => {
-      const [mailbox] = await this.provisioning.mailboxesOf(tx, [claim.userId]);
-      if (!mailbox) return false;
+      if (!(await this.linkHolds(tx, claim))) return false;
       const off: Partial<Record<EmailSwitch, boolean>> =
         claim.switch === 'immediate' ? { immediate: false } : { digest: false };
       const changes = await this.setSwitches(
@@ -179,17 +213,22 @@ export class EmailPreferencesService {
           { ...changes, via: 'unsubscribe_link' },
           ip,
         );
+        await tx.insert(notifications).values({
+          tenantId: claim.tenantId,
+          userId: claim.userId,
+          kind: 'email_turned_off',
+          data: { switch: claim.switch, serious: false },
+        });
       }
       return true;
     });
   }
 
-  /** Whether a link names a person who is there: for the confirmation page. */
+  /** Whether a link still holds: for the confirmation page. */
   exists(claim: UnsubscribeClaim) {
-    return this.tenantDb.withTenant(claim.tenantId, async (tx) => {
-      const [mailbox] = await this.provisioning.mailboxesOf(tx, [claim.userId]);
-      return !!mailbox;
-    });
+    return this.tenantDb.withTenant(claim.tenantId, (tx) =>
+      this.linkHolds(tx, claim),
+    );
   }
 
   /** The organization's switch, and how mail is delivered. */

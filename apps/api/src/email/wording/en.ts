@@ -4,13 +4,11 @@ export const en: Wording = {
   dir: 'ltr',
   greeting: 'Hello,',
   open: 'Open in Trustline',
-  serious: 'serious',
   overdue: 'overdue',
-  version: 'version {version}',
   immediate: {
     incident_reported: {
       subject: 'Serious incident reported: {reference}',
-      body: 'A serious incident, {reference}, has been reported where you may triage it.',
+      body: 'A serious incident, {reference}, has been reported in an area you triage.',
     },
     incident_handed_over: {
       subject: 'Serious incident handed to your department: {reference}',
@@ -18,7 +16,7 @@ export const en: Wording = {
     },
     sentinel_flagged: {
       subject: 'Incident {reference} is now a sentinel event',
-      body: 'Incident {reference} has been made a sentinel event.',
+      body: 'Incident {reference} has been marked as a sentinel event.',
     },
     incident_assigned: {
       subject: 'Incident {reference} is assigned to you',
@@ -26,7 +24,7 @@ export const en: Wording = {
     },
     sign_off_requested: {
       subject: 'Sign-off requested: incident {reference}',
-      body: 'Closing incident {reference} awaits a second signature, which you may give.',
+      body: 'Incident {reference} is waiting for a second person to sign off its closure. You can sign it off.',
     },
     document_step_review: {
       subject: 'Document {number} awaits your review',
@@ -39,7 +37,7 @@ export const en: Wording = {
   },
   weekly: {
     subject: 'Overdue acknowledgements this week',
-    body: 'Some people in your teams have documents to acknowledge whose time has passed.',
+    body: 'Some people in your teams have not acknowledged documents by their due date.',
     overdue: 'Acknowledgements overdue: {overdue}',
     people: 'People concerned: {people}',
     open: 'See who in Trustline',
@@ -57,7 +55,7 @@ export const en: Wording = {
   },
   footer: {
     member: 'You receive this email as a member of {organization} in Trustline.',
-    noDetails: 'Emails from Trustline hold no details: sign in to see them.',
+    noDetails: 'Emails from Trustline carry no details of the incident or document: sign in to see them.',
     unsubscribeImmediate: 'Stop these immediate emails',
     unsubscribeDigest: 'Stop these summary emails',
     preferences: 'Change your email preferences',

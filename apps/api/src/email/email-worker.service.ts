@@ -24,7 +24,6 @@ import {
 import { TenantDb } from '../database/tenant-db.service.js';
 import { pickText, type Localized, type Locale } from '../i18n/locales.js';
 import { momentIn } from '../i18n/time-zones.js';
-import { AuthService } from '../identity/auth.service.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
 import {
   NOTIFICATION_MODULE,
@@ -33,8 +32,8 @@ import {
 import {
   allows,
   EntitlementsService,
-  type Entitlements,
 } from '../subscriptions/entitlements.service.js';
+import { BackgroundContext } from './background-context.js';
 import { describeMail, type MailConfig } from './config.js';
 import { DigestService } from './digest.service.js';
 import { EmailPreferencesService } from './email-preferences.service.js';
@@ -66,6 +65,15 @@ const BATCH = 25;
  * claim lapses only when the process that held it has gone.
  */
 export const CLAIM_MS = 15 * 60_000;
+/**
+ * The database's clock, for claims (security review 8): every process
+ * reads the same one, so that no process's own clock running fast or slow
+ * makes it take over a claim that has not lapsed. `clock_timestamp()`, not
+ * `now()`, which stays at the start of a transaction.
+ */
+const DB_NOW = sql`clock_timestamp()`;
+/** When a claim made now lapses, by the database's clock. */
+const CLAIM_UNTIL = sql`clock_timestamp() + ${sql.raw(`interval '${CLAIM_MS} milliseconds'`)}`;
 /** The waits before each attempt after the first, in minutes. */
 export const BACKOFF_MINUTES = [1, 5, 30, 120];
 /** Attempts before an email is given up. */
@@ -115,6 +123,11 @@ export type EmailRunResult = {
   givenUp: number;
   /** Daily digests queued. */
   queued: number;
+  /**
+   * The mail server refused the login (security review 8, M1): nothing
+   * more was sent this run, and what was claimed went back to the queue.
+   */
+  loginRefused: boolean;
 };
 
 type Client = {
@@ -176,7 +189,7 @@ export class EmailWorker implements OnModuleDestroy {
     private readonly preferences: EmailPreferencesService,
     private readonly provisioning: ProvisioningService,
     private readonly entitlements: EntitlementsService,
-    private readonly auth: AuthService,
+    private readonly background: BackgroundContext,
     private readonly digest: DigestService,
   ) {}
 
@@ -240,6 +253,7 @@ export class EmailWorker implements OnModuleDestroy {
       retried: 0,
       givenUp: 0,
       queued: 0,
+      loginRefused: false,
     };
     let clients: Client[];
     try {
@@ -310,22 +324,83 @@ export class EmailWorker implements OnModuleDestroy {
     );
   }
 
+  /**
+   * One client: its digests, then its queue, then its purge, each a step of
+   * its own (security review 8, L4), so that a digest that cannot be queued
+   * neither holds back what cannot wait nor the deletion of what is past
+   * keeping. A failure of any step is named in the log with the client.
+   */
   private async workClient(client: Client, now: Date, result: EmailRunResult) {
-    const { entitlements, enabled } = await this.inClient(client.id, async (tx) => ({
-      entitlements: await this.entitlements.of(tx, client.id),
-      enabled: await this.preferences.organizationEnabled(tx),
-    }));
-    if (enabled) result.queued += await this.queueDigests(client, now);
+    let failed = false;
+    try {
+      result.queued += await this.queueDigests(client, now);
+    } catch (error) {
+      failed = true;
+      this.logger.error(
+        `Email digests could not be queued for client ${client.id}: ${kindOf(error)}`,
+      );
+    }
+    try {
+      await this.sendQueue(client, now, result);
+    } finally {
+      try {
+        await this.purge(client.id, now);
+      } catch (error) {
+        failed = true;
+        this.logger.error(
+          `Email retention could not be applied for client ${client.id}: ${kindOf(error)}`,
+        );
+      }
+    }
+    if (failed) result.failed += 1;
+  }
+
+  /**
+   * Sends what is due, a batch at a time. Once the mail server has refused
+   * the login, nothing more is sent this run, for this client or any
+   * other: every message would be refused the same way. What was claimed
+   * and not tried goes back to the queue as it was.
+   */
+  private async sendQueue(client: Client, now: Date, result: EmailRunResult) {
     for (;;) {
-      if (this.stopping) return;
+      if (this.stopping || result.loginRefused) return;
       const claimed = await this.claim(client.id, now);
-      for (const row of claimed) {
-        const outcome = await this.deliver(client, row, now, entitlements, enabled);
+      for (const [i, row] of claimed.entries()) {
+        if (result.loginRefused) {
+          await this.release(client.id, claimed.slice(i));
+          return;
+        }
+        const outcome = await this.deliver(client, row, now, result);
         result[outcome] += 1;
       }
       if (claimed.length < BATCH) break;
     }
-    await this.purge(client.id, now);
+  }
+
+  /**
+   * Puts claimed rows that were not tried back as they were: pending, with
+   * the attempt they were claimed for not counted. Only rows still held by
+   * this claim.
+   */
+  private async release(tenantId: string, rows: Claimed[]) {
+    await this.inClient(tenantId, async (tx) => {
+      for (const row of rows) {
+        await tx
+          .update(emailQueue)
+          .set({
+            status: 'pending',
+            attempts: sql`${emailQueue.attempts} - 1`,
+            claimedUntil: null,
+          })
+          .where(
+            and(
+              eq(emailQueue.id, row.id),
+              eq(emailQueue.status, 'sending'),
+              eq(emailQueue.attempts, row.attempts),
+            ),
+          );
+      }
+    });
   }
 
   /**
@@ -338,6 +413,8 @@ export class EmailWorker implements OnModuleDestroy {
     const day = digestDay(now, client.timeZone, this.digestHour);
     if (!day) return Promise.resolve(0);
     return this.inClient(client.id, async (tx) => {
+      // Switched off for the organization: no digest is made.
+      if (!(await this.preferences.organizationEnabled(tx))) return 0;
       const claimed = await tx
         .insert(emailSettings)
         .values({ tenantId: client.id, digestsQueuedOn: day })
@@ -389,22 +466,21 @@ export class EmailWorker implements OnModuleDestroy {
         .where(
           or(
             and(eq(emailQueue.status, 'pending'), lte(emailQueue.nextAttemptAt, now)),
-            and(eq(emailQueue.status, 'sending'), lt(emailQueue.claimedUntil, now)),
+            and(eq(emailQueue.status, 'sending'), lt(emailQueue.claimedUntil, DB_NOW)),
           ),
         )
         .orderBy(asc(emailQueue.nextAttemptAt), asc(emailQueue.id))
         .limit(BATCH)
         .for('update', { skipLocked: true });
       if (due.length === 0) return [];
-      // From the clock, not only from the run's moment: a run that has
-      // gone through many clients must not claim for less than CLAIM_MS.
-      const from = Math.max(now.getTime(), Date.now());
       return tx
         .update(emailQueue)
         .set({
           status: 'sending',
           attempts: sql`${emailQueue.attempts} + 1`,
-          claimedUntil: new Date(from + CLAIM_MS),
+          // By the database's clock, which every process shares, as is the
+          // test of a lapsed claim: no process's own clock moves either.
+          claimedUntil: CLAIM_UNTIL,
           updatedAt: now,
         })
         .where(
@@ -430,21 +506,26 @@ export class EmailWorker implements OnModuleDestroy {
     client: Client,
     row: Claimed,
     now: Date,
-    entitlements: Entitlements | null,
-    enabled: boolean,
+    result: EmailRunResult,
   ): Promise<'sent' | 'kept' | 'skipped' | 'retried' | 'givenUp'> {
     try {
-      const prepared = await this.prepare(client, row, now, entitlements, enabled);
+      const prepared = await this.prepare(client, row, now);
       if ('skip' in prepared) {
         await this.finish(client.id, row, now, { status: 'skipped', reason: prepared.skip });
         return 'skipped';
       }
       // Still ours, for a whole claim from now: a batch sent one by one to a
       // slow server must not outlast its claim and be taken over midway.
-      if (!(await this.renew(client.id, row, now))) return 'skipped';
+      if (!(await this.renew(client.id, row))) return 'skipped';
       await this.sender.send(prepared.mail);
     } catch (error) {
       const failure = classifySmtpError(error);
+      if (failure.stopsSending && !result.loginRefused) {
+        result.loginRefused = true;
+        this.logger.error(
+          `Email: the mail server refused the login (${failure.code}): nothing more is sent this run; check SMTP_USER and SMTP_PASSWORD`,
+        );
+      }
       return this.failed(client, row, now, failure.code, failure.outcome === 'permanent');
     }
     // Handed over. Should this fail to be recorded, the error goes up and
@@ -487,12 +568,11 @@ export class EmailWorker implements OnModuleDestroy {
    * attempt's. False if another process has taken it over: then it is not
    * sent here.
    */
-  private async renew(tenantId: string, row: Claimed, now: Date) {
-    const from = Math.max(now.getTime(), Date.now());
+  private async renew(tenantId: string, row: Claimed) {
     const renewed = await this.inClient(tenantId, (tx) =>
       tx
         .update(emailQueue)
-        .set({ claimedUntil: new Date(from + CLAIM_MS) })
+        .set({ claimedUntil: CLAIM_UNTIL })
         .where(
           and(
             eq(emailQueue.id, row.id),
@@ -552,14 +632,18 @@ export class EmailWorker implements OnModuleDestroy {
     client: Client,
     row: Claimed,
     now: Date,
-    entitlements: Entitlements | null,
-    enabled: boolean,
   ): Promise<Prepared> {
     if (row.createdAt.getTime() < now.getTime() - EXPIRES_AFTER_MS) {
       return { skip: 'expired' };
     }
-    if (!enabled) return { skip: 'organization_off' };
+    // The organization's switch and what its subscription gives, read for
+    // each email as it is prepared (security review 8, L1): switching email
+    // off, a module off or a suspension counts from the next email, not the
+    // next run.
     const found = await this.inClient(client.id, async (tx) => {
+      const enabled = await this.preferences.organizationEnabled(tx);
+      const entitlements = await this.entitlements.of(tx, client.id);
+      if (!enabled) return { enabled, entitlements };
       const [mailbox] = await this.provisioning.mailboxesOf(tx, [row.userId]);
       const switches = await this.preferences.switchesOf(tx, row.userId);
       const [notification] = row.notificationId
@@ -573,9 +657,10 @@ export class EmailWorker implements OnModuleDestroy {
             .from(notifications)
             .where(eq(notifications.id, row.notificationId))
         : [];
-      return { mailbox, switches, notification };
+      return { enabled, entitlements, mailbox, switches, notification };
     });
-    const { mailbox, switches, notification } = found;
+    if (!found.enabled) return { skip: 'organization_off' };
+    const { entitlements, mailbox, switches, notification } = found;
     if (!mailbox || mailbox.status !== 'active') return { skip: 'inactive' };
     if (!this.deliverable(mailbox.email)) return { skip: 'no_address' };
     const which = switchOf(row.category);
@@ -596,7 +681,7 @@ export class EmailWorker implements OnModuleDestroy {
       if (!entitlements || entitlements.status === 'cancelled') {
         return { skip: 'module_off' };
       }
-      const auth = await this.auth.backgroundContextOf(client.id, row.userId);
+      const auth = await this.background.of(client.id, row.userId);
       if (!auth) return { skip: 'inactive' };
       const sections = await this.digest.sectionsFor(auth, link, suspended);
       if (sections.length === 0) return { skip: 'nothing_waiting' };
@@ -630,7 +715,8 @@ export class EmailWorker implements OnModuleDestroy {
       locale,
       organization: pickText(client.name, locale, client.defaultLocale),
       unsubscribe: { href: unsubscribe, switch: which },
-      preferencesHref: link('/notifications'),
+      // The web app's email preferences screen (language review 7, M6).
+      preferencesHref: link('/notifications/preferences'),
     });
     const domain = this.config.from.address.split('@')[1] ?? 'localhost';
     return {
@@ -733,7 +819,7 @@ export class EmailWorker implements OnModuleDestroy {
             lt(emailQueue.createdAt, new Date(now.getTime() - EXPIRES_AFTER_MS)),
             or(
               eq(emailQueue.status, 'pending'),
-              and(eq(emailQueue.status, 'sending'), lt(emailQueue.claimedUntil, now)),
+              and(eq(emailQueue.status, 'sending'), lt(emailQueue.claimedUntil, DB_NOW)),
             ),
           ),
         )

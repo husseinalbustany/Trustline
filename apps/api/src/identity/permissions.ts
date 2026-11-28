@@ -152,7 +152,7 @@ export const SYSTEM_ROLES: {
     description: {
       en: 'Gives the final approval of controlled documents, and reads every document, restricted ones and drafts included.',
       ar: 'يمنح الاعتماد النهائي للوثائق المضبوطة، ويقرأ كل الوثائق بما فيها المقيّدة والمسودات.',
-      fr: 'Donne l’approbation finale des documents maîtrisés, et lit tous les documents, y compris restreints et brouillons.',
+      fr: 'Donne l’approbation finale des documents maîtrisés, et lit tous les documents, y compris les documents restreints et les brouillons.',
     },
     permissions: ['policies.view', 'policies.view_all', 'policies.approve'],
   },

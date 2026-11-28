@@ -13,6 +13,12 @@ export type UnsubscribeClaim = {
   locale: Locale;
   /** Seconds since the epoch. */
   expiresAt: number;
+  /**
+   * When it was issued, in milliseconds since the epoch (security review 8,
+   * L2): a link issued before the person last switched that kind back on
+   * no longer works for it.
+   */
+  issuedAt: number;
 };
 
 /** How long a link in an email keeps working. */
@@ -29,6 +35,9 @@ const claimSchema = z.strictObject({
   s: z.enum(['immediate', 'digest']),
   l: localeSchema,
   e: z.number().int().positive(),
+  // Absent from the links sent before it was added: issued UNSUBSCRIBE_DAYS
+  // before they expire, which is how they were made.
+  i: z.number().int().positive().optional(),
 });
 
 const mac = (secret: string, payload: string) =>
@@ -38,12 +47,13 @@ const mac = (secret: string, payload: string) =>
 
 /**
  * A signed, expiring token for one person's unsubscribe link: their
- * organization, their id, which switch, the language of the email, and until
- * when. Nothing else is in it, and it opens nothing else.
+ * organization, their id, which switch, the language of the email, when it
+ * was issued and until when. Nothing else is in it, and it opens nothing
+ * else.
  */
 export function signUnsubscribe(
   secret: string,
-  claim: Omit<UnsubscribeClaim, 'expiresAt'>,
+  claim: Omit<UnsubscribeClaim, 'expiresAt' | 'issuedAt'>,
   now = new Date(),
 ): string {
   const payload = Buffer.from(
@@ -53,6 +63,7 @@ export function signUnsubscribe(
       s: claim.switch,
       l: claim.locale,
       e: Math.floor(now.getTime() / 1000) + UNSUBSCRIBE_DAYS * 86_400,
+      i: now.getTime(),
     }),
   ).toString('base64url');
   return `${VERSION}.${payload}.${mac(secret, payload)}`;
@@ -91,5 +102,6 @@ export function verifyUnsubscribe(
     switch: claim.data.s,
     locale: claim.data.l,
     expiresAt: claim.data.e,
+    issuedAt: claim.data.i ?? (claim.data.e - UNSUBSCRIBE_DAYS * 86_400) * 1000,
   };
 }

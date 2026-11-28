@@ -810,6 +810,10 @@ export const notificationKind = pgEnum('notification_kind', [
   // Once a week, to the managers of the units whose people have
   // acknowledgements overdue: how many. About no one document.
   'acknowledgements_overdue_digest',
+  // An email's unsubscribe link switched a kind of email off, so that the
+  // person sees it in Trustline (security review 8, L2): `data.switch`.
+  // About nothing else.
+  'email_turned_off',
 ]);
 
 // Something a user is told about an incident they can see. Stored so that it
@@ -859,6 +863,10 @@ export const notifications = pgTable(
     }),
     // A user's own, newest first; and the count of those not yet read.
     index('notifications_user_idx').on(t.tenantId, t.userId, t.createdAt),
+    // For the composite keys that point here (email_queue): a notification
+    // of the same tenant only. Built concurrently on a database that has
+    // notifications already (migrate.ts), before the migration that needs it.
+    uniqueIndex('notifications_tenant_id_id_key').on(t.tenantId, t.id),
     index('notifications_unread_idx')
       .on(t.tenantId, t.userId)
       .where(sql`${t.readAt} is null`),
@@ -868,7 +876,7 @@ export const notifications = pgTable(
     // new kind to be committed before it is created.
     check(
       'notifications_about_one_thing',
-      sql`(${t.incidentId} is null or ${t.documentId} is null) and (${t.incidentId} is not null or ${t.documentId} is not null or ${t.kind}::text in ('public_form_paused', 'acknowledgements_overdue_digest'))`,
+      sql`(${t.incidentId} is null or ${t.documentId} is null) and (${t.incidentId} is not null or ${t.documentId} is not null or ${t.kind}::text in ('public_form_paused', 'acknowledgements_overdue_digest', 'email_turned_off'))`,
     ),
     tenantIsolation(),
   ],
@@ -1957,6 +1965,10 @@ export const emailPreferences = pgTable(
     immediate: boolean().notNull().default(true),
     // The daily digest and the weekly one.
     digest: boolean().notNull().default(true),
+    // When each was last switched back on: an unsubscribe link issued
+    // before it no longer works for it (security review 8, L2).
+    immediateOnSince: timestamp({ withTimezone: true }),
+    digestOnSince: timestamp({ withTimezone: true }),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -2001,9 +2013,8 @@ export const emailQueue = pgTable(
     category: emailCategory().notNull(),
     // The notification it sends (immediate, weekly digest). Null for a
     // daily digest, which is made from what waits for the person that day.
-    notificationId: uuid().references(() => notifications.id, {
-      onDelete: 'cascade',
-    }),
+    // Of the same tenant (email_queue_notification_fk).
+    notificationId: uuid(),
     // For a daily digest: its day on the organization's calendar.
     period: date({ mode: 'string' }),
     status: emailStatus().notNull().default('pending'),
@@ -2027,6 +2038,15 @@ export const emailQueue = pgTable(
       columns: [t.tenantId, t.userId],
       foreignColumns: [users.tenantId, users.id],
     }).onDelete('cascade'),
+    // Keys with the tenant, as every other here (security review 8, L3):
+    // a foreign key is checked past row-level security, so one of the id
+    // alone could name another tenant's row.
+    foreignKey({
+      name: 'email_queue_notification_fk',
+      columns: [t.tenantId, t.notificationId],
+      foreignColumns: [notifications.tenantId, notifications.id],
+    }).onDelete('cascade'),
+    uniqueIndex('email_queue_tenant_id_id_key').on(t.tenantId, t.id),
     // One email per notification, and one daily digest per person per day.
     uniqueIndex('email_queue_notification_key')
       .on(t.tenantId, t.notificationId)
@@ -2064,9 +2084,8 @@ export const emailOutbox = pgTable(
     tenantId: uuid()
       .notNull()
       .references(() => tenants.id),
-    queueId: uuid()
-      .notNull()
-      .references(() => emailQueue.id, { onDelete: 'cascade' }),
+    // Of the same tenant (email_outbox_queue_fk).
+    queueId: uuid().notNull(),
     toAddress: text().notNull(),
     subject: text().notNull(),
     textBody: text().notNull(),
@@ -2075,6 +2094,11 @@ export const emailOutbox = pgTable(
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    foreignKey({
+      name: 'email_outbox_queue_fk',
+      columns: [t.tenantId, t.queueId],
+      foreignColumns: [emailQueue.tenantId, emailQueue.id],
+    }).onDelete('cascade'),
     uniqueIndex('email_outbox_queue_key').on(t.tenantId, t.queueId),
     index('email_outbox_created_idx').on(t.tenantId, t.createdAt),
     tenantIsolation(),

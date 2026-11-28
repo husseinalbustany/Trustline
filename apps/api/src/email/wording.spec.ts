@@ -45,6 +45,20 @@ describe('email wording', () => {
     }
   });
 
+  it('writes French with its spaces: U+00A0 before a colon, U+202F before a question mark', () => {
+    for (const [key, text] of Object.entries(texts(WORDING.fr))) {
+      // No space but these before « : » and « ? », and no colon or
+      // question mark glued to the word before it.
+      expect(`${key}: ${/(?:^|[^\u00a0]):|(?:^|[^\u202f])\?/u.test(text)}`).toBe(`${key}: false`);
+    }
+  });
+
+  it('says « e-mail » in French, as the app does, never « courriel »', () => {
+    const all = Object.values(texts(WORDING.fr)).join('\n').toLowerCase();
+    expect(all).not.toContain('courriel');
+    expect(all).toContain('e-mail');
+  });
+
   it('writes Arabic right to left, and the others left to right', () => {
     expect(WORDING.ar.dir).toBe('rtl');
     expect(WORDING.en.dir).toBe('ltr');

@@ -1305,6 +1305,8 @@ describe('policies and procedures', () => {
           changeSummary: null,
           acknowledgementRequired: false,
           acknowledgeWithinDays: 14,
+          // Recorded when it was sent, and signed with it (security review 7).
+          authoritativeLocale: 'en',
         }),
       );
     });
