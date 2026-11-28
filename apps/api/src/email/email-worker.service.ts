@@ -119,6 +119,7 @@ export type EmailRunResult = {
 
 type Client = {
   id: string;
+  status: 'active' | 'suspended';
   timeZone: string;
   name: Localized;
   locales: string[];
@@ -221,10 +222,12 @@ export class EmailWorker implements OnModuleDestroy {
   }
 
   /**
-   * One pass over every active client, as of `now`. `only` narrows it to
-   * these clients: for tests, which share the database with clients they
-   * did not make. A client Trustline has suspended is left alone; its
-   * emails expire.
+   * One pass over every client, as of `now`. `only` narrows it to these
+   * clients: for tests, which share the database with clients they did not
+   * make. A client Trustline has suspended is sent nothing and has no
+   * digest made: its emails expire a day after they were queued, and what is
+   * finished is deleted after RETENTION_DAYS like anyone's, so that no
+   * address or copy is kept longer while it is suspended.
    */
   async run(now = new Date(), only?: string[]): Promise<EmailRunResult> {
     const result: EmailRunResult = {
@@ -245,18 +248,14 @@ export class EmailWorker implements OnModuleDestroy {
         return tx
           .select({
             id: tenants.id,
+            status: tenants.status,
             timeZone: tenants.timeZone,
             name: tenants.name,
             locales: tenants.locales,
             defaultLocale: tenants.defaultLocale,
           })
           .from(tenants)
-          .where(
-            and(
-              eq(tenants.status, 'active'),
-              only ? inArray(tenants.id, only) : undefined,
-            ),
-          )
+          .where(only ? inArray(tenants.id, only) : undefined)
           .orderBy(asc(tenants.id));
       });
     } catch (error) {
@@ -270,7 +269,12 @@ export class EmailWorker implements OnModuleDestroy {
     for (const client of clients) {
       if (this.stopping) break;
       try {
-        await this.workClient(client, now, result);
+        if (client.status === 'active') {
+          await this.workClient(client, now, result);
+        } else {
+          result.skipped += await this.expire(client.id, now);
+          await this.purge(client.id, now);
+        }
       } catch (error) {
         result.failed += 1;
         if (this.stopping) break;
@@ -392,12 +396,15 @@ export class EmailWorker implements OnModuleDestroy {
         .limit(BATCH)
         .for('update', { skipLocked: true });
       if (due.length === 0) return [];
+      // From the clock, not only from the run's moment: a run that has
+      // gone through many clients must not claim for less than CLAIM_MS.
+      const from = Math.max(now.getTime(), Date.now());
       return tx
         .update(emailQueue)
         .set({
           status: 'sending',
           attempts: sql`${emailQueue.attempts} + 1`,
-          claimedUntil: new Date(now.getTime() + CLAIM_MS),
+          claimedUntil: new Date(from + CLAIM_MS),
           updatedAt: now,
         })
         .where(
@@ -580,6 +587,12 @@ export class EmailWorker implements OnModuleDestroy {
 
     let content: MailContent;
     if (row.category === 'daily_digest') {
+      // Only on its own day, on the client's clock: a digest still unsent
+      // (tried again past midnight) is not sent the next day, which has
+      // its own.
+      if (row.period !== momentIn(now, client.timeZone).slice(0, 10)) {
+        return { skip: 'expired' };
+      }
       if (!entitlements || entitlements.status === 'cancelled') {
         return { skip: 'module_off' };
       }
@@ -702,6 +715,31 @@ export class EmailWorker implements OnModuleDestroy {
   private deliverable(email: string) {
     if (!email || !ADDRESS.test(email)) return false;
     return this.sender.mode === 'outbox' || !RESERVED_DOMAIN.test(email);
+  }
+
+  /**
+   * For a client Trustline has suspended, which is sent nothing: drops as
+   * `expired` what was queued more than EXPIRES_AFTER_MS ago and is not
+   * being sent by another process, as sending would. Until then, the
+   * client made active again sends it. Returns how many were dropped.
+   */
+  private expire(tenantId: string, now: Date) {
+    return this.inClient(tenantId, async (tx) => {
+      const dropped = await tx
+        .update(emailQueue)
+        .set({ status: 'skipped', reason: 'expired', claimedUntil: null, updatedAt: now })
+        .where(
+          and(
+            lt(emailQueue.createdAt, new Date(now.getTime() - EXPIRES_AFTER_MS)),
+            or(
+              eq(emailQueue.status, 'pending'),
+              and(eq(emailQueue.status, 'sending'), lt(emailQueue.claimedUntil, now)),
+            ),
+          ),
+        )
+        .returning({ id: emailQueue.id });
+      return dropped.length;
+    });
   }
 
   /**

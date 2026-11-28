@@ -286,6 +286,14 @@ describe('email', () => {
       });
       await setPreferences(nurse.cookie, { immediate: true, digest: true }).expect(200);
     });
+
+    it('goes back to the organization’s language with null', async () => {
+      await setPreferences(quality.cookie, { language: 'ar' }).expect(200);
+      const back = await setPreferences(quality.cookie, { language: null }).expect(200);
+      expect(back.body.language).toBeNull();
+      const [last] = (await auditOf(a, 'notification_preferences_changed')).slice(-1);
+      expect(last.changes).toEqual({ language: { from: 'ar', to: null }, via: 'settings' });
+    });
   });
 
   describe('GET and PUT /settings/email', () => {
@@ -903,6 +911,175 @@ describe('email', () => {
       await work();
       expect((await queue()).map((r) => r.reason)).toEqual(['opted_out']);
       await setPreferences(quality.cookie, { digest: true }).expect(200);
+    });
+
+    /** Today's digests not made yet: as on a new morning. */
+    const newMorning = async () => {
+      await clear();
+      await bench.owner.db.execute(
+        sql`update email_settings set digests_queued_on = null where tenant_id = ${a.id}`,
+      );
+      worker.digestHour = 0;
+    };
+    const digestsKept = async () =>
+      (await kept()).filter((m) => m.category === 'daily_digest');
+    const digestOutcome = async () =>
+      Object.fromEntries(
+        (await queue())
+          .filter((r) => r.category === 'daily_digest')
+          .map((r) => [names.get(r.user_id), `${r.status} ${r.reason ?? ''}`.trim()]),
+      );
+
+    it('prepares none while the organization has email off, and sends it the same day once it is on', async () => {
+      await newMorning();
+      await http().put('/settings/email').set('Cookie', a.cookie).send({ enabled: false }).expect(200);
+      try {
+        expect(await work()).toMatchObject({ queued: 0 });
+        expect(await queue()).toEqual([]);
+      } finally {
+        await http().put('/settings/email').set('Cookie', a.cookie).send({ enabled: true }).expect(200);
+      }
+      expect((await work()).queued).toBeGreaterThan(0);
+      expect((await digestsKept()).some((m) => m.user_id === nurse.id)).toBe(true);
+    });
+
+    it('lists incidents but not approvals or reviews while the subscription is suspended', async () => {
+      await newMorning();
+      await setSubscription(a, { status: 'suspended' }).expect(200);
+      try {
+        await work();
+      } finally {
+        await setSubscription(a, { status: 'active' }).expect(200);
+      }
+      const mails = await digestsKept();
+      const nurses = mails.find((m) => m.user_id === nurse.id)!;
+      expect(nurses.text_body).toContain('Incidents assigned to you: 2');
+      expect(mails.length).toBeGreaterThan(0);
+      for (const mail of mails) {
+        expect(mail.text_body).not.toMatch(/Documents to review or approve|Periodic reviews due/);
+        expect(mail.text_body).not.toContain('وثائق بانتظار مراجعتك أو اعتمادك');
+      }
+      // What waited for the quality officer was approvals only: nothing.
+      expect((await digestOutcome())[quality.name]).toBe('skipped nothing_waiting');
+    });
+
+    it('has no section of a module that is off', async () => {
+      const original = (
+        await http().get(`/platform/tenants/${a.id}/subscription`).set('Cookie', bench.platform).expect(200)
+      ).body.plan.id as string;
+      const docsOnly = (
+        await http()
+          .post('/platform/plans')
+          .set('Cookie', bench.platform)
+          .send({
+            code: `${bench.prefix}-docs-digest`,
+            name: { en: 'Documents', ar: 'الوثائق', fr: 'Documents' },
+            modules: ['policies'],
+            limits: NO_LIMITS,
+            extras: NO_EXTRAS,
+          })
+          .expect(201)
+      ).body.id as string;
+      await newMorning();
+      await setSubscription(a, { planId: docsOnly }).expect(200);
+      try {
+        await work();
+      } finally {
+        await setSubscription(a, { planId: original }).expect(200);
+      }
+      // The nurse had only incidents waiting.
+      expect((await digestOutcome())[nurse.name]).toBe('skipped nothing_waiting');
+      const qualitys = (await digestsKept()).find((m) => m.user_id === quality.id)!;
+      expect(qualitys.text_body).toMatch(/Documents to review or approve: \d+/);
+      expect(qualitys.text_body).not.toContain('Incidents assigned to you');
+    });
+
+    it('is not sent on a later day than its own', async () => {
+      await newMorning();
+      worker.sender = failing(() => new MailFailure('retry', '451')).sender;
+      try {
+        await work();
+      } finally {
+        worker.sender = outbox;
+      }
+      const waiting = (await queue()).filter(
+        (r) => r.category === 'daily_digest' && r.status === 'pending',
+      );
+      expect(waiting.length).toBeGreaterThan(0);
+      // As if it was yesterday's, still being tried today.
+      await bench.owner.db.execute(
+        sql`update email_queue set period = period - 1, next_attempt_at = now()
+            where tenant_id = ${a.id} and category = 'daily_digest' and status = 'pending'`,
+      );
+      await work();
+      const after = new Map((await queue()).map((r) => [r.id, r]));
+      for (const row of waiting) {
+        expect(after.get(row.id)).toMatchObject({ status: 'skipped', reason: 'expired' });
+      }
+      expect(await digestsKept()).toEqual([]);
+    });
+  });
+
+  // Last: suspending a client ends its sessions for good, and the tests
+  // above use the other hospital's.
+  describe('a client Trustline has suspended', () => {
+    it('is sent nothing, and its emails expire and are deleted after 30 days like anyone’s', async () => {
+      worker.sender = outbox;
+      worker.digestHour = 24;
+      await clear();
+      const bFacility = await bench.createUnit(b, 'facility', 'BF', null);
+      const bWard = await bench.createUnit(b, 'unit', 'BW', bFacility);
+      // Reported by someone else: the administrator, who triages, is told.
+      const bNurse = await bench.createStaff(b, 'b-nurse', { role: 'reporter', orgUnitId: null });
+      const reportInB = () =>
+        http()
+          .post('/incidents')
+          .set('Cookie', bNurse.cookie)
+          .send({
+            type: 'incident',
+            categoryId: b.categories.equipment,
+            orgUnitId: bWard,
+            occurredAt: new Date(Date.now() - HOUR).toISOString(),
+            description: DESCRIPTION,
+            harmLevel: 'severe',
+            anonymous: false,
+          })
+          .expect(201);
+      await reportInB();
+      await work();
+      expect((await kept(b)).length).toBeGreaterThan(0);
+      await reportInB();
+      const status = (to: 'active' | 'suspended') =>
+        http().patch(`/platform/tenants/${b.id}`).set('Cookie', bench.platform).send({ status: to }).expect(200);
+      await status('suspended');
+      try {
+        // Nothing is sent, and nothing is dropped before its day is out.
+        const before = (await kept(b)).length;
+        expect(await work()).toMatchObject({ kept: 0, skipped: 0 });
+        expect((await kept(b)).length).toBe(before);
+        const pending = (await queue(b)).filter((r) => r.status === 'pending');
+        expect(pending.length).toBeGreaterThan(0);
+
+        await bench.owner.db.execute(
+          sql`update email_queue set created_at = now() - interval '25 hours'
+              where tenant_id = ${b.id} and status = 'pending'`,
+        );
+        await work();
+        const expired = new Map((await queue(b)).map((r) => [r.id, r]));
+        for (const row of pending) {
+          expect(expired.get(row.id)).toMatchObject({ status: 'skipped', reason: 'expired' });
+        }
+        expect((await kept(b)).length).toBe(before);
+
+        await bench.owner.db.execute(
+          sql`update email_queue set updated_at = now() - interval '31 days' where tenant_id = ${b.id}`,
+        );
+        await work();
+        expect(await queue(b)).toEqual([]);
+        expect(await kept(b)).toEqual([]);
+      } finally {
+        await status('active');
+      }
     });
   });
 });

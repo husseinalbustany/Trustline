@@ -53,7 +53,9 @@ urgent work, or they come too often to be emails:
 Once a day, at 07:00 in the organization's time zone (`tenants.time_zone`),
 each active person gets one email listing what waits for them. Nobody is
 sent an empty digest. If the API was not running at 07:00, the digest goes
-out at the first run after that on the same day, and never on a later day.
+out at the first run after that on the same day, and never on a later day:
+one still unsent when the organization's day ends (tried again past
+midnight) is dropped as `expired`, since the next morning has its own.
 
 | Section | What | Module |
 |---|---|---|
@@ -151,8 +153,11 @@ or expired token gets a page saying the link is not valid, nothing more.
   (in the digest and the weekly digest). Approval steps and reviews are not
   emailed while suspended: they cannot be decided until the subscription is
   active again.
-- **A client Trustline has suspended** (`tenants.status`) gets nothing. Its
-  queued emails expire.
+- **A client Trustline has suspended** (`tenants.status`) gets nothing and
+  has no digest made. The worker still visits it, only to drop as `expired`
+  what was queued more than 24 hours before, and to delete what is finished
+  after 30 days like anyone's (section 7). Made active again within the
+  day, it sends what is still queued.
 
 ## 5. How it is sent
 
@@ -199,12 +204,14 @@ for the life of the process (the log says so).
   fail.**
 - The **email worker** (`EmailWorker`) is started by `main.ts`, beside the
   deadline and policy checks. It runs every 30 seconds and goes through each
-  active client in transactions of its own under `TenantDb.withTenant`.
+  client in transactions of its own under `TenantDb.withTenant`: it sends
+  for active clients, and only expires and deletes for suspended ones.
   Tests do not start it; they call `run()` with a moment and their own
   clients.
 - **Once, with any number of API processes.** A process claims a row by
   setting it to `sending` and adding one to `attempts`, for rows it has
-  locked with `SKIP LOCKED`. Then it sends, outside any transaction, and
+  locked with `SKIP LOCKED`, for 15 minutes from the clock (not from when
+  its run began). Then it sends, outside any transaction, and
   records the outcome only while the row is still `sending` with that
   attempt number. A second process never sees a claimed row as free. Just
   before each send the claim is renewed for 15 minutes from then, on the
@@ -275,7 +282,7 @@ queue keeps the outcome for the retention period.
 
 **Retention: 30 days.** Queue rows that are finished (sent, skipped,
 failed) and outbox rows are deleted 30 days after they were last changed, by
-the worker. Thirty days covers the questions support gets ("did I get that
+the worker, for every client, including one Trustline has suspended. Thirty days covers the questions support gets ("did I get that
 email last week?") and holds back a resend for as long as it matters. The
 queue's notification and the day of a digest are never queued again. After
 30 days, keeping email addresses and copies of messages is personal data
