@@ -1,3 +1,6 @@
+import { rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { eq, inArray, or, sql } from 'drizzle-orm';
 import { createDatabase } from '../src/database/client.js';
 import {
@@ -99,6 +102,7 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
   // variable is checked here, where it was written for real.
   let unregistered: string[] = [];
   let checkFailed: unknown = null;
+  let removedIds: string[] = [];
   try {
     const { rows } = await db.execute<{ action: string; key: string | null }>(sql`
       select distinct a.action, k as key
@@ -121,6 +125,7 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
     // In one transaction: another test file, which may be reading every
     // client at that moment, never sees one half removed (a client with
     // no subscription, say).
+    removedIds = (await db.select({ id: tenants.id }).from(tenants).where(ours)).map((r) => r.id);
     await db.transaction(async (tx) => {
       const ids = tx.select({ id: tenants.id }).from(tenants).where(ours);
       const admins = tx
@@ -234,6 +239,13 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
     });
   } finally {
     await pool.end();
+  }
+  // The run's clients' export archives, encrypted, and their working files
+  // (security review 19, L9): where ExportStorage keeps them.
+  const root = resolve(process.env.EXPORT_STORAGE_DIR?.trim() || join(tmpdir(), 'trustline-exports'));
+  for (const id of removedIds) {
+    await rm(join(root, id), { recursive: true, force: true });
+    await rm(join(root, 'work', id), { recursive: true, force: true });
   }
   if (checkFailed) throw checkFailed;
   if (unregistered.length > 0) {

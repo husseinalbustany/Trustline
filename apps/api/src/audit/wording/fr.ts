@@ -361,6 +361,7 @@ export const fr: AuditWording = {
       medicalOptionAllowed: "Option médicale autorisée",
     },
     values: {
+      stopped: "le traitement s’est arrêté pendant la préparation",
       subscription_cancelled: "l’abonnement est résilié",
       contract_end: "Fin de contrat",
       on_request: "Sur demande",
@@ -423,6 +424,7 @@ export const fr: AuditWording = {
       person: "Une personne",
     },
     templates: {
+      "data_export_expired.replaced": "Export : {exportId} · Motif : un export plus récent est prêt",
       "data_export_expired.expiry": "Export : {exportId} · Motif : dernier jour passé",
       "data_export_expired.downloads": "Export : {exportId} · Motif : nombre maximal de téléchargements atteint",
       "external_access_granted": "Organisme d’origine : {organization} · Objet : {purpose} · Accès : du {from} au {until} · Rôle : {roleId}",

@@ -361,6 +361,7 @@ export const ar: AuditWording = {
       medicalOptionAllowed: "السماح بالخيار الطبي",
     },
     values: {
+      stopped: "توقّف المعالج أثناء إعداده",
       subscription_cancelled: "الاشتراك ملغى",
       contract_end: "انتهاء العقد",
       on_request: "بناءً على طلب",
@@ -423,6 +424,7 @@ export const ar: AuditWording = {
       person: "شخص",
     },
     templates: {
+      "data_export_expired.replaced": "التصدير: {exportId} · السبب: إعداد تصدير أحدث",
       "data_export_expired.expiry": "التصدير: {exportId} · السبب: انقضاء آخر يوم للتنزيل",
       "data_export_expired.downloads": "التصدير: {exportId} · السبب: بلوغ الحد الأقصى لمرات التنزيل",
       "external_access_granted": "جهة المقيّم: {organization} · الغرض: {purpose} · مدة الوصول: من {from} إلى {until} · الدور: {roleId}",

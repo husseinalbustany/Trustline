@@ -103,7 +103,12 @@ describe('the end of a contract', () => {
       await platform(bench.platform).post(url, {}).expect(400);
       await platform(bench.platform).post(url, { writtenRequest: { ...writtenRequest, reference: '' } }).expect(400);
       await platform(bench.platform).post(`/${c.id}/exports/${a.id}/approve`, { writtenRequest }).expect(404);
-      // A client with a second holder: that holder approves.
+      // A client with a second holder, independent of the one who asked:
+      // that holder approves.
+      const maker = await bench.createStaff(a, 'maker', { role: 'administrator', orgUnitId: null });
+      const independent = await bench.createStaff({ ...a, cookie: maker.cookie }, 'independent', { role: 'administrator', orgUnitId: null });
+      await bench.owner.db.execute(sql`update users set created_at = now() - interval '8 days' where id = ${independent.id}`);
+      await bench.owner.db.execute(sql`update role_assignments set granted_at = now() - interval '8 days' where user_id = ${independent.id}`);
       const theirs = (await http().post('/exports').set('Cookie', a.cookie).send({ reason: 'on_request', password }).expect(201)).body;
       expect((await platform(bench.platform).post(`/${a.id}/exports/${theirs.id}/approve`, { writtenRequest }).expect(409)).body).toEqual({ code: 'not_alone' });
       // Another client's export, named under this one: as if not there.

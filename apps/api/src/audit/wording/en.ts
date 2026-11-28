@@ -361,6 +361,7 @@ export const en: AuditWording = {
       medicalOptionAllowed: "Medical option allowed",
     },
     values: {
+      stopped: "the process stopped while making it",
       subscription_cancelled: "the subscription is cancelled",
       contract_end: "End of contract",
       on_request: "On request",
@@ -423,6 +424,7 @@ export const en: AuditWording = {
       person: "A person",
     },
     templates: {
+      "data_export_expired.replaced": "Export: {exportId} · Reason: a newer export was made ready",
       "data_export_expired.expiry": "Export: {exportId} · Reason: its last day passed",
       "data_export_expired.downloads": "Export: {exportId} · Reason: downloaded the most times allowed",
       "external_access_granted": "Their organization: {organization} · Purpose: {purpose} · Access: {from} to {until} · Role: {roleId}",

@@ -47,19 +47,18 @@ describe('full data export', () => {
   /** An error's body, from a download's bytes. */
   const json = (res: { body: Buffer }) => JSON.parse(res.body.toString('utf8')) as Record<string, unknown>;
 
-  /** An Administrator made by Trustline's staff, their account and grant 8 days old. */
+  /**
+   * An Administrator whom the client's first administrator, who asks for
+   * the exports here, did not make: made by another Administrator, their
+   * account and grant 8 days old.
+   */
+  const makers = new Map<string, Staff>();
   const independentAdmin = async (h: Hospital, suffix: string): Promise<Staff> => {
-    const email = `admin-${suffix}-dex-${run}@test.invalid`;
-    const created = await http()
-      .post(`/platform/tenants/${h.id}/administrators`)
-      .set('Cookie', bench.platform)
-      .send({ name: { en: `Admin ${suffix}` }, email })
-      .expect(201);
-    await http().post('/auth/invite/accept').send({ org: h.slug, token: created.body.invite.token, password }).expect(204);
-    const id = created.body.user.id as string;
-    await bench.owner.db.execute(sql`update users set created_at = now() - interval '8 days' where id = ${id}`);
-    await bench.owner.db.execute(sql`update role_assignments set granted_at = now() - interval '8 days' where user_id = ${id}`);
-    return { id, email, name: `Admin ${suffix}`, cookie: bench.cookieOf(await bench.login(h.slug, email).expect(200)) };
+    if (!makers.has(h.id)) makers.set(h.id, await bench.createStaff(h, `maker${suffix}`, { role: 'administrator', orgUnitId: null }));
+    const made = await bench.createStaff({ ...h, cookie: makers.get(h.id)!.cookie }, suffix, { role: 'administrator', orgUnitId: null });
+    await bench.owner.db.execute(sql`update users set created_at = now() - interval '8 days' where id = ${made.id}`);
+    await bench.owner.db.execute(sql`update role_assignments set granted_at = now() - interval '8 days' where user_id = ${made.id}`);
+    return made;
   };
 
   beforeAll(async () => {
@@ -68,6 +67,12 @@ describe('full data export', () => {
     storage = bench.app.get(ExportStorage);
     a = await bench.createHospital('a', { locales: ['en', 'ar'], defaultLocale: 'en' });
     b = await bench.createHospital('b');
+    // The first administrators, made by Trustline more than 7 days ago:
+    // each may approve what another asks (security review 19, M3).
+    for (const h of [a, b]) {
+      await bench.owner.db.execute(sql`update users set created_at = now() - interval '8 days' where id = ${h.adminId}`);
+      await bench.owner.db.execute(sql`update role_assignments set granted_at = now() - interval '8 days' where user_id = ${h.adminId}`);
+    }
     // Administrators made by Trustline, more than 7 days ago: a second
     // person in fact, whom the one who asks did not make (security review
     // 19, M3).
@@ -165,7 +170,7 @@ describe('full data export', () => {
         .select({ userId: notifications.userId, data: notifications.data })
         .from(notifications)
         .where(and(eq(notifications.tenantId, a.id), eq(notifications.kind, 'data_export_changed')));
-      expect(told.map((t) => t.userId).sort()).toEqual([second.id, third.id].sort());
+      expect(told.map((t) => t.userId).sort()).toEqual([second.id, third.id, makers.get(a.id)!.id].sort());
       expect(told[0].data).toMatchObject({ change: 'requested', exportId: asked.id });
       // In the list, and not another client's.
       expect((await http().get('/exports').set('Cookie', second.cookie).expect(200)).body.items).toEqual([
@@ -212,7 +217,7 @@ describe('full data export', () => {
       expect(stored.subarray(0, 4).toString()).toBe('TLX1');
       expect(stored.includes(Buffer.from('PK\u0003\u0004'))).toBe(false);
       const [ready] = await audits(a, 'data_export_ready');
-      expect(ready.changes).toMatchObject({ exportId: asked.id, archiveSha256: row.archiveSha256, counts: expect.objectContaining({ users: 5, incidents: 1 }) });
+      expect(ready.changes).toMatchObject({ exportId: asked.id, archiveSha256: row.archiveSha256, counts: expect.objectContaining({ users: (await bench.owner.db.execute<{ n: number }>(sql`select count(*)::int as n from users where tenant_id = ${a.id}`)).rows[0].n, incidents: 1 }) });
 
       // Not for a third administrator, nor another client.
       expect(json(await download(third.cookie, asked.id).expect(403))).toEqual({ code: 'not_yours' });
@@ -399,6 +404,64 @@ describe('full data export', () => {
       expect(await audits(a, 'data_export_lapsed')).toEqual([{ actorId: null, changes: { exportId: three.id } }]);
       // A new one may be asked for.
       await post(third.cookie, '', { reason: 'on_request', password }).expect(201);
+    });
+  });
+
+  describe('the worker’s safeguards (security review 19)', () => {
+    let bSecond: Staff;
+    const askAndApprove = async () => {
+      const asked = (await post(b.cookie, '', { reason: 'on_request', password }).expect(201)).body;
+      await post(bSecond.cookie, `/${asked.id}/approve`, { password, revision: asked.revision }).expect(200);
+      return asked.id as string;
+    };
+    const rowOf = async (id: string) => (await bench.owner.db.select().from(dataExports).where(eq(dataExports.id, id)))[0];
+
+    beforeAll(async () => {
+      bSecond = await independentAdmin(b, 'bsecond');
+    }, 60_000);
+
+    it('fails a claim silent at its last try, as stopped, and tells the two (M1)', async () => {
+      const id = await askAndApprove();
+      await bench.owner.db.execute(sql`update data_exports set status = 'making', attempts = 3, claimed_at = now() - interval '31 minutes' where id = ${id}`);
+      expect(await worker.run(new Date(), [b.id])).toMatchObject({ made: 0, failed: 1 });
+      expect(await rowOf(id)).toMatchObject({ status: 'failed', errorKind: 'stopped', attempts: 3 });
+      expect((await audits(b, 'data_export_failed')).map((e) => e.changes)).toContainEqual({ exportId: id, kind: 'stopped', attempt: 3, final: true });
+    });
+
+    it('gives up an attempt another run took over, and touches nothing of the other’s (M2)', async () => {
+      const id = await askAndApprove();
+      const running = worker.run(new Date(), [b.id]);
+      for (let i = 0; i < 2000 && (await rowOf(id)).status !== 'making'; i++) await new Promise((r) => setTimeout(r, 5));
+      // Another run takes it over: its own try.
+      await bench.owner.db.execute(sql`update data_exports set attempts = attempts + 1 where id = ${id}`);
+      expect(await running).toMatchObject({ made: 0 });
+      expect(await rowOf(id)).toMatchObject({ status: 'making', attempts: 2, storageKey: null });
+      expect(existsSync(join(storage.root, 'work', b.id, id, '1'))).toBe(false);
+      // The other run, as if it stopped: freed for the next test.
+      await bench.owner.db.execute(sql`update data_exports set status = 'failed' where id = ${id}`);
+    }, 60_000);
+
+    it('keeps one archive ready per client: the one before expires, its file deleted (L7)', async () => {
+      const first = await askAndApprove();
+      expect(await worker.run(new Date(), [b.id])).toMatchObject({ made: 1 });
+      const before = await rowOf(first);
+      const second_ = await askAndApprove();
+      expect(await worker.run(new Date(), [b.id])).toMatchObject({ made: 1 });
+      expect(await rowOf(first)).toMatchObject({ status: 'expired', storageKey: null });
+      expect(existsSync(join(storage.root, before.storageKey!))).toBe(false);
+      expect((await audits(b, 'data_export_expired')).map((e) => e.changes)).toContainEqual({ exportId: first, by: 'replaced' });
+      expect(await rowOf(second_)).toMatchObject({ status: 'ready' });
+    }, 120_000);
+
+    it('counts no download of an archive that cannot be opened whole (L4)', async () => {
+      const [ready] = await bench.owner.db.select().from(dataExports).where(and(eq(dataExports.tenantId, b.id), eq(dataExports.status, 'ready')));
+      const path = join(storage.root, ready.storageKey!);
+      const bytes = await readFile(path);
+      bytes[Math.floor(bytes.length / 2)] ^= 0xff;
+      await writeFile(path, bytes);
+      expect(json(await download(b.cookie, ready.id).expect(409))).toEqual({ code: 'archive_unavailable' });
+      expect(await rowOf(ready.id)).toMatchObject({ downloads: 0 });
+      expect(await audits(b, 'data_export_downloaded')).toEqual([]);
     });
   });
 });
