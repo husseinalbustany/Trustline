@@ -60,9 +60,9 @@ export class PlatformImportWindowController {
   }
 
   /**
-   * Sets the last day imports are accepted: from the module's first day
-   * (which closes it at once if that is past) to a year and a day from
-   * today, on the client's calendar (400 `invalid_closes_on` with the
+   * Sets the last day imports are accepted: from the day before the
+   * module's first day (closed from the start; any past day closes it at
+   * once) to a year and a day from today, on the client's calendar (400 `invalid_closes_on` with the
    * `earliest` and `latest`). 409 `policies_never_on` for a client that has
    * never had the module: its window starts when it first has it.
    */
@@ -84,12 +84,11 @@ export class PlatformImportWindowController {
         throw new ConflictException({ code: 'policies_never_on' });
       }
       const latest = shiftDay(dayOf(new Date(), tenant.timeZone), MAX_DAYS_AHEAD);
-      if (closesOn < before.startedOn || closesOn > latest) {
-        throw new BadRequestException({
-          code: 'invalid_closes_on',
-          earliest: before.startedOn,
-          latest,
-        });
+      // From the day before the module's first day (closed from the start)
+      // to a year and a day from today.
+      const earliest = before.latestApprovedOn;
+      if (closesOn < earliest || closesOn > latest) {
+        throw new BadRequestException({ code: 'invalid_closes_on', earliest, latest });
       }
       const admin = req.platformAdmin;
       await tx

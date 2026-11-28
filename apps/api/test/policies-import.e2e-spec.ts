@@ -325,12 +325,19 @@ describe('policies: importing documents, the approving authority, the authoritat
         { key: 'exceptions_and_escalation', required: false },
         { key: 'references', required: false },
       ]);
-      // The hash is of the version and what the original says, as signed.
+      // The hash is of the version and what the original says, as signed,
+      // with the authoritative language recorded on it (security review 7,
+      // finding 3).
       const original = (control.approvedBeforeTrustline as Record<string, unknown>);
       const { importedBy: _by, importedAt: _at, ...said } = original;
+      expect(version.authoritativeLocale).toBe('en');
       expect(details.signature.contentHash).toBe(
         contentHash(
-          signedImport({ id: imported.id, number: imported.number }, version as never, said as never),
+          signedImport(
+            { id: imported.id, number: imported.number },
+            { ...version, signsAuthoritativeLocale: true } as never,
+            said as never,
+          ),
         ),
       );
       // In the library and its history, and in nobody else's.
