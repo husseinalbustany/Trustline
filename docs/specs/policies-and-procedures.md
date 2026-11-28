@@ -784,3 +784,36 @@ See "Acknowledgement" above: only acknowledgements past their due date.
   « vérification » throughout). Demo clients already seeded keep the
   example documents they have: their text is signed, and the seed adds
   only what is missing.
+
+## Decided by the business after the quality review
+
+1. **Existing libraries are migrated, not retyped from scratch.** A manager
+   for the whole organization can import a document as "approved before
+   Trustline": it keeps its existing number (when it fits the client's
+   numbering, or as given otherwise), its original revision label, its
+   original approval date and approver as written on the paper, where the
+   signed original is kept, and its next review date. It is published as
+   version 1 with source `imported`; the importing manager signs that the
+   imported text matches the approved original (password, meaning
+   `imported`). The control block shows "Approved before Trustline" with
+   those details, never as a Trustline approval. Staff are asked to
+   acknowledge an imported document only if the importer says so. At its
+   next review the document is re-issued under the normal route and
+   signatures. Imports can be done one by one and in batches (a file
+   prepared with Trustline's help). Attaching the original PDF comes with
+   file storage, later.
+2. **A built-in "Approving authority" role** (policies view, view all and
+   approve), named at onboarding (for example a medical director, a chief
+   executive, a plant manager). The starting approval route is review by the
+   Quality officer, then approval by the Approving authority. Existing
+   clients get the role, and their starting routes are changed only where
+   they are still exactly the starting route.
+3. **Each organization chooses its authoritative language** for documents
+   (a document setting, by default its main language). Sections are checked,
+   flagged and shown against that language.
+4. **Email.** Notifications are also sent by email, as a daily digest of
+   what waits for the person (to acknowledge, to approve or review, reviews
+   due) and immediately for what cannot wait. Built so that any mail service
+   can be plugged in by configuration; until one is configured, mail is
+   kept in an outbox and not sent. See the email section of the
+   notifications work.
