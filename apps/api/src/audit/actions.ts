@@ -44,7 +44,8 @@ export type AuditEntityType =
   | 'document_type'
   | 'document_category'
   | 'approval_route'
-  | 'subscription';
+  | 'subscription'
+  | 'ai_draft';
 
 /**
  * The module an entry belongs to: one of a module the client does not have
@@ -117,6 +118,11 @@ export const AUDIT_ACTIONS = {
   response_rules_changed: code('organization', 'tenant', ['none', 'mild', 'moderate', 'severe', 'death']),
   email_setting_changed: code('organization', 'tenant', ['enabled']),
   notification_preferences_changed: code('organization', 'user', ['immediate', 'digest', 'weekly', 'language', 'via']),
+  // The organization's profile (docs/specs/ai-policy-drafting.md): which
+  // of its parts changed.
+  organization_profile_updated: code('organization', 'tenant', ['changed']),
+  // The organization switched AI on or off (docs/specs/ai-providers-and-allowances.md).
+  ai_use_changed: code('organization', 'tenant', ['from', 'to']),
 
   // Incidents.
   incident_reported: code('incidents', 'incident', ['reference', 'type', 'anonymous', 'channel'], { maskActor: true }),
@@ -128,7 +134,7 @@ export const AUDIT_ACTIONS = {
   public_reporting_limit_reached: code('incidents', 'tenant', ['limit', 'perMinutes']),
 
   // Documents.
-  document_created: code('documents', 'document', ['number', 'typeId', 'categoryId', 'ownerId', 'ownerUnitId', 'confidentiality', 'audience', 'versionId']),
+  document_created: code('documents', 'document', ['number', 'typeId', 'categoryId', 'ownerId', 'ownerUnitId', 'confidentiality', 'audience', 'versionId', 'source', 'aiDraftSessionId']),
   document_updated: code('documents', 'document', ['reason', 'categoryId', 'title', 'ownerId', 'ownerUnitId', 'confidentiality', 'keywords', 'references', 'reviewMonths', 'authoritativeLocale', 'audience', 'authoritative', 'versionsInProgress', 'nextReviewOn', 'confirmationDueFrom']),
   document_version_created: code('documents', 'document', ['versionId', 'version', 'copiedFromVersionId', 'contributors']),
   document_version_edited: code('documents', 'document', ['versionId', 'version', 'sections', 'changeSummary', 'acknowledgementRequired', 'acknowledgeWithinDays', 'contentHash']),
@@ -155,6 +161,20 @@ export const AUDIT_ACTIONS = {
   approval_route_created: code('documents', 'approval_route', ['documentTypeId', 'name', 'active', 'steps', 'startingRoute', 'fallback']),
   approval_route_updated: code('documents', 'approval_route', ['name', 'documentTypeId', 'active', 'steps']),
   document_settings_updated: code('documents', 'tenant', ['maxReviewMonths', 'authoritativeLocale', 'authoritative', 'versionsInProgress']),
+  // The document design, for the organization or for one type: which parts changed.
+  document_design_updated: code('documents', 'tenant', ['documentTypeId', 'version', 'changed']),
+  // Drafting with the assistant (docs/specs/ai-policy-drafting.md). The
+  // conversation's text is kept with the draft, never in the trail.
+  ai_draft_started: code('documents', 'ai_draft', ['typeId', 'locale']),
+  ai_draft_questions_asked: code('documents', 'ai_draft', ['round', 'questions', 'aiRequestId']),
+  ai_draft_answered: code('documents', 'ai_draft', ['round', 'answered', 'notDecided']),
+  ai_draft_version_created: code('documents', 'ai_draft', ['version', 'author', 'gaps', 'assumptions', 'sources', 'model', 'aiRequestId']),
+  ai_draft_discarded: code('documents', 'ai_draft', ['versions']),
+  ai_draft_handed_over: code('documents', 'document', ['sessionId', 'version', 'number']),
+  ai_draft_ownership_taken: code('documents', 'document', ['sessionId']),
+  // The daily check removed conversations not handed over: discarded, or
+  // with no activity for 90 days. How many, never what they said.
+  ai_drafts_removed_by_system: code('documents', 'tenant', ['discarded', 'abandoned']),
   document_type_changed_by_system: migration('documents', 'document_type', ['noChangeNeedsApproval']),
   approval_routes_changed_by_system: migration('documents', 'tenant', ['routes', 'step']),
   policy_defaults_reworded_by_system: migration('documents', 'tenant', ['types', 'categories']),
@@ -171,13 +191,16 @@ export const AUDIT_ACTIONS = {
   // Written by Trustline's staff, from the admin portal.
   // `platformAdminName` names the staff member (`platformAdminEmail` in
   // entries written before the audit trail's step 7).
-  subscription_changed: code('trustline', 'subscription', ['plan', 'status', 'modules', 'limits', 'planUpdated', 'platformAdminId', 'platformAdminName'], { by: 'platform', legacy: ['platformAdminEmail'] }),
+  subscription_changed: code('trustline', 'subscription', ['plan', 'status', 'modules', 'limits', 'aiAllowances', 'planUpdated', 'platformAdminId', 'platformAdminName'], { by: 'platform', legacy: ['platformAdminEmail'] }),
   import_window_changed: code('trustline', 'tenant', ['closesOn', 'reason', 'platformAdminId', 'platformAdminName'], { by: 'platform', module: 'policies', legacy: ['platformAdminEmail'] }),
   // Mirrored from Trustline's own log (spec, item 3): the client was made,
   // and what of it was changed (suspended or made active again, its time
   // zone, its languages, its standard), with the old and new values.
   client_created_by_platform: code('trustline', 'tenant', ['slug', 'plan', 'platformAdminId', 'platformAdminName'], { by: 'platform' }),
   client_settings_changed_by_platform: code('trustline', 'tenant', ['changes', 'platformAdminId', 'platformAdminName'], { by: 'platform' }),
+  // How Trustline offers the client AI: on or off, each feature's provider
+  // (where it processes) and model, the allowances, the medical option.
+  ai_settings_changed: code('trustline', 'tenant', ['offered', 'features', 'allowances', 'medicalOptionAllowed', 'platformAdminId', 'platformAdminName'], { by: 'platform' }),
 
   // The audit trail itself.
   // The first entry the chain seals itself (migration 0058): how many were

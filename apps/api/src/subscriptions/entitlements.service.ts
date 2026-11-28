@@ -2,6 +2,7 @@ import { ConflictException, Injectable } from '@nestjs/common';
 import { eq, sql } from 'drizzle-orm';
 import type { Transaction } from '../database/client.js';
 import { plans, subscriptions } from '../database/schema.js';
+import { AI_FEATURES, type AiAllowances } from '../ai/features.js';
 import type { Localized } from '../i18n/locales.js';
 import {
   EXTRAS,
@@ -185,13 +186,15 @@ type Seen = {
   status: SubscriptionStatus;
   modules: readonly ModuleCode[];
   limits: Limits;
+  /** The AI allowances in force, the client's own overrides over the plan's. */
+  aiAllowances?: AiAllowances;
 };
 
 /**
  * What changed between two states of a subscription that the client can
  * see, for its own audit log, or null: its plan (by code), its status, the
- * modules switched on and off, and its limits. Never a note, a date or
- * anything commercial.
+ * modules switched on and off, its limits, and its AI allowances. Never a
+ * note, a date or anything commercial.
  */
 export function visibleChanges(before: Seen, after: Seen) {
   const seen: Record<string, unknown> = {};
@@ -210,5 +213,14 @@ export function visibleChanges(before: Seen, after: Seen) {
     ),
   );
   if (Object.keys(limits).length > 0) seen.limits = limits;
+  if (before.aiAllowances && after.aiAllowances) {
+    const ai = Object.fromEntries(
+      AI_FEATURES.filter((f) => before.aiAllowances![f] !== after.aiAllowances![f]).map((f) => [
+        f,
+        { from: before.aiAllowances![f], to: after.aiAllowances![f] },
+      ]),
+    );
+    if (Object.keys(ai).length > 0) seen.aiAllowances = ai;
+  }
   return Object.keys(seen).length > 0 ? seen : null;
 }

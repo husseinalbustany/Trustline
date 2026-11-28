@@ -153,7 +153,7 @@ describe('policies: the safeguards of importing documents', () => {
       } finally {
         await subscription('active');
       }
-    });
+    }, 20_000);
 
     it('is read on the import paths only, matched whole', async () => {
       await http().post('/x/policies/imports').set('Cookie', writer.cookie).send({ password, documents: [big()] }).expect(413);

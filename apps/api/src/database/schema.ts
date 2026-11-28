@@ -20,6 +20,12 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import {
+  AI_FEATURES,
+  NO_AI_ALLOWANCES,
+  type AiAllowances,
+} from '../ai/features.js';
+import { AI_PROVIDER_KINDS, INFERENCE_TYPES } from '../ai/provider.js';
 import type { Localized } from '../i18n/locales.js';
 import {
   SUBSCRIPTION_STATUSES,
@@ -441,9 +447,10 @@ export const auditLog = pgTable(
     check('audit_log_entity_type_word', sql`${t.entityType} is null or ${t.entityType} ~ '^[a-z_]+$'`),
     tenantIsolation(),
     // The admin portal adds an entry when it changes what a client may use
-    // (`subscription_changed`) or the window in which it may import its
-    // existing documents (`import_window_changed`), in the same transaction
-    // as the change. It can neither read this log
+    // (`subscription_changed`), the window in which it may import its
+    // existing documents (`import_window_changed`) or how the client is
+    // offered AI (`ai_settings_changed`), in the same transaction as the
+    // change. It can neither read this log
     // nor change it: it holds INSERT alone, on the tenant, action, entity
     // and changes only (migration 0035), so the id and the time are always
     // the database's own. And only that entry, as nobody of the client's:
@@ -452,7 +459,7 @@ export const auditLog = pgTable(
       as: 'permissive',
       for: 'insert',
       to: platformRole,
-      withCheck: sql`actor_id IS NULL AND ip_address IS NULL AND action IN ('subscription_changed', 'import_window_changed', 'client_created_by_platform', 'client_settings_changed_by_platform')`,
+      withCheck: sql`actor_id IS NULL AND ip_address IS NULL AND action IN ('subscription_changed', 'import_window_changed', 'client_created_by_platform', 'client_settings_changed_by_platform', 'ai_settings_changed')`,
     }),
   ],
 );
@@ -1103,6 +1110,17 @@ export const notificationKind = pgEnum('notification_kind', [
   // to every holder of `data.export` or `settings.manage` for the whole
   // organization, in the app and by email at once. Names nobody.
   'data_export_changed',
+  // AI (docs/specs/ai-providers-and-allowances.md), to the client's
+  // administrators, about the organization. Trustline's staff changed which
+  // provider serves an AI feature, or whether AI is offered at all
+  // (`data.features`, comma-separated).
+  'ai_provider_changed',
+  // 80% of a feature's monthly allowance is used (`data.feature`, `used`,
+  // `allowance`, `month`): once a month per feature.
+  'ai_allowance_warning',
+  // All of it is used: the feature pauses until `data.resetsOn`. Once a
+  // month per feature.
+  'ai_allowance_reached',
 ]);
 
 // Something a user is told about an incident they can see. Stored so that it
@@ -1165,7 +1183,7 @@ export const notifications = pgTable(
     // new kind to be committed before it is created.
     check(
       'notifications_about_one_thing',
-      sql`(${t.incidentId} is null or ${t.documentId} is null) and (${t.incidentId} is not null or ${t.documentId} is not null or ${t.kind}::text in ('public_form_paused', 'acknowledgements_overdue_digest', 'email_turned_off', 'signing_pin_changed', 'signing_pin_locked', 'review_approval_turned_off', 'audit_chain_broken', 'policies_import_granted', 'external_access_changed', 'audit_chain_head', 'data_export_changed'))`,
+      sql`(${t.incidentId} is null or ${t.documentId} is null) and (${t.incidentId} is not null or ${t.documentId} is not null or ${t.kind}::text in ('public_form_paused', 'acknowledgements_overdue_digest', 'email_turned_off', 'signing_pin_changed', 'signing_pin_locked', 'review_approval_turned_off', 'audit_chain_broken', 'policies_import_granted', 'external_access_changed', 'audit_chain_head', 'data_export_changed', 'ai_provider_changed', 'ai_allowance_warning', 'ai_allowance_reached'))`,
     ),
     tenantIsolation(),
   ],
@@ -1378,6 +1396,12 @@ export const documents = pgTable(
     // How it came into Trustline: `written`, or `imported` with its first
     // version (approved before Trustline). Stays so after it is re-issued.
     source: documentVersionSource().notNull().default('written'),
+    // An AI draft (docs/specs/ai-policy-drafting.md): the conversation it
+    // came from, and the person who took ownership of it. Until someone
+    // does, it is marked "AI draft" and cannot be sent for review.
+    aiDraftSessionId: uuid(),
+    aiDraftOwnedBy: uuid(),
+    aiDraftOwnedAt: timestamp({ withTimezone: true }),
     // Its foreign keys to document_versions are added by migrations, as the
     // two tables point at each other, which this file cannot type:
     // documents_published_version_fk (with the tenant, 0039) and
@@ -2613,6 +2637,13 @@ export const plans = pgTable('plans', {
     .$type<PlanPrice[]>()
     .notNull()
     .default(sql`'[]'::jsonb`),
+  // The monthly AI allowance per feature (ai/features.ts): drafts,
+  // suggestions, assistant messages. Every feature said; null is no limit,
+  // zero is not included. A client's own override is in ai_client_settings.
+  aiAllowances: jsonb()
+    .$type<AiAllowances>()
+    .notNull()
+    .default(sql.raw(`'${JSON.stringify(NO_AI_ALLOWANCES)}'::jsonb`)),
   // A retired plan keeps its clients and can be given to no other.
   active: boolean().notNull().default(true),
   // Order in the admin portal, smallest first.
@@ -2972,6 +3003,521 @@ export const dataExports = pgTable(
     check('data_exports_not_self_approved', sql`${t.approvedBy} is null or ${t.approvedBy} <> ${t.requestedBy}`),
     check('data_exports_downloads', sql`${t.downloads} between 0 and 5`),
     check('data_exports_note', sql`${t.note} is null or length(${t.note}) <= 1000`),
+    tenantIsolation(),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// AI (docs/specs/ai-providers-and-allowances.md). The connections and the
+// platform's own settings are Trustline's data; a client's settings, the
+// features it is offered, its requests and its usage notices are tenant data
+// under row-level security. No table here holds a credential or the text of
+// a request: a connection names the environment variable its credential is
+// in, and a request is recorded by its size, cost and outcome only.
+// ---------------------------------------------------------------------------
+
+export const aiProviderKind = pgEnum('ai_provider_kind', AI_PROVIDER_KINDS);
+export const aiInferenceType = pgEnum('ai_inference_type', INFERENCE_TYPES);
+export const aiFeature = pgEnum('ai_feature', AI_FEATURES);
+export const aiRequestOutcome = pgEnum('ai_request_outcome', [
+  // Admitted and sent; its cost is the most it can be until it ends.
+  'pending',
+  'succeeded',
+  // The provider failed or timed out, twice if the first was worth a retry.
+  'failed',
+  // Not sent: the allowance or a spending limit was reached.
+  'refused',
+]);
+
+/**
+ * A model a connection offers, by the provider's own id for it (Bedrock's
+ * differ from Anthropic's, and say where a request may go: `global.`,
+ * `eu.`), with what it costs, in US dollars per million tokens, to estimate
+ * each request's cost.
+ */
+export type AiModel = {
+  id: string;
+  label: string;
+  inputUsdPerMTok: number;
+  outputUsdPerMTok: number;
+};
+
+// A provider connection Trustline holds: which service, where it processes
+// requests, the models it offers, and the name of the environment variable
+// that holds its credential (never the credential). Deactivated, never
+// deleted: the requests made through it keep pointing at it. Written by the
+// admin portal; read by the application, which needs the variable's name.
+export const aiProviderConnections = pgTable(
+  'ai_provider_connections',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    // Trustline's own name for it. Not shown to clients.
+    name: text().notNull().unique(),
+    kind: aiProviderKind().notNull(),
+    // The provider's region code (`me-central-1`), or for the Anthropic API
+    // the geography asked for (`us`), or `global`.
+    region: text().notNull(),
+    inferenceType: aiInferenceType().notNull(),
+    models: jsonb()
+      .$type<AiModel[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+    // AI_CREDENTIAL_<NAME>: only such a variable may be named, so that no
+    // connection can be pointed at another secret of the deployment.
+    credentialEnv: text().notNull(),
+    active: boolean().notNull().default(true),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'ai_provider_connections_credential_env',
+      sql`${t.credentialEnv} ~ '^AI_CREDENTIAL_[A-Z0-9_]{1,50}$'`,
+    ),
+    check(
+      'ai_provider_connections_name',
+      sql`length(${t.name}) between 1 and 100`,
+    ),
+    check(
+      'ai_provider_connections_region',
+      sql`${t.region} ~ '^[a-z0-9-]{2,30}$'`,
+    ),
+  ],
+);
+
+// Trustline's own AI settings, one row: the spending limit over every
+// client together, per calendar month in UTC. Null: no limit.
+export const aiPlatformSettings = pgTable(
+  'ai_platform_settings',
+  {
+    id: boolean().primaryKey().default(true),
+    monthlySpendingLimitMicroUsd: bigint({ mode: 'number' }),
+    updatedBy: uuid().references(() => platformAdmins.id),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check('ai_platform_settings_one_row', sql`${t.id}`),
+    check(
+      'ai_platform_settings_spending_limit',
+      sql`${t.monthlySpendingLimitMicroUsd} is null or ${t.monthlySpendingLimitMicroUsd} >= 0`,
+    ),
+  ],
+);
+
+// How a client is offered AI, set by Trustline's staff, and its own switch.
+// No row: AI is not offered. The admin portal writes every column; the
+// application reads them and writes the client's switch alone (its grants).
+export const aiClientSettings = pgTable(
+  'ai_client_settings',
+  {
+    tenantId: uuid()
+      .primaryKey()
+      .references(() => tenants.id),
+    // Whether Trustline offers the client AI at all.
+    offered: boolean().notNull().default(false),
+    // Allowances that differ from the plan's: a feature present replaces
+    // the plan's (null: no limit), a feature absent leaves it.
+    allowanceOverrides: jsonb()
+      .$type<Partial<AiAllowances>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+    // Whether the medical option may be offered. It still needs the
+    // client's signed agreement (ai_agreements, a later step).
+    medicalOptionAllowed: boolean().notNull().default(false),
+    // The most the client's requests may cost in one of its months. Null:
+    // no limit of the client's own (the platform's still applies).
+    monthlySpendingLimitMicroUsd: bigint({ mode: 'number' }),
+    // The client's own switch: off until it switches AI on.
+    clientEnabled: boolean().notNull().default(false),
+    clientSwitchedBy: uuid(),
+    clientSwitchedAt: timestamp({ withTimezone: true }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'ai_client_settings_switched_by_fk',
+      columns: [t.tenantId, t.clientSwitchedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    check(
+      'ai_client_settings_spending_limit',
+      sql`${t.monthlySpendingLimitMicroUsd} is null or ${t.monthlySpendingLimitMicroUsd} >= 0`,
+    ),
+    tenantIsolation(),
+    pgPolicy('ai_client_settings_platform', {
+      as: 'permissive',
+      for: 'all',
+      to: platformRole,
+      using: sql`true`,
+      withCheck: sql`true`,
+    }),
+  ],
+);
+
+// Which connection and model serve each feature offered to a client. No
+// row for a feature: not offered. Written by the admin portal only.
+export const aiClientFeatures = pgTable(
+  'ai_client_features',
+  {
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    feature: aiFeature().notNull(),
+    connectionId: uuid()
+      .notNull()
+      .references(() => aiProviderConnections.id),
+    // One of the connection's models.
+    model: text().notNull(),
+    // For quick answers, where the feature asks for one. Null: `model`.
+    quickModel: text(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ name: 'ai_client_features_pkey', columns: [t.tenantId, t.feature] }),
+    index('ai_client_features_connection_idx').on(t.connectionId),
+    tenantIsolation(),
+    pgPolicy('ai_client_features_platform', {
+      as: 'permissive',
+      for: 'all',
+      to: platformRole,
+      using: sql`true`,
+      withCheck: sql`true`,
+    }),
+  ],
+);
+
+// Every AI request of a client: who, which feature, which connection and
+// model, its size, its estimated cost and its outcome. Never its text. The
+// application adds a row when it admits a request and finishes it when the
+// provider answers; it can neither delete one nor change what it was. The
+// admin portal reads them, for usage and cost.
+export const aiRequests = pgTable(
+  'ai_requests',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    feature: aiFeature().notNull(),
+    connectionId: uuid()
+      .notNull()
+      .references(() => aiProviderConnections.id),
+    model: text().notNull(),
+    // Who asked. Null for what runs without a person (a scheduled check).
+    userId: uuid(),
+    // The client's month (its time zone) the request falls in: `YYYY-MM`.
+    month: text().notNull(),
+    // What it is counted under: the draft it belongs to (`unit_key`, the
+    // draft's own id, never anything written in it), and whether this
+    // request opened one counted unit of the allowance (a draft, a
+    // suggestion, an assistant message).
+    unitKey: uuid(),
+    counted: boolean().notNull(),
+    outcome: aiRequestOutcome().notNull(),
+    // Why it failed (the kind of provider failure) or was refused
+    // (`allowance_reached`, `spending_limit`). Never a provider's message.
+    reason: text(),
+    attempts: integer().notNull().default(0),
+    inputTokens: integer().notNull().default(0),
+    outputTokens: integer().notNull().default(0),
+    // In millionths of a US dollar. While pending, the most it can cost.
+    costMicroUsd: bigint({ mode: 'number' }).notNull().default(0),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [
+    foreignKey({
+      name: 'ai_requests_user_fk',
+      columns: [t.tenantId, t.userId],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    index('ai_requests_month_idx').on(t.tenantId, t.month, t.feature),
+    index('ai_requests_unit_idx')
+      .on(t.tenantId, t.unitKey, t.month)
+      .where(sql`${t.unitKey} is not null`),
+    index('ai_requests_created_idx').on(t.createdAt),
+    check('ai_requests_month', sql`${t.month} ~ '^[0-9]{4}-[0-9]{2}$'`),
+    check(
+      'ai_requests_sizes',
+      sql`${t.inputTokens} >= 0 and ${t.outputTokens} >= 0 and ${t.costMicroUsd} >= 0 and ${t.attempts} between 0 and 2`,
+    ),
+    tenantIsolation(),
+    pgPolicy('ai_requests_platform_read', {
+      as: 'permissive',
+      for: 'select',
+      to: platformRole,
+      using: sql`true`,
+    }),
+  ],
+);
+
+export const aiUsageNoticeLevel = pgEnum('ai_usage_notice_level', [
+  'warning',
+  'reached',
+]);
+
+// That a client's administrators were told a feature's allowance is 80%
+// used, or all used, in a month: so that each is said once a month.
+export const aiUsageNotices = pgTable(
+  'ai_usage_notices',
+  {
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    month: text().notNull(),
+    feature: aiFeature().notNull(),
+    level: aiUsageNoticeLevel().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({
+      name: 'ai_usage_notices_pkey',
+      columns: [t.tenantId, t.month, t.feature, t.level],
+    }),
+    tenantIsolation(),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// AI drafting of policies and procedures (docs/specs/ai-policy-drafting.md).
+// The client profile and the document design are the standing context of
+// every draft, and useful without AI. A drafting session is the
+// conversation behind one draft: the person's request, the assistant's
+// questions and the answers, and every version of the draft. All tenant
+// data under row-level security.
+// ---------------------------------------------------------------------------
+
+/**
+ * The client's profile: facts about the organization, never about a
+ * person. Every value a client writes is per language (`Localized`); the
+ * shape is ProfileInput in drafting/profile-input.ts. Its structure is the
+ * organization tree already in Trustline; its languages and numbering are
+ * the client's settings and document types.
+ */
+export type OrganizationProfile = Record<string, unknown>;
+
+export const organizationProfiles = pgTable(
+  'organization_profiles',
+  {
+    tenantId: uuid()
+      .primaryKey()
+      .references(() => tenants.id),
+    profile: jsonb().$type<OrganizationProfile>().notNull(),
+    // Bumped by every change: a change made on an out-of-date screen is
+    // refused.
+    revision: integer().notNull().default(1),
+    updatedBy: uuid().notNull(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'organization_profiles_updated_by_fk',
+      columns: [t.tenantId, t.updatedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    tenantIsolation(),
+  ],
+);
+
+/**
+ * A client's document design: the template rules, the writing rules and
+ * guidance per section. One for the whole organization (no document type),
+ * and optionally one per document type. Versioned: every change is a new
+ * row and none is changed, so that a draft keeps the design it was written
+ * in.
+ */
+export const documentDesigns = pgTable(
+  'document_designs',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    // Null: the organization's design, for every type without its own.
+    documentTypeId: uuid(),
+    version: integer().notNull(),
+    template: jsonb().$type<Record<string, unknown>>().notNull(),
+    writing: jsonb().$type<Record<string, unknown>>().notNull(),
+    sectionGuidance: jsonb().$type<Record<string, Localized>>().notNull(),
+    createdBy: uuid().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('document_designs_tenant_id_id_key').on(t.tenantId, t.id),
+    uniqueIndex('document_designs_version_key')
+      .on(t.tenantId, sql`coalesce(${t.documentTypeId}, '00000000-0000-0000-0000-000000000000'::uuid)`, t.version),
+    foreignKey({
+      name: 'document_designs_type_fk',
+      columns: [t.tenantId, t.documentTypeId],
+      foreignColumns: [documentTypes.tenantId, documentTypes.id],
+    }),
+    foreignKey({
+      name: 'document_designs_created_by_fk',
+      columns: [t.tenantId, t.createdBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    check('document_designs_version', sql`${t.version} >= 1`),
+    tenantIsolation(),
+  ],
+);
+
+export const draftingStatus = pgEnum('drafting_status', [
+  // The assistant has asked questions, or is about to.
+  'asking',
+  // It has what it needs: the draft can be written.
+  'ready',
+  // A draft exists; it can be revised, edited or handed over.
+  'drafted',
+  // It became a document of the policies module. Kept with it.
+  'handed_over',
+  // Given up by the person. Removed by the next daily check.
+  'discarded',
+]);
+
+export const draftingMessageKind = pgEnum('drafting_message_kind', [
+  'questions',
+  'answers',
+  'revision_request',
+]);
+
+export const draftingAuthor = pgEnum('drafting_author', ['assistant', 'person']);
+
+/**
+ * One drafting conversation: whose it is, for which type of document, in
+ * which language, and what was asked in the person's own words. Kept with
+ * the document once handed over; otherwise removed 90 days after its last
+ * activity, or at the next daily check once discarded
+ * (drafting/retention.ts).
+ */
+export const draftingSessions = pgTable(
+  'drafting_sessions',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    createdBy: uuid().notNull(),
+    documentTypeId: uuid().notNull(),
+    locale: text().notNull(),
+    request: text().notNull(),
+    status: draftingStatus().notNull().default('asking'),
+    // Rounds of questions asked so far.
+    rounds: integer().notNull().default(0),
+    // The design the draft is written in.
+    designId: uuid(),
+    documentId: uuid(),
+    handedOverVersion: integer(),
+    revision: integer().notNull().default(1),
+    lastActivityAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('drafting_sessions_tenant_id_id_key').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'drafting_sessions_created_by_fk',
+      columns: [t.tenantId, t.createdBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'drafting_sessions_type_fk',
+      columns: [t.tenantId, t.documentTypeId],
+      foreignColumns: [documentTypes.tenantId, documentTypes.id],
+    }),
+    foreignKey({
+      name: 'drafting_sessions_design_fk',
+      columns: [t.tenantId, t.designId],
+      foreignColumns: [documentDesigns.tenantId, documentDesigns.id],
+    }),
+    foreignKey({
+      name: 'drafting_sessions_document_fk',
+      columns: [t.tenantId, t.documentId],
+      foreignColumns: [documents.tenantId, documents.id],
+    }),
+    index('drafting_sessions_owner_idx').on(t.tenantId, t.createdBy, t.status),
+    index('drafting_sessions_activity_idx').on(t.lastActivityAt),
+    check('drafting_sessions_request', sql`length(${t.request}) between 1 and 4000`),
+    check(
+      'drafting_sessions_handed_over',
+      sql`(${t.status} = 'handed_over') = (${t.documentId} is not null)`,
+    ),
+    tenantIsolation(),
+    // A conversation behind a document is part of its history: never
+    // removed, whatever the application asks.
+    pgPolicy('drafting_sessions_keep_handed_over', {
+      as: 'restrictive',
+      for: 'delete',
+      to: appRole,
+      using: sql`${t.status} <> 'handed_over'`,
+    }),
+  ],
+);
+
+/** A turn of a conversation: questions asked, answers given, a change asked for. */
+export const draftingMessages = pgTable(
+  'drafting_messages',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    sessionId: uuid().notNull(),
+    seq: integer().notNull(),
+    kind: draftingMessageKind().notNull(),
+    body: jsonb().$type<Record<string, unknown>>().notNull(),
+    // The AI request that produced it (ai_requests), for an assistant's turn.
+    aiRequestId: uuid(),
+    // Who wrote it, for a person's turn.
+    createdBy: uuid(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('drafting_messages_seq_key').on(t.tenantId, t.sessionId, t.seq),
+    foreignKey({
+      name: 'drafting_messages_session_fk',
+      columns: [t.tenantId, t.sessionId],
+      foreignColumns: [draftingSessions.tenantId, draftingSessions.id],
+    }).onDelete('cascade'),
+    tenantIsolation(),
+  ],
+);
+
+/**
+ * A version of the draft. Every request for a change, and every edit by
+ * hand, is a new version: none is ever overwritten.
+ */
+export const draftingVersions = pgTable(
+  'drafting_versions',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    sessionId: uuid().notNull(),
+    number: integer().notNull(),
+    author: draftingAuthor().notNull(),
+    // As a document version's: per language, per section key.
+    content: jsonb().$type<DocumentContent>().notNull(),
+    // The title the assistant proposes, in the draft's language.
+    title: jsonb().$type<Localized>().notNull(),
+    // Marked in the text too; listed here for the screens.
+    gaps: jsonb().$type<{ section: string; text: string }[]>().notNull(),
+    assumptions: jsonb().$type<{ section: string; text: string }[]>().notNull(),
+    // The existing documents it drew on.
+    sources: jsonb().$type<{ documentId: string; number: string; title: Localized }[]>().notNull(),
+    model: text(),
+    aiRequestId: uuid(),
+    createdBy: uuid().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('drafting_versions_number_key').on(t.tenantId, t.sessionId, t.number),
+    foreignKey({
+      name: 'drafting_versions_session_fk',
+      columns: [t.tenantId, t.sessionId],
+      foreignColumns: [draftingSessions.tenantId, draftingSessions.id],
+    }).onDelete('cascade'),
+    check('drafting_versions_number', sql`${t.number} >= 1`),
     tenantIsolation(),
   ],
 );

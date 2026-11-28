@@ -35,6 +35,10 @@ export default defineConfig({
       EXPORT_SIGNING_KEY: exportKey,
       EXPORT_PREVIOUS_PUBLIC_KEYS: '',
       EXPORT_STORAGE_KEY: storageKey,
+      // No test ever calls a real AI provider: every request is answered by
+      // the fake one (ai/providers.ts), which is also what a test run gets
+      // whatever is set, and a real adapter built under test throws.
+      AI_PROVIDERS: 'fake',
     },
   },
 });

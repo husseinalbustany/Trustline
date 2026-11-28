@@ -60,6 +60,7 @@ import {
   VERSION_MAX_CHARS,
 } from './content.js';
 import { checkedSection } from './section-input.js';
+import { holdsGap } from '../drafting/prompts.js';
 import { DocumentNotifier } from './document-notifier.js';
 import { loadDocument, type LoadedDocument } from './document-access.js';
 import {
@@ -316,7 +317,7 @@ export class DocumentsService {
       .select({ id: orgUnits.id, name: orgUnits.name })
       .from(orgUnits)
       .where(eq(orgUnits.id, doc.ownerUnitId));
-    const people = await this.names(tx, [doc.ownerId, doc.retiredBy]);
+    const people = await this.names(tx, [doc.ownerId, doc.retiredBy, doc.aiDraftOwnedBy]);
     const audience = await this.audienceOf(tx, doc.id);
     const versions = await tx
       .select({
@@ -431,9 +432,21 @@ export class DocumentsService {
       // (business decision 5).
       authoritativeLocale: doc.authoritativeLocale,
       status: doc.status,
-      // How it came into Trustline: `written`, or `imported` as approved
-      // before Trustline (its first version).
+      // How it came into Trustline: `written`, `imported` as approved
+      // before Trustline (its first version), or `ai_drafted`.
       source: doc.source,
+      // An AI draft: marked as such until a person takes ownership of it
+      // (docs/specs/ai-policy-drafting.md). Null for any other document.
+      aiDraft:
+        doc.source === 'ai_drafted'
+          ? {
+              sessionId: access.full ? doc.aiDraftSessionId : null,
+              ownedBy: doc.aiDraftOwnedBy
+                ? { id: doc.aiDraftOwnedBy, name: people.get(doc.aiDraftOwnedBy) ?? null }
+                : null,
+              ownedAt: doc.aiDraftOwnedAt,
+            }
+          : null,
       retiredAt: doc.retiredAt,
       retiredBy:
         access.full && doc.retiredBy
@@ -1260,7 +1273,22 @@ export class DocumentsService {
 
   // Creating and editing documents.
 
-  create(auth: AuthContext, input: CreateInput) {
+  /**
+   * Creates a document with its first version, a draft. With `draft`, the
+   * draft an assistant wrote (docs/specs/ai-policy-drafting.md): its text is
+   * the version's, checked as any edit is, both are marked `ai_drafted`,
+   * and `onCreated` runs in the same transaction, so that the conversation
+   * is marked handed over with the document or not at all.
+   */
+  create(
+    auth: AuthContext,
+    input: CreateInput,
+    draft?: {
+      sessionId: string;
+      content: DocumentContent;
+      onCreated: (tx: Transaction, doc: { id: string; number: string; versionId: string }) => Promise<void>;
+    },
+  ) {
     const { tenant, user } = auth;
     if (!covers(auth, 'policies.manage', input.ownerUnitId)) {
       throw refuse.outsideScope();
@@ -1318,9 +1346,26 @@ export class DocumentsService {
           references: input.references,
           reviewMonths: input.reviewMonths ?? type.defaultReviewMonths,
           createdBy: user.id,
+          ...(draft && { source: 'ai_drafted' as const, aiDraftSessionId: draft.sessionId }),
         })
         .returning({ id: documents.id });
       await this.setAudience(tx, tenant.id, doc.id, input.audience);
+      let content: DocumentContent = {};
+      if (draft) {
+        const keys = new Set(type.sections.map((s: DocumentSection) => s.key));
+        for (const [locale, sections] of Object.entries(draft.content)) {
+          if (!tenant.locales.includes(locale)) throw new BadRequestException({ code: 'language_mismatch' });
+          const into: Record<string, string> = {};
+          for (const [key, raw] of Object.entries(sections ?? {})) {
+            const value = checkedSection(locale, key, raw, keys);
+            if (value) into[key] = value;
+          }
+          if (Object.keys(into).length > 0) content[locale] = into;
+        }
+        if (contentSize(content) > VERSION_MAX_CHARS) {
+          throw new BadRequestException({ code: 'content_too_large', max: VERSION_MAX_CHARS });
+        }
+      }
       const [version] = await tx
         .insert(documentVersions)
         .values({
@@ -1332,6 +1377,7 @@ export class DocumentsService {
           contributors: [user.id],
           acknowledgementRequired: input.acknowledgementRequired,
           acknowledgeWithinDays: input.acknowledgeWithinDays,
+          ...(draft && { source: 'ai_drafted' as const, content }),
         })
         .returning({ id: documentVersions.id });
       await this.provisioning.audit(
@@ -1350,8 +1396,10 @@ export class DocumentsService {
           confidentiality: input.confidentiality,
           audience: input.audience,
           versionId: version.id,
+          ...(draft && { source: 'ai_drafted', aiDraftSessionId: draft.sessionId }),
         },
       );
+      if (draft) await draft.onCreated(tx, { id: doc.id, number, versionId: version.id });
       const viewer = await viewerOf(tx, auth, this.engine);
       return this.detail(tx, auth, viewer, await this.find(tx, viewer, doc.id));
     });
@@ -1963,6 +2011,18 @@ export class DocumentsService {
       );
       if (version.status !== 'draft') {
         throw new ConflictException({ code: 'not_draft' });
+      }
+      // An AI draft is sent for review only once a person has taken
+      // ownership of it, and with no gap the assistant left still in it
+      // (docs/specs/ai-policy-drafting.md).
+      if (doc.source === 'ai_drafted') {
+        if (!doc.aiDraftOwnedAt) throw new ConflictException({ code: 'ai_draft_not_owned' });
+        const gaps = Object.entries(version.content).flatMap(([locale, sections]) =>
+          Object.entries(sections ?? {})
+            .filter(([, text]) => holdsGap(text))
+            .map(([section]) => ({ locale, section })),
+        );
+        if (gaps.length > 0) throw new ConflictException({ code: 'ai_draft_gaps', gaps });
       }
       // The document's own language, or the organization's (decision 5).
       const authoritative = documentAuthoritative(

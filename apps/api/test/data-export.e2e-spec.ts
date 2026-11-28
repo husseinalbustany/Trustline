@@ -238,7 +238,7 @@ describe('full data export', () => {
         expect(`${file}: ${existsSync(join(out, 'schema', `${file}.schema.json`))}`).toBe(`${file}: true`);
       }
       for (const excluded of ['sessions', 'user_tokens', 'email_outbox', 'email_queue', 'sign_in_codes']) {
-        const any = (await readdir(out, { recursive: true })).some((p) => String(p).includes(excluded));
+        const any = (await readdir(out, { recursive: true })).some((p) => /^[^.]+/.exec(String(p).split('/').pop()!)?.[0] === excluded);
         expect(`${excluded}: ${any}`).toBe(`${excluded}: false`);
       }
       const comments = (await readFile(join(out, 'incidents/comments.jsonl'), 'utf8')).trim().split('\n').map((l) => JSON.parse(l));

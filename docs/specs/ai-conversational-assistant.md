@@ -279,3 +279,16 @@ Suggested order:
   to each client.
 - **How long conversations are kept.**
 - **The AI and speech services, and where they run.**
+- **Anonymous reports written with the assistant** (security review 13,
+  L6). Every AI request is recorded with who made it and when
+  (`ai_requests`). If the assistant helps someone write a report they then
+  send anonymously, that record, matched with the report's time, would
+  say who reported it. Before the assistant helps with any report, decide
+  one of these:
+  - no AI help for a report sent anonymously;
+  - a request made while writing a report is recorded with no person, and
+    with its time rounded;
+  - another rule that keeps anonymity as `incident-reporting.md` promises
+    it.
+
+  Insights must apply the same care to a report that was anonymous.

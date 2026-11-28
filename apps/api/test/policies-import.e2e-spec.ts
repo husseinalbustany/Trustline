@@ -193,7 +193,7 @@ describe('policies: importing documents, the approving authority, the authoritat
       }
       // It reads every document and approves; it manages none.
       const me = (await http().get('/auth/me').set('Cookie', authority.cookie).expect(200)).body;
-      expect([...(me.permissions as string[])].sort((x, y) => x.localeCompare(y))).toEqual(['policies.approve', 'policies.view', 'policies.view_all']);
+      expect([...(me.permissions as string[])].sort((x, y) => x.localeCompare(y))).toEqual(['policies.approve', 'policies.view', 'policies.view_all', 'reports.view']);
       await post(authority.cookie, '/documents/import', { password, ...document() }).expect(403);
     });
   });

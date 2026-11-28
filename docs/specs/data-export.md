@@ -549,3 +549,167 @@ Every recommendation in this spec is accepted. In particular:
   the first contract is signed.
 - Every other decision in "Decisions needed" follows the recommendation
   written there.
+
+## Built (steps 1 to 3, API, 28 November 2026)
+
+This covers steps 1 to 3 of "Order of build", following the decisions
+above. The HTML of documents (from step 4) and the audit trail with its
+chain (step 5) are included, since both were ready. The web page is not
+built. Reviews are still due: `security-reviewer` after steps 2 and 3, and
+`bilingual-reviewer` for the README, the CSV files and the notices.
+
+### The coverage registry (step 1)
+
+- **`apps/api/src/exports/coverage.ts`** lists every table with
+  `tenant_id`:
+  - `exported(file, { omit, keep })`: its file, with every column left out
+    or kept given a reason;
+  - or `excluded(reason)`.
+- **`coverage.spec.ts`** reads the live schema and fails for:
+  - a table in neither list;
+  - a listed table that does not exist;
+  - a column whose name looks like a secret (`SECRET_LIKE`: hash, secret,
+    token, salt, password, pin, key, code) that is neither left out nor
+    kept with a reason;
+  - a reason, left-out or kept column, or CSV column that is not there.
+- **Adding a table** is one line. The AI tables were added this way when
+  that branch merged.
+- **Excluded:**
+  - `sessions`, `user_tokens` and `sign_in_codes`;
+  - `email_queue` and `email_outbox`;
+  - `audit_chain_heads`, which is rebuilt from the chain.
+- **Left out:**
+  - the password, PIN and follow-up code hashes;
+  - the sign-in and signing counters and locks;
+  - Trustline's note on the subscription;
+  - an export's own storage key and wrapped key.
+
+### Request and approval (step 2)
+
+- **`data.export` (core):**
+  - built-in for the Administrator;
+  - given to existing clients by migration 0069, with one audit entry per
+    client;
+  - only a grant for the whole organization counts.
+- **Routes** (`/exports`, `@ForModule('core')`):
+  - list, ask, approve, refuse, cancel and download;
+  - all except the list are `@OpenWhileSuspended()` (decision 6);
+  - 401 without a session, 403 without the permission, 404 for another
+    client's export, 400 for anything but strict input.
+- **The two-person rule:**
+  - asking and approving take the password again, through
+    `AuthService.confirmPassword` (the same counter and lock as sign-in);
+  - the person who asked can never approve or refuse (403 `same_person`),
+    and is the only one who may cancel, until the export is being made;
+  - an approval comes within 7 days, else the request lapses (409
+    `lapsed`; the worker marks it lapsed);
+  - one export is asked for or in the making per client at a time, held by
+    a partial unique index (409 `export_in_progress`).
+- **Audit:** nine actions in the `exports` area, worded in all three
+  languages:
+  - `data_export_requested`, `_approved`, `_refused`, `_cancelled`;
+  - `_lapsed`, `_ready`, `_failed`, `_downloaded`, `_expired`.
+- **Notices:** one notification kind, `data_export_changed` with
+  `data.change`.
+  - It goes to every active holder of `data.export` or `settings.manage`
+    for the whole organization, in the app and by email at once.
+  - It is compulsory, and sent while suspended.
+  - The email names nobody: "Open Trustline to see who asked."
+  - A failure is told to the person who asked and the approver only.
+
+### The worker, the archive and the download (step 3)
+
+- **`ExportWorker`**, started by `main.ts`, runs every 30 seconds, client by
+  client:
+  - lapses requests;
+  - expires archives past their last day, or 1 hour after their fifth
+    download;
+  - claims one approved export with `for update skip locked`, refreshes its
+    claim at each phase, and retakes a claim silent for 30 minutes;
+  - on a failure, records the kind of failure only, and tries 3 times in
+    all.
+- **`ArchiveBuilder`** (`exports/archive.ts`):
+  - **Data:** one `repeatable read, read only` transaction under
+    `withTenant`. Each exported table is read by primary key in batches of
+    2,000 and written as JSON Lines, with its JSON Schema generated from
+    the catalogue:
+    - times as UTC `Z`, days as `YYYY-MM-DD`;
+    - the organization and its plan, with no price;
+    - the audit trail's chain file (`audit/audit-chain.jsonl`, the
+      verifier's format, in full) and `checkpoints.json`;
+    - the worded audit log (`audit/audit_log.<lang>.csv`).
+    Then, through the platform role, Trustline's records about the client:
+    action, time, staff name and details (decision 7).
+  - **Documents and CSV files**, outside the transaction, from the phase 1
+    files:
+    - CSV files, in the language asked for, for users, units, incidents,
+      events, documents, acknowledgements, reviews and measures. They use
+      the shared cell rules, split at 1,000,000 rows;
+    - for each version, `documents/<number>/v<n>/content.json` and a page
+      `<lang>.html` for each language it is written or shown in:
+      self-contained, with a CSP of `default-src 'none'`, the control
+      block, "Approved before Trustline", fallback and "translation not
+      updated" notes, and its signatures with their `content_hash`. The
+      stored Markdown subset is rendered by `exports/html.ts`, which
+      escapes everything.
+  - **Archive:**
+    - a README in each of the client's languages, the one asked for first;
+    - `manifest.json`, listing every file with its size and SHA-256, the
+      counts, the moment, who asked and who approved, and the chain's head
+      and latest checkpoint;
+    - `manifest.sig`, signed with Trustline's Ed25519 export key;
+    - the ZIP (`exports/zip.ts`: deflate, UTF-8 names, ZIP64 where needed).
+- **Keys:**
+  - `ExportKeys` signs with `EXPORT_SIGNING_KEY`, a key separate from the
+    audit key, read the same way (`audit-keys.ts`);
+  - its public keys are published at `/audit/keys` under `exportKeys`;
+  - production refuses to start without it.
+- **Storage** (`exports/storage.ts`):
+  - a directory of the deployment's own (`EXPORT_STORAGE_DIR`);
+  - each archive encrypted with AES-256-GCM under a key of its own, which
+    is kept on the record only wrapped by `EXPORT_STORAGE_KEY`; production
+    refuses to start without that key;
+  - file names are built from ids only;
+  - the file is deleted when the export expires, and the record stays.
+- **Download:**
+  - for the person who asked or the approver (403 `not_yours`), with the
+    password again;
+  - counted and audited before a byte is sent;
+  - at most 5 times (409 `download_limit`), within 7 days (410 `expired`);
+  - `Content-Disposition: attachment`, `Cache-Control: no-store`, and
+    `X-Archive-SHA256`.
+- **Tests** (`test/data-export.e2e-spec.ts`):
+  - the routes' refusals;
+  - the two-person rule, lapse, cancel and refuse;
+  - the archive: `unzip -t`, every file against the manifest, the
+    signature against the published key, and the chain checked by
+    `scripts/verify-audit-chain.mjs`;
+  - no id of another client, and no secret of any account, in any file;
+  - five downloads, then expiry with the file deleted.
+- **Unit specs:**
+  - `coverage.spec.ts`, `zip.spec.ts` and `html.spec.ts`;
+  - `wording.spec.ts`, which checks the same keys and placeholders in en,
+    ar and fr.
+
+### Not done here
+
+- **Trustline's second approval** for a client with one administrator
+  (decision 3, decided): it needs the platform view of exports, so it
+  comes with step 6.
+- **The passphrase on the archive** (decision 5, optional). AES ZIP
+  encryption needs a tool to check it against, and none is installed here.
+- **PDFs** wait for the renderer (decision 12). The manifest says
+  `pdfs.included: false`.
+- **The rest of steps 4 to 8:**
+  - the platform's column-limited view of `data_exports`;
+  - the contract's end date, notices and exit window;
+  - deletion after retention, and the deletion certificate;
+  - telling administrators when someone is given `data.export` (the grant
+    itself is audited).
+- **Storage** is a volume, not object storage per region with a key service
+  (decision 4).
+- **Without `EXPORT_STORAGE_KEY`,** outside production, a process can read
+  only the archives it made.
+- **Phase 2** keeps an index of the versions, not their text, in memory.
+  The maps of people, units, documents, steps, signatures and imports are
+  held whole.

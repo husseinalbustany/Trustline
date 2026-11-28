@@ -24,6 +24,8 @@ const LOCALES = new Set(['en', 'ar', 'fr']);
 const CODED = new Set([
   'status', 'reason', 'secondFactor', 'by', 'client', 'purpose', 'action', 'channel',
   'visibility', 'outcome', 'via', 'type', 'harmLevel', 'kind', 'to', 'from',
+  // How a document came into Trustline, and who wrote a draft's version.
+  'source', 'author',
 ]);
 
 /** The screen a route is, for what an external reviewer viewed. */
