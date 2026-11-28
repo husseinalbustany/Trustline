@@ -16,6 +16,7 @@ import {
   users,
   userTokens,
 } from '../database/schema.js';
+import type { AuditAction, AuditEntityType } from '../audit/actions.js';
 import type { Localized } from '../i18n/locales.js';
 import { DEFAULT_INCIDENT_CATEGORIES } from '../incidents/categories.js';
 import {
@@ -40,6 +41,9 @@ export const hashToken = (token: string) =>
 export type RoleGrant = { roleId: string; orgUnitId: string | null };
 
 export type NewUser = {
+  // Given by the caller only when it must name the account before it
+  // exists (the admin portal's record of a client's first administrator).
+  id?: string;
   name: Localized;
   email: string;
   orgUnitId?: string | null;
@@ -323,9 +327,9 @@ export class ProvisioningService {
       .values({ ...input, email: input.email.trim().toLowerCase(), tenantId })
       .returning();
     await this.setRoles(tx, tenantId, user.id, grants, actorId);
-    await this.audit(tx, tenantId, actorId, 'user_created', 'user', user.id, {
-      email: user.email,
-    });
+    // The account's id is enough: no contact details in the trail
+    // (docs/specs/audit-trail.md, "Personal data in the trail").
+    await this.audit(tx, tenantId, actorId, 'user_created', 'user', user.id);
     return user;
   }
 
@@ -426,8 +430,9 @@ export class ProvisioningService {
     tx: Transaction,
     tenantId: string,
     actorId: string | null,
-    action: string,
-    entityType: string | null = null,
+    // Only a registered action (audit/actions.ts), worded in every language.
+    action: AuditAction,
+    entityType: AuditEntityType | null = null,
     entityId: string | null = null,
     changes: Record<string, unknown> | null = null,
     ipAddress: string | null = null,

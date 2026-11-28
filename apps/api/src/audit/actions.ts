@@ -97,7 +97,7 @@ export const AUDIT_ACTIONS = {
   response_rules_changed: code('organization', 'tenant', ['harmLevel', 'triageHours', 'closeDays']),
   email_setting_changed: code('organization', 'tenant', ['enabled']),
   notification_preferences_changed: code('organization', 'user', ['immediate', 'digest', 'weekly', 'via']),
-  // The first entry the chain seals itself (migration 0059): how many were
+  // The first entry the chain seals itself (migration 0058): how many were
   // there before, sealed as they then stood.
   audit_chain_started: { area: 'organization', entity: 'tenant', details: ['migration', 'sealedBefore', 'sealedOn'], by: 'database' },
 

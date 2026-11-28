@@ -1,5 +1,6 @@
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
   check,
   date,
   foreignKey,
@@ -363,6 +364,12 @@ export const auditLog = pgTable(
     entityId: uuid(),
     changes: jsonb(),
     ipAddress: text(),
+    // Random, set by the database with the address (migration 0058), and
+    // kept beside it outside the sealed body: the body holds
+    // SHA-256(salt + address) only, so that the address can later be
+    // cleared without breaking the chain (docs/specs/audit-trail.md,
+    // "Personal data in the trail").
+    ipSalt: text(),
     occurredAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -381,6 +388,151 @@ export const auditLog = pgTable(
       for: 'insert',
       to: platformRole,
       withCheck: sql`actor_id IS NULL AND ip_address IS NULL AND action IN ('subscription_changed', 'import_window_changed')`,
+    }),
+  ],
+);
+
+// The audit trail's hash chain (docs/specs/audit-trail.md, "Tamper
+// evidence"): one per client, written only by the database's sealing
+// function as each transaction that audited commits (migration 0058), so
+// that every writer is chained. The application reads it and never writes
+// it.
+
+/** Each audit entry's place in its client's chain, and its seal. */
+export const auditChain = pgTable(
+  'audit_chain',
+  {
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    // From 1, with no gaps.
+    seq: bigint({ mode: 'number' }).notNull(),
+    // The entry (`audit_log.id`). No foreign key: a deleted entry leaves
+    // its seal behind, which is how the daily check finds the deletion.
+    entryId: uuid().notNull(),
+    // The hash of the entry before (64 zeros for the first).
+    prevHash: text().notNull(),
+    // SHA-256 of the entry's body, its fixed text form.
+    bodyHash: text().notNull(),
+    // SHA-256("trustline-audit-v1\n" + seq + "\n" + prevHash + "\n" + bodyHash).
+    hash: text().notNull(),
+    // SHA-256(salt + address), when the entry had an address.
+    ipCommitment: text(),
+    sealedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    // Sealed by the migration that started the chain: shown as "recorded
+    // before the trail was sealed". The chain proves it has not changed
+    // since, not before.
+    sealedLate: boolean().notNull().default(false),
+  },
+  (t) => [
+    primaryKey({ name: 'audit_chain_pkey', columns: [t.tenantId, t.seq] }),
+    unique('audit_chain_tenant_id_entry_id_key').on(t.tenantId, t.entryId),
+    tenantIsolation(),
+  ],
+);
+
+/** Each client's last sealed entry: the sealing function's lock. */
+export const auditChainHeads = pgTable(
+  'audit_chain_heads',
+  {
+    tenantId: uuid()
+      .primaryKey()
+      .references(() => tenants.id),
+    seq: bigint({ mode: 'number' }).notNull(),
+    hash: text().notNull(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  () => [tenantIsolation()],
+);
+
+/**
+ * A client's head as the daily check found it unbroken, signed with
+ * Trustline's key (Ed25519). Unsigned (no key, no signature) when the API
+ * has no key configured: kept, but trusted by no check.
+ */
+export const auditChainCheckpoints = pgTable(
+  'audit_chain_checkpoints',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    seq: bigint({ mode: 'number' }).notNull(),
+    hash: text().notNull(),
+    // When it was signed: what was signed holds this time, to the
+    // millisecond.
+    at: timestamp({ withTimezone: true, precision: 3 }).notNull(),
+    keyId: text(),
+    signature: text(),
+  },
+  (t) => [
+    index('audit_chain_checkpoints_tenant_seq_idx').on(t.tenantId, t.seq),
+    check(
+      'audit_chain_checkpoints_signed_whole',
+      sql`(${t.keyId} is null) = (${t.signature} is null)`,
+    ),
+    tenantIsolation(),
+  ],
+);
+
+export const auditChainResult = pgEnum('audit_chain_result', ['passed', 'failed']);
+export const auditChainBreak = pgEnum('audit_chain_break', [
+  // An entry, or its seal, is not what was sealed.
+  'content_changed',
+  // A seal whose entry is gone: a deletion.
+  'missing_entry',
+  // An entry with no seal, older than ten minutes: written round the trigger.
+  'missing_seal',
+  // A number missing in the chain.
+  'gap',
+  // The chain no longer reaches, or no longer matches, a signed checkpoint:
+  // its end was cut off, or rewritten.
+  'head_rewound',
+  // An entry dated more than ten minutes before the checkpoint before it:
+  // added after the fact.
+  'backdated',
+  // A checkpoint whose signature does not verify under its key.
+  'bad_checkpoint',
+]);
+
+/**
+ * Each run of the check: what it covered and what it found. The admin
+ * portal reads these rows (and nothing of the entries), through a policy of
+ * its own.
+ */
+export const auditChainVerifications = pgTable(
+  'audit_chain_verifications',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    runAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    fromSeq: bigint({ mode: 'number' }).notNull(),
+    toSeq: bigint({ mode: 'number' }).notNull(),
+    // From entry 1 (weekly), or from the last signed checkpoint (daily).
+    full: boolean().notNull(),
+    result: auditChainResult().notNull(),
+    kind: auditChainBreak(),
+    // The first entry found wrong, by its number, or by its id for an entry
+    // with no seal.
+    firstBadSeq: bigint({ mode: 'number' }),
+    firstBadEntryId: uuid(),
+    // The checkpoint signed on success, if any.
+    checkpointId: uuid().references(() => auditChainCheckpoints.id),
+  },
+  (t) => [
+    index('audit_chain_verifications_tenant_run_idx').on(t.tenantId, t.runAt),
+    check(
+      'audit_chain_verifications_failure_named',
+      sql`(${t.result} = 'failed') = (${t.kind} is not null)`,
+    ),
+    tenantIsolation(),
+    pgPolicy('audit_chain_verifications_platform_read', {
+      as: 'permissive',
+      for: 'select',
+      to: platformRole,
+      using: sql`true`,
     }),
   ],
 );
@@ -853,6 +1005,14 @@ export const notificationKind = pgEnum('notification_kind', [
   // of a "no change" review (security review 11): to the Approving
   // authorities and the Administrators. About the type, not a document.
   'review_approval_turned_off',
+  // The daily check found the audit trail broken (docs/specs/audit-trail.md):
+  // to the holders of `audit.view` and `settings.manage`, at once. About
+  // the organization.
+  'audit_chain_broken',
+  // Someone was given `policies.import` (business decision on security
+  // review 11): to the other Quality officers and Administrators.
+  // `data.personId` names them. About no document.
+  'policies_import_granted',
 ]);
 
 // Something a user is told about an incident they can see. Stored so that it
@@ -915,7 +1075,7 @@ export const notifications = pgTable(
     // new kind to be committed before it is created.
     check(
       'notifications_about_one_thing',
-      sql`(${t.incidentId} is null or ${t.documentId} is null) and (${t.incidentId} is not null or ${t.documentId} is not null or ${t.kind}::text in ('public_form_paused', 'acknowledgements_overdue_digest', 'email_turned_off', 'signing_pin_changed', 'signing_pin_locked', 'review_approval_turned_off'))`,
+      sql`(${t.incidentId} is null or ${t.documentId} is null) and (${t.incidentId} is not null or ${t.documentId} is not null or ${t.kind}::text in ('public_form_paused', 'acknowledgements_overdue_digest', 'email_turned_off', 'signing_pin_changed', 'signing_pin_locked', 'review_approval_turned_off', 'audit_chain_broken', 'policies_import_granted'))`,
     ),
     tenantIsolation(),
   ],

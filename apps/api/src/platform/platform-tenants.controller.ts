@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
   Body,
@@ -354,17 +355,20 @@ export class PlatformTenantsController {
           throw new ConflictException({ code: 'administrator_exists' });
         }
         // Recorded first, on the portal's side, so the account can never
-        // exist without a record of which staff member created it.
+        // exist without a record of which staff member created it. By the
+        // account's id, never its email address (audit-trail.md, "Personal
+        // data in the trail").
+        const userId = randomUUID();
         await this.auth.audit(
           req.platformAdmin.id,
           'client_administrator_created',
           tenant.id,
-          { email: parsed.data.email.trim().toLowerCase() },
+          { userId },
         );
         const user = await this.provisioning.createUser(
           tx,
           tenant.id,
-          parsed.data,
+          { ...parsed.data, id: userId },
           [{ roleId: administrator.id, orgUnitId: null }],
           null,
         );

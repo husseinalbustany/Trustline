@@ -504,6 +504,8 @@ export class UsersController {
         });
         await this.assertCanGrant(tx, req, parsed.data.roles);
         await this.assertGrantUnits(tx, userId, parsed.data.roles);
+        // The list before, kept with the new one (audit-trail.md, item 4).
+        const before = await this.heldGrants(tx, userId);
         await this.provisioning.setRoles(
           tx,
           tenant.id,
@@ -518,7 +520,7 @@ export class UsersController {
           'user_roles_changed',
           'user',
           userId,
-          { roles: parsed.data.roles },
+          { before, roles: parsed.data.roles },
         );
         const [updated] = await this.withRoles(tx, userId);
         return updated;

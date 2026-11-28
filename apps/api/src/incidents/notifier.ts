@@ -55,6 +55,8 @@ export const NOTIFICATION_MODULE: Record<NotificationKind, ModuleKey> = {
   signing_pin_changed: 'core',
   signing_pin_locked: 'core',
   review_approval_turned_off: 'policies',
+  audit_chain_broken: 'core',
+  policies_import_granted: 'policies',
 };
 
 /** The kinds a client with these modules is shown. */
