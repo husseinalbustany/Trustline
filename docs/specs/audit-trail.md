@@ -1,6 +1,7 @@
 # Audit trail: viewer, tamper evidence, surveyor access
 
-Status: proposed, not built. Read CLAUDE.md, README.md and
+Status: steps 1 to 3 of "Order of build" built (see "Built" at the end);
+the rest proposed. Read CLAUDE.md, README.md and
 `modules-and-subscriptions.md` first.
 
 The business document promises that "every action in the system is recorded
@@ -713,3 +714,200 @@ Every recommendation in this spec is accepted. In particular:
   anyone is given `policies.import`.
 - Every other decision in "Decisions needed" follows the recommendation
   written there.
+
+## Built (28 November 2026): steps 1 to 3
+
+What exists now, and where it differs from the design above.
+
+### 1. The action registry and its wording
+
+- **`apps/api/src/audit/actions.ts`** (`AUDIT_ACTIONS`): every action
+  `audit_log` holds, 70 of them. For each it records:
+  - the area and the entity type;
+  - the keys its details may hold;
+  - whether its actor may need masking: `incident_reported`,
+    `incident_commented` and `incident_status_changed`;
+  - who writes it: the code, the admin portal, a migration, or the
+    database.
+
+  They are every action the code and the migrations wrote before this
+  work, the three `signing_pin_*` included (the table under "What is
+  recorded today" leaves them out), plus `audit_chain_started`.
+- **`audit()` takes an `AuditAction`**, checked at compile time.
+- **`src/audit/actions.spec.ts` fails for an unregistered action** written:
+  - by code in raw SQL (the admin portal's two);
+  - by any migration (it reads the action column of every
+    `INSERT INTO audit_log`, and fails for one it cannot read);
+  - or found anywhere in the database.
+
+  It also checks that the three wording files have the registry's keys.
+- **Wording:** `src/audit/wording/{en,ar,fr}.ts`, with the labels for every
+  action and the four actors. The web dictionaries do not have them yet
+  (`audit.actions`, `audit.actors`): they come with the viewer (step 4).
+  The check across the dictionaries is therefore not built yet.
+  `bilingual-reviewer` should settle the wording, after step 1.
+- **New entries:**
+  - `user_created` keeps no email address. The platform log's
+    `client_administrator_created` names the new account by its id, not
+    its address.
+  - `user_roles_changed` keeps the list before (`before`) beside the new one
+    (`roles`).
+  - `platformAdminEmail` in the admin portal's entries is left for step 7,
+    which names Trustline's staff.
+
+### 2. The chain
+
+- **Tables** (migration 0057, generated): `audit_chain`, `audit_chain_heads`,
+  `audit_chain_checkpoints`, `audit_chain_verifications`, and
+  `audit_log.ip_salt`. They are tenant tables under `tenantIsolation()`.
+  `audit_chain` has no foreign key to its entry, so that a deletion leaves
+  its seal behind to be found.
+- **Sealing** (migration 0058, custom):
+  - a deferred constraint trigger, `audit_log_sealed`, runs the
+    `SECURITY DEFINER` function `audit_chain_seal_entry()` (owner role, fixed
+    `search_path`) as each writing transaction commits;
+  - every writer is covered: the application, the platform role's raw
+    inserts, and migrations;
+  - nothing of a rolled-back transaction or savepoint is sealed;
+  - the application role may read the chain and its heads, never write
+    them, and cannot call the sealing function.
+- **The body** is lines of `name: value`, from `trustline-audit-entry-v1`:
+  - id, tenant, seq, `occurredAt` (UTC, microseconds), actor, action,
+    entity type, entity id, `changes` (PostgreSQL's text of the JSON), and
+    `ip` (the commitment);
+  - an empty value for none;
+  - `audit_chain_body()` in the database, and `bodyOf()` in
+    `src/audit/chain.ts`, which the tests hold to the same bytes.
+
+  `hash = SHA-256("trustline-audit-v1\n" + seq + "\n" + prev_hash + "\n" + body_hash)`.
+- **Addresses:**
+  - a `BEFORE INSERT` trigger gives every entry that has an address a random
+    salt (256 bits);
+  - the body holds `SHA-256(salt + address)` only;
+  - the address and its salt stay in `audit_log`, outside the body, for the
+    viewer;
+  - clearing them after a period (decision 7) is not built: no period is
+    set yet.
+- **Existing entries:**
+  - 0058 locks `audit_log`, creates the trigger, and seals each client's
+    entries in `occurred_at, id` order, marked `sealed_late`;
+  - it then writes `audit_chain_started` (`{ migration, sealedBefore,
+    sealedOn }`), which the trigger seals after them;
+  - a client created since has no such entry, and is sealed from its first
+    entry.
+- **Measured cost:** the seal adds about 0.6 to 0.7 ms to a transaction
+  that writes one entry (1.5 to 2.0 ms against 0.9 to 1.3 ms, 500 commits
+  each, on the development database).
+  - With 8 writers of one client at once, commits queue on the head row:
+    0.9 ms against 0.3 ms per commit, about 1,100 audited commits a second
+    for one client.
+  - Other clients do not wait.
+  - This is within the 2 ms target.
+
+### 3. Daily verification and signed checkpoints
+
+- **`AuditChainCheck`** (`src/audit/chain-check.service.ts`) is started by
+  `main.ts` and runs every 15 minutes:
+  - each client is checked once a day, at the first run after 02:00 on its
+    calendar, suspended or not;
+  - the check is full (from entry 1) if no full check was made within the
+    last week; otherwise it starts from the last checkpoint whose
+    signature holds;
+  - each client is checked in one transaction, under an advisory lock, in
+    batches of 10,000 entries;
+  - it rebuilds every hash itself, not with the database's functions.
+- **The kinds of break:**
+  - `content_changed`, `missing_entry`, `missing_seal`, `gap`,
+    `head_rewound` and `backdated`, as designed;
+  - and `bad_checkpoint`, for a checkpoint whose signature does not hold
+    under its key.
+
+  `head_rewound` also covers a chain that no longer matches a signed
+  checkpoint at that checkpoint's number. `missing_seal` is looked for since
+  the last checkpoint daily, and in all entries weekly.
+- **Checkpoints:**
+  - on success the head is signed with Ed25519, under a key id derived from
+    the public key (`ed25519-` and 16 hex digits);
+  - the message is `trustline-audit-checkpoint-v1\n<tenant>\n<seq>\n<hash>\n<at, ISO, ms>`.
+- **The key:**
+  - `AUDIT_SIGNING_KEY` holds the key (PKCS#8, PEM or base64 DER);
+    `AUDIT_PREVIOUS_PUBLIC_KEYS` holds replaced ones. Both are documented in
+    `.env.example` without a value.
+  - The tests make a fresh key for each run (`vitest.config.ts`).
+  - Without a key, the API runs and logs the variable's name, never a
+    value. It records unsigned checkpoints, which no check trusts (each
+    check is then full), and the status says `signing: "unsigned"`.
+  - A checkpoint signed by a key this API does not know is passed over, not
+    counted as a break.
+- **Publication:** `GET /api/v1/audit/keys`, with no sign-in, lists the
+  current and previous public keys. Publishing them on Trustline's site
+  comes with the chain file (step 5).
+- **A break:**
+  - the result row names the kind and the first entry found wrong;
+  - the server log names the client and the kind;
+  - Trustline's log gets `audit_chain_broken`, through the definer function
+    `audit_chain_report_break()`, which works for the transaction's own
+    client only; the admin portal reads the result rows through its own
+    policy;
+  - the client's holders of `audit.view` or `settings.manage` for the whole
+    organization are told in the app at once (`audit_chain_broken`,
+    `data: { kind, firstBadSeq?, serious: true }`);
+  - they are told once, when the break is first found, not every day it
+    stays.
+- **`GET /api/v1/audit/status`** (`audit.view` for the whole organization;
+  401, 403, and 400 for any query) answers:
+  `{ head: { seq, at }, lastCheck, broken, sealedOn, sealedBefore, signing }`.
+  - `lastCheck` is `{ at, result, full, fromSeq, toSeq, kind, firstBadSeq,
+    firstBadEntryId, signed }`.
+  - `broken` is the first break ever found, kept on show.
+  - `sealedOn` and `sealedBefore` come from `audit_chain_started`.
+
+### Also built, from the decisions
+
+- **`audit.view`** (core) is held by the built-in Administrator and Quality
+  officer. Existing clients got it by migration 0059, with one
+  `built_in_roles_changed_by_system` entry per client. The web dictionaries
+  need its label (`admin.permissions.audit.view`).
+- **Giving `policies.import`:** whoever is newly given it, by their roles
+  (`PUT /users/:id/roles`, a new user) or by a role it is added to
+  (`PATCH /roles/:id`), is named to the other holders of the built-in
+  Quality officer and Administrator roles, in the app.
+  - The kind is `policies_import_granted`, with `data: { personId,
+    serious: false }`. Never to the one who made the change, nor to the
+    person given it.
+  - The notification list now gives `person: { id, name }` for a
+    notification with `data.personId`.
+
+### Tests
+
+- `test/audit-chain.e2e-spec.ts`:
+  - sealing by every writer, in commit order, with the body the same in the
+    database and in the code;
+  - rolled-back work left unsealed;
+  - the grants;
+  - the verification, the schedule, and the signature under the published
+    key;
+  - each kind of tampering, done as the owner role, found: an update, a
+    deletion, an insert with `session_replication_role = replica`, a
+    truncated tail against a checkpoint, a backdated entry, a changed
+    checkpoint;
+  - the notices, the status route, `audit.view`, the import notice, and the
+    new entries' details.
+- `test/cleanup.ts` deletes the chain tables of whole test clients only.
+  `src/database/deadlines.spec.ts` deletes demo clients' entries only
+  inside a transaction it rolls back.
+
+### Not built yet
+
+- The viewer and its entries API (step 4).
+- The exports, chain file and checkpoints download (step 5).
+- External reviewers (step 6).
+- Mirroring Trustline's actions and chaining `platform_audit_log` (step 7).
+- The weekly email of the head (decision 5).
+- Clearing addresses (decision 7).
+- The viewer's indexes, which come with step 4.
+
+The reviews due:
+
+- `security-reviewer` after steps 2 and 3;
+- `bilingual-reviewer` for the wording files.
