@@ -2736,7 +2736,7 @@
     "filters": {
       "title": "Filtres",
       "reference": "Référence ou numéro",
-      "referenceHelp": "La référence d’un incident ou le numéro d’un document, tel qu’écrit : INC-2026-00042.",
+      "referenceHelp": "La référence d’un incident ou le numéro d’un document, tel qu’écrit : ⁦INC‑2026‑00042⁩.",
       "recordType": "Type de dossier",
       "anyRecord": "Tous",
       "action": "Événement",

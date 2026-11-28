@@ -2736,7 +2736,7 @@
     "filters": {
       "title": "Filters",
       "reference": "Reference or number",
-      "referenceHelp": "An incident's reference or a document's number, as written: INC-2026-00042.",
+      "referenceHelp": "An incident's reference or a document's number, as written: ⁦INC‑2026‑00042⁩.",
       "recordType": "Kind of record",
       "anyRecord": "Any",
       "action": "What happened",
