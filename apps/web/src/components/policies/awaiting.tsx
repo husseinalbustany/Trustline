@@ -188,9 +188,14 @@ export function Awaiting({ lang, t }: PoliciesProps) {
                     </span>
                   </p>
                   <p className="mt-1 text-xs text-muted">
-                    {fill(item.reissue ? t.reissue.byDate : t.list.nextReview, {
-                      date: day(item.nextReviewOn) ?? "",
-                    })}
+                    {fill(
+                      item.reissue
+                        ? item.state === "overdue"
+                          ? t.reissue.wasDue
+                          : t.reissue.byDate
+                        : t.list.nextReview,
+                      { date: day(item.nextReviewOn) ?? "" },
+                    )}
                   </p>
                 </li>
               ))}

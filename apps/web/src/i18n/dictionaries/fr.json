@@ -1090,7 +1090,9 @@
         "languageMismatch": "Saisissez le nom dans la langue par défaut.",
         "permissionsReadOnly": "Les modifications sont suspendues pour le compte de votre établissement : des autorisations peuvent être retirées de ce rôle, mais pas ajoutées, et son nom ne peut pas être modifié."
       },
-      "nobodyYet": "Personne ne l’a encore"
+      "nobodyYet": "Personne ne l’a encore",
+      "nobodyApproves": "Un circuit d’approbation désigne ce rôle, et personne ne l’a encore : les documents qui passent par ce circuit ne peuvent pas être soumis à vérification tant que personne ne l’a.",
+      "giveToSomeone": "Le donner à quelqu’un dans Utilisateurs."
     },
     "organization": {
       "title": "Organisation",
@@ -1896,13 +1898,14 @@
       "batch_refused": "Certains documents ne peuvent pas être importés : aucun ne l’a été. Corrigez-les et vérifiez de nouveau.",
       "reissue_required": "Ce document a été approuvé avant Trustline : sa révision est une réédition par le circuit d’approbation, et non une confirmation qu’il ne nécessite aucune modification.",
       "approved_after_start": "Ce document a été approuvé après que votre établissement a commencé à gérer ses documents dans Trustline : il ne peut pas être importé. Créez-le comme nouveau document et soumettez-le au circuit d’approbation.",
-      "approved_after_start_by": "Seuls les documents approuvés avant le {date} peuvent être importés. Celui-ci a été approuvé plus tard : créez-le comme nouveau document et soumettez-le au circuit d’approbation.",
+      "approved_after_start_by": "Seuls les documents approuvés le {date} ou avant peuvent être importés. Celui-ci a été approuvé plus tard : créez-le comme nouveau document et soumettez-le au circuit d’approbation.",
       "import_window_closed": "L’importation de documents existants est fermée pour votre établissement. Créez plutôt de nouveaux documents, ou demandez à Trustline de rouvrir l’importation.",
       "import_window_closed_on": "L’importation de documents existants a fermé le {date}. Créez plutôt de nouveaux documents, ou demandez à Trustline de rouvrir l’importation.",
       "no_assignee_role": "Pas encore soumise à vérification : personne ne peut décider de l’étape {position} de son circuit d’approbation ({kind}, par le rôle {role}). Personne n’a ce rôle pour l’entité responsable de ce document, en dehors des personnes qui ont préparé cette version. Demandez à la personne qui gère les utilisateurs de donner le rôle {role} à celle qui décide de cette étape, puis soumettez de nouveau la version.",
       "no_assignee_person": "Pas encore soumise à vérification : l’étape {position} de son circuit d’approbation ({kind}) désigne {name}, qui ne peut pas en décider : son compte n’est pas actif, aucun de ses rôles ne le permet, ou cette personne a préparé cette version. Demandez à la personne qui gère les paramètres des documents de modifier le circuit, puis soumettez de nouveau la version.",
       "no_assignee_give_role": "Donner le rôle à quelqu’un",
-      "no_assignee_open_routes": "Ouvrir les circuits d’approbation"
+      "no_assignee_open_routes": "Ouvrir les circuits d’approbation",
+      "approved_after_start_since": "Votre établissement a commencé à gérer ses documents dans Trustline le {date}. Seuls les documents approuvés avant cette date peuvent être importés : créez celui-ci comme nouveau document et soumettez-le au circuit d’approbation."
     },
     "importing": {
       "open": "Importer des documents",
@@ -1912,7 +1915,6 @@
       "batchOpen": "Importer un lot depuis un fichier",
       "layoutOpen": "Comment préparer le fichier",
       "windowCloses": "Les documents existants peuvent être importés jusqu’au {date}.",
-      "approvedBefore": "Seuls les documents approuvés avant le {date} peuvent être importés. Un document approuvé depuis passe par le circuit d’approbation.",
       "reviewMonthsHelp": "Périodicité de révision une fois le document réédité. Laissez vide pour reprendre celle du type.",
       "original": "L’original",
       "originalHelp": "Tel que le donne l’original signé. Rien de cela ne peut être modifié après l’importation : une modification passe par une nouvelle version.",
@@ -2101,7 +2103,11 @@
           "section": "Texte de cette section tel qu’il figure sur l’original.",
           "keywords": "documents|maîtrise"
         }
-      }
+      },
+      "latestApproval": "Seuls les documents approuvés le {date} ou avant peuvent être importés. Un document approuvé depuis passe par le circuit d’approbation.",
+      "approvedBeforeStart": "Seuls les documents approuvés avant le {date}, date à laquelle votre établissement a commencé à gérer ses documents dans Trustline, peuvent être importés. Un document approuvé depuis passe par le circuit d’approbation.",
+      "numberNormalised": "Saisi sous la forme {given}. Trustline l’enregistre tel qu’il apparaît ci-dessus.",
+      "allDoneLeftOut": "Tous les documents du fichier sont importés, sauf ceux qui ont été écartés : {count}. Reprenez-en un pour l’importer, ou importez-le plus tard depuis un autre fichier."
     },
     "imported": {
       "pill": "Approuvé avant Trustline",

@@ -29,6 +29,7 @@ import { pick, readForm, type Localized } from "@/lib/localized";
 import {
   documentPath,
   importPath,
+  todayIn,
   type PolicyDocument,
   type PolicySettings,
   type Section,
@@ -40,7 +41,7 @@ import type {
 } from "@/lib/policy-import";
 import { DocumentFields, loadLists, readDocumentBody, type Lists } from "./document-form";
 import { PasswordPrompt } from "./password-prompt";
-import { Sentence } from "./sentence";
+import { Sentence, Words } from "./sentence";
 import { textareaClass, type PoliciesProps, type PoliciesText } from "./types";
 import { useExplain } from "./use-explain";
 
@@ -53,7 +54,14 @@ const ownName = (locale: string) =>
  * day allowed, when the API gives them with the settings. Read loosely:
  * the names may still change.
  */
-export type ImportWindow = { closesOn: string | null; approvedBefore: string | null };
+export type ImportWindow = {
+  /** The last day documents may be imported. */
+  closesOn: string | null;
+  /** The latest approval day an imported document may have. */
+  latestApprovedOn: string | null;
+  /** The day the module was first switched on: approved before it. */
+  startedOn: string | null;
+};
 
 export function importWindowOf(settings: unknown): ImportWindow | null {
   if (!settings || typeof settings !== "object") return null;
@@ -62,10 +70,11 @@ export function importWindowOf(settings: unknown): ImportWindow | null {
   const day = (v: unknown) =>
     typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : null;
   const closesOn = day(w?.closesOn ?? w?.until ?? w?.endsOn ?? o.importWindowClosesOn);
-  const approvedBefore = day(
-    w?.approvedBefore ?? w?.latestApprovedOn ?? o.importApprovedBefore,
-  );
-  return closesOn || approvedBefore ? { closesOn, approvedBefore } : null;
+  const latestApprovedOn = day(w?.latestApprovedOn ?? o.importLatestApprovedOn);
+  const startedOn = day(w?.startedOn ?? w?.moduleStartedOn ?? o.policiesStartedOn);
+  return closesOn || latestApprovedOn || startedOn
+    ? { closesOn, latestApprovedOn, startedOn }
+    : null;
 }
 
 /** Said at the top of the import screens, when the API says when imports end. */
@@ -74,14 +83,30 @@ export function ImportWindowNote({
   t,
   window: w,
 }: PoliciesProps & { window: ImportWindow | null }) {
+  const session = useSession();
   if (!w) return null;
   const day = dayFormat(lang);
   const m = t.importing;
+  const closed = !!w.closesOn && w.closesOn < todayIn(session.tenant.timeZone);
   return (
-    <div className="mt-4 flex max-w-3xl flex-col gap-1 rounded-md border border-line bg-surface px-3 py-2 text-sm">
-      {w.closesOn && <p>{fill(m.windowCloses, { date: day(w.closesOn) ?? "" })}</p>}
-      {w.approvedBefore && (
-        <p>{fill(m.approvedBefore, { date: day(w.approvedBefore) ?? "" })}</p>
+    <div
+      role="note"
+      className={`mt-4 flex max-w-3xl flex-col gap-1 rounded-md border px-3 py-2 text-sm ${
+        closed ? "border-warn bg-warn-soft" : "border-line bg-surface"
+      }`}
+    >
+      {w.closesOn && (
+        <p className={closed ? "font-medium" : undefined}>
+          {fill(closed ? t.errors.import_window_closed_on : m.windowCloses, {
+            date: day(w.closesOn) ?? "",
+          })}
+        </p>
+      )}
+      {!closed && w.latestApprovedOn && (
+        <p>{fill(m.latestApproval, { date: day(w.latestApprovedOn) ?? "" })}</p>
+      )}
+      {!closed && !w.latestApprovedOn && w.startedOn && (
+        <p>{fill(m.approvedBeforeStart, { date: day(w.startedOn) ?? "" })}</p>
       )}
     </div>
   );
@@ -280,7 +305,13 @@ export function CheckedLines({
   t,
   checked,
   sections,
-}: PoliciesProps & { checked: CheckedDocument; sections: Section[] }) {
+  given,
+}: PoliciesProps & {
+  checked: CheckedDocument;
+  sections: Section[];
+  /** The number as it was entered, when one was. */
+  given?: string;
+}) {
   const session = useSession();
   const m = t.importing;
   const list = new Intl.ListFormat(lang, { type: "conjunction" });
@@ -303,6 +334,24 @@ export function CheckedLines({
           fill(m.numberedByTrustline, { series: checked.series ?? "" })
         )}
       </li>
+      {/* Recorded otherwise than it was typed (spaces, a script's digits). */}
+      {checked.numberFrom === "given" &&
+        checked.number &&
+        given &&
+        given.trim() !== checked.number && (
+          <li className="text-muted">
+            <Words
+              text={m.numberNormalised}
+              values={{
+                given: (
+                  <span dir="ltr" className="whitespace-nowrap">
+                    {given.trim()}
+                  </span>
+                ),
+              }}
+            />
+          </li>
+        )}
       {required.length > 0 && (
         <li className="text-warn">
           {fill(m.requiredNotWritten, { sections: list.format(required.map((s) => nameOf(s.key))) })}
@@ -532,7 +581,13 @@ function ImportForm({ lang, t, ready }: PoliciesProps & { ready: Ready }) {
           <div className="rounded-lg border border-accent bg-accent-soft px-4 py-3">
             <p className="text-sm font-medium">{m.checkedOk}</p>
             <div className="mt-1">
-              <CheckedLines lang={lang} t={t} checked={checked.result} sections={sectionsOf} />
+              <CheckedLines
+                lang={lang}
+                t={t}
+                checked={checked.result}
+                sections={sectionsOf}
+                given={checked.body.number}
+              />
             </div>
           </div>
           <PasswordPrompt

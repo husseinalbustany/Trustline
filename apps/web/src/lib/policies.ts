@@ -663,15 +663,24 @@ export function shownLanguage(
  * The language whose text applies to a version: the one recorded on it
  * when it was sent for review, once the API gives it (a version in review
  * or published keeps it whatever the setting becomes), else the one its
- * language status was worked out against, else the client's main one.
+ * language status was worked out against, else the client's main one. A
+ * draft is checked against the setting as it is now, whatever an earlier
+ * round recorded.
  */
 export function authoritativeOf(
-  version: Pick<DocumentVersion, "languageStatus"> & { authoritativeLocale?: unknown },
+  version: Pick<DocumentVersion, "languageStatus"> & {
+    status?: VersionStatus;
+    authoritativeLocale?: unknown;
+  },
   fallback: string,
 ): string {
-  return typeof version.authoritativeLocale === "string" && version.authoritativeLocale
-    ? version.authoritativeLocale
-    : (version.languageStatus?.authoritative ?? fallback);
+  const recorded =
+    version.status !== "draft" &&
+    typeof version.authoritativeLocale === "string" &&
+    version.authoritativeLocale
+      ? version.authoritativeLocale
+      : null;
+  return recorded ?? version.languageStatus?.authoritative ?? fallback;
 }
 
 export type NotInForce = "retired" | "superseded" | "withdrawn" | "unpublished";

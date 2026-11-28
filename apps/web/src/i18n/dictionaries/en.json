@@ -1090,7 +1090,9 @@
         "languageMismatch": "Fill in the name in the default language.",
         "permissionsReadOnly": "Changes are paused for your organization's account: permissions can be taken away from this role, but not added, and its name cannot be changed."
       },
-      "nobodyYet": "Nobody holds it yet"
+      "nobodyYet": "Nobody holds it yet",
+      "nobodyApproves": "An approval route names this role, and nobody holds it yet: documents that go through that route cannot be sent for review until someone does.",
+      "giveToSomeone": "Give it to someone in Users."
     },
     "organization": {
       "title": "Organization",
@@ -1896,13 +1898,14 @@
       "batch_refused": "Some documents cannot be imported, so none was. Correct them and check again.",
       "reissue_required": "This document was approved before Trustline: its review is a re-issue through the approval route, not a confirmation that nothing changed.",
       "approved_after_start": "This document was approved after your organization started managing its documents in Trustline, so it cannot be imported. Create it as a new document and send it through the approval route.",
-      "approved_after_start_by": "Only documents approved before {date} can be imported. This one was approved later: create it as a new document and send it through the approval route.",
+      "approved_after_start_by": "Only documents approved on {date} or earlier can be imported. This one was approved later: create it as a new document and send it through the approval route.",
       "import_window_closed": "Importing existing documents is closed for your organization. Create new documents instead, or ask Trustline to open importing again.",
       "import_window_closed_on": "Importing existing documents closed on {date}. Create new documents instead, or ask Trustline to open importing again.",
       "no_assignee_role": "Not sent for review yet: nobody can decide step {position} of its approval route ({kind}, by the role {role}). Nobody holds this role for this document's responsible area, apart from those who prepared this version. Ask whoever manages users to give the role {role} to the person who decides this step, then send the version again.",
       "no_assignee_person": "Not sent for review yet: step {position} of its approval route ({kind}) names {name}, who cannot decide it: their account is not active, no role of theirs allows it, or they prepared this version. Ask whoever manages document settings to change the route, then send the version again.",
       "no_assignee_give_role": "Give the role to someone",
-      "no_assignee_open_routes": "Open the approval routes"
+      "no_assignee_open_routes": "Open the approval routes",
+      "approved_after_start_since": "Your organization started managing its documents in Trustline on {date}. Only documents approved before then can be imported: create this one as a new document and send it through the approval route."
     },
     "importing": {
       "open": "Import documents",
@@ -1912,7 +1915,6 @@
       "batchOpen": "Import a batch from a file",
       "layoutOpen": "How to lay out the file",
       "windowCloses": "Existing documents can be imported until {date}.",
-      "approvedBefore": "Only documents approved before {date} can be imported. A document approved since then goes through the approval route.",
       "reviewMonthsHelp": "How often it is reviewed once it has been re-issued. Leave empty to use the period of the type.",
       "original": "The original",
       "originalHelp": "As the signed original gives it. None of this can be changed after the import: a change is made through a new version.",
@@ -2101,7 +2103,11 @@
           "section": "Text of this section as it reads on the original.",
           "keywords": "documents|control"
         }
-      }
+      },
+      "latestApproval": "Only documents approved on {date} or earlier can be imported. A document approved since then goes through the approval route.",
+      "approvedBeforeStart": "Only documents approved before {date}, the day your organization started managing its documents in Trustline, can be imported. A document approved since then goes through the approval route.",
+      "numberNormalised": "Entered as {given}. Trustline records it as shown above.",
+      "allDoneLeftOut": "Every document of the file is imported, except those left out: {count}. Put one back to import it, or import it later from another file."
     },
     "imported": {
       "pill": "Approved before Trustline",

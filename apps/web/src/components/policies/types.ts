@@ -113,10 +113,15 @@ export function explain(
   // Imports are for migration: the latest approval day allowed, and the
   // day the import window closed, when the API gives them.
   if (code === "approved_after_start") {
-    const latest = details.latest ?? details.approvedBefore ?? details.before;
+    // The latest approval day allowed, or the day the module was first
+    // switched on (approved before it, then).
+    const latest = details.latestApprovedOn ?? details.latest;
+    const started = details.startedOn ?? details.since;
     return typeof latest === "string"
       ? fill(errors.approved_after_start_by, { date: day(latest) })
-      : errors.approved_after_start;
+      : typeof started === "string"
+        ? fill(errors.approved_after_start_since, { date: day(started) })
+        : errors.approved_after_start;
   }
   if (code === "import_window_closed") {
     const closed = details.closedOn ?? details.closesOn ?? details.until;
@@ -124,7 +129,14 @@ export function explain(
       ? fill(errors.import_window_closed_on, { date: day(closed) })
       : errors.import_window_closed;
   }
-  if (code && /mixed_script|script_mix/.test(code)) {
+  // A number mixing scripts, whether said by its own code or as the
+  // reason of `invalid_number`.
+  const script = /mixed_script|script_mix|scripts/;
+  if (
+    (code && script.test(code)) ||
+    (code === "invalid_number" &&
+      script.test(String(details.reason ?? details.problem ?? "")))
+  ) {
     return errors.number_mixed_scripts;
   }
   if (code === "unknown_section") {

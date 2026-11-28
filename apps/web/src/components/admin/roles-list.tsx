@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { Plus, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
@@ -10,6 +10,7 @@ import { EmptyState, Panel } from "@/components/ui/panel";
 import { api, statusOf } from "@/lib/api";
 import type { Role } from "@/lib/identity";
 import { pick } from "@/lib/localized";
+import type { ApprovalRoute } from "@/lib/policies";
 import { useSession } from "@/components/shell/session";
 import { hasModule, useReadOnly } from "@/components/shell/subscription";
 import { permissionModule } from "@/config/modules";
@@ -28,6 +29,33 @@ export function RolesList({ lang, t }: AdminProps) {
   const inUse = (role: Role) =>
     role.permissions.filter((p) => hasModule(session, permissionModule(p)))
       .length;
+
+  // Roles an approval route names, when this person may see the routes:
+  // one nobody holds stops those documents from being sent for review.
+  const [routed, setRouted] = useState<Set<string>>(new Set());
+  const documents = hasModule(session, "policies");
+  useEffect(() => {
+    if (!documents) return;
+    let current = true;
+    api<ApprovalRoute[]>("/policies/approval-routes")
+      .then((routes) => {
+        if (!current) return;
+        setRouted(
+          new Set(
+            routes
+              .filter((r) => r.active)
+              .flatMap((r) => r.steps)
+              .flatMap((s) => (s.assignee.type === "role" ? [s.assignee.role.id] : [])),
+          ),
+        );
+      })
+      .catch(() => {
+        // Not shown to those who may not read the routes.
+      });
+    return () => {
+      current = false;
+    };
+  }, [documents]);
 
   useEffect(() => {
     api<{ roles: Role[] }>("/roles")
@@ -106,6 +134,25 @@ export function RolesList({ lang, t }: AdminProps) {
                             )}
                           </p>
                         )}
+                        {/* An approving role nobody holds: its approval steps
+                            cannot be decided, so say what to do. */}
+                        {role.assignments === 0 && routed.has(role.id) && (
+                            <p className="mt-2 flex max-w-xl items-start gap-2 rounded-md border border-warn bg-warn-soft px-2 py-1.5 text-xs">
+                              <TriangleAlert
+                                className="mt-0.5 size-3.5 shrink-0 text-warn"
+                                aria-hidden
+                              />
+                              <span>
+                                {t.roles.nobodyApproves}{" "}
+                                <Link
+                                  href={`/${lang}/admin/users`}
+                                  className="font-medium text-accent hover:underline"
+                                >
+                                  {t.roles.giveToSomeone}
+                                </Link>
+                              </span>
+                            </p>
+                          )}
                       </td>
                       <td className="px-4 py-3 tabular-nums">{inUse(role)}</td>
                       <td className="px-4 py-3">

@@ -431,8 +431,8 @@ function Batches({ lang, t, ready }: PoliciesProps & { ready: Ready }) {
           <Panel
             key={batch.signature}
             title={fill(m.batchTitleLine, {
-              batch: numbers.format(b + 1),
-              batches: numbers.format(batches.length),
+              batch: numbers.format(signedCount + b + 1),
+              batches: numbers.format(signedCount + batches.length),
             })}
           >
             <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3 text-sm">
@@ -501,6 +501,7 @@ function Batches({ lang, t, ready }: PoliciesProps & { ready: Ready }) {
                         t={t}
                         checked={checked}
                         sections={type?.sections ?? []}
+                        given={item.body?.number}
                       />
                     )}
                     {editing === item.row.key && (
@@ -529,8 +530,8 @@ function Batches({ lang, t, ready }: PoliciesProps & { ready: Ready }) {
                     t={t}
                     intro={fill(m.signBatch, {
                       count: numbers.format(batch.items.length),
-                      batch: numbers.format(b + 1),
-                      batches: numbers.format(batches.length),
+                      batch: numbers.format(signedCount + b + 1),
+                      batches: numbers.format(signedCount + batches.length),
                     })}
                     confirm={fill(m.signBatchConfirm, {
                       count: numbers.format(batch.items.length),
@@ -581,7 +582,7 @@ function Batches({ lang, t, ready }: PoliciesProps & { ready: Ready }) {
                         setSigning(batch.signature);
                       }}
                     >
-                      {fill(m.signBatchOpen, { batch: numbers.format(b + 1) })}
+                      {fill(m.signBatchOpen, { batch: numbers.format(signedCount + b + 1) })}
                     </Button>
                     <p className="text-xs text-muted">{m.signBatchHelp}</p>
                   </div>
@@ -654,7 +655,9 @@ function Batches({ lang, t, ready }: PoliciesProps & { ready: Ready }) {
       {finished && (
         <div className="flex flex-wrap items-center gap-3">
           <p role="status" className="text-sm font-medium">
-            {m.allDone}
+            {left.length > 0
+              ? fill(m.allDoneLeftOut, { count: numbers.format(left.length) })
+              : m.allDone}
           </p>
           <ButtonLink href={`/${lang}/policies`}>{m.toLibrary}</ButtonLink>
           <Button
