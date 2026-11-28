@@ -1,8 +1,9 @@
-import type {
-  AiProvider,
-  ProviderCall,
-  ProviderRequest,
-  ProviderResult,
+import {
+  underTest,
+  type AiProvider,
+  type ProviderCall,
+  type ProviderRequest,
+  type ProviderResult,
 } from './provider.js';
 
 /**
@@ -39,8 +40,9 @@ export function echo(request: ProviderRequest): string {
 export const fakeAi = {
   handler: null as FakeHandler | null,
   calls: [] as { request: ProviderRequest; attempt: number }[],
-  /** Answers with this from now on. */
+  /** Answers with this from now on. Under test only. */
   respondWith(handler: FakeHandler) {
+    if (!underTest()) throw new Error('fakeAi.respondWith is for tests only');
     this.handler = handler;
   },
   /** Back to the default answer, with no calls recorded. */
@@ -60,7 +62,10 @@ export class FakeAiProvider implements AiProvider {
 
   async complete(request: ProviderRequest, call: ProviderCall): Promise<ProviderResult> {
     this.attempt++;
-    fakeAi.calls.push({ request: structuredClone(request), attempt: this.attempt });
+    // Only under test: elsewhere, the fake is what answers by default, and
+    // keeping what it was sent would hold record text in memory for ever
+    // (security review 13, M6).
+    if (underTest()) fakeAi.calls.push({ request: structuredClone(request), attempt: this.attempt });
     const handler = fakeAi.handler ?? echo;
     const answer = await Promise.race([
       Promise.resolve(handler(request, this.attempt)),

@@ -89,8 +89,8 @@ describe('names of people, in English', () => {
     expect(redactor(['Abu Bakr Nasser']).redact('Abou Bakr Nasser and Abubakr Nasser.')).toBe('[PERSON_1] and [PERSON_1].');
   });
 
-  it('leaves titles alone', () => {
-    expect(roundTrip(['Dr Sarah Johnson'], 'Dr Smith and Dr Sarah Johnson.')).toBe('Dr Smith and Dr [PERSON_1].');
+  it('leaves titles alone, and takes the name a title announces for a name', () => {
+    expect(roundTrip(['Dr Sarah Johnson'], 'Dr Smith and Dr Sarah Johnson.')).toBe('Dr [PERSON_1] and Dr [PERSON_2].');
   });
 });
 
@@ -213,6 +213,80 @@ describe('identifiers', () => {
   });
 });
 
+describe('names nobody passed in (security review 13, H2)', () => {
+  const staff = ['Mohammed Al-Rashid', 'Li Na', 'Jo Smith', 'Sarah Connor'];
+  /** As AiService does: learn from every text, then redact. */
+  const send = (texts: string[], names = staff) => {
+    const redaction = new Redaction(new NameIndex(names));
+    redaction.reserve(texts);
+    redaction.learn(texts);
+    const sent = texts.map((t) => redaction.redact(t));
+    // Every placeholder made is put back (as first written).
+    for (const s of sent) expect(redaction.restore(s)).not.toMatch(/\[(PERSON|EMAIL|PHONE|ID|MRN)_\d+\]/);
+    return sent;
+  };
+
+  it('takes the capitalised words after a title or a relationship for a name, in English', () => {
+    expect(send(['Patient Aisha Rahman (bed 4) fell; her son Omar called.'])).toEqual([
+      'Patient [PERSON_1] (bed 4) fell; her son [PERSON_2] called.',
+    ]);
+    expect(send(['Mr. Brown and Mrs Ng were told. The witness, Peter Jones, agreed.'])).toEqual([
+      'Mr. [PERSON_1] and Mrs [PERSON_2] were told. The witness, [PERSON_3], agreed.',
+    ]);
+    // Not when what follows is an ordinary word.
+    expect(send(['The patient was moved; her son was told.'])).toEqual(['The patient was moved; her son was told.']);
+  });
+
+  it('removes a name it learned wherever else it appears in the request', () => {
+    expect(send(['Patient Aisha Rahman fell.', 'Later Aisha said she slipped; aisha rahman is 80.'])).toEqual([
+      'Patient [PERSON_1] fell.',
+      'Later [PERSON_2] said she slipped; [PERSON_1] is 80.',
+    ]);
+  });
+
+  it('does the same in French', () => {
+    expect(send(['La patiente Hélène Dubois est tombée ; son fils Pierre a appelé. Mme Leroy était présente.'])).toEqual([
+      'La patiente [PERSON_1] est tombée ; son fils [PERSON_2] a appelé. Mme [PERSON_3] était présente.',
+    ]);
+  });
+
+  it('does the same in Arabic, with and without diacritics, stopping at words that cannot be a name', () => {
+    expect(send(['سقطت المريضة عائشة رحمن في الغرفة، واتصل ابنها عمر.'])).toEqual([
+      'سقطت المريضة [PERSON_1] في الغرفة، واتصل ابنها [PERSON_2].',
+    ]);
+    expect(send(['زوجته فاطِمة في المستشفى.'])).toEqual(['زوجته [PERSON_1] في المستشفى.']);
+    expect(send(['المريض في الغرفة ٣.'])).toEqual(['المريض في الغرفة ٣.']);
+  });
+
+  it('matches a known name written in lower case, when long enough and not an ordinary word', () => {
+    expect(send(['spoke to mohammed and sarah at 10.'])).toEqual(['spoke to [PERSON_1] and [PERSON_2] at 10.']);
+    // Short or ordinary words stay.
+    expect(send(['the nurse will mark it.'], ['Will Mark'])).toEqual(['the nurse will mark it.']);
+  });
+
+  it('matches common spellings of the same name', () => {
+    const sent = send(['Muhammad Al-Rashid and Mohamed Al Rashid and Muhammed Alrashid.']);
+    expect(sent).toEqual(['[PERSON_1] and [PERSON_1] and [PERSON_1].']);
+    expect(send(['Aicha came, then Ayesha.'], ['Aisha Karim'])).toEqual(['[PERSON_1] came, then [PERSON_1].']);
+  });
+
+  it('matches a name with a short part when a title announces it', () => {
+    expect(send(['Nurse Li gave the dose.'])).toEqual(['Nurse [PERSON_1] gave the dose.']);
+  });
+
+  it('sees through a soft hyphen or a zero-width character inside a name', () => {
+    expect(send(['Sa\u00ADrah Con\u200Bnor was there.'])).toEqual(['[PERSON_1] was there.']);
+  });
+
+  it('takes a number of six digits or more near a word for a patient or a file for a record number', () => {
+    expect(send(['patient 654321 and file 445566; dossier du patient : 778812; ملف ٤٥٢١٨٨'])).toEqual([
+      'patient [MRN_1] and file [MRN_2]; dossier du patient : [MRN_3]; ملف [MRN_4]',
+    ]);
+    // A short number near the same words stays.
+    expect(send(['patient in bed 12, file 4455'])).toEqual(['patient in bed 12, file 4455']);
+  });
+});
+
 describe('putting back', () => {
   it('restores placeholders the model wrote, and leaves what only looks like one', () => {
     const { redaction, redact } = redactor(['Sarah Johnson']);
@@ -226,6 +300,15 @@ describe('putting back', () => {
     const { redaction, redact } = redactor(['Sarah Johnson']);
     redact('Sarah Johnson');
     expect(redaction.restore('Ask PERSON_1, or [ PERSON_1 ].')).toBe('Ask Sarah Johnson, or Sarah Johnson.');
+  });
+
+  it('never puts a name back where someone typed a placeholder without brackets (security review 13, M2)', () => {
+    const { redaction } = redactor(['Sarah Connor', 'Fatima Zahra']);
+    const texts = ['Sarah Connor met Fatima Zahra. Note: PERSON_2 is the code of ward 7, [ PERSON_3 ] too.'];
+    redaction.reserve(texts);
+    const sent = redaction.redact(texts[0]);
+    expect(sent).toBe('[PERSON_1] met [PERSON_4]. Note: PERSON_2 is the code of ward 7, [ PERSON_3 ] too.');
+    expect(redaction.restore(sent)).toBe(texts[0]);
   });
 
   it('never reuses a placeholder someone typed in the request', () => {

@@ -51,6 +51,27 @@ const AWS_REGION = /^[a-z]{2}(-[a-z]+)+-\d{1,2}$/;
 const GEOGRAPHY = /^[a-z]{2,10}$/;
 
 /**
+ * The geographies of Bedrock's regional (cross-region) inference profiles a
+ * region belongs to: a regional model id must start with one of them
+ * (`eu.` in eu-west-1). A region in none has no regional inference. From
+ * Amazon's documentation as of November 2026: check again when a region is
+ * added.
+ */
+export function bedrockGeographies(region: string): string[] {
+  if (region.startsWith('us-gov-')) return ['us-gov'];
+  if (region.startsWith('us-')) return ['us'];
+  if (region.startsWith('ca-')) return ['ca', 'us'];
+  if (region.startsWith('eu-')) return ['eu'];
+  if (region === 'ap-northeast-1' || region === 'ap-northeast-3') return ['jp', 'apac'];
+  if (region === 'ap-southeast-2' || region === 'ap-southeast-4') return ['au', 'apac'];
+  if (region.startsWith('ap-')) return ['apac'];
+  return [];
+}
+
+/** A Bedrock ARN: its region and what it names. */
+const BEDROCK_ARN = /^arn:aws(?:-[a-z]+)*:bedrock:([a-z0-9-]+):\d{0,12}:([a-z-]+)\//;
+
+/**
  * What a connection must be to say truly where it processes requests,
  * or 400 with a code:
  *
@@ -82,7 +103,16 @@ export function assertConnection(c: {
   if (!AWS_REGION.test(c.region)) refuse('invalid_region');
   for (const model of c.models) {
     if (model.id.startsWith('arn:')) {
-      if (c.inferenceType !== 'in_region') refuse('model_inference_mismatch', { model: model.id });
+      // Only a model of the connection's own region, served there: never an
+      // inference profile, which may send requests elsewhere (security
+      // review 13, L1).
+      const arn = BEDROCK_ARN.exec(model.id);
+      const ok =
+        c.inferenceType === 'in_region' &&
+        !!arn &&
+        arn[1] === c.region &&
+        (arn[2] === 'foundation-model' || arn[2] === 'provisioned-model');
+      if (!ok) refuse('model_inference_mismatch', { model: model.id });
       continue;
     }
     const parts = model.id.split('.');
@@ -90,9 +120,21 @@ export function assertConnection(c: {
       c.inferenceType === 'global'
         ? parts[0] === 'global' && parts.length >= 3
         : c.inferenceType === 'regional'
-          ? parts.length >= 3 && parts[0] !== 'global'
+          ? parts.length >= 3 && bedrockGeographies(c.region).includes(parts[0])
           : parts.length === 2;
     if (!ok) refuse('model_inference_mismatch', { model: model.id });
+  }
+}
+
+/**
+ * 400 `credential_env_mismatch` unless the credential's variable is named
+ * for the connection's kind (`AI_CREDENTIAL_ANTHROPIC_…`,
+ * `AI_CREDENTIAL_BEDROCK_…`): so that one kind's key is never sent to the
+ * other kind's service (security review 13, L4).
+ */
+export function assertCredentialEnv(kind: AiProviderKind, credentialEnv: string) {
+  if (!credentialEnv.startsWith(`AI_CREDENTIAL_${kind.toUpperCase()}_`)) {
+    throw new BadRequestException({ code: 'credential_env_mismatch' });
   }
 }
 

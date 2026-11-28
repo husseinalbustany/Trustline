@@ -44,6 +44,9 @@ export class AnthropicProvider implements AiProvider {
       // One retry is AiService's to make, after its own checks.
       maxRetries: 0,
       timeout: call.timeoutMs,
+      // Whatever ANTHROPIC_LOG says: at debug, the SDK would write request
+      // bodies, record text included, to the log (security review 13, L5).
+      logLevel: 'off',
       ...(this.options.fetch && { fetch: this.options.fetch }),
     });
     try {

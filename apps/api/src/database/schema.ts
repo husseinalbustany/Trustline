@@ -3202,12 +3202,12 @@ export const aiRequests = pgTable(
     userId: uuid(),
     // The client's month (its time zone) the request falls in: `YYYY-MM`.
     month: text().notNull(),
-    // What it is counted under: a draft's conversation (`unit_key`), and
-    // whether this request opened one counted unit of the allowance (a
-    // draft, a suggestion, an assistant message).
-    unitKey: text(),
+    // What it is counted under: the draft it belongs to (`unit_key`, the
+    // draft's own id, never anything written in it), and whether this
+    // request opened one counted unit of the allowance (a draft, a
+    // suggestion, an assistant message).
+    unitKey: uuid(),
     counted: boolean().notNull(),
-    revision: boolean().notNull().default(false),
     outcome: aiRequestOutcome().notNull(),
     // Why it failed (the kind of provider failure) or was refused
     // (`allowance_reached`, `spending_limit`). Never a provider's message.
@@ -3228,17 +3228,13 @@ export const aiRequests = pgTable(
     }),
     index('ai_requests_month_idx').on(t.tenantId, t.month, t.feature),
     index('ai_requests_unit_idx')
-      .on(t.tenantId, t.feature, t.unitKey)
+      .on(t.tenantId, t.unitKey, t.month)
       .where(sql`${t.unitKey} is not null`),
     index('ai_requests_created_idx').on(t.createdAt),
     check('ai_requests_month', sql`${t.month} ~ '^[0-9]{4}-[0-9]{2}$'`),
     check(
       'ai_requests_sizes',
       sql`${t.inputTokens} >= 0 and ${t.outputTokens} >= 0 and ${t.costMicroUsd} >= 0 and ${t.attempts} between 0 and 2`,
-    ),
-    check(
-      'ai_requests_unit_key',
-      sql`${t.unitKey} is null or length(${t.unitKey}) between 1 and 200`,
     ),
     tenantIsolation(),
     pgPolicy('ai_requests_platform_read', {

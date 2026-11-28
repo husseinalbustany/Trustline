@@ -6,8 +6,11 @@
  * One `Redaction` per request. It replaces, with stable placeholders:
  *
  * - the names of the client's people (its users, in every language they are
- *   written in) and any name the feature passes in, as whole names and as
+ *   written in) and every name the feature passes in, as whole names and as
  *   the parts of a name (`[PERSON_1]`);
+ * - names it finds by the words around them: after a title or a word for a
+ *   relationship (Patient, Mr, her son; Mme, son fils; المريضة، ابنها), in
+ *   English, French and Arabic;
  * - email addresses (`[EMAIL_1]`), phone numbers (`[PHONE_1]`), national
  *   ID-like numbers (`[ID_1]`) and medical record-like numbers (`[MRN_1]`),
  *   in Latin and Arabic-Indic digits.
@@ -20,6 +23,14 @@
  * Matching errs on the side of removing: a word that is also a name is
  * replaced, and put back in the answer, so what the person reads is right
  * either way; only the model sees less.
+ *
+ * What it cannot do (the spec, "Limits of name removal"): know a name it is
+ * not given and that no title or relationship word announces. That is why
+ * a feature must pass every person field of the records it sends.
+ *
+ * Every pattern here is bounded and anchored, and every step is one pass
+ * over the text, so that no input can make it slow (security review 13,
+ * H1): `redaction-performance.spec.ts` holds it to that.
  */
 
 export const PLACEHOLDER_KINDS = [
@@ -31,16 +42,13 @@ export const PLACEHOLDER_KINDS = [
 ] as const;
 export type PlaceholderKind = (typeof PLACEHOLDER_KINDS)[number];
 
-/** Any placeholder of ours, as written in a text. */
-const PLACEHOLDER = /\[(PERSON|EMAIL|PHONE|ID|MRN)_(\d{1,6})\]/g;
-
 /**
- * The same, as a model may write it back: without the brackets, or with
- * spaces inside them. Only ever matched against placeholders this request
- * made, so nothing else that looks like one is touched.
+ * Any placeholder of ours, as written in a text or as a model may write it
+ * back: with brackets, without them, or with spaces inside them. Matched
+ * against placeholders this request made only, when putting back.
  */
 const PLACEHOLDER_LOOSE =
-  /\[\s*(PERSON|EMAIL|PHONE|ID|MRN)_(\d{1,6})\s*\]|(?<![\p{L}\p{N}_])(PERSON|EMAIL|PHONE|ID|MRN)_(\d{1,6})(?![\p{L}\p{N}_])/gu;
+  /\[\s{0,3}(PERSON|EMAIL|PHONE|ID|MRN)_(\d{1,6})\s{0,3}\]|(?<![\p{L}\p{N}_])(PERSON|EMAIL|PHONE|ID|MRN)_(\d{1,6})(?![\p{L}\p{N}_])/gu;
 
 // ---------------------------------------------------------------------------
 // Folding: one form for comparing, with where each character came from.
@@ -73,14 +81,19 @@ const LATIN_VARIANTS: Record<string, string> = {
 const TATWEEL = 'ـ';
 
 /** Arabic-Indic and Eastern Arabic-Indic digits, as Latin ones. */
-function latinDigit(c: string): string | null {
-  const code = c.charCodeAt(0);
+function latinDigit(code: number): string | null {
   if (code >= 0x0660 && code <= 0x0669) return String(code - 0x0660);
   if (code >= 0x06f0 && code <= 0x06f9) return String(code - 0x06f0);
   return null;
 }
 
 const MARK = /\p{M}/u;
+/**
+ * Invisible characters that can sit inside a word without changing how it
+ * reads: the soft hyphen, zero-width spaces and joiners, direction marks.
+ * Dropped, so that "Sa­rah" is Sarah.
+ */
+const FORMAT = /\p{Cf}/u;
 
 type Folded = {
   /** The text lowercased, without diacritics, with Latin digits. */
@@ -91,42 +104,49 @@ type Folded = {
 
 /**
  * The text in the form names and numbers are compared in: lowercase; accents
- * and Arabic diacritics (harakat, shadda, tanween) and the tatweel removed;
- * alef with hamza or madda as a bare alef, and the other variants above;
- * every digit a Latin one. With, for each character, where it came from, so
- * that what is found is replaced in the original.
+ * and Arabic diacritics (harakat, shadda, tanween), the tatweel and
+ * invisible characters removed; alef with hamza or madda as a bare alef,
+ * and the other variants above; every digit a Latin one. With, for each
+ * character, where it came from, so that what is found is replaced in the
+ * original.
  */
 export function fold(original: string): Folded {
-  let text = '';
+  const parts: string[] = [];
   const from: number[] = [];
   for (let i = 0; i < original.length; ) {
     const point = original.codePointAt(i)!;
-    const char = String.fromCodePoint(point);
-    const push = (s: string) => {
-      for (const c of s) {
-        text += c;
+    const width = point > 0xffff ? 2 : 1;
+    if (point < 0x80) {
+      // Plain ASCII, most of any text: as it is, lowercased.
+      parts.push(point >= 65 && point <= 90 ? String.fromCharCode(point + 32) : original[i]);
+      from.push(i);
+    } else {
+      const digit = latinDigit(point);
+      const char = String.fromCodePoint(point);
+      if (digit !== null) {
+        parts.push(digit);
         from.push(i);
-      }
-    };
-    const digit = latinDigit(char);
-    if (digit !== null) push(digit);
-    else if (char !== TATWEEL) {
-      for (const part of char.normalize('NFD')) {
-        if (MARK.test(part)) continue;
-        const lower = part.toLowerCase();
-        push(ARABIC_VARIANTS[lower] ?? LATIN_VARIANTS[lower] ?? lower);
+      } else if (char !== TATWEEL && !FORMAT.test(char)) {
+        for (const part of char.normalize('NFD')) {
+          if (MARK.test(part)) continue;
+          const lower = part.toLowerCase();
+          for (const c of ARABIC_VARIANTS[lower] ?? LATIN_VARIANTS[lower] ?? lower) {
+            parts.push(c);
+            from.push(i);
+          }
+        }
       }
     }
-    i += char.length;
+    i += width;
   }
-  return { text, from };
+  return { text: parts.join(''), from };
 }
 
 /** The original span of a folded span, with any marks that follow it. */
 function originalSpan(original: string, folded: Folded, start: number, end: number) {
   const from = folded.from[start];
   const lastStart = folded.from[end - 1];
-  let to = lastStart + String.fromCodePoint(original.codePointAt(lastStart)!).length;
+  let to = lastStart + (original.codePointAt(lastStart)! > 0xffff ? 2 : 1);
   while (to < original.length && (MARK.test(original[to]) || original[to] === TATWEEL)) to++;
   return { start: from, end: to };
 }
@@ -139,7 +159,7 @@ type Word = {
   /** In the folded text. */
   start: number;
   end: number;
-  /** Folded, with the article and prefixes written one way. */
+  /** Folded, with the article, prefixes and common spellings written one way. */
   norm: string;
   /** Written with a capital, in the original (Latin script only). */
   capital: boolean;
@@ -158,12 +178,67 @@ const ARABIC = /[؀-ۿ]/;
 const LATIN_PARTICLES = new Set(['al', 'el', 'ul', 'abd', 'abdul', 'abdel', 'abdal', 'abu', 'abou', 'bou']);
 const ARABIC_PARTICLES = new Set(['ال', 'عبد', 'ابو', 'بو']);
 
-/** One spelling for the particles at the start of a word. */
+/**
+ * Common names written several ways in Latin letters, and one spelling for
+ * each: so Muhammad is Mohammed, and Aicha is Aisha. Not every name, and
+ * not every spelling: the spec's "Limits of name removal".
+ */
+const SPELLINGS: Record<string, string> = {};
+for (const [one, ...others] of [
+  ['muhammad', 'mohammed', 'mohamed', 'mohammad', 'mohamad', 'muhammed', 'muhamed', 'mohamud', 'mohd', 'mehmet'],
+  ['ahmad', 'ahmed'],
+  ['husain', 'hussein', 'hussain', 'hossein', 'husein', 'hussien', 'houssein'],
+  ['hasan', 'hassan'],
+  ['husni', 'hosni'],
+  ['khalid', 'khaled'],
+  ['umar', 'omar', 'omer'],
+  ['yusuf', 'youssef', 'yousef', 'youssouf', 'yousif', 'yusef', 'youcef'],
+  ['mustafa', 'moustafa', 'mostafa', 'mustapha', 'moustapha'],
+  ['fatima', 'fatma', 'fatimah', 'fatema', 'fatouma'],
+  ['aisha', 'aicha', 'aysha', 'ayesha', 'aishah', 'aischa'],
+  ['maryam', 'mariam', 'meriem', 'maryem', 'myriam'],
+  ['ibrahim', 'ebrahim', 'ibraheem', 'brahim'],
+  ['uthman', 'othman', 'osman', 'usman', 'otman'],
+  ['salih', 'saleh'],
+  ['karim', 'kareem'],
+  ['said', 'saeed', 'saeid', 'saied'],
+  ['nur', 'nour', 'noor'],
+  ['layla', 'leila', 'laila', 'leyla', 'leyla'],
+  ['huda', 'houda', 'hoda'],
+  ['zaynab', 'zainab', 'zeinab'],
+  ['amina', 'aminah', 'amineh'],
+  ['yasmin', 'yasmine', 'yasmeen'],
+  ['abbas', 'abass'],
+  ['hamza', 'hamzah'],
+  ['jamal', 'gamal'],
+  ['rashid', 'rachid', 'rasheed'],
+  ['walid', 'waleed', 'oualid'],
+  ['yahya', 'yahia'],
+]) {
+  for (const spelling of [one, ...others]) SPELLINGS[spelling] = one;
+}
+
+/** One spelling for a name written several ways, alone or after a particle. */
+function spelled(norm: string): string {
+  const known = SPELLINGS[norm];
+  if (known) return known;
+  for (const particle of ['abdal', 'abu', 'al']) {
+    if (norm.length > particle.length && norm.startsWith(particle)) {
+      const rest = SPELLINGS[norm.slice(particle.length)];
+      if (rest) return particle + rest;
+    }
+  }
+  return norm;
+}
+
+/** One spelling for the particles at the start of a word, and for the name. */
 function canonical(norm: string): string {
-  return norm
-    .replace(/^abd(?:el|ul|al)*/u, 'abdal')
-    .replace(/^(?:el|ul)(?=\p{L}{3,}|$)/u, 'al')
-    .replace(/^abou/u, 'abu');
+  return spelled(
+    norm
+      .replace(/^abd(?:el|ul|al)*/u, 'abdal')
+      .replace(/^(?:el|ul)(?=\p{L}{3,}|$)/u, 'al')
+      .replace(/^abou/u, 'abu'),
+  );
 }
 
 /** What may stand between the parts of one name: spaces and hyphens. */
@@ -238,6 +313,28 @@ const NOT_A_NAME = new Set([
 const MIN_PART = 3;
 
 /**
+ * The shortest part of a name looked for in lower case, in Latin script:
+ * reports typed on a phone often have none ("spoke to mohammed"). Shorter
+ * parts are too often ordinary words.
+ */
+const MIN_LOWERCASE_PART = 4;
+
+/**
+ * English and French words that are also names: never taken for one when
+ * written in lower case. With a capital, they still are.
+ */
+const ORDINARY_WORDS = new Set([
+  'will', 'mark', 'rose', 'hope', 'grace', 'faith', 'june', 'april', 'august', 'bill', 'dean', 'page',
+  'dawn', 'summer', 'frank', 'earl', 'miles', 'hunter', 'carter', 'banks', 'rivers', 'chase', 'price',
+  'cook', 'baker', 'king', 'young', 'white', 'black', 'brown', 'green', 'gray', 'grey', 'long', 'short',
+  'little', 'best', 'hall', 'wood', 'stone', 'field', 'ford', 'bush', 'ward', 'bell', 'park', 'lane',
+  'hill', 'moss', 'bond', 'cash', 'case', 'cross', 'house', 'rich', 'pearl', 'ruby', 'amber', 'holly',
+  'lily', 'daisy', 'iris', 'violet', 'said', 'sage', 'reed', 'wells', 'english', 'french', 'major',
+  'pierre', 'blanc', 'petit', 'grand', 'noir', 'roux', 'claire', 'france', 'fleur', 'lune', 'salle',
+  'aime', 'marin', 'rivet', 'masse', 'leger', 'bonne', 'clement',
+]);
+
+/**
  * Letters an Arabic word may begin with before a name: and, so, with, to,
  * like, and "and" or "so" before one of the others (ولمحمد: and to Mohammed).
  */
@@ -246,7 +343,8 @@ const ARABIC_PREFIXES = ['و', 'ف', 'ب', 'ل', 'ك', 'وب', 'ول', 'وك', '
 /**
  * The names to look for, folded: whole names as sequences of words, and
  * their parts. Built once per request from the client's people and what the
- * feature passes in.
+ * feature passes in, and added to with the names found by the words around
+ * them (`Redaction.learn`).
  */
 export class NameIndex {
   /** Whole names (two words or more), by their first word, longest first. */
@@ -256,25 +354,28 @@ export class NameIndex {
 
   constructor(names: Iterable<string>) {
     for (const name of names) this.add(name);
-    for (const list of this.sequences.values()) list.sort((a, b) => b.length - a.length);
   }
 
   get size() {
     return this.parts.size;
   }
 
-  private add(name: string) {
+  /** Adds a name, as written in any language. */
+  add(name: string) {
     if (!name || !name.trim()) return;
-    const folded = fold(name);
+    const folded = fold(name.slice(0, 500));
     const raw = wordsOf(name, folded);
     for (const words of [raw, joined(folded, raw)]) {
       // Titles at the start are not part of the name to look for.
       let list = words.map((w) => w.norm);
       while (list.length > 1 && NOT_A_NAME.has(list[0])) list = list.slice(1);
-      if (list.some((n) => /\d/.test(n))) continue;
+      if (list.some((n) => /\d/.test(n)) || list.length > 8) continue;
       if (list.length >= 2) {
         const byFirst = this.sequences.get(list[0]) ?? [];
-        if (!byFirst.some((s) => s.join(' ') === list.join(' '))) byFirst.push(list);
+        if (!byFirst.some((s) => s.join(' ') === list.join(' '))) {
+          byFirst.push(list);
+          byFirst.sort((a, b) => b.length - a.length);
+        }
         this.sequences.set(list[0], byFirst);
       }
       for (const part of list) {
@@ -286,8 +387,9 @@ export class NameIndex {
   /**
    * Where names are in a text, in the folded text's positions: whole names
    * first, then parts of names on their own. A part on its own counts in
-   * Latin script only when written with a capital, so "will" is not taken
-   * for Will; Arabic has no capitals, so there every part counts.
+   * Latin script when written with a capital, or in lower case when it is
+   * long enough and not an ordinary word (so "will" is not taken for Will);
+   * Arabic has no capitals, so there every part counts.
    */
   find(folded: Folded, words: Word[]): { start: number; end: number }[] {
     const spans: { start: number; end: number }[] = [];
@@ -318,7 +420,9 @@ export class NameIndex {
       ...(first.arabic
         ? ARABIC_PREFIXES.flatMap((p) => (first.norm.startsWith(p) ? (this.sequences.get(first.norm.slice(p.length)) ?? []) : []))
         : []),
-    ].sort((a, b) => b.length - a.length);
+    ];
+    if (candidates.length === 0) return null;
+    candidates.sort((a, b) => b.length - a.length);
     for (const sequence of candidates) {
       if (i + sequence.length > words.length) continue;
       const skip = this.matches(first, sequence[0]);
@@ -327,6 +431,12 @@ export class NameIndex {
       for (let k = 1; k < sequence.length && ok; k++) {
         const gap = folded.text.slice(words[i + k - 1].end, words[i + k].start);
         ok = NAME_GAP.test(gap) && words[i + k].norm === sequence[k];
+      }
+      // A whole name in lower case made only of ordinary or short words
+      // ("will mark" for Will Mark) is not taken for the name.
+      const found = words.slice(i, i + sequence.length);
+      if (ok && !first.arabic && found.every((w) => !w.capital && (w.norm.length < MIN_LOWERCASE_PART || ORDINARY_WORDS.has(w.norm)))) {
+        ok = false;
       }
       if (ok) {
         return {
@@ -340,7 +450,9 @@ export class NameIndex {
   }
 
   private partAt(word: Word) {
-    if (!word.arabic && !word.capital) return null;
+    if (!word.arabic && !word.capital && (word.norm.length < MIN_LOWERCASE_PART || ORDINARY_WORDS.has(word.norm))) {
+      return null;
+    }
     if (this.parts.has(word.norm)) return { start: word.start, end: word.end, words: 1 };
     if (word.arabic) {
       for (const prefix of ARABIC_PREFIXES) {
@@ -355,10 +467,93 @@ export class NameIndex {
 }
 
 // ---------------------------------------------------------------------------
+// Names found by the words around them.
+// ---------------------------------------------------------------------------
+
+/**
+ * Titles and words for a relationship that a name follows, folded: "Patient
+ * Aisha Rahman", "her son Omar", "Mme Dubois", "son fils Pierre",
+ * "المريضة عائشة", "ابنها عمر".
+ */
+const LATIN_ANNOUNCERS = new Set([
+  'patient', 'patients', 'pt', 'mr', 'mrs', 'ms', 'miss', 'mx', 'dr', 'doctor', 'nurse', 'sister', 'prof',
+  'professor', 'sir', 'madam', 'sheikh',
+  'son', 'daughter', 'wife', 'husband', 'mother', 'father', 'brother', 'child', 'baby', 'infant', 'grandson',
+  'granddaughter', 'grandmother', 'grandfather', 'aunt', 'uncle', 'cousin', 'nephew', 'niece', 'relative',
+  'visitor', 'witness', 'guardian', 'carer', 'caregiver', 'colleague', 'resident', 'partner', 'fiance',
+  'patiente', 'mme', 'mlle', 'monsieur', 'madame', 'mademoiselle', 'docteur', 'infirmier', 'infirmiere',
+  'fils', 'fille', 'epouse', 'epoux', 'mari', 'femme', 'mere', 'pere', 'frere', 'soeur', 'enfant', 'bebe',
+  'tante', 'oncle', 'neveu', 'niece', 'temoin', 'visiteur', 'visiteuse', 'proche', 'collegue', 'residente',
+  'compagnon', 'compagne', 'tuteur', 'tutrice', 'grand-mere',
+]);
+
+const ARABIC_ANNOUNCERS = new Set([
+  'المريض', 'المريضه', 'مريض', 'مريضه', 'السيد', 'السيده', 'سيد', 'سيده', 'الدكتور', 'الدكتوره', 'دكتور',
+  'دكتوره', 'د', 'الممرض', 'الممرضه', 'ممرض', 'ممرضه', 'الاستاذ', 'الاستاذه', 'الشيخ', 'المهندس',
+  'ابن', 'ابنه', 'ابنها', 'ابنته', 'ابنتها', 'بنت', 'بنته', 'بنتها', 'زوج', 'زوجه', 'زوجته', 'زوجها',
+  'ام', 'امه', 'امها', 'والد', 'والده', 'والدته', 'والدها', 'اخ', 'اخوه', 'اخوها', 'اخت', 'اخته', 'اختها',
+  'جد', 'جده', 'جدته', 'جدها', 'عم', 'عمه', 'خال', 'خاله', 'الطفل', 'الطفله', 'الرضيع', 'الرضيعه',
+  'الزائر', 'الزائره', 'الشاهد', 'الشاهده', 'المرافق', 'المرافقه', 'قريب', 'قريبه', 'الزميل', 'الزميله',
+  'المقيم', 'المقيمه',
+]);
+
+/** Arabic words that do not begin a name, after an announcing word. */
+const ARABIC_NOT_NAMES = new Set([
+  'في', 'من', 'الى', 'على', 'عن', 'مع', 'و', 'او', 'ثم', 'قد', 'لم', 'لا', 'ما', 'هو', 'هي', 'كان', 'كانت',
+  'الذي', 'التي', 'هذا', 'هذه', 'ذلك', 'تلك', 'بعد', 'قبل', 'عند', 'حول', 'بسبب', 'اثناء', 'بين', 'كل',
+  'غير', 'انه', 'انها', 'ان', 'اذا', 'حتى', 'لقد', 'منذ', 'الذين', 'لدي', 'لديه', 'لديها', 'وهو', 'وهي',
+  'فقد', 'وقد', 'ايضا', 'جدا', 'الان', 'اليوم', 'امس', 'غدا', 'رقم', 'سرير', 'غرفه', 'قسم',
+]);
+
+/** How many words after an announcing word are taken for the name. */
+const LATIN_NAME_WORDS = 3;
+const ARABIC_NAME_WORDS = 2;
+
+/**
+ * Names announced by the words before them, in the folded text's
+ * positions. In Latin script, the capitalised words after the announcing
+ * word (up to three); in Arabic, which has no capitals, the words after it
+ * (up to two) that cannot be anything else.
+ */
+function announcedNames(folded: Folded, words: Word[]): { start: number; end: number }[] {
+  const spans: { start: number; end: number }[] = [];
+  for (let i = 0; i < words.length - 1; i++) {
+    const word = words[i];
+    const arabic = word.arabic;
+    if (!(arabic ? ARABIC_ANNOUNCERS.has(word.norm) : LATIN_ANNOUNCERS.has(word.norm))) continue;
+    let end = -1;
+    let j = i + 1;
+    for (let taken = 0; j < words.length && taken < (arabic ? ARABIC_NAME_WORDS : LATIN_NAME_WORDS); j++) {
+      const next = words[j];
+      const gap = folded.text.slice(words[j - 1].end, next.start);
+      // A full stop after "Mr" or "M." is part of the title; a comma or a
+      // colon may stand before the name ("the witness, Peter Jones").
+      if (!NAME_GAP.test(gap) && !(taken === 0 && /^[.,:]?\s{1,3}$/u.test(gap))) break;
+      if (next.arabic !== arabic) break;
+      const name = arabic
+        ? !ARABIC_NOT_NAMES.has(next.norm) && !ARABIC_ANNOUNCERS.has(next.norm) && !/\d/.test(next.norm)
+        : (next.capital || (taken > 0 && LATIN_PARTICLES.has(next.norm))) &&
+          !LATIN_ANNOUNCERS.has(next.norm) &&
+          !NOT_A_NAME.has(next.norm) &&
+          !/\d/.test(next.norm);
+      if (!name) break;
+      end = next.end;
+      if (!LATIN_PARTICLES.has(next.norm)) taken++;
+    }
+    if (end > 0) {
+      spans.push({ start: words[i + 1].start, end });
+      i = j - 1;
+    }
+  }
+  return spans;
+}
+
+// ---------------------------------------------------------------------------
 // Identifiers.
 // ---------------------------------------------------------------------------
 
-const EMAIL = /[\p{L}\p{N}._%+-]+@[\p{L}\p{N}-]+(?:\.[\p{L}\p{N}-]+)+/gu;
+/** An address: bounded on both sides, and starting only where a word does. */
+const EMAIL = /(?<![\p{L}\p{N}._%+-])[\p{L}\p{N}._%+-]{1,64}@[\p{L}\p{N}-]{1,63}(?:\.[\p{L}\p{N}-]{1,63}){1,8}/gu;
 
 /** The start of a word, for patterns in any script. */
 const B = '(?<![\\p{L}\\p{N}])';
@@ -396,11 +591,27 @@ const MRN_LED = ledBy(MRN_WORDS);
 const ID_LED = ledBy(ID_WORDS);
 
 /**
- * A long number standing alone: seven digits or more, possibly with spaces,
- * dots, dashes or brackets between them, and a leading + or 00. Not part of
- * a code that letters or digits run into (INC-2026-0042 stays whole).
+ * Words near which a number of six digits or more is a record's: "patient
+ * 654321", "file 445566", "dossier du patient : 778812", "ملف ٤٥٢١٨٨".
+ * Up to thirty characters, none of them a digit, may stand between.
  */
-const LONG_NUMBER = /(?<![\p{L}\p{N}][-_/.]?)(?<![\p{L}\p{N}+])(\+|00)?\(?\d(?:[ .\-() ]{0,2}\d){6,}\)?(?![\p{L}\p{N}])/gu;
+const RECORD_NEAR_WORDS = [
+  'patients?', 'pt', 'files?', 'records?', 'charts?', 'case', 'admission', 'admitted', 'mrn', 'ipp', 'nip', 'bed',
+  'patiente?s?', 'dossiers?', 'sejour', 'hospitalisation', 'admis', 'admise',
+  'المريض', 'المريضه', 'مريض', 'مريضه', 'ملف', 'الملف', 'السجل', 'سجل', 'الدخول',
+];
+const RECORD_NEAR = new RegExp(`${B}(?:${RECORD_NEAR_WORDS.join('|')})[^\\d\\n]{0,30}?(?<![\\p{L}\\p{N}])(\\d{6,20})(?![\\p{N}])`, 'gu');
+
+/** A run of digits too long to be anything but an identifier. */
+const LONG_DIGITS = /(?<!\d)\d{20,}(?!\d)/g;
+
+/**
+ * A long number standing alone: seven digits or more (up to forty), possibly
+ * with spaces, dots, dashes or brackets between them, and a leading + or 00.
+ * Not part of a code that letters or digits run into (INC-2026-0042 stays
+ * whole).
+ */
+const LONG_NUMBER = /(?<![\p{L}\p{N}][-_/.]?)(?<![\p{L}\p{N}+])(\+|00)?\(?\d(?:[ .\-() ]{0,2}\d){6,40}\)?(?![\p{L}\p{N}])/gu;
 
 const DATE = /^(?:\d{4}[-.]\d{1,2}[-.]\d{1,2}|\d{1,2}[-.]\d{1,2}[-.]\d{4})$/;
 
@@ -429,6 +640,9 @@ const identifierKey = (kind: PlaceholderKind, foldedValue: string) =>
 
 type Span = { start: number; end: number; kind: PlaceholderKind; key: string };
 
+/** The longest name taken from one announcing word, as written. */
+const MAX_LEARNED = 120;
+
 /**
  * Removes names and identifiers from the texts of one request, and puts
  * them back in the answer. Keep one per request, never longer.
@@ -450,13 +664,35 @@ export class Redaction {
   }
 
   /**
-   * Notes the placeholders a set of texts already contains (someone typed
-   * "[PERSON_1]"), so that none is made with the same number. Call it with
-   * every text of the request before redacting any of them.
+   * Notes the placeholders a set of texts already contains, in any form a
+   * placeholder is put back from ("[PERSON_1]", "PERSON_1", "[ PERSON_1 ]"),
+   * so that none is made with the same number and a placeholder someone
+   * typed can never be put back as somebody's name (security review 13,
+   * M2). Call it with every text of the request before redacting any.
    */
   reserve(texts: Iterable<string>) {
     for (const text of texts) {
-      for (const m of text.matchAll(PLACEHOLDER)) this.taken.add(m[0]);
+      for (const m of text.matchAll(PLACEHOLDER_LOOSE)) {
+        this.taken.add(`[${m[1] ?? m[3]}_${m[2] ?? m[4]}]`);
+      }
+    }
+  }
+
+  /**
+   * Learns the names that titles and words for a relationship announce in
+   * any of these texts ("Patient Aisha Rahman"), so that they are removed
+   * wherever else they appear ("Aisha was given…"). Call it with every text
+   * of the request before redacting any.
+   */
+  learn(texts: Iterable<string>) {
+    for (const text of texts) {
+      if (!text) continue;
+      const folded = fold(text);
+      const words = joined(folded, wordsOf(text, folded));
+      for (const span of announcedNames(folded, words)) {
+        const { start, end } = originalSpan(text, folded, span.start, span.end);
+        if (end - start <= MAX_LEARNED) this.names.add(text.slice(start, end));
+      }
     }
   }
 
@@ -465,21 +701,28 @@ export class Redaction {
     if (!text) return text;
     const folded = fold(text);
     const spans: Span[] = [];
+    // Which folded characters are already claimed: each check and claim
+    // touches only its own span, so claiming is one pass over the text.
+    const claimed = new Uint8Array(folded.text.length);
     const claim = (start: number, end: number, kind: PlaceholderKind, key: string) => {
       if (end <= start) return;
-      if (spans.some((s) => start < s.end && s.start < end)) return;
+      for (let i = start; i < end; i++) if (claimed[i]) return;
+      claimed.fill(1, start, end);
       spans.push({ start, end, kind, key });
     };
 
     for (const m of folded.text.matchAll(EMAIL)) {
       claim(m.index, m.index + m[0].length, 'EMAIL', identifierKey('EMAIL', m[0]));
     }
-    for (const [pattern, kind] of [[MRN_LED, 'MRN'], [ID_LED, 'ID']] as const) {
+    for (const [pattern, kind] of [[MRN_LED, 'MRN'], [ID_LED, 'ID'], [RECORD_NEAR, 'MRN']] as const) {
       for (const m of folded.text.matchAll(pattern)) {
         const value = m[1];
         const start = m.index + m[0].length - value.length;
         claim(start, start + value.length, kind, identifierKey(kind, value));
       }
+    }
+    for (const m of folded.text.matchAll(LONG_DIGITS)) {
+      claim(m.index, m.index + m[0].length, 'ID', m[0]);
     }
     for (const m of folded.text.matchAll(LONG_NUMBER)) {
       const kind = kindOfNumber(m[0]);
@@ -488,16 +731,23 @@ export class Redaction {
 
     // Names are looked for outside the identifiers found, so that a name
     // running into an address ("Khalid khalid@…") is still found in part.
-    let masked = folded.text;
-    for (const span of spans) {
-      masked = masked.slice(0, span.start) + ' '.repeat(span.end - span.start) + masked.slice(span.end);
+    // The masked text is built in one pass.
+    const pieces: string[] = [];
+    let at = 0;
+    for (const span of [...spans].sort((a, b) => a.start - b.start)) {
+      pieces.push(folded.text.slice(at, span.start), ' '.repeat(span.end - span.start));
+      at = span.end;
     }
-    const words = wordsOf(text, { text: masked, from: folded.from });
+    pieces.push(folded.text.slice(at));
+    const masked: Folded = { text: pieces.join(''), from: folded.from };
+    const words = wordsOf(text, masked);
+    const joinedWords = joined(masked, words);
     const nameSpans = [
-      ...this.names.find({ text: masked, from: folded.from }, words),
-      ...this.names.find({ text: masked, from: folded.from }, joined({ text: masked, from: folded.from }, words)),
+      ...announcedNames(masked, joinedWords),
+      ...this.names.find(masked, words),
+      ...this.names.find(masked, joinedWords),
     ].sort((a, b) => a.start - b.start || b.end - a.end);
-    // Overlapping finds of the two readings are one name: the widest.
+    // Overlapping finds of the readings are one name: the widest.
     const merged: { start: number; end: number }[] = [];
     for (const span of nameSpans) {
       const last = merged[merged.length - 1];
@@ -509,15 +759,16 @@ export class Redaction {
     }
 
     spans.sort((a, b) => a.start - b.start);
-    let out = '';
-    let at = 0;
+    const out: string[] = [];
+    let done = 0;
     for (const span of spans) {
       const { start, end } = originalSpan(text, folded, span.start, span.end);
-      if (start < at) continue;
-      out += text.slice(at, start) + this.placeholderFor(span, text.slice(start, end));
-      at = end;
+      if (start < done) continue;
+      out.push(text.slice(done, start), this.placeholderFor(span, text.slice(start, end)));
+      done = end;
     }
-    return out + text.slice(at);
+    out.push(text.slice(done));
+    return out.join('');
   }
 
   private placeholderFor(span: Span, original: string) {
@@ -559,7 +810,7 @@ export class Redaction {
   }
 }
 
-/** A key for "the same name", however it was spaced or hyphenated. */
+/** A key for "the same name", however it was spaced, hyphenated or spelled. */
 function personKey(foldedSpan: string): string {
   return canonical([...foldedSpan.matchAll(WORD)].map((m) => canonical(m[0])).join(''));
 }

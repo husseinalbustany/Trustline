@@ -156,8 +156,13 @@ export function utcMonthStart(moment: Date) {
   return new Date(Date.UTC(moment.getUTCFullYear(), moment.getUTCMonth(), 1));
 }
 
-/** A request that still stands: answered, or under way and not given up for dead. */
-export const live = sql`(${aiRequests.outcome} = 'succeeded' or (${aiRequests.outcome} = 'pending' and ${aiRequests.createdAt} > now() - make_interval(mins => ${PENDING_STALE_MINUTES})))`;
+/**
+ * A request that counts against an allowance: answered; answered in a shape
+ * the feature could not use (`invalid_output`, which cost as much, and is
+ * not a way around the allowance: security review 13, M3); or under way and
+ * not given up for dead.
+ */
+export const live = sql`(${aiRequests.outcome} = 'succeeded' or (${aiRequests.outcome} = 'failed' and ${aiRequests.reason} = 'invalid_output') or (${aiRequests.outcome} = 'pending' and ${aiRequests.createdAt} > now() - make_interval(mins => ${PENDING_STALE_MINUTES})))`;
 
 /** A request whose cost counts: answered, failed, or under way. */
 export const costs = sql`(${aiRequests.outcome} in ('succeeded', 'failed') or (${aiRequests.outcome} = 'pending' and ${aiRequests.createdAt} > now() - make_interval(mins => ${PENDING_STALE_MINUTES})))`;

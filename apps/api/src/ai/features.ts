@@ -57,10 +57,13 @@ export function effectiveAllowances(
 }
 
 /**
- * How many revisions one draft takes in (spec, decision 7: "the questions,
- * the draft and up to 5 revisions"). The next revision is a new draft.
+ * How many requests one draft takes in, in a month: its questions, the
+ * draft and its revisions together (spec, decision 7, "the questions, the
+ * draft and up to 5 revisions", read on the server, which cannot tell a
+ * revision from a question: security review 13, M4). The next request
+ * opens another draft, and so does the first in a new month.
  */
-export const REVISIONS_PER_DRAFT = 5;
+export const REQUESTS_PER_DRAFT = 20;
 
 /** The share of an allowance at which the administrators are warned. */
 export const WARNING_SHARE = 0.8;

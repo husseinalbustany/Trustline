@@ -1,8 +1,9 @@
 import '../src/env.js';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { and, desc, eq, sql } from 'drizzle-orm';
+import { z } from 'zod';
 import { AnthropicProvider } from '../src/ai/anthropic-provider.js';
-import { AiService, type AiCaller } from '../src/ai/ai.service.js';
+import { AiService, MAX_MESSAGE_CHARS, MAX_REQUEST_CHARS, type AiCaller, type AiRunRequest } from '../src/ai/ai.service.js';
 import { monthOf } from '../src/ai/client-ai.js';
 import { fakeAi } from '../src/ai/fake-provider.js';
 import { AiProviderError } from '../src/ai/provider.js';
@@ -15,6 +16,7 @@ import {
 } from '../src/database/schema.js';
 import { TenantDb } from '../src/database/tenant-db.service.js';
 import { AccessService } from '../src/identity/access.service.js';
+import { EntitlementsService } from '../src/subscriptions/entitlements.service.js';
 import { testBench, type Hospital, type Staff, type TestBench } from './support/hospital.js';
 
 const NO_LIMITS = { users: null, sites: null, storageMb: null, aiCreditsPerMonth: null };
@@ -30,7 +32,8 @@ const words = (en: string) => ({ en, ar: `${en} (ar)`, fr: `${en} (fr)` });
  */
 describe('the AI foundation', () => {
   const run = randomBytes(4).toString('hex');
-  const credentialEnv = `AI_CREDENTIAL_TEST_${run.toUpperCase()}`;
+  const credentialEnv = `AI_CREDENTIAL_ANTHROPIC_TEST_${run.toUpperCase()}`;
+  const bedrockEnv = `AI_CREDENTIAL_BEDROCK_TEST_${run.toUpperCase()}`;
   let bench: TestBench;
   const http = () => bench.http();
   const p = () => bench.platform;
@@ -51,11 +54,14 @@ describe('the AI foundation', () => {
     const { body } = await http().get('/auth/me').set('Cookie', h.cookie).expect(200);
     return { tenant: body.tenant, user: { id: body.user.id } };
   };
-  const ask = (content: string, extra: Record<string, unknown> = {}) => ({
+  const ask = (content: string, extra: Partial<AiRunRequest> = {}): AiRunRequest => ({
     messages: [{ role: 'user' as const, content }],
     maxTokens: 200,
+    people: [],
     ...extra,
   });
+  /** A request of a draft: its own, unless one is named. */
+  const draftAsk = (content: string, unit: string = randomUUID(), extra: Partial<AiRunRequest> = {}) => ask(content, { unit, ...extra });
   const requestsOf = (tenantId: string) =>
     bench.owner.db.select().from(aiRequests).where(eq(aiRequests.tenantId, tenantId)).orderBy(desc(aiRequests.createdAt));
   const noticesOf = (h: Hospital, kind: string) =>
@@ -103,6 +109,7 @@ describe('the AI foundation', () => {
   afterAll(async () => {
     await bench.owner.db.execute(sql`update ai_platform_settings set monthly_spending_limit_micro_usd = null`);
     delete process.env[credentialEnv];
+    delete process.env[bedrockEnv];
     await bench.close();
   });
 
@@ -158,7 +165,7 @@ describe('the AI foundation', () => {
         kind: 'bedrock',
         region: 'me-central-1',
         inferenceType: 'global',
-        credentialEnv,
+        credentialEnv: bedrockEnv,
         models: [{ id: 'eu.anthropic.claude-sonnet-5-5', label: 'Sonnet', inputUsdPerMTok: 3, outputUsdPerMTok: 15 }],
       };
       const mismatch = await portal('post', '/platform/ai/connections').send(bedrockBody).expect(400);
@@ -168,6 +175,28 @@ describe('the AI foundation', () => {
         .expect(400);
       expect(inRegion.body.code).toBe('model_inference_mismatch');
       expect((await portal('post', '/platform/ai/connections').send({ ...bedrockBody, region: 'uae' }).expect(400)).body.code).toBe('invalid_region');
+      // A regional profile of another geography than the region's.
+      const sonnet = (id: string) => [{ id, label: 'Sonnet', inputUsdPerMTok: 3, outputUsdPerMTok: 15 }];
+      for (const [region, inferenceType, id] of [
+        ['me-central-1', 'regional', 'us.anthropic.claude-sonnet-5-5'],
+        ['eu-west-1', 'regional', 'us.anthropic.claude-sonnet-5-5'],
+        // An ARN of another region, or of a profile that may send requests elsewhere.
+        ['me-central-1', 'in_region', 'arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-sonnet-5-5'],
+        ['me-central-1', 'in_region', 'arn:aws:bedrock:me-central-1:123456789012:application-inference-profile/abc'],
+      ]) {
+        const res = await portal('post', '/platform/ai/connections').send({ ...bedrockBody, region, inferenceType, models: sonnet(id) }).expect(400);
+        expect([id, res.body.code]).toEqual([id, 'model_inference_mismatch']);
+      }
+      await portal('post', '/platform/ai/connections')
+        .send({ ...bedrockBody, name: `${bench.prefix} EU`, region: 'eu-west-1', inferenceType: 'regional', models: sonnet('eu.anthropic.claude-sonnet-5-5') })
+        .expect(201);
+      await portal('post', '/platform/ai/connections')
+        .send({ ...bedrockBody, name: `${bench.prefix} UAE only`, inferenceType: 'in_region', models: sonnet('arn:aws:bedrock:me-central-1::foundation-model/anthropic.claude-sonnet-5-5') })
+        .expect(201);
+      // One kind's credential is never named for another kind.
+      expect(
+        (await portal('post', '/platform/ai/connections').send({ ...bedrockBody, models: sonnet('global.anthropic.claude-sonnet-5-5'), credentialEnv }).expect(400)).body.code,
+      ).toBe('credential_env_mismatch');
       expect(
         (await portal('post', '/platform/ai/connections').send({ ...anthropicBody(), inferenceType: 'in_region' }).expect(400)).body.code,
       ).toBe('inference_type_not_offered');
@@ -215,22 +244,17 @@ describe('the AI foundation', () => {
       expect(entry.details).toMatchObject({ changes: { name: { from: `${bench.prefix} Bedrock`, to: `${bench.prefix} Bedrock UAE` } } });
     });
 
-    it('are tested with a tiny call that says only whether it works, through the fake provider', async () => {
-      const ok = await portal('post', `/platform/ai/connections/${anthropic.id}/test`).send({}).expect(200);
-      expect(ok.body).toEqual({ works: true, credentialsPresent: true });
-      expect(fakeAi.calls).toHaveLength(1);
-      expect(fakeAi.calls[0].request).toMatchObject({ model: 'claude-sonnet-5-5', maxTokens: 5 });
-      fakeAi.respondWith(() => {
-        throw new AiProviderError('auth');
-      });
-      const failed = await portal('post', `/platform/ai/connections/${anthropic.id}/test`).send({ model: 'claude-haiku-5-5' }).expect(200);
-      expect(failed.body).toEqual({ works: false, credentialsPresent: true });
+    it('are tested, and while the fake provider answers, are not said to work', async () => {
+      const res = await portal('post', `/platform/ai/connections/${anthropic.id}/test`).send({ model: 'claude-haiku-5-5' }).expect(200);
+      expect(res.body).toEqual({ works: null, credentialsPresent: true, mode: 'fake' });
+      // Nothing was called: the fake says nothing of the connection.
+      expect(fakeAi.calls).toHaveLength(0);
       await portal('post', `/platform/ai/connections/${anthropic.id}/test`).send({ model: 'gpt-9' }).expect(400, { code: 'unknown_model' });
-      const tested = await bench.owner.db
+      const [tested] = await bench.owner.db
         .select({ details: platformAuditLog.details })
         .from(platformAuditLog)
         .where(and(eq(platformAuditLog.action, 'ai_connection_tested'), sql`${platformAuditLog.details} ->> 'connectionId' = ${anthropic.id}`));
-      expect(tested.map((t) => (t.details as { works: boolean }).works).sort((x, y) => Number(x) - Number(y))).toEqual([false, true]);
+      expect(tested.details).toEqual({ connectionId: anthropic.id, model: 'claude-haiku-5-5', works: null, mode: 'fake' });
     });
   });
 
@@ -334,6 +358,10 @@ describe('the AI foundation', () => {
       const moved = await portal('patch', `/platform/ai/connections/${bedrock.id}`).send({ region: 'eu-west-1' }).expect(409);
       expect(moved.body).toEqual({ code: 'connection_in_use', tenantIds: [b.id] });
       await portal('patch', `/platform/ai/connections/${bedrock.id}`).send({ active: false }).expect(409);
+      // Another credential is another account with the provider.
+      await portal('patch', `/platform/ai/connections/${bedrock.id}`)
+        .send({ credentialEnv: `${bedrockEnv}_OTHER` })
+        .expect(409, { code: 'connection_in_use', tenantIds: [b.id] });
       const lost = await portal('patch', `/platform/ai/connections/${anthropic.id}`)
         .send({ models: [{ id: 'claude-sonnet-5-5', label: 'Sonnet', inputUsdPerMTok: 3, outputUsdPerMTok: 15 }] })
         .expect(409);
@@ -432,11 +460,41 @@ describe('the AI foundation', () => {
   describe('AiService.run', () => {
     it('refuses, with a code, what is not offered or not switched on', async () => {
       const off = await callerOf(noModule);
-      expect(await ai.run(off, 'drafting', ask('Hi'))).toEqual({ ok: false, code: 'ai_not_offered', feature: 'drafting', reason: 'module' });
+      expect(await ai.run(off, 'drafting', draftAsk('Hi'))).toEqual({ ok: false, code: 'ai_not_offered', feature: 'drafting', reason: 'module' });
       const bCaller = await callerOf(b);
       expect(await ai.run(bCaller, 'insights', ask('Hi'))).toMatchObject({ ok: false, code: 'ai_not_offered', reason: 'not_configured' });
       // Offered, but b has not switched AI on.
-      expect(await ai.run(bCaller, 'drafting', ask('Hi'))).toEqual({ ok: false, code: 'ai_switched_off', feature: 'drafting' });
+      expect(await ai.run(bCaller, 'drafting', draftAsk('Hi'))).toEqual({ ok: false, code: 'ai_switched_off', feature: 'drafting' });
+      expect(fakeAi.calls).toHaveLength(0);
+    });
+
+    it('refuses everything while the client’s subscription is suspended, read afresh', async () => {
+      const bCaller = await callerOf(b);
+      await portal('patch', `/platform/tenants/${b.id}/subscription`).send({ status: 'suspended' }).expect(200);
+      try {
+        expect(await ai.run(bCaller, 'drafting', draftAsk('Hi'))).toEqual({ ok: false, code: 'subscription_suspended', feature: 'drafting' });
+      } finally {
+        await portal('patch', `/platform/tenants/${b.id}/subscription`).send({ status: 'active' }).expect(200);
+      }
+    });
+
+    it('refuses a request too large to send, before anything is read, and a malformed one throws', async () => {
+      const caller = await callerOf(a);
+      expect(await ai.run(caller, 'assistant', ask('x'.repeat(MAX_MESSAGE_CHARS + 1)))).toEqual({
+        ok: false,
+        code: 'ai_request_too_large',
+        feature: 'assistant',
+        maxMessageChars: MAX_MESSAGE_CHARS,
+        maxRequestChars: MAX_REQUEST_CHARS,
+      });
+      const third = 'x'.repeat(MAX_REQUEST_CHARS / 3);
+      expect(
+        await ai.run(caller, 'assistant', { ...ask(third), system: 'Be brief.', messages: [third, third, third].map((content) => ({ role: 'user' as const, content })) }),
+      ).toMatchObject({ code: 'ai_request_too_large' });
+      // A feature's own mistakes: no people list, a draft with no id or an id that is not one.
+      await expect(ai.run(caller, 'assistant', { messages: [{ role: 'user', content: 'x' }], maxTokens: 10 } as unknown as AiRunRequest)).rejects.toThrow(/malformed/);
+      await expect(ai.run(caller, 'drafting', ask('x'))).rejects.toThrow(/malformed/);
+      await expect(ai.run(caller, 'drafting', ask('x', { unit: 'Fire procedure, Building A' }))).rejects.toThrow(/malformed/);
       expect(fakeAi.calls).toHaveLength(0);
     });
 
@@ -477,14 +535,23 @@ describe('the AI foundation', () => {
 
     it('uses the quick model when asked, and returns data put back when a schema is given', async () => {
       fakeAi.respondWith(() => JSON.stringify({ who: '[PERSON_1]', steps: ['Call [PERSON_1]'] }));
-      const res = await ai.run(await callerOf(a), 'drafting', ask('Draft for Mariam Al-Khoury', {
+      const shape = z.object({ who: z.string(), steps: z.array(z.string()) });
+      const res = await ai.run(await callerOf(a), 'drafting', draftAsk('Draft for Mariam Al-Khoury', randomUUID(), {
         tier: 'quick',
         people: ['Mariam Al-Khoury'],
-        output: { schema: { type: 'object' } },
-        unit: `draft-${run}-q`,
+        output: shape,
       }));
       expect(res).toMatchObject({ ok: true, model: 'claude-haiku-5-5', data: { who: 'Mariam Al-Khoury', steps: ['Call Mariam Al-Khoury'] } });
-      expect(fakeAi.calls[0].request.output).toEqual({ schema: { type: 'object' } });
+      expect(fakeAi.calls[0].request.output).toEqual({ schema: z.toJSONSchema(shape) });
+    });
+
+    it('treats an answer that does not fit the shape asked for as unavailable, and counts and costs it', async () => {
+      fakeAi.respondWith(() => JSON.stringify({ who: 42 }));
+      const res = await ai.run(await callerOf(a), 'assistant', ask('Give data', { output: z.object({ who: z.string() }) }));
+      expect(res).toEqual({ ok: false, code: 'ai_unavailable', feature: 'assistant' });
+      const [row] = await requestsOf(a.id);
+      expect(row).toMatchObject({ outcome: 'failed', reason: 'invalid_output', counted: true, attempts: 1 });
+      expect(row.costMicroUsd).toBeGreaterThan(0);
     });
 
     it('retries once a failure worth retrying, and not one that is not', async () => {
@@ -494,7 +561,21 @@ describe('the AI foundation', () => {
         return 'fine';
       });
       expect(await ai.run(caller, 'assistant', ask('Hello'))).toMatchObject({ ok: true, text: 'fine' });
-      expect((await requestsOf(a.id))[0]).toMatchObject({ outcome: 'succeeded', attempts: 2 });
+      const [ok] = await requestsOf(a.id);
+      // Overloaded is refused before any work: the first attempt cost nothing.
+      expect(ok).toMatchObject({ outcome: 'succeeded', attempts: 2 });
+      expect(ok.costMicroUsd).toBe(Math.ceil(ok.inputTokens * 3 + ok.outputTokens * 15));
+
+      // A server error may have been billed: recorded at the most an attempt can cost.
+      fakeAi.reset();
+      fakeAi.respondWith((_, attempt) => {
+        if (attempt === 1) throw new AiProviderError('server');
+        return 'fine';
+      });
+      expect(await ai.run(caller, 'assistant', ask('Hello'))).toMatchObject({ ok: true });
+      const [billed] = await requestsOf(a.id);
+      // "Hello": 2 tokens in at $3, 200 out at $15 a million, at most.
+      expect(billed.costMicroUsd).toBe(2 * 3 + 200 * 15 + Math.ceil(billed.inputTokens * 3 + billed.outputTokens * 15));
 
       fakeAi.reset();
       fakeAi.respondWith(() => {
@@ -510,7 +591,8 @@ describe('the AI foundation', () => {
       const res = await ai.run(await callerOf(a), 'assistant', ask('Hello', { timeoutMs: 50 }));
       expect(res).toEqual({ ok: false, code: 'ai_unavailable', feature: 'assistant' });
       expect(fakeAi.calls).toHaveLength(2);
-      expect((await requestsOf(a.id))[0]).toMatchObject({ outcome: 'failed', reason: 'timeout', attempts: 2, costMicroUsd: 0 });
+      // Both attempts may have been billed: each at the most it could cost.
+      expect((await requestsOf(a.id))[0]).toMatchObject({ outcome: 'failed', reason: 'timeout', attempts: 2, costMicroUsd: 2 * (2 * 3 + 200 * 15) });
     });
 
     it('counts suggestions against the allowance, warns at 80% and refuses at 100%, once a month each', async () => {
@@ -538,27 +620,42 @@ describe('the AI foundation', () => {
       expect(shown.body.features[1]).toMatchObject({ feature: 'insights', allowance: 5, used: 5, warning: true, reached: true });
     });
 
-    it('counts a draft once for its questions, the draft and five revisions; the sixth revision is another draft', async () => {
+    it('counts a draft once for up to twenty requests in a month, and again after them', async () => {
       const caller = await callerOf(a);
       // The quick request above opened one draft of the two allowed.
-      const unit = `draft-${run}-main`;
-      const steps = [
-        ask('Questions?', { unit }),
-        ask('The draft', { unit }),
-        ...Array.from({ length: 5 }, (_, i) => ask(`Revision ${i + 1}`, { unit, revision: true })),
-      ];
-      for (const step of steps) expect(await ai.run(caller, 'drafting', step)).toMatchObject({ ok: true });
-      const counted = (await requestsOf(a.id)).filter((r) => r.feature === 'drafting' && r.unitKey === unit);
-      expect(counted.map((r) => r.counted)).toEqual([false, false, false, false, false, false, true]);
-      // A sixth revision would open a third draft: over the allowance of two.
-      expect(await ai.run(caller, 'drafting', ask('Revision 6', { unit, revision: true }))).toMatchObject({
-        ok: false,
-        code: 'ai_allowance_reached',
-        allowance: 2,
+      const unit = randomUUID();
+      for (let i = 0; i < 20; i++) expect([i, (await ai.run(caller, 'drafting', draftAsk(`Step ${i}`, unit))).ok]).toEqual([i, true]);
+      const steps = (await requestsOf(a.id)).filter((r) => r.feature === 'drafting' && r.unitKey === unit);
+      expect(steps.filter((r) => r.counted)).toHaveLength(1);
+      // The twenty-first would open a third draft: over the allowance of two.
+      expect(await ai.run(caller, 'drafting', draftAsk('Step 21', unit))).toMatchObject({ ok: false, code: 'ai_allowance_reached', allowance: 2 });
+      expect(await ai.run(caller, 'drafting', draftAsk('Another document'))).toMatchObject({ code: 'ai_allowance_reached' });
+    });
+
+    it('counts a draft again in a new month', async () => {
+      const c = await bench.createHospital('m', { timeZone: 'Asia/Dubai' });
+      await portal('patch', `/platform/tenants/${c.id}/subscription`).send({ planId }).expect(200);
+      await configure(c, { offered: true, features: allFeatures(anthropic.id) }).expect(200);
+      await http().put('/ai/settings').set('Cookie', c.cookie).send({ enabled: true }).expect(200);
+      const caller = await callerOf(c);
+      const unit = randomUUID();
+      // The draft was opened, and counted, in an earlier month.
+      await bench.owner.db.insert(aiRequests).values({
+        tenantId: c.id, feature: 'drafting', connectionId: anthropic.id, model: 'claude-sonnet-5-5', month: '2000-01',
+        unitKey: unit, counted: true, outcome: 'succeeded', finishedAt: new Date(),
       });
-      expect(await ai.run(caller, 'drafting', ask('Another document', { unit: `draft-${run}-other` }))).toMatchObject({
-        code: 'ai_allowance_reached',
-      });
+      expect(await ai.run(caller, 'drafting', draftAsk('Carry on', unit))).toMatchObject({ ok: true });
+      const [row] = await requestsOf(c.id);
+      expect(row).toMatchObject({ unitKey: unit, counted: true, month: monthOf(new Date(), 'Asia/Dubai') });
+      expect((await settingsOf(c.cookie).expect(200)).body.features[0]).toMatchObject({ feature: 'drafting', used: 1 });
+    });
+
+    it('lets a request be finished once, and never rewritten after', async () => {
+      const [done] = await requestsOf(a.id);
+      expect(done.outcome).not.toBe('pending');
+      await expect(
+        bench.app.get(TenantDb).withTenant(a.id, (tx) => tx.update(aiRequests).set({ outcome: 'failed', costMicroUsd: 0 }).where(eq(aiRequests.id, done.id))),
+      ).rejects.toMatchObject({ cause: { code: '23514' } });
     });
 
     it('stops at the client’s spending limit, and tells Trustline’s staff once', async () => {
@@ -604,7 +701,7 @@ describe('the AI foundation', () => {
 
     it('fails a test that would reach a real provider, rather than calling it unavailable', async () => {
       const real = { mode: 'real', credentialsPresent: () => true, for: () => new AnthropicProvider('sk-test') } as unknown as AiProviders;
-      const service = new AiService(bench.app.get(TenantDb), real, bench.app.get(AccessService));
+      const service = new AiService(bench.app.get(TenantDb), real, bench.app.get(AccessService), bench.app.get(EntitlementsService));
       await expect(service.run(await callerOf(a), 'assistant', ask('Hello'))).rejects.toThrow(/real AI provider/);
     });
   });
@@ -646,7 +743,7 @@ describe('the AI foundation', () => {
       expect(told.map((n) => n.data.features)).toEqual(expect.arrayContaining(['drafting,insights,assistant', 'assistant']));
       await configure(a, { offered: false }).expect(200);
       expect((await noticesOf(a, 'ai_provider_changed')).map((n) => n.data.features)).toContain('drafting,insights,assistant');
-      expect(await ai.run(await callerOf(a), 'drafting', ask('Hi'))).toMatchObject({ code: 'ai_not_offered', reason: 'not_offered' });
+      expect(await ai.run(await callerOf(a), 'drafting', draftAsk('Hi'))).toMatchObject({ code: 'ai_not_offered', reason: 'not_offered' });
       // Withdrawn, the connection can be deactivated once no client uses it.
       await configure(a, { features: { drafting: null, insights: null, assistant: null } }).expect(200);
       await configure(b, { features: { drafting: null } }).expect(200);

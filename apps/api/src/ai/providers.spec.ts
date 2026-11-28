@@ -107,6 +107,23 @@ describe('the Anthropic adapter', () => {
     });
   });
 
+  it('writes nothing of a request to the log, whatever ANTHROPIC_LOG says', async () => {
+    process.env.ANTHROPIC_LOG = 'debug';
+    const spies = (['debug', 'info', 'log', 'warn', 'error'] as const).map((m) => vi.spyOn(console, m).mockImplementation(() => undefined));
+    try {
+      for (const provider of [
+        new AnthropicProvider('k', { fetch: stubFetch(200, message('OK')).fetch }),
+        new BedrockProvider('me-central-1', { apiKey: 'k' }, { fetch: stubFetch(200, message('OK')).fetch }),
+      ]) {
+        await provider.complete(request, call());
+      }
+      for (const spy of spies) expect(spy).not.toHaveBeenCalled();
+    } finally {
+      delete process.env.ANTHROPIC_LOG;
+      for (const spy of spies) spy.mockRestore();
+    }
+  });
+
   it('makes no retry of its own, and says what kind of failure it was', async () => {
     for (const [status, failure, retryable] of [
       [429, 'rate_limited', true],
@@ -164,6 +181,19 @@ describe('the Amazon Bedrock adapter', () => {
 
 describe('the fake provider', () => {
   afterEach(() => fakeAi.reset());
+
+  it('keeps what it was sent only under test: elsewhere it is the default, and would hold record text', async () => {
+    const saved = { VITEST: process.env.VITEST, NODE_ENV: process.env.NODE_ENV };
+    process.env.VITEST = 'false';
+    process.env.NODE_ENV = 'development';
+    try {
+      await new FakeAiProvider().complete(request, call());
+      expect(() => fakeAi.respondWith(() => 'x')).toThrow(/tests only/);
+    } finally {
+      Object.assign(process.env, saved);
+    }
+    expect(fakeAi.calls).toHaveLength(0);
+  });
 
   it('answers the same request the same way, and records what it was sent', async () => {
     const a = await new FakeAiProvider().complete(request, call());

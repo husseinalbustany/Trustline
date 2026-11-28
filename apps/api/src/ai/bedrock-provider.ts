@@ -57,6 +57,9 @@ export class BedrockProvider implements AiProvider {
       baseURL: `https://bedrock-runtime.${this.region}.amazonaws.com`,
       maxRetries: 0,
       timeout: call.timeoutMs,
+      // Whatever ANTHROPIC_LOG says: at debug, the SDK would write request
+      // bodies, record text included, to the log (security review 13, L5).
+      logLevel: 'off' as const,
       ...(this.options.fetch && { fetch: this.options.fetch }),
     };
     const client =

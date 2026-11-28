@@ -63,6 +63,12 @@ export class AiProviders {
     this.mode = mode;
     if (note) this.logger.warn(note);
     else if (!underTest()) this.logger.log(`AI requests are answered by ${mode === 'real' ? 'the configured providers' : 'the fake provider'}`);
+    // The SDK reads this whatever it is told, and adds its headers to every
+    // request: say so, by name only. (ANTHROPIC_LOG is overridden by the
+    // adapters' own `logLevel`.)
+    if (process.env.ANTHROPIC_CUSTOM_HEADERS) {
+      this.logger.warn('ANTHROPIC_CUSTOM_HEADERS is set: the AI SDKs add its headers to every request; unset it');
+    }
   }
 
   /** Whether the variable a connection names is set. Never its value. */

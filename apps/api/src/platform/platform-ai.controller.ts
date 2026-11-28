@@ -19,6 +19,7 @@ import { asc, eq, gte, or, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import {
   assertConnection,
+  assertCredentialEnv,
   createConnectionSchema,
   platformAiSchema,
   testConnectionSchema,
@@ -112,6 +113,7 @@ export class PlatformAiController {
     const parsed = createConnectionSchema.safeParse(body);
     if (!parsed.success) throw new BadRequestException();
     assertConnection(parsed.data);
+    assertCredentialEnv(parsed.data.kind, parsed.data.credentialEnv);
     try {
       return await this.db.transaction(async (tx) => {
         const [created] = await tx.insert(aiProviderConnections).values(parsed.data).returning({ id: aiProviderConnections.id });
@@ -154,13 +156,22 @@ export class PlatformAiController {
         if (!current) throw new NotFoundException();
         const next = { ...current, ...parsed.data };
         assertConnection(next);
+        assertCredentialEnv(next.kind, next.credentialEnv);
         const using = await tx
           .select({ tenantId: aiClientFeatures.tenantId, model: aiClientFeatures.model, quickModel: aiClientFeatures.quickModel })
           .from(aiClientFeatures)
           .where(eq(aiClientFeatures.connectionId, connectionId));
         if (using.length > 0) {
           const tenantIds = [...new Set(using.map((u) => u.tenantId))];
-          if (next.region !== current.region || next.inferenceType !== current.inferenceType || !next.active) {
+          // Another credential is another account with the provider, and
+          // perhaps other terms of retention: as much a change of provider
+          // as another region (security review 13, L4).
+          if (
+            next.region !== current.region ||
+            next.inferenceType !== current.inferenceType ||
+            next.credentialEnv !== current.credentialEnv ||
+            !next.active
+          ) {
             throw new ConflictException({ code: 'connection_in_use', tenantIds });
           }
           const kept = new Set(next.models.map((m) => m.id));
@@ -195,10 +206,12 @@ export class PlatformAiController {
   }
 
   /**
-   * A tiny call through the connection (the fake provider's, unless real
-   * providers are switched on), to the model named or the first it offers
-   * (400 `unknown_model`): it says only whether it works and whether the
-   * credential is present, never why it failed. Audited.
+   * A tiny call through the connection, to the model named or the first it
+   * offers (400 `unknown_model`): it says only whether it works and
+   * whether the credential is present, never why it failed. While the fake
+   * provider answers every request (`mode: "fake"`), no call is made and
+   * `works` is null: the fake says nothing of the connection (security
+   * review 13, L3). Audited.
    */
   @Post('connections/:id/test')
   @HttpCode(200)
@@ -213,6 +226,11 @@ export class PlatformAiController {
       throw new BadRequestException({ code: 'unknown_model' });
     }
     const credentialsPresent = this.providers.credentialsPresent(connection.credentialEnv);
+    const mode = this.providers.mode;
+    if (mode === 'fake') {
+      await this.auth.audit(req.platformAdmin.id, 'ai_connection_tested', null, { connectionId, model, works: null, mode });
+      return { works: null, credentialsPresent, mode };
+    }
     let works = false;
     try {
       const provider = this.providers.for(connection);
@@ -226,8 +244,8 @@ export class PlatformAiController {
       if (e instanceof RealProviderUnderTestError) throw e;
       this.logger.warn(`Test of AI connection ${connectionId} failed`);
     }
-    await this.auth.audit(req.platformAdmin.id, 'ai_connection_tested', null, { connectionId, model, works });
-    return { works, credentialsPresent };
+    await this.auth.audit(req.platformAdmin.id, 'ai_connection_tested', null, { connectionId, model, works, mode });
+    return { works, credentialsPresent, mode };
   }
 
   /**
