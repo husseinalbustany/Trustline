@@ -179,6 +179,12 @@ export const userStatus = pgEnum('user_status', [
   'disabled',
 ]);
 
+// Who an account is for (docs/specs/audit-trail.md, "Time-limited access
+// for an external surveyor"): the organization's own people, or a
+// surveyor or auditor from outside, for a few days, read-only, signing in
+// with a one-time code each time, and not counted as a named user.
+export const userKind = pgEnum('user_kind', ['staff', 'external_reviewer']);
+
 export const users = pgTable(
   'users',
   {
@@ -214,6 +220,20 @@ export const users = pgTable(
     failedAttempts: integer().notNull().default(0),
     lockedUntil: timestamp({ withTimezone: true }),
     lastSignInAt: timestamp({ withTimezone: true }),
+    kind: userKind().notNull().default('staff'),
+    // An external reviewer's access: its first and last days, on the
+    // organization's calendar, where they come from and why, and whether
+    // it was extended (once) or ended. Null for staff.
+    accessFrom: date({ mode: 'string' }),
+    accessUntil: date({ mode: 'string' }),
+    accessOrganization: text(),
+    accessPurpose: text(),
+    accessExtendedAt: timestamp({ withTimezone: true }),
+    accessExtensionReason: text(),
+    accessEndedAt: timestamp({ withTimezone: true }),
+    // For a change of the access: given with it, so that two at once do
+    // not both apply.
+    accessRevision: integer().notNull().default(0),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
   },
@@ -225,6 +245,41 @@ export const users = pgTable(
       columns: [t.tenantId, t.orgUnitId],
       foreignColumns: [orgUnits.tenantId, orgUnits.id],
     }),
+    check(
+      'users_external_access',
+      sql`(${t.kind} = 'external_reviewer') = (${t.accessFrom} is not null and ${t.accessUntil} is not null)`,
+    ),
+    tenantIsolation(),
+  ],
+);
+
+/**
+ * The one-time code an external reviewer is sent at each sign-in, after
+ * the right password: the code and the challenge that goes with it, both
+ * hashed. Ten minutes, five tries, once.
+ */
+export const signInCodes = pgTable(
+  'sign_in_codes',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    userId: uuid().notNull(),
+    challengeHash: text().notNull().unique(),
+    codeHash: text().notNull(),
+    client: text().notNull().default('web'),
+    attempts: integer().notNull().default(0),
+    expiresAt: timestamp({ withTimezone: true }).notNull(),
+    usedAt: timestamp({ withTimezone: true }),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'sign_in_codes_user_fk',
+      columns: [t.tenantId, t.userId],
+      foreignColumns: [users.tenantId, users.id],
+    }).onDelete('cascade'),
     tenantIsolation(),
   ],
 );
@@ -374,6 +429,11 @@ export const auditLog = pgTable(
   },
   (t) => [
     index('audit_log_entity_idx').on(t.tenantId, t.entityType, t.entityId),
+    // For the viewer (docs/specs/audit-trail.md, "Performance"): newest
+    // first, by person, by action.
+    index('audit_log_time_idx').on(t.tenantId, t.occurredAt.desc(), t.id.desc()),
+    index('audit_log_actor_idx').on(t.tenantId, t.actorId, t.occurredAt),
+    index('audit_log_action_idx').on(t.tenantId, t.action, t.occurredAt),
     tenantIsolation(),
     // The admin portal adds an entry when it changes what a client may use
     // (`subscription_changed`) or the window in which it may import its
@@ -387,7 +447,7 @@ export const auditLog = pgTable(
       as: 'permissive',
       for: 'insert',
       to: platformRole,
-      withCheck: sql`actor_id IS NULL AND ip_address IS NULL AND action IN ('subscription_changed', 'import_window_changed')`,
+      withCheck: sql`actor_id IS NULL AND ip_address IS NULL AND action IN ('subscription_changed', 'import_window_changed', 'client_created_by_platform', 'client_settings_changed_by_platform')`,
     }),
   ],
 );
@@ -1013,6 +1073,14 @@ export const notificationKind = pgEnum('notification_kind', [
   // review 11): to the other Quality officers and Administrators.
   // `data.personId` names them. About no document.
   'policies_import_granted',
+  // An external reviewer's access was granted, extended or ended
+  // (`data.change`, `data.personId`): to the holders of `users.manage` for
+  // the whole organization.
+  'external_access_changed',
+  // Once a week, to the Administrators: the number and hash of the head
+  // of the audit chain, so that a copy of it is outside Trustline's hands
+  // (decision 5). Emailed, and not to be switched off.
+  'audit_chain_head',
 ]);
 
 // Something a user is told about an incident they can see. Stored so that it
@@ -1075,7 +1143,7 @@ export const notifications = pgTable(
     // new kind to be committed before it is created.
     check(
       'notifications_about_one_thing',
-      sql`(${t.incidentId} is null or ${t.documentId} is null) and (${t.incidentId} is not null or ${t.documentId} is not null or ${t.kind}::text in ('public_form_paused', 'acknowledgements_overdue_digest', 'email_turned_off', 'signing_pin_changed', 'signing_pin_locked', 'review_approval_turned_off', 'audit_chain_broken', 'policies_import_granted'))`,
+      sql`(${t.incidentId} is null or ${t.documentId} is null) and (${t.incidentId} is not null or ${t.documentId} is not null or ${t.kind}::text in ('public_form_paused', 'acknowledgements_overdue_digest', 'email_turned_off', 'signing_pin_changed', 'signing_pin_locked', 'review_approval_turned_off', 'audit_chain_broken', 'policies_import_granted', 'external_access_changed', 'audit_chain_head'))`,
     ),
     tenantIsolation(),
   ],
@@ -2332,6 +2400,9 @@ export const emailCategory = pgEnum('email_category', [
   'immediate',
   'daily_digest',
   'weekly_digest',
+  // An external reviewer's one-time sign-in code: sent at once, by the
+  // request that asks for it, never by the worker.
+  'sign_in_code',
 ]);
 
 export const emailStatus = pgEnum('email_status', [

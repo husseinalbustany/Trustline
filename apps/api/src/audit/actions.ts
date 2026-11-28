@@ -29,6 +29,7 @@ export const AUDIT_AREAS = [
   'documents',
   'exports',
   'trustline',
+  'audit',
 ] as const;
 export type AuditArea = (typeof AUDIT_AREAS)[number];
 
@@ -44,8 +45,16 @@ export type AuditEntityType =
   | 'approval_route'
   | 'subscription';
 
+/**
+ * The module an entry belongs to: one of a module the client does not have
+ * is not shown in the viewer, as the module's routes answer as if they did
+ * not exist. It stays in the chain, and in the chain file as a seal only.
+ */
+export type AuditModule = 'core' | 'incidents' | 'policies';
+
 type ActionInfo = {
   area: AuditArea;
+  module?: AuditModule;
   entity: AuditEntityType | null;
   details: readonly string[];
   maskActor?: true;
@@ -69,8 +78,8 @@ const migration = (
 export const AUDIT_ACTIONS = {
   // Sign-in. The address is kept with these (`ip_address`), outside the
   // sealed body, which holds a commitment to it (spec, "Personal data").
-  sign_in: code('sign_in', 'user', ['client']),
-  sign_in_failed: code('sign_in', 'user', ['locked']),
+  sign_in: code('sign_in', 'user', ['client', 'secondFactor']),
+  sign_in_failed: code('sign_in', 'user', ['locked', 'reason']),
   sign_out: code('sign_in', 'user', []),
   password_set: code('sign_in', 'user', ['purpose']),
   password_confirmation_failed: code('sign_in', 'user', ['locked', 'purpose', 'byPin', 'pinLocksNow']),
@@ -86,8 +95,12 @@ export const AUDIT_ACTIONS = {
   role_created: code('accounts', 'role', ['code', 'permissions']),
   role_updated: code('accounts', 'role', ['changed', 'before', 'after']),
   role_deleted: code('accounts', 'role', ['code']),
-  administrator_created_by_platform: code('accounts', 'user', ['platformAdminId', 'platformAdminEmail'], { by: 'platform' }),
-  built_in_roles_changed_by_system: migration('accounts', 'tenant', ['roles', 'permissionsAdded', 'permissionsRemoved']),
+  administrator_created_by_platform: code('accounts', 'user', ['platformAdminId', 'platformAdminName', 'platformAdminEmail'], { by: 'platform' }),
+  built_in_roles_changed_by_system: migration('accounts', 'tenant', ['roles', 'permissionsAdded', 'permissionsRemoved', 'rolesAdded']),
+  // External reviewers (docs/specs/audit-trail.md, step 6).
+  external_access_granted: code('accounts', 'user', ['organization', 'purpose', 'from', 'until', 'roleId']),
+  external_access_extended: code('accounts', 'user', ['from', 'to', 'reason']),
+  external_access_ended: code('accounts', 'user', ['by', 'until']),
 
   // Organization and settings.
   org_unit_created: code('organization', 'org_unit', ['type', 'parentId']),
@@ -97,9 +110,6 @@ export const AUDIT_ACTIONS = {
   response_rules_changed: code('organization', 'tenant', ['harmLevel', 'triageHours', 'closeDays']),
   email_setting_changed: code('organization', 'tenant', ['enabled']),
   notification_preferences_changed: code('organization', 'user', ['immediate', 'digest', 'weekly', 'via']),
-  // The first entry the chain seals itself (migration 0058): how many were
-  // there before, sealed as they then stood.
-  audit_chain_started: { area: 'organization', entity: 'tenant', details: ['migration', 'sealedBefore', 'sealedOn'], by: 'database' },
 
   // Incidents.
   incident_reported: code('incidents', 'incident', ['reference', 'type', 'anonymous', 'channel'], { maskActor: true }),
@@ -151,9 +161,46 @@ export const AUDIT_ACTIONS = {
   person_acknowledgements_exported: code('exports', 'user', ['locale', 'rows']),
 
   // Written by Trustline's staff, from the admin portal.
-  subscription_changed: code('trustline', 'subscription', ['plan', 'status', 'modules', 'limits', 'planUpdated', 'platformAdminEmail'], { by: 'platform' }),
-  import_window_changed: code('trustline', 'tenant', ['from', 'to', 'reason', 'platformAdminEmail'], { by: 'platform' }),
+  // `platformAdminName` names the staff member (`platformAdminEmail` in
+  // entries written before the audit trail's step 7).
+  subscription_changed: code('trustline', 'subscription', ['plan', 'status', 'modules', 'limits', 'planUpdated', 'platformAdminId', 'platformAdminName', 'platformAdminEmail'], { by: 'platform' }),
+  import_window_changed: code('trustline', 'tenant', ['from', 'to', 'reason', 'platformAdminId', 'platformAdminName', 'platformAdminEmail'], { by: 'platform', module: 'policies' }),
+  // Mirrored from Trustline's own log (spec, item 3): the client was made,
+  // and what of it was changed (suspended or made active again, its time
+  // zone, its languages, its standard), with the old and new values.
+  client_created_by_platform: code('trustline', 'tenant', ['slug', 'plan', 'platformAdminId', 'platformAdminName'], { by: 'platform' }),
+  client_settings_changed_by_platform: code('trustline', 'tenant', ['changes', 'platformAdminId', 'platformAdminName'], { by: 'platform' }),
+
+  // The audit trail itself.
+  // The first entry the chain seals itself (migration 0058): how many were
+  // there before, sealed as they then stood.
+  audit_chain_started: { area: 'audit', entity: 'tenant', details: ['migration', 'sealedBefore', 'sealedOn'], by: 'database' },
+  audit_entries_exported: code('audit', 'tenant', ['filters', 'locale', 'rows']),
+  audit_chain_exported: code('audit', 'tenant', ['fromSeq', 'toSeq', 'entries', 'withheld']),
+  audit_checkpoints_exported: code('audit', 'tenant', ['from', 'to', 'checkpoints']),
+  // A record an external reviewer opened: what was examined.
+  external_reviewer_viewed: code('audit', null, ['route', 'recordType', 'recordId']),
+  // Addresses of sign-ins older than two years cleared (decision 7).
+  audit_addresses_cleared: code('audit', 'tenant', ['before', 'count']),
 } as const satisfies Record<string, ActionInfo>;
+
+/** The module each area belongs to, unless its action says otherwise. */
+const AREA_MODULE: Record<AuditArea, AuditModule> = {
+  sign_in: 'core',
+  accounts: 'core',
+  organization: 'core',
+  incidents: 'incidents',
+  documents: 'policies',
+  exports: 'policies',
+  trustline: 'core',
+  audit: 'core',
+};
+
+/** The module an action's entries belong to. */
+export const moduleOfAction = (action: AuditAction): AuditModule => {
+  const info: ActionInfo = AUDIT_ACTIONS[action];
+  return info.module ?? AREA_MODULE[info.area];
+};
 
 export type AuditAction = keyof typeof AUDIT_ACTIONS;
 

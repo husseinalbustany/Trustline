@@ -421,6 +421,20 @@
       "when": 1795851397594,
       "tag": "0059_audit_view_for_existing_clients",
       "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1795854219964,
+      "tag": "0060_audit_viewer_and_external_reviewers",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1795854241568,
+      "tag": "0061_external_reviewers_and_addresses",
+      "breakpoints": true
     }
   ]
 }

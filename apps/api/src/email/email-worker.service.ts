@@ -6,6 +6,7 @@ import {
   inArray,
   lt,
   lte,
+  ne,
   or,
   sql,
 } from 'drizzle-orm';
@@ -496,9 +497,14 @@ export class EmailWorker implements OnModuleDestroy {
         .select({ id: emailQueue.id })
         .from(emailQueue)
         .where(
-          or(
-            and(eq(emailQueue.status, 'pending'), lte(emailQueue.nextAttemptAt, now)),
-            and(eq(emailQueue.status, 'sending'), lt(emailQueue.claimedUntil, DB_NOW)),
+          and(
+            or(
+              and(eq(emailQueue.status, 'pending'), lte(emailQueue.nextAttemptAt, now)),
+              and(eq(emailQueue.status, 'sending'), lt(emailQueue.claimedUntil, DB_NOW)),
+            ),
+            // A sign-in code is sent by the request that asks for it, at
+            // once, and never again: one left unsent is not the worker's.
+            ne(emailQueue.category, 'sign_in_code'),
           ),
         )
         .orderBy(asc(emailQueue.nextAttemptAt), asc(emailQueue.id))
@@ -529,7 +535,7 @@ export class EmailWorker implements OnModuleDestroy {
           period: emailQueue.period,
           attempts: emailQueue.attempts,
           createdAt: emailQueue.createdAt,
-        });
+        }) as Promise<Claimed[]>;
     });
   }
 

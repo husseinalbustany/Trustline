@@ -57,6 +57,8 @@ export const NOTIFICATION_MODULE: Record<NotificationKind, ModuleKey> = {
   review_approval_turned_off: 'policies',
   audit_chain_broken: 'core',
   policies_import_granted: 'policies',
+  external_access_changed: 'core',
+  audit_chain_head: 'core',
 };
 
 /** The kinds a client with these modules is shown. */

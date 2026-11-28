@@ -38,6 +38,19 @@ export const PERMISSIONS = [
 export type Permission = (typeof PERMISSIONS)[number];
 
 /**
+ * What an external reviewer may hold: reading only. Anything else, and the
+ * reporter's name (`incidents.see_reporter`), is refused for them (400
+ * `not_read_only`): a just culture does not show reporters to outsiders.
+ */
+export const READ_ONLY_PERMISSIONS: readonly Permission[] = [
+  'incidents.view',
+  'policies.view',
+  'policies.view_all',
+  'reports.view',
+  'audit.view',
+];
+
+/**
  * The module each permission belongs to. A role keeps a permission of a
  * module the client does not have, so that switching the module back on
  * restores everything; meanwhile the permission does nothing, and the
@@ -179,5 +192,19 @@ export const SYSTEM_ROLES: {
       fr: 'Déclare les incidents et lit les politiques.',
     },
     permissions: ['incidents.report', 'policies.view'],
+  },
+  {
+    // A surveyor or auditor from outside, for a few days
+    // (docs/specs/audit-trail.md): reading only, and never reporters'
+    // names. Given to the clients that existed before it by migration
+    // 0061. A narrower role of the client's may be given instead.
+    code: 'external_reviewer',
+    name: { en: 'External reviewer', ar: 'مراجع خارجي', fr: 'Évaluateur externe' },
+    description: {
+      en: 'A surveyor or auditor from outside, for a few days: reads the audit trail, every document, incidents without their reporters, and reports.',
+      ar: 'مُقيِّم أو مدقق من خارج المؤسسة لبضعة أيام: يطّلع على سجل التدقيق وكل الوثائق والحوادث دون أسماء المُبلِّغين والتقارير.',
+      fr: 'Un évaluateur ou un auditeur extérieur, pour quelques jours : consulte le journal d’audit, tous les documents, les incidents sans leurs déclarants, et les rapports.',
+    },
+    permissions: ['audit.view', 'policies.view_all', 'incidents.view', 'reports.view'],
   },
 ];

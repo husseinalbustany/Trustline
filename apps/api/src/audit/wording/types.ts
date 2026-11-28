@@ -1,4 +1,4 @@
-import type { AuditAction, AuditActor } from '../actions.js';
+import type { AuditAction, AuditActor, AuditArea, AuditEntityType } from '../actions.js';
 
 /**
  * The words of the audit trail in one language, for what the API writes
@@ -13,5 +13,22 @@ import type { AuditAction, AuditActor } from '../actions.js';
  */
 export type AuditWording = {
   actions: Record<AuditAction, string>;
+  areas: Record<AuditArea, string>;
+  entities: Record<AuditEntityType, string>;
+  /** The CSV of the trail: its headings, and how a yes or no is said. */
+  csv: {
+    seq: string;
+    at: string;
+    who: string;
+    area: string;
+    action: string;
+    recordType: string;
+    record: string;
+    details: string;
+    address: string;
+    sealedLate: string;
+    yes: string;
+    no: string;
+  };
   actors: Record<AuditActor, string>;
 };
