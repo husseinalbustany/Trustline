@@ -13,6 +13,11 @@ import { checkpointMessage } from './chain.js';
 export const SIGNING_KEY_VARIABLE = 'AUDIT_SIGNING_KEY';
 /** The variable holding the public keys of keys replaced since. */
 export const PREVIOUS_KEYS_VARIABLE = 'AUDIT_PREVIOUS_PUBLIC_KEYS';
+/**
+ * Key ids no longer known, deliberately: a checkpoint signed by one is
+ * passed over. Any other unknown key id is a break (security review 12, M2).
+ */
+export const RETIRED_KEYS_VARIABLE = 'AUDIT_RETIRED_KEY_IDS';
 
 /** A key's id: derived from the public key, so that nothing names it twice. */
 const keyIdOf = (publicKey: KeyObject) =>
@@ -47,6 +52,7 @@ export type PublishedKey = { keyId: string; algorithm: 'Ed25519'; publicKey: str
 export class AuditKeys {
   readonly signer: { keyId: string; key: KeyObject } | null;
   readonly verifiers = new Map<string, KeyObject>();
+  readonly retired = new Set<string>();
   readonly published: PublishedKey[] = [];
   readonly problem: string | null;
 
@@ -74,6 +80,9 @@ export class AuditKeys {
         problems.push(`${PREVIOUS_KEYS_VARIABLE}: key ${i + 1} is not an Ed25519 public key, and is left out`);
       }
     }
+    for (const id of (process.env[RETIRED_KEYS_VARIABLE] ?? '').split(',')) {
+      if (id.trim()) this.retired.add(id.trim());
+    }
     this.signer = signer;
     this.problem = problems.length > 0 ? problems.join('; ') : null;
   }
@@ -100,15 +109,16 @@ export class AuditKeys {
   }
 
   /**
-   * Whether a checkpoint's signature holds: `unknown` for a key this API
-   * does not know (one replaced and not listed), `unsigned` for none.
+   * Whether a checkpoint's signature holds: `retired` for a key listed as
+   * retired, `unknown` for any other key this API does not know (a break),
+   * `unsigned` for none.
    */
   check(
     cp: Parameters<typeof checkpointMessage>[0] & { keyId: string | null; signature: string | null },
-  ): 'valid' | 'invalid' | 'unknown' | 'unsigned' {
+  ): 'valid' | 'invalid' | 'retired' | 'unknown' | 'unsigned' {
     if (!cp.keyId || !cp.signature) return 'unsigned';
     const key = this.verifiers.get(cp.keyId);
-    if (!key) return 'unknown';
+    if (!key) return this.retired.has(cp.keyId) ? 'retired' : 'unknown';
     try {
       return verify(null, Buffer.from(checkpointMessage(cp), 'utf8'), key, Buffer.from(cp.signature, 'base64'))
         ? 'valid'

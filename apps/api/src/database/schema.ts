@@ -434,6 +434,10 @@ export const auditLog = pgTable(
     index('audit_log_time_idx').on(t.tenantId, t.occurredAt.desc(), t.id.desc()),
     index('audit_log_actor_idx').on(t.tenantId, t.actorId, t.occurredAt),
     index('audit_log_action_idx').on(t.tenantId, t.action, t.occurredAt),
+    // One word each, so that no two entries can make the same body
+    // (security review 12, L4): the registry's actions and entity types.
+    check('audit_log_action_word', sql`${t.action} ~ '^[a-z_]+$'`),
+    check('audit_log_entity_type_word', sql`${t.entityType} is null or ${t.entityType} ~ '^[a-z_]+$'`),
     tenantIsolation(),
     // The admin portal adds an entry when it changes what a client may use
     // (`subscription_changed`) or the window in which it may import its
@@ -527,10 +531,13 @@ export const auditChainCheckpoints = pgTable(
   },
   (t) => [
     index('audit_chain_checkpoints_tenant_seq_idx').on(t.tenantId, t.seq),
+    unique('audit_chain_checkpoints_tenant_id_id_key').on(t.tenantId, t.id),
     check(
       'audit_chain_checkpoints_signed_whole',
       sql`(${t.keyId} is null) = (${t.signature} is null)`,
     ),
+    // Never dated ahead (security review 12, M1).
+    check('audit_chain_checkpoints_not_ahead', sql`${t.at} <= now() + interval '5 minutes'`),
     tenantIsolation(),
   ],
 );
@@ -578,11 +585,20 @@ export const auditChainVerifications = pgTable(
     // with no seal.
     firstBadSeq: bigint({ mode: 'number' }),
     firstBadEntryId: uuid(),
-    // The checkpoint signed on success, if any.
-    checkpointId: uuid().references(() => auditChainCheckpoints.id),
+    // The checkpoint signed on success, if any, of the same client.
+    checkpointId: uuid(),
+    // Whether the break is taken as found (security review 12, L2): a bad
+    // checkpoint, which the application role could have written, only
+    // when the next run finds it again; every other kind at once.
+    confirmed: boolean().notNull().default(true),
   },
   (t) => [
     index('audit_chain_verifications_tenant_run_idx').on(t.tenantId, t.runAt),
+    foreignKey({
+      name: 'audit_chain_verifications_checkpoint_fk',
+      columns: [t.tenantId, t.checkpointId],
+      foreignColumns: [auditChainCheckpoints.tenantId, auditChainCheckpoints.id],
+    }),
     check(
       'audit_chain_verifications_failure_named',
       sql`(${t.result} = 'failed') = (${t.kind} is not null)`,

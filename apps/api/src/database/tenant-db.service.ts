@@ -14,12 +14,16 @@ export class TenantDb {
   withTenant<T>(
     tenantId: string,
     fn: (tx: Transaction) => Promise<T>,
+    // For a reader that must see one moment throughout (the audit chain's
+    // check, security review 12, H2): `repeatable read`. The database's
+    // default, read committed, otherwise.
+    options: { isolationLevel?: 'read committed' | 'repeatable read' } = {},
   ): Promise<T> {
     return this.db.transaction(async (tx) => {
       await tx.execute(
         sql`select set_config('app.tenant_id', ${tenantId}, true)`,
       );
       return fn(tx);
-    });
+    }, options.isolationLevel ? { isolationLevel: options.isolationLevel } : undefined);
   }
 }
