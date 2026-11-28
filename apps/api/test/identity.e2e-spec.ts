@@ -123,11 +123,12 @@ describe('hospital users, roles and sign-in', () => {
   });
 
   describe('sign-in', () => {
-    it('gives a new client the five built-in roles and a working administrator', async () => {
+    it('gives a new client the six built-in roles and a working administrator', async () => {
       expect(Object.keys(a.roles).sort()).toEqual([
         'administrator',
         'approving_authority',
         'department_manager',
+        'external_reviewer',
         'quality_officer',
         'reporter',
       ]);

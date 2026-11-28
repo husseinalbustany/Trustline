@@ -59,7 +59,9 @@ describe('the policies migration, for clients that existed before it', () => {
       .values({ slug: `${prefix}-${suffix}`, name: { en: 'Before' }, accreditationStandard: 'JCI' })
       .returning({ id: tenants.id });
     await tx.insert(roles).values(
-      SYSTEM_ROLES.filter((r) => r.code !== 'approving_authority').map((r) => ({
+      // Neither existed then: the Approving authority (0045) and the External
+      // reviewer (0061).
+      SYSTEM_ROLES.filter((r) => r.code !== 'approving_authority' && r.code !== 'external_reviewer').map((r) => ({
         ...r,
         permissions: r.permissions.filter((p) => !NEW.includes(p)),
         tenantId: t.id,

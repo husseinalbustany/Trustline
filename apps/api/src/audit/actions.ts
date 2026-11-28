@@ -107,7 +107,7 @@ export const AUDIT_ACTIONS = {
   org_unit_updated: code('organization', 'org_unit', ['changed', 'active']),
   org_unit_moved: code('organization', 'org_unit', ['from', 'to']),
   public_reporting_changed: code('organization', 'tenant', ['from', 'to']),
-  response_rules_changed: code('organization', 'tenant', ['harmLevel', 'triageHours', 'closeDays']),
+  response_rules_changed: code('organization', 'tenant', ['none', 'mild', 'moderate', 'severe', 'death']),
   email_setting_changed: code('organization', 'tenant', ['enabled']),
   notification_preferences_changed: code('organization', 'user', ['immediate', 'digest', 'weekly', 'via']),
 
@@ -121,9 +121,9 @@ export const AUDIT_ACTIONS = {
 
   // Documents.
   document_created: code('documents', 'document', ['number', 'typeId', 'categoryId', 'ownerId', 'ownerUnitId', 'confidentiality', 'audience', 'versionId']),
-  document_updated: code('documents', 'document', ['reason', 'title', 'keywords', 'references', 'ownerId', 'ownerUnitId', 'confidentiality', 'audience', 'reviewMonths', 'authoritativeLocale', 'confirmationDueFrom']),
+  document_updated: code('documents', 'document', ['reason', 'categoryId', 'title', 'ownerId', 'ownerUnitId', 'confidentiality', 'keywords', 'references', 'reviewMonths', 'authoritativeLocale', 'audience', 'authoritative', 'versionsInProgress', 'nextReviewOn', 'confirmationDueFrom']),
   document_version_created: code('documents', 'document', ['versionId', 'version', 'copiedFromVersionId', 'contributors']),
-  document_version_edited: code('documents', 'document', ['versionId', 'version', 'contentHash']),
+  document_version_edited: code('documents', 'document', ['versionId', 'version', 'sections', 'changeSummary', 'acknowledgementRequired', 'acknowledgeWithinDays', 'contentHash']),
   document_submitted: code('documents', 'document', ['versionId', 'version', 'status', 'runId', 'routeId', 'contentHash']),
   document_step_approved: code('documents', 'document', ['versionId', 'version', 'runId', 'position', 'kind', 'signatureId', 'contentHash', 'comment', 'status']),
   document_returned: code('documents', 'document', ['versionId', 'version', 'runId', 'position', 'kind', 'status', 'comment']),
@@ -140,13 +140,13 @@ export const AUDIT_ACTIONS = {
   document_imported: code('documents', 'document', ['number', 'numberFrom', 'counter', 'typeId', 'categoryId', 'ownerId', 'ownerUnitId', 'confidentiality', 'audience', 'reviewMonths', 'versionId', 'original', 'sectionsNotWritten', 'acknowledgementRequired', 'acknowledgementsAsked', 'signatureId', 'contentHash', 'batchId', 'batchIndex', 'batchSize']),
   document_import_signed: code('documents', 'tenant', ['batchId', 'size', 'listHash', 'documents']),
   import_confirmed: code('documents', 'document', ['versionId', 'dueOn', 'signatureId', 'contentHash']),
-  document_type_created: code('documents', 'document_type', ['code', 'name', 'prefix', 'sections']),
-  document_type_updated: code('documents', 'document_type', ['name', 'prefix', 'sections', 'active', 'noChangeNeedsApproval']),
-  document_category_created: code('documents', 'document_category', ['code', 'name', 'parentId']),
-  document_category_updated: code('documents', 'document_category', ['name', 'parentId', 'active']),
-  approval_route_created: code('documents', 'approval_route', ['documentTypeId', 'name', 'steps', 'startingRoute', 'fallback']),
-  approval_route_updated: code('documents', 'approval_route', ['name', 'steps', 'active']),
-  document_settings_updated: code('documents', 'tenant', ['maxReviewMonths', 'acknowledgeWithinDays', 'authoritativeLocale']),
+  document_type_created: code('documents', 'document_type', ['code', 'name', 'numberPrefix', 'sections', 'defaultReviewMonths', 'noChangeNeedsApproval', 'position']),
+  document_type_updated: code('documents', 'document_type', ['name', 'numberPrefix', 'sections', 'defaultReviewMonths', 'noChangeNeedsApproval', 'active', 'position']),
+  document_category_created: code('documents', 'document_category', ['code', 'name', 'parentId', 'position']),
+  document_category_updated: code('documents', 'document_category', ['name', 'parentId', 'active', 'position']),
+  approval_route_created: code('documents', 'approval_route', ['documentTypeId', 'name', 'active', 'steps', 'startingRoute', 'fallback']),
+  approval_route_updated: code('documents', 'approval_route', ['name', 'documentTypeId', 'active', 'steps']),
+  document_settings_updated: code('documents', 'tenant', ['maxReviewMonths', 'authoritativeLocale', 'authoritative', 'versionsInProgress']),
   document_type_changed_by_system: migration('documents', 'document_type', ['noChangeNeedsApproval']),
   approval_routes_changed_by_system: migration('documents', 'tenant', ['routes', 'step']),
   policy_defaults_reworded_by_system: migration('documents', 'tenant', ['types', 'categories']),
@@ -164,7 +164,7 @@ export const AUDIT_ACTIONS = {
   // `platformAdminName` names the staff member (`platformAdminEmail` in
   // entries written before the audit trail's step 7).
   subscription_changed: code('trustline', 'subscription', ['plan', 'status', 'modules', 'limits', 'planUpdated', 'platformAdminId', 'platformAdminName', 'platformAdminEmail'], { by: 'platform' }),
-  import_window_changed: code('trustline', 'tenant', ['from', 'to', 'reason', 'platformAdminId', 'platformAdminName', 'platformAdminEmail'], { by: 'platform', module: 'policies' }),
+  import_window_changed: code('trustline', 'tenant', ['closesOn', 'reason', 'platformAdminId', 'platformAdminName', 'platformAdminEmail'], { by: 'platform', module: 'policies' }),
   // Mirrored from Trustline's own log (spec, item 3): the client was made,
   // and what of it was changed (suspended or made active again, its time
   // zone, its languages, its standard), with the old and new values.
