@@ -96,7 +96,7 @@ export function pinTooSimple(pin: string) {
     }
   }
   if (pin.length % 2 === 0 && /^(?:(\d)\1)+$/.test(pin)) return true;
-  if (pin === [...pin].reverse().join('')) return true;
+  if (pin === pin.split('').reverse().join('')) return true;
   if (looksLikeDate(pin)) return true;
   return COMMON_PINS.has(pin);
 }

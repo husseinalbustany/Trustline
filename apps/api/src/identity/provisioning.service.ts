@@ -15,7 +15,6 @@ import {
   sessions,
   users,
   userTokens,
-  notifications,
 } from '../database/schema.js';
 import type { Localized } from '../i18n/locales.js';
 import { DEFAULT_INCIDENT_CATEGORIES } from '../incidents/categories.js';

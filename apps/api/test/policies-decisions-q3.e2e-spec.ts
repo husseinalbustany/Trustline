@@ -13,7 +13,6 @@ import {
   documents,
   notifications,
   roles,
-  sessions,
   signatures,
   users,
 } from '../src/database/schema.js';
@@ -233,6 +232,9 @@ describe('policies: the business decisions after quality review 3', () => {
       });
       const list = (await get(manager.cookie, '/exports/documents?locale=en').expect(200)).text;
       expect(list.split('\r\n').find((l) => l.startsWith(`"CONF-${run}"`))).toContain('"Awaiting the owner"');
+      // And in the library's list, as in the master list.
+      const library = (await get(manager.cookie, `/documents?q=CONF-${run}`).expect(200)).body;
+      expect(library.items).toEqual([expect.objectContaining({ id: imported.id, confirmation: 'awaiting' })]);
     });
 
     it('is refused to anyone but the owner, and to bad input', async () => {
@@ -439,7 +441,15 @@ describe('policies: the business decisions after quality review 3', () => {
       // The Approving authority is told, and has it in "Awaiting me".
       expect(await told(authority.id, 'review_approval_requested')).toEqual([{ documentId: doc.id, data: expect.objectContaining({ dueOn: shiftDay(today, 20) }) }]);
       const awaiting = (await get(authority.cookie, '/approvals').expect(200)).body;
-      expect(awaiting.reviews).toEqual([expect.objectContaining({ documentId: doc.id, number: doc.number, dueOn: shiftDay(today, 20) })]);
+      expect(awaiting.reviews).toEqual([
+        expect.objectContaining({
+          documentId: doc.id,
+          number: doc.number,
+          dueOn: shiftDay(today, 20),
+          // With who asked.
+          requestedBy: { id: owner.id, name: expect.objectContaining({ en: expect.any(String) }) },
+        }),
+      ]);
       const asAuthority = (await get(authority.cookie, `/documents/${doc.id}`).expect(200)).body as Doc;
       expect(asAuthority.moves).toEqual(expect.arrayContaining(['approve_review', 'return_review']));
       // And by email at once, as an approval step is.

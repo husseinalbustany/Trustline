@@ -325,7 +325,6 @@ export class LibraryService {
           acknowledgementRequired: _ack,
           originalLastReviewedOn: _original,
           differences: _differences,
-          confirmation: _confirmation,
           ...row
         }) => ({
           ...row,
@@ -661,13 +660,18 @@ export class LibraryService {
       // And the "no change" reviews awaiting their signature (business
       // decision 6).
       const reviews = await reviewsAwaitingFor(tx, viewer.userId);
+      // With who asked, so "Awaiting me" can say so.
+      const people = await this.namesOf(tx, reviews.map((r) => r.requestedBy));
       return {
         items: rows.map((r) => ({
           ...r,
           overdue: !!r.dueAt && r.dueAt.getTime() < now,
         })),
         total: rows.length,
-        reviews: reviews.map(({ ownerUnitId: _unit, ...r }) => r),
+        reviews: reviews.map(({ ownerUnitId: _unit, requestedBy, ...r }) => ({
+          ...r,
+          requestedBy: { id: requestedBy, name: people.get(requestedBy) ?? null },
+        })),
       };
     });
   }
