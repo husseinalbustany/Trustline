@@ -41,6 +41,8 @@ import { ControlledDocument, LanguageSwitch } from "./controlled-document";
 import { PasswordPrompt } from "./password-prompt";
 import {
   DocumentStatusPill,
+  ImportedPill,
+  ReissuePill,
   RestrictedPill,
   ReviewPill,
   VersionStatusPill,
@@ -195,6 +197,8 @@ function DocumentView({
           <div className="flex flex-wrap items-center gap-2 print:hidden">
             <DocumentStatusPill t={t} status={doc.status} />
             <ReviewPill t={t} review={doc.review} />
+            {doc.published?.source === "imported" && <ImportedPill t={t} />}
+            {doc.reissueRequired && <ReissuePill t={t} review={doc.review} />}
             {doc.confidentiality === "restricted" && <RestrictedPill t={t} />}
           </div>
         }
@@ -228,6 +232,37 @@ function DocumentView({
               {doc.retireReason}
             </p>
           )}
+        </div>
+      )}
+
+      {doc.reissueRequired && (
+        <div
+          role="note"
+          className={`mt-4 flex flex-col gap-1 rounded-lg border px-4 py-3 text-sm print:hidden ${
+            doc.review === "overdue"
+              ? "border-danger bg-danger-soft"
+              : doc.review
+                ? "border-warn bg-warn-soft"
+                : "border-line bg-surface"
+          }`}
+        >
+          <p className="font-medium">
+            {fill(
+              doc.review === "overdue"
+                ? t.reissue.wasDue
+                : doc.review
+                  ? t.reissue.due
+                  : t.reissue.at,
+              { date: day(doc.nextReviewOn) ?? "" },
+            )}
+          </p>
+          <p>
+            {doc.inProgress
+              ? t.reissue.inProgress
+              : doc.moves.includes("new_version")
+                ? t.reissue.help
+                : t.reissue.helpReader}
+          </p>
         </div>
       )}
 
@@ -327,6 +362,7 @@ function DocumentView({
                         })}
                       </Link>
                       <VersionStatusPill t={t} status={v.status} />
+                      {v.source === "imported" && <ImportedPill t={t} />}
                     </div>
                     <p className="mt-1 text-xs text-muted">
                       {v.publishedAt
@@ -878,6 +914,24 @@ function DocumentActions({
           suspended (publish, retire, acknowledge): no fieldset turns it off. */}
       <>
         <div className="flex flex-col gap-3 p-4">
+          {doc.reissueRequired && (
+            <div className="flex flex-col gap-2">
+              <p className="text-sm font-medium">{x.periodicReview}</p>
+              <p className="text-sm text-muted">
+                {doc.moves.includes("new_version")
+                  ? t.reissue.actionHelp
+                  : t.reissue.actionHelpBusy}
+              </p>
+              {doc.moves.includes("new_version") && (
+                <div>
+                  <Button disabled={busy} onClick={newVersion}>
+                    {t.reissue.start}
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
           {doc.moves.includes("confirm_review") && (
             <div className="flex flex-col gap-2">
               <p className="text-sm font-medium">{x.periodicReview}</p>
@@ -937,7 +991,7 @@ function DocumentActions({
             </div>
           )}
 
-          {doc.moves.includes("new_version") && (
+          {doc.moves.includes("new_version") && !doc.reissueRequired && (
             <div className="flex flex-col gap-1">
               <div>
                 <Button variant="secondary" disabled={busy} onClick={newVersion}>

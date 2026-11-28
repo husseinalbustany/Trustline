@@ -77,8 +77,8 @@ first field is already filled.
 - **Passwords are never set by an administrator.** Adding a user produces a
   one-time link (valid 72 hours) that the person opens to choose their own
   password. The same mechanism resets a password, and a reset signs the user
-  out everywhere. There is no email sending yet, so the administrator passes
-  the link on.
+  out everywhere. The link is not emailed yet (notifications are: see
+  "Email"), so the administrator passes it on.
 - **Roles** are sets of permissions. Every client starts with five built-in
   roles (Administrator, Quality officer, Department manager, Approving
   authority, Reporter) and can add its own. A role is granted for the whole organization or one department.
@@ -171,7 +171,7 @@ factor, and self-service "forgot password" by email.
   entry `public_reporting_limit_reached` (no actor, nothing about any
   sender) and the server log a warning with the hospital's id, and whoever
   holds `settings.manage` or `incidents.triage` for the whole hospital gets
-  an in-app notification (`public_form_paused`). Nothing is emailed yet.
+  an in-app notification (`public_form_paused`), not emailed.
 - **Second sign-off:** a sentinel event, or an incident with harm level
   death, is not closed by one person. Whoever handles it asks for closure
   with the summary they propose; someone else holding `incidents.sign_off`
@@ -194,7 +194,8 @@ factor, and self-service "forgot password" by email.
   those who may triage it, an assignment, a handover, a comment, a closure, a
   request for sign-off and its outcome, a deadline coming up or missed), and
   only ever for someone who can open the incident. A notification carries the
-  incident's reference and no name or text. Nothing is sent by email yet.
+  incident's reference and no name or text. What cannot wait is also
+  emailed: see "Email".
 - **The deadline check:** every API process looks every five minutes for
   deadlines that have entered their last quarter or have passed, and writes
   those notifications, each once. It needs no configuration: any number of
@@ -209,8 +210,8 @@ factor, and self-service "forgot password" by email.
 The rules are in `docs/specs/incident-reporting.md` and
 `docs/specs/incident-safeguards-and-deadlines.md`.
 
-Not built yet: sending notifications by email, working-hours calendars for
-deadlines, attachments, investigations and actions.
+Not built yet: working-hours calendars for deadlines, attachments,
+investigations and actions.
 
 ## Modules, plans and subscriptions
 
@@ -312,7 +313,44 @@ The rules, what was decided while building, and every route are in
 
 Not built yet: the screens, an owner asking to retire, notifications for
 an overdue approval step, and everything the spec leaves out of this
-release (uploads, attachments, delegation, email, a server-made PDF).
+release (uploads, attachments, delegation, a server-made PDF).
+
+## Email
+
+Notifications are also sent by email (core, every client): what cannot
+wait, at once, and each morning a digest of what waits for the person. The
+API builds it; the screens for the preferences and the switch are not built.
+
+- **At once:** a serious incident reported or handed over (to those who may
+  triage it), an incident made a sentinel event, an incident assigned to
+  you, a sign-off requested, a document's approval step assigned to you.
+- **Daily, at 07:00 on the organization's clock:** documents to
+  acknowledge, to review or approve, periodic reviews due, incidents
+  assigned to you (and how many are overdue). Never empty. **Weekly:** the
+  overdue acknowledgements digest, to managers.
+- **What it says:** references and counts only, never a description, a
+  comment, a title or a name, with a link into Trustline (`WEB_BASE_URL`);
+  in the person's language (English, Arabic right to left, French), plain
+  text and simple HTML, nothing loaded from anywhere. The wording is in
+  `apps/api/src/email/wording/`, one file per language.
+- **Who:** active people with an address, unless they switched that kind
+  off (`GET/PATCH /me/notification-preferences`: `immediate`, `digest`,
+  `language`) or the organization's administrator switched email off for
+  everyone (`GET/PUT /settings/email`). Every email has a one-click
+  unsubscribe link (a signed token valid 90 days). Nothing about a module
+  that is off; while the subscription is suspended, only incidents and
+  acknowledgements.
+- **How:** through SMTP when `SMTP_HOST` is set (`.env.example` lists every
+  setting); otherwise every email is kept in `email_outbox` and not sent,
+  and the log says mail is not configured. Emails are queued in the
+  transaction of their notification (a failure to queue never fails the
+  action) and sent by a background worker every 30 seconds, started by
+  `main.ts`: each once with any number of processes, tried again after 1, 5,
+  30 and 120 minutes, dropped after a day. Queue and outbox are kept 30
+  days. Preference changes and the organization's switch are audited, not
+  each email.
+
+The rules, the routes and what was decided are in `docs/specs/email.md`.
 
 ## API
 

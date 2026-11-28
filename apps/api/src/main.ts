@@ -2,6 +2,7 @@ import './env.js';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
 import { listen, setupApp } from './app.setup.js';
+import { EmailWorker } from './email/email-worker.service.js';
 import { DeadlineCheck } from './incidents/deadline-check.service.js';
 import { PolicyCheck } from './policies/policy-check.service.js';
 
@@ -23,5 +24,9 @@ async function bootstrap() {
   // and acknowledgement reminders), every fifteen minutes, with the same
   // safety for several processes.
   app.get(PolicyCheck, { strict: false }).start();
+  // Email (docs/specs/email.md): sends the queue every 30 seconds, and
+  // queues each organization's daily digest. Says once how mail is sent, or
+  // that it is not configured and kept in the outbox. Safe in every process.
+  app.get(EmailWorker, { strict: false }).start();
 }
 await bootstrap();

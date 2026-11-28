@@ -38,7 +38,7 @@ import {
 import { textareaClass, type PoliciesProps } from "./types";
 import { useExplain } from "./use-explain";
 
-type Lists = {
+export type Lists = {
   types: DocumentType[];
   categories: DocumentCategory[];
   units: OrgUnit[];
@@ -49,7 +49,7 @@ type Lists = {
   maxReviewMonths: number | null;
 };
 
-async function loadLists(): Promise<Lists> {
+export async function loadLists(): Promise<Lists> {
   const [types, categories, units, people, roles, settings] =
     await Promise.all([
       api<DocumentType[]>("/policies/types"),
@@ -164,93 +164,26 @@ function DocumentForm({
   lists,
   doc,
 }: PoliciesProps & { lists: Lists; doc: PolicyDocument | null }) {
-  const session = useSession();
   const router = useRouter();
   const readOnly = useReadOnly();
   const explainError = useExplain(t, lang);
   const f = t.form;
-  const { defaultLocale, locales } = session.tenant;
-  const inLang = (text: Localized | null | undefined) =>
-    pick(text, lang, defaultLocale);
   const [typeId, setTypeId] = useState(doc?.type.id ?? "");
   const [whole, setWhole] = useState(doc ? doc.audience.wholeOrganization : true);
   const [ackRequired, setAckRequired] = useState(false);
   // A change of review period is kept with its reason.
   const [periodChanged, setPeriodChanged] = useState(false);
-  const maxMonths = Math.max(
-    lists.maxReviewMonths ?? 120,
-    // A period set longer before the maximum stays until it changes.
-    doc?.reviewMonths ?? 0,
-  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [people, setPeople] = useState<Person[]>(lists.people);
   useLayoutEffect(() => () => setError(null), []);
-
-  const type = lists.types.find((x) => x.id === typeId);
-  // Units this person manages documents for: a document is owned there.
-  const owningUnits = unitOptions(
-    lists.units.filter((u) => canIn(session, "policies.manage", u.id)),
-    (u) => inLang(u.name),
-    doc ? { id: doc.ownerUnit.id, label: inLang(doc.ownerUnit.name) } : null,
-  );
-  const audienceUnits = unitOptions(lists.units, (u) => inLang(u.name), null);
-  const chosenUnits = new Set(doc?.audience.orgUnits.map((u) => u.id) ?? []);
-  const chosenRoles = new Set(doc?.audience.roles.map((r) => r.id) ?? []);
-  // A role already on the document stays listed even when the roles
-  // cannot be read by this person.
-  const roles: Named[] = lists.roles
-    ? lists.roles.map((r) => ({ id: r.id, name: r.name }))
-    : (doc?.audience.roles ?? []);
-  // The owner stays offered, whoever they are.
-  const owners = [...people];
-  if (doc && !owners.some((p) => p.id === doc.owner.id)) {
-    owners.unshift({ id: doc.owner.id, name: doc.owner.name ?? {}, orgUnitId: null });
-  }
-  if (!doc && !owners.some((p) => p.id === session.user.id)) {
-    owners.unshift({ id: session.user.id, name: session.user.name, orgUnitId: session.user.orgUnitId });
-  }
-
-  async function findPeople(q: string) {
-    try {
-      setPeople(
-        await api<Person[]>(
-          `/policies/people${q.trim() ? `?${new URLSearchParams({ q: q.trim() })}` : ""}`,
-        ),
-      );
-    } catch {
-      // The list shown stays as it was.
-    }
-  }
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const form = e.currentTarget;
     const data = new FormData(form);
-    const fields = readForm(form);
-    const list = (name: string, split: RegExp) =>
-      String(data.get(name) ?? "")
-        .split(split)
-        .map((s) => s.trim())
-        .filter(Boolean);
+    const body = readDocumentBody(form, whole);
     const months = String(data.get("reviewMonths") ?? "").trim();
-    const body: Record<string, unknown> = {
-      title: fields.title,
-      ownerId: data.get("ownerId"),
-      ownerUnitId: data.get("ownerUnitId"),
-      categoryId: data.get("categoryId"),
-      confidentiality: data.get("confidentiality"),
-      audience: {
-        orgUnitIds: whole ? [] : data.getAll("audienceUnit").map(String),
-        roleIds: data.getAll("audienceRole").map(String),
-      },
-      keywords: list("keywords", /[,،]/),
-      references: list("references", /\n/),
-    };
-    if (months) body.reviewMonths = Number(months);
-    if (!whole && (body.audience as { orgUnitIds: string[] }).orgUnitIds.length === 0) {
-      return setError(f.audienceUnitsMissing);
-    }
+    if (!body) return setError(f.audienceUnitsMissing);
     setBusy(true);
     setError(null);
     try {
@@ -301,11 +234,166 @@ function DocumentForm({
     setBusy(false);
   }
 
-  const radioRow = "flex items-start gap-3 rounded-md border border-line p-3 text-sm";
-
   return (
     <form onSubmit={submit} className="mt-6 flex max-w-3xl flex-col gap-6">
       <ReadOnlyFieldset>
+        <DocumentFields
+          lang={lang}
+          t={t}
+          lists={lists}
+          doc={doc}
+          typeId={typeId}
+          onTypeChange={setTypeId}
+          whole={whole}
+          onWholeChange={setWhole}
+          acknowledgement={
+            doc ? null : { required: ackRequired, onChange: setAckRequired }
+          }
+          onPeriodChange={setPeriodChanged}
+          periodChanged={periodChanged}
+        />
+      </ReadOnlyFieldset>
+
+      {error && (
+        <p role="alert" className="text-sm text-danger">
+          {error}
+        </p>
+      )}
+      <div className="flex flex-wrap items-center gap-3">
+        <Button type="submit" disabled={busy || readOnly}>
+          {doc ? f.save : f.create}
+        </Button>
+        <Link
+          href={doc ? documentPath(lang, doc.id) : `/${lang}/policies`}
+          className="text-sm text-accent hover:underline"
+        >
+          {t.actions.cancel}
+        </Link>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * A document's details as a form reads them, for creating, editing or
+ * importing it; null when "some areas only" is chosen with none ticked.
+ */
+export function readDocumentBody(
+  form: HTMLFormElement,
+  whole: boolean,
+): Record<string, unknown> | null {
+  const data = new FormData(form);
+  const fields = readForm(form);
+  const list = (name: string, split: RegExp) =>
+    String(data.get(name) ?? "")
+      .split(split)
+      .map((s) => s.trim())
+      .filter(Boolean);
+  const months = String(data.get("reviewMonths") ?? "").trim();
+  const orgUnitIds = whole ? [] : data.getAll("audienceUnit").map(String);
+  if (!whole && orgUnitIds.length === 0) return null;
+  const body: Record<string, unknown> = {
+    title: fields.title,
+    ownerId: data.get("ownerId"),
+    ownerUnitId: data.get("ownerUnitId"),
+    categoryId: data.get("categoryId"),
+    confidentiality: data.get("confidentiality"),
+    audience: {
+      orgUnitIds,
+      roleIds: data.getAll("audienceRole").map(String),
+    },
+    keywords: list("keywords", /[,،]/),
+    references: list("references", /\n/),
+  };
+  if (months) body.reviewMonths = Number(months);
+  return body;
+}
+
+/**
+ * The panels of a document's details: what it is, who is responsible, who
+ * it applies to, its review and what helps find it. For a new document
+ * (or an imported one) also whether its readers are asked to acknowledge
+ * it.
+ */
+export function DocumentFields({
+  lang,
+  t,
+  lists,
+  doc,
+  typeId,
+  onTypeChange,
+  whole,
+  onWholeChange,
+  acknowledgement,
+  periodChanged = false,
+  onPeriodChange,
+  reviewMonthsHelp,
+}: PoliciesProps & {
+  lists: Lists;
+  doc: PolicyDocument | null;
+  typeId: string;
+  onTypeChange: (id: string) => void;
+  whole: boolean;
+  onWholeChange: (whole: boolean) => void;
+  /** Null when it is not asked here. */
+  acknowledgement: { required: boolean; onChange: (on: boolean) => void } | null;
+  periodChanged?: boolean;
+  onPeriodChange?: (changed: boolean) => void;
+  /** Said under the review period instead of the usual help. */
+  reviewMonthsHelp?: string;
+}) {
+  const session = useSession();
+  const f = t.form;
+  const { defaultLocale, locales } = session.tenant;
+  const inLang = (text: Localized | null | undefined) =>
+    pick(text, lang, defaultLocale);
+  const ackRequired = acknowledgement?.required ?? false;
+  const maxMonths = Math.max(
+    lists.maxReviewMonths ?? 120,
+    // A period set longer before the maximum stays until it changes.
+    doc?.reviewMonths ?? 0,
+  );
+  const [people, setPeople] = useState<Person[]>(lists.people);
+  const type = lists.types.find((x) => x.id === typeId);
+  // Units this person manages documents for: a document is owned there.
+  const owningUnits = unitOptions(
+    lists.units.filter((u) => canIn(session, "policies.manage", u.id)),
+    (u) => inLang(u.name),
+    doc ? { id: doc.ownerUnit.id, label: inLang(doc.ownerUnit.name) } : null,
+  );
+  const audienceUnits = unitOptions(lists.units, (u) => inLang(u.name), null);
+  const chosenUnits = new Set(doc?.audience.orgUnits.map((u) => u.id) ?? []);
+  const chosenRoles = new Set(doc?.audience.roles.map((r) => r.id) ?? []);
+  // A role already on the document stays listed even when the roles
+  // cannot be read by this person.
+  const roles: Named[] = lists.roles
+    ? lists.roles.map((r) => ({ id: r.id, name: r.name }))
+    : (doc?.audience.roles ?? []);
+  // The owner stays offered, whoever they are.
+  const owners = [...people];
+  if (doc && !owners.some((p) => p.id === doc.owner.id)) {
+    owners.unshift({ id: doc.owner.id, name: doc.owner.name ?? {}, orgUnitId: null });
+  }
+  if (!doc && !owners.some((p) => p.id === session.user.id)) {
+    owners.unshift({ id: session.user.id, name: session.user.name, orgUnitId: session.user.orgUnitId });
+  }
+
+  async function findPeople(q: string) {
+    try {
+      setPeople(
+        await api<Person[]>(
+          `/policies/people${q.trim() ? `?${new URLSearchParams({ q: q.trim() })}` : ""}`,
+        ),
+      );
+    } catch {
+      // The list shown stays as it was.
+    }
+  }
+
+  const radioRow = "flex items-start gap-3 rounded-md border border-line p-3 text-sm";
+
+  return (
+    <>
         <Panel title={f.what}>
           <div className="flex flex-col gap-5 p-4">
             {doc ? (
@@ -320,7 +408,7 @@ function DocumentForm({
                   name="typeId"
                   required
                   value={typeId}
-                  onChange={(e) => setTypeId(e.target.value)}
+                  onChange={(e) => onTypeChange(e.target.value)}
                   className={inputClass}
                 >
                   <option value="" disabled>
@@ -418,7 +506,7 @@ function DocumentForm({
                 <input
                   type="radio"
                   checked={whole}
-                  onChange={() => setWhole(true)}
+                  onChange={() => onWholeChange(true)}
                   className="mt-0.5 accent-accent"
                 />
                 {f.wholeOrganization}
@@ -427,7 +515,7 @@ function DocumentForm({
                 <input
                   type="radio"
                   checked={!whole}
-                  onChange={() => setWhole(false)}
+                  onChange={() => onWholeChange(false)}
                   className="mt-0.5 accent-accent"
                 />
                 <span>
@@ -509,6 +597,7 @@ function DocumentForm({
               <Field
                 label={f.reviewMonths}
                 help={
+                  reviewMonthsHelp ??
                   [
                     type
                       ? fill(f.reviewMonthsHelp, { months: durationFormat(lang)(type.defaultReviewMonths, "month") })
@@ -529,7 +618,7 @@ function DocumentForm({
                   min={1}
                   max={maxMonths}
                   onChange={(e) =>
-                    setPeriodChanged(
+                    onPeriodChange?.(
                       !!doc &&
                         e.target.value !== "" &&
                         Number(e.target.value) !== doc.reviewMonths,
@@ -573,13 +662,13 @@ function DocumentForm({
                 className={textareaClass}
               />
             </Field>
-            {!doc && (
+            {acknowledgement && (
               <>
                 <label className="flex items-start gap-3 text-sm">
                   <input
                     type="checkbox"
                     checked={ackRequired}
-                    onChange={(e) => setAckRequired(e.target.checked)}
+                    onChange={(e) => acknowledgement.onChange(e.target.checked)}
                     className="mt-0.5 size-4 accent-accent"
                   />
                   <span>
@@ -607,24 +696,6 @@ function DocumentForm({
             )}
           </div>
         </Panel>
-      </ReadOnlyFieldset>
-
-      {error && (
-        <p role="alert" className="text-sm text-danger">
-          {error}
-        </p>
-      )}
-      <div className="flex flex-wrap items-center gap-3">
-        <Button type="submit" disabled={busy || readOnly}>
-          {doc ? f.save : f.create}
-        </Button>
-        <Link
-          href={doc ? documentPath(lang, doc.id) : `/${lang}/policies`}
-          className="text-sm text-accent hover:underline"
-        >
-          {t.actions.cancel}
-        </Link>
-      </div>
-    </form>
+    </>
   );
 }

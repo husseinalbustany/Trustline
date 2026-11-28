@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from './database/database.module.js';
+import { EmailModule } from './email/email.module.js';
+import { MailModule } from './email/mail.module.js';
 import { HealthController } from './health/health.controller.js';
 import { IdentityModule } from './identity/identity.module.js';
 import { IncidentsModule } from './incidents/incidents.module.js';
@@ -13,9 +15,11 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module.js';
     DatabaseModule,
     SubscriptionsModule,
     IdentityModule,
+    MailModule,
     OrganizationModule,
     IncidentsModule,
     PoliciesModule,
+    EmailModule,
     PlatformModule,
   ],
   controllers: [HealthController],

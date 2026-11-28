@@ -288,6 +288,56 @@ export class ProvisioningService {
     return user;
   }
 
+  /**
+   * What email needs of people: their address, language and status, for
+   * these ids. Named columns: never a hash.
+   */
+  mailboxesOf(tx: Transaction, userIds: string[]) {
+    if (userIds.length === 0) return Promise.resolve([]);
+    return tx
+      .select({
+        id: users.id,
+        email: users.email,
+        preferredLocale: users.preferredLocale,
+        status: users.status,
+      })
+      .from(users)
+      .where(inArray(users.id, userIds));
+  }
+
+  /** The ids of the client's active users, for the daily digest. */
+  async activeUserIds(tx: Transaction) {
+    const rows = await tx
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.status, 'active'));
+    return rows.map((r) => r.id);
+  }
+
+  /**
+   * Sets a person's own language (null: the organization's default) and
+   * returns what it was before.
+   */
+  async setPreferredLocale(
+    tx: Transaction,
+    userId: string,
+    locale: string | null,
+  ) {
+    const [before] = await tx
+      .select({ preferredLocale: users.preferredLocale })
+      .from(users)
+      .where(eq(users.id, userId))
+      .for('update');
+    if (!before) return null;
+    if (before.preferredLocale !== locale) {
+      await tx
+        .update(users)
+        .set({ preferredLocale: locale, updatedAt: new Date() })
+        .where(eq(users.id, userId));
+    }
+    return before.preferredLocale;
+  }
+
   async setRoles(
     tx: Transaction,
     tenantId: string,

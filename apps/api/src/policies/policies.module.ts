@@ -31,5 +31,7 @@ import { PolicySettingsService } from './settings.service.js';
     PolicySettingsService,
     Publisher,
   ],
+  // For the email digest: what waits for a person, as their screens show it.
+  exports: [LibraryService],
 })
 export class PoliciesModule {}

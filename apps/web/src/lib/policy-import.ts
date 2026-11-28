@@ -168,7 +168,10 @@ export type RowFields = {
 };
 
 export type FileRow = {
-  /** Where it is in the file, from 1: its line (CSV) or its place (JSON). */
+  /**
+   * Where it is in the file: its row as a spreadsheet numbers it, the
+   * column names being row 1 (CSV), or its place in the list, from 1 (JSON).
+   */
   at: number;
   fields: RowFields;
 };
@@ -225,7 +228,7 @@ const splitList = (value: string) =>
  * quotes may hold separators, line ends and doubled quotes.
  */
 export function parseCsv(text: string): string[][] {
-  const body = text.replace(/^﻿/, "");
+  const body = text.replace(/^\uFEFF/, "");
   const firstLine = body.split(/\r?\n/, 1)[0] ?? "";
   const separator =
     firstLine.includes(";") && !firstLine.includes(",") ? ";" : ",";
@@ -317,11 +320,9 @@ function fromCsv(text: string): FileRow[] | FileProblem {
   }
   if (!refs.some((r) => r?.column === "type")) return { problem: "noHeader" };
   const rows: FileRow[] = [];
-  // The line each row starts on, counting the line ends inside quotes.
-  let line = 1 + (header.join(",").match(/\n/g)?.length ?? 0) + 1;
-  for (const cells of table.slice(1)) {
-    const at = line;
-    line += 1 + (cells.join(",").match(/\n/g)?.length ?? 0);
+  for (const [i, cells] of table.slice(1).entries()) {
+    // As a spreadsheet numbers it: the column names are row 1.
+    const at = i + 2;
     if (cells.every((c) => !c.trim())) continue;
     const fields = blankFields();
     cells.forEach((cell, i) => {
@@ -352,7 +353,7 @@ const asList = (value: unknown): string[] =>
 function fromJson(text: string): FileRow[] | FileProblem {
   let data: unknown;
   try {
-    data = JSON.parse(text.replace(/^﻿/, ""));
+    data = JSON.parse(text.replace(/^\uFEFF/, ""));
   } catch {
     return { problem: "notJson" };
   }
@@ -390,12 +391,16 @@ function fromJson(text: string): FileRow[] | FileProblem {
 }
 
 /** Reads a file of documents to import: JSON if it looks like JSON, else CSV. */
-export function readImportFile(text: string): FileRow[] | FileProblem {
-  const body = text.replace(/^﻿/, "").trim();
+export function readImportFile(
+  text: string,
+): { kind: "csv" | "json"; rows: FileRow[] } | FileProblem {
+  const body = text.replace(/^\uFEFF/, "").trim();
   if (!body) return { problem: "empty" };
-  const rows = body.startsWith("[") || body.startsWith("{") ? fromJson(body) : fromCsv(body);
-  if (Array.isArray(rows) && rows.length === 0) return { problem: "empty" };
-  return rows;
+  const kind = body.startsWith("[") || body.startsWith("{") ? "json" : "csv";
+  const rows = kind === "json" ? fromJson(body) : fromCsv(body);
+  if (!Array.isArray(rows)) return rows;
+  if (rows.length === 0) return { problem: "empty" };
+  return { kind, rows };
 }
 
 // From the file's codes and names to the ids the API takes.
@@ -613,9 +618,10 @@ export function splitIntoBatches<T>(
 
 /** The example's words, in one language, from that language's dictionary. */
 export type ExampleWords = {
-  titles: [string, string];
-  keptAt: [string, string];
-  approvedBy: [string, string];
+  /** Two of each, one per example document. */
+  titles: string[];
+  keptAt: string[];
+  approvedBy: string[];
   revision: string;
   section: string;
   keywords: string;
@@ -679,7 +685,7 @@ export function exampleRows(input: {
       area: unit?.code ?? "",
       owner,
       approvedOn: addDays(approvedOn, i * 30),
-      approvedBy: main.approvedBy[i],
+      approvedBy: main.approvedBy[i] ?? "",
       effectiveOn: addDays(approvedOn, i * 30 + 14),
       nextReviewOn: addDays(today, 90 + i * 90),
       confidentiality: "all_staff",
@@ -689,8 +695,8 @@ export function exampleRows(input: {
       acknowledgeDays: i === 0 ? "" : "14",
     };
     for (const l of locales) {
-      row[`title.${l}`] = inLocale(l).titles[i];
-      row[`keptAt.${l}`] = inLocale(l).keptAt[i];
+      row[`title.${l}`] = inLocale(l).titles[i] ?? "";
+      row[`keptAt.${l}`] = inLocale(l).keptAt[i] ?? "";
       for (const s of sections) row[`section.${s.key}.${l}`] = inLocale(l).section;
     }
     return row;
@@ -703,7 +709,7 @@ const csvCell = (value: string) =>
 
 /** The example as a CSV file, with a byte-order mark for spreadsheets. */
 export const exampleCsv = ({ columns, rows }: { columns: string[]; rows: ExampleRow[] }) =>
-  `﻿${[columns, ...rows.map((r) => columns.map((c) => r[c] ?? ""))]
+  `\uFEFF${[columns, ...rows.map((r) => columns.map((c) => r[c] ?? ""))]
     .map((cells) => cells.map(csvCell).join(","))
     .join("\r\n")}\r\n`;
 

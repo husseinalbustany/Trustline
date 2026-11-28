@@ -826,11 +826,15 @@ See "Acknowledgement" above: only acknowledgements past their due date.
    can be plugged in by configuration; until one is configured, mail is
    kept in an outbox and not sent. See the email section of the
    notifications work.
+   > **Built:** `email.md`. At once, `document_step_assigned`; in the
+   > morning digest, documents to acknowledge, to review or approve, and
+   > reviews due; weekly, `acknowledgements_overdue_digest` to the managers
+   > it is written for. By number and version only, never a title.
 
 ## Built: decisions 1 to 3
 
 What the API builds of the three decisions above (decision 4, email, is
-the next piece of work). The web screens for them are not built yet. Migrations 0044 (schema, generated) and 0045
+built in its own spec, `email.md`). The web screens for them are not built yet. Migrations 0044 (schema, generated) and 0045
 (grants, triggers, the role and the routes of existing clients, custom
 SQL), both additive: nothing the release running before them does is
 refused. Each new route answers 401 without a session, 403 without its

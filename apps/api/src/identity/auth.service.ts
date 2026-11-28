@@ -266,54 +266,93 @@ export class AuthService {
           ),
         );
       if (!row || row.user.status !== 'active') return null;
-      // A cancelled subscription ends access as a suspended client does,
-      // and a session from before the client was suspended or its
-      // subscription cancelled stays ended when either is made active
-      // again, whether or not its revocation was written.
-      const entitlements = await this.entitlements.of(tx, tenant.id);
-      if (entitlements?.status === 'cancelled') return null;
-      if (issuedBeforeReset(row.createdAt, tenant, entitlements)) return null;
-      const stored = entitlements?.status ?? 'active';
-
-      const { user } = row;
-      const access = await this.accessOf(tx, user.id);
-      const administers = covers(access, 'settings.manage', null);
-      // What is commercial (a trial, a payment overdue) only to the
-      // client's administrators; to anyone else it is active. A suspension
-      // changes what works, so everyone is told of it.
-      const status = administers || stored === 'suspended' ? stored : 'active';
-      return {
-        token,
-        tenant: {
-          id: tenant.id,
-          slug: tenant.slug,
-          name: tenant.name,
-          locales: tenant.locales,
-          defaultLocale: tenant.defaultLocale,
-          accreditationStandard: tenant.accreditationStandard,
-          publicReporting: tenant.publicReporting,
-          timeZone: tenant.timeZone,
-          // No subscription (there should be none without): core only.
-          modules: entitlements?.modules ?? [],
-          subscription: {
-            status,
-            notice:
-              status === 'suspended'
-                ? 'suspended'
-                : status === 'past_due' && administers
-                  ? 'past_due'
-                  : null,
-          },
-        },
-        user: {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          orgUnitId: user.orgUnitId,
-        },
-        ...access,
-      };
+      return this.contextIn(tx, tenant, row.user, token, row.createdAt);
     });
+  }
+
+  /**
+   * What a person may see and do now, as if they were signed in, for work
+   * done on their behalf in the background (the email digest: what waits
+   * for them is what their screens would show them). Null unless the
+   * client is active, its subscription not cancelled, and the person
+   * active. Never for answering a request: a request has a session.
+   */
+  async backgroundContextOf(
+    tenantId: string,
+    userId: string,
+  ): Promise<AuthContext | null> {
+    const [tenant] = await this.db
+      .select()
+      .from(tenants)
+      .where(eq(tenants.id, tenantId));
+    if (!tenant || tenant.status !== 'active') return null;
+    return this.tenantDb.withTenant(tenant.id, async (tx) => {
+      const [user] = await tx.select().from(users).where(eq(users.id, userId));
+      if (!user || user.status !== 'active') return null;
+      return this.contextIn(tx, tenant, user, '', null);
+    });
+  }
+
+  /**
+   * The context of an active user of an active client, in a transaction of
+   * that client. `issuedAt`: when the session was, to be refused if it is
+   * from before the client or its subscription was last reset.
+   */
+  private async contextIn(
+    tx: Transaction,
+    tenant: typeof tenants.$inferSelect,
+    user: typeof users.$inferSelect,
+    token: string,
+    issuedAt: Date | null,
+  ): Promise<AuthContext | null> {
+    // A cancelled subscription ends access as a suspended client does,
+    // and a session from before the client was suspended or its
+    // subscription cancelled stays ended when either is made active
+    // again, whether or not its revocation was written.
+    const entitlements = await this.entitlements.of(tx, tenant.id);
+    if (entitlements?.status === 'cancelled') return null;
+    if (issuedAt && issuedBeforeReset(issuedAt, tenant, entitlements)) {
+      return null;
+    }
+    const stored = entitlements?.status ?? 'active';
+
+    const access = await this.accessOf(tx, user.id);
+    const administers = covers(access, 'settings.manage', null);
+    // What is commercial (a trial, a payment overdue) only to the
+    // client's administrators; to anyone else it is active. A suspension
+    // changes what works, so everyone is told of it.
+    const status = administers || stored === 'suspended' ? stored : 'active';
+    return {
+      token,
+      tenant: {
+        id: tenant.id,
+        slug: tenant.slug,
+        name: tenant.name,
+        locales: tenant.locales,
+        defaultLocale: tenant.defaultLocale,
+        accreditationStandard: tenant.accreditationStandard,
+        publicReporting: tenant.publicReporting,
+        timeZone: tenant.timeZone,
+        // No subscription (there should be none without): core only.
+        modules: entitlements?.modules ?? [],
+        subscription: {
+          status,
+          notice:
+            status === 'suspended'
+              ? 'suspended'
+              : status === 'past_due' && administers
+                ? 'past_due'
+                : null,
+        },
+      },
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        orgUnitId: user.orgUnitId,
+      },
+      ...access,
+    };
   }
 
   /**

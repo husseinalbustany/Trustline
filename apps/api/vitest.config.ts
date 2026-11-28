@@ -9,5 +9,9 @@ export default defineConfig({
     root: './',
     include: ['src/**/*.spec.ts', 'test/**/*.e2e-spec.ts'],
     globalSetup: ['./test/global-setup.ts'],
+    // No test ever sends mail, whatever a developer's .env configures:
+    // email goes to the outbox table (docs/specs/email.md). A test of the
+    // SMTP sender talks to a server of its own on this machine.
+    env: { MAIL_TRANSPORT: 'outbox' },
   },
 });

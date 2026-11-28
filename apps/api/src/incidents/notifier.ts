@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { and, eq, inArray } from 'drizzle-orm';
 import type { Transaction } from '../database/client.js';
@@ -6,6 +7,7 @@ import {
   users,
   type NotificationData,
 } from '../database/schema.js';
+import { MailQueue } from '../email/mail-queue.service.js';
 import { AccessService } from '../identity/access.service.js';
 import type { Permission } from '../identity/permissions.js';
 import type { ModuleCode, ModuleKey } from '../subscriptions/modules.js';
@@ -169,7 +171,10 @@ export type Announcement = {
  */
 @Injectable()
 export class Notifier {
-  constructor(private readonly access: AccessService) {}
+  constructor(
+    private readonly access: AccessService,
+    private readonly mail: MailQueue,
+  ) {}
 
   /** Announces one event on one incident. Returns how many were told. */
   send(tx: Transaction, tenantId: string, announcement: Announcement) {
@@ -247,7 +252,7 @@ export class Notifier {
       for (const user of found) active.add(user.id);
     }
 
-    const rows: (typeof notifications.$inferInsert)[] = [];
+    const rows: (typeof notifications.$inferInsert & { id: string })[] = [];
     for (const { incident, actorId, fullAccess, drafts } of planned) {
       const told = new Set<string>();
       const mayBeTold = (id: string | null, draft: Draft): id is string =>
@@ -268,6 +273,9 @@ export class Notifier {
           if (userId === null || told.has(userId)) continue;
           told.add(userId);
           rows.push({
+            // Given here, so that the email of the notification can be
+            // queued with it (MailQueue).
+            id: randomUUID(),
             tenantId,
             userId,
             kind: draft.kind,
@@ -288,6 +296,8 @@ export class Notifier {
     for (const chunk of inChunks(rows)) {
       await tx.insert(notifications).values(chunk);
     }
+    // And their emails, for the kinds that are emailed. Never fails this.
+    await this.mail.enqueue(tx, tenantId, rows);
     return rows.length;
   }
 
@@ -308,6 +318,7 @@ export class Notifier {
     const to = new Set(everywhere.flatMap((p) => [...holders.everywhere(p)]));
     if (to.size === 0) return 0;
     const rows = [...to].map((userId) => ({
+      id: randomUUID(),
       tenantId,
       userId,
       kind,
@@ -317,6 +328,7 @@ export class Notifier {
     for (const chunk of inChunks(rows)) {
       await tx.insert(notifications).values(chunk);
     }
+    await this.mail.enqueue(tx, tenantId, rows);
     return rows.length;
   }
 }

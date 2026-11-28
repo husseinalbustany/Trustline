@@ -23,6 +23,8 @@ export function explain(
     months?: (count: number) => string;
     /** Several items as one phrase: "1 and 2". */
     list?: (items: string[]) => string;
+    /** A day of the client's calendar, in words: "1 March 2027". */
+    day?: (day: string) => string;
   } = {},
 ): string {
   const errors = t.errors;
@@ -83,6 +85,47 @@ export function explain(
     return fill(errors[`${code}_${field}`], {
       version: String(details.version ?? ""),
     });
+  }
+  const day = (value: unknown) =>
+    typeof value === "string" ? (names.day?.(value) ?? value) : "";
+  if (code === "review_date_too_far") {
+    return fill(errors.review_date_too_far, {
+      date: day(details.latest),
+      max: months(details.maxReviewMonths),
+    });
+  }
+  if (code === "number_taken") {
+    return typeof details.takenBy === "string"
+      ? fill(errors.number_taken_by, { number: details.takenBy })
+      : errors.number_taken;
+  }
+  if (code === "content_required") {
+    return fill(errors.content_required, {
+      language: names.language?.(String(details.locale ?? "")) ?? "",
+    });
+  }
+  if (code === "language_mismatch" && details.field === "content") {
+    return errors.language_mismatch_content;
+  }
+  if (code === "language_mismatch" && details.field === "originalKeptAt") {
+    return errors.language_mismatch_kept_at;
+  }
+  // Imports are for migration: the latest approval day allowed, and the
+  // day the import window closed, when the API gives them.
+  if (code === "approved_after_start") {
+    const latest = details.latest ?? details.approvedBefore ?? details.before;
+    return typeof latest === "string"
+      ? fill(errors.approved_after_start_by, { date: day(latest) })
+      : errors.approved_after_start;
+  }
+  if (code === "import_window_closed") {
+    const closed = details.closedOn ?? details.closesOn ?? details.until;
+    return typeof closed === "string"
+      ? fill(errors.import_window_closed_on, { date: day(closed) })
+      : errors.import_window_closed;
+  }
+  if (code && /mixed_script|script_mix/.test(code)) {
+    return errors.number_mixed_scripts;
   }
   if (code === "unknown_section") {
     return fill(errors.unknown_section, {

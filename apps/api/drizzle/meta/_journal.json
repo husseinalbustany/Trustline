@@ -323,6 +323,20 @@
       "when": 1795827278392,
       "tag": "0045_policies_import_grants_and_approving_authority",
       "breakpoints": true
+    },
+    {
+      "idx": 46,
+      "version": "7",
+      "when": 1795829613113,
+      "tag": "0046_email",
+      "breakpoints": true
+    },
+    {
+      "idx": 47,
+      "version": "7",
+      "when": 1795829621910,
+      "tag": "0047_email_grants",
+      "breakpoints": true
     }
   ]
 }

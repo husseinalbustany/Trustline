@@ -38,5 +38,8 @@ import { IncidentSettingsController } from './settings.controller.js';
     PublicLimits,
     ResponseRulesService,
   ],
+  // For the email digest: what is assigned to a person, as their screens
+  // show it.
+  exports: [IncidentsService],
 })
 export class IncidentsModule {}

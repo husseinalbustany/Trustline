@@ -177,6 +177,7 @@ export function Awaiting({ lang, t }: PoliciesProps) {
                     <Pill tone={item.state === "overdue" ? "danger" : "warn"}>
                       {t.reviewState[item.state]}
                     </Pill>
+                    {item.reissue && <Pill tone="warn">{t.reissue.pill}</Pill>}
                     {item.mine && <Pill tone="ok">{a.youOwn}</Pill>}
                   </div>
                   <p className="mt-1 text-sm">
@@ -187,7 +188,9 @@ export function Awaiting({ lang, t }: PoliciesProps) {
                     </span>
                   </p>
                   <p className="mt-1 text-xs text-muted">
-                    {fill(t.list.nextReview, { date: day(item.nextReviewOn) ?? "" })}
+                    {fill(item.reissue ? t.reissue.byDate : t.list.nextReview, {
+                      date: day(item.nextReviewOn) ?? "",
+                    })}
                   </p>
                 </li>
               ))}

@@ -3,7 +3,7 @@
 import { useCallback } from "react";
 import { useSession } from "@/components/shell/session";
 import { useSubscriptionRefusal } from "@/components/shell/subscription";
-import { durationFormat, languageNameIn } from "@/lib/format";
+import { dayFormat, durationFormat, languageNameIn } from "@/lib/format";
 import { pick } from "@/lib/localized";
 import type { Section } from "@/lib/policies";
 import { explain, type PoliciesText } from "./types";
@@ -35,6 +35,7 @@ export function useExplain(
         months: (count) => durationFormat(lang)(count, "month"),
         list: (items) =>
           new Intl.ListFormat(lang, { type: "conjunction" }).format(items),
+        day: (value) => dayFormat(lang)(value) ?? value,
       }),
     [refusal, t, sections, lang, session.tenant.defaultLocale],
   );

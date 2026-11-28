@@ -1892,6 +1892,173 @@ export const policyReminders = pgTable(
   ],
 );
 
+// Email (docs/specs/email.md): notifications sent by email as well, from a
+// queue the background worker sends, through SMTP or into an outbox when no
+// mail service is configured. Every table is tenant data under row-level
+// security; the grants for the application role are in migration 0047.
+
+// An organization's email setting. No row: email is on.
+export const emailSettings = pgTable(
+  'email_settings',
+  {
+    tenantId: uuid()
+      .primaryKey()
+      .references(() => tenants.id),
+    // Switched off by the client's administrator: nothing is sent to anyone.
+    enabled: boolean().notNull().default(true),
+    // The day, on the organization's calendar, whose daily digests have been
+    // queued: claimed by whichever process moves it first, so each day is
+    // queued once.
+    digestsQueuedOn: date({ mode: 'string' }),
+    updatedBy: uuid(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'email_settings_updated_by_fk',
+      columns: [t.tenantId, t.updatedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    tenantIsolation(),
+  ],
+);
+
+// What a person wants by email. No row: both on.
+export const emailPreferences = pgTable(
+  'email_preferences',
+  {
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    userId: uuid().notNull(),
+    // The immediate emails (docs/specs/email.md, section 1).
+    immediate: boolean().notNull().default(true),
+    // The daily digest and the weekly one.
+    digest: boolean().notNull().default(true),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({
+      name: 'email_preferences_pkey',
+      columns: [t.tenantId, t.userId],
+    }),
+    foreignKey({
+      name: 'email_preferences_user_fk',
+      columns: [t.tenantId, t.userId],
+      foreignColumns: [users.tenantId, users.id],
+    }).onDelete('cascade'),
+    tenantIsolation(),
+  ],
+);
+
+export const emailCategory = pgEnum('email_category', [
+  'immediate',
+  'daily_digest',
+  'weekly_digest',
+]);
+
+export const emailStatus = pgEnum('email_status', [
+  'pending',
+  'sending',
+  'sent',
+  'skipped',
+  'failed',
+]);
+
+// One email to send. Holds what it is about and where it stands, never its
+// content or the address: those are made when it is sent. Kept 30 days once
+// finished.
+export const emailQueue = pgTable(
+  'email_queue',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    userId: uuid().notNull(),
+    category: emailCategory().notNull(),
+    // The notification it sends (immediate, weekly digest). Null for a
+    // daily digest, which is made from what waits for the person that day.
+    notificationId: uuid().references(() => notifications.id, {
+      onDelete: 'cascade',
+    }),
+    // For a daily digest: its day on the organization's calendar.
+    period: date({ mode: 'string' }),
+    status: emailStatus().notNull().default('pending'),
+    // Attempts made, the one in progress included: what a process that
+    // claimed the row must still find there to record how it ended.
+    attempts: integer().notNull().default(0),
+    nextAttemptAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    // Until when the process sending it holds its claim.
+    claimedUntil: timestamp({ withTimezone: true }),
+    sentAt: timestamp({ withTimezone: true }),
+    // Why it was skipped or failed: a word, never a message.
+    reason: text(),
+    // The code of the last failure (`ECONNECTION`, `451`), never its text.
+    lastError: text(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'email_queue_user_fk',
+      columns: [t.tenantId, t.userId],
+      foreignColumns: [users.tenantId, users.id],
+    }).onDelete('cascade'),
+    // One email per notification, and one daily digest per person per day.
+    uniqueIndex('email_queue_notification_key')
+      .on(t.tenantId, t.notificationId)
+      .where(sql`${t.notificationId} is not null`),
+    uniqueIndex('email_queue_digest_key')
+      .on(t.tenantId, t.userId, t.period)
+      .where(sql`${t.category} = 'daily_digest'`),
+    // What the worker looks for: what is due, and what is finished.
+    index('email_queue_due_idx')
+      .on(t.tenantId, t.nextAttemptAt)
+      .where(sql`${t.status} in ('pending', 'sending')`),
+    index('email_queue_finished_idx').on(t.tenantId, t.updatedAt),
+    check(
+      'email_queue_about_one_thing',
+      sql`(${t.category} = 'daily_digest') = (${t.notificationId} is null and ${t.period} is not null)`,
+    ),
+    check(
+      'email_queue_reason_shape',
+      sql`${t.reason} is null or ${t.reason} ~ '^[a-z_]{1,40}$'`,
+    ),
+    check(
+      'email_queue_error_shape',
+      sql`${t.lastError} is null or ${t.lastError} ~ '^[A-Za-z0-9_]{1,40}$'`,
+    ),
+    tenantIsolation(),
+  ],
+);
+
+// What would have been sent, when no mail service is configured: kept here
+// and never sent. One per queue row. Kept 30 days.
+export const emailOutbox = pgTable(
+  'email_outbox',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    queueId: uuid()
+      .notNull()
+      .references(() => emailQueue.id, { onDelete: 'cascade' }),
+    toAddress: text().notNull(),
+    subject: text().notNull(),
+    textBody: text().notNull(),
+    htmlBody: text().notNull(),
+    headers: jsonb().$type<Record<string, string>>().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('email_outbox_queue_key').on(t.tenantId, t.queueId),
+    index('email_outbox_created_idx').on(t.tenantId, t.createdAt),
+    tenantIsolation(),
+  ],
+);
+
 // Platform tables: Trustline's own staff and what they do in the admin portal.
 // They hold no hospital data. Only the trustline_platform role can reach them,
 // and that role has no access to tenant data tables.

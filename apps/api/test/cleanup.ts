@@ -17,6 +17,10 @@ import {
   documentSettings,
   documentTypes,
   documentVersions,
+  emailOutbox,
+  emailPreferences,
+  emailQueue,
+  emailSettings,
   incidentCategories,
   incidentComments,
   incidentEvents,
@@ -84,13 +88,19 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
       .update(documents)
       .set({ publishedVersionId: null, status: 'draft' })
       .where(inArray(documents.tenantId, ids));
-    // Children before what they point to: notifications, the timeline and
+    // Children before what they point to: the email outbox before its
+    // queue, the queue and preferences before notifications and users;
+    // notifications, the timeline and
     // comments before incidents, incidents before categories, users and org
     // units; acknowledgements, reviews and run steps before signatures,
     // runs before routes, versions before documents before their types;
     // imports before their batches, signatures and versions.
     for (const table of [
       subscriptions,
+      emailOutbox,
+      emailQueue,
+      emailPreferences,
+      emailSettings,
       notifications,
       policyReminders,
       documentSettings,

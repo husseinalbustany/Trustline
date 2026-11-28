@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { Transaction } from '../database/client.js';
@@ -6,6 +7,7 @@ import {
   users,
   type NotificationData,
 } from '../database/schema.js';
+import { MailQueue } from '../email/mail-queue.service.js';
 import { AccessService } from '../identity/access.service.js';
 import { inChunks, type NotificationKind } from '../incidents/notifier.js';
 import { userInAudience } from './visibility.js';
@@ -52,7 +54,10 @@ export type DocumentNotice = {
  */
 @Injectable()
 export class DocumentNotifier {
-  constructor(private readonly access: AccessService) {}
+  constructor(
+    private readonly access: AccessService,
+    private readonly mail: MailQueue,
+  ) {}
 
   async send(
     tx: Transaction,
@@ -96,7 +101,7 @@ export class DocumentNotifier {
         if (user.reads) readers.add(user.id);
       }
     }
-    const rows: (typeof notifications.$inferInsert)[] = [];
+    const rows: (typeof notifications.$inferInsert & { id: string })[] = [];
     const told = new Set<string>();
     for (const notice of notices) {
       const assignees = new Set(notice.assignees ?? []);
@@ -111,6 +116,8 @@ export class DocumentNotifier {
         if (!mayOpen) continue;
         told.add(userId);
         rows.push({
+          // Given here, so that its email can be queued with it.
+          id: randomUUID(),
           tenantId,
           userId,
           kind: notice.kind,
@@ -126,6 +133,8 @@ export class DocumentNotifier {
     for (const chunk of inChunks(rows)) {
       await tx.insert(notifications).values(chunk);
     }
+    // And the emails of the kinds that are emailed. Never fails this.
+    await this.mail.enqueue(tx, tenantId, rows);
     return rows.length;
   }
 
@@ -150,9 +159,10 @@ export class DocumentNotifier {
         .where(and(inArray(users.id, chunk), eq(users.status, 'active')));
       for (const u of found) active.add(u.id);
     }
-    const rows: (typeof notifications.$inferInsert)[] = digests
+    const rows: (typeof notifications.$inferInsert & { id: string })[] = digests
       .filter((d) => active.has(d.userId))
       .map((d) => ({
+        id: randomUUID(),
         tenantId,
         userId: d.userId,
         kind: 'acknowledgements_overdue_digest' as const,
@@ -161,6 +171,8 @@ export class DocumentNotifier {
     for (const chunk of inChunks(rows)) {
       await tx.insert(notifications).values(chunk);
     }
+    // Its email, the weekly digest (docs/specs/email.md).
+    await this.mail.enqueue(tx, tenantId, rows);
     return rows.length;
   }
 }

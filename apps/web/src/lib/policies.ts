@@ -291,6 +291,8 @@ export type DocumentVersion = {
   acknowledgementRequired: boolean;
   acknowledgeWithinDays: number;
   languageStatus: LanguageStatus | null;
+  /** Recorded when it was sent for review (coming from the API). */
+  authoritativeLocale?: string | null;
   source: Source;
   /** Null unless it was imported as approved before Trustline. */
   imported: ImportedVersion | null;
@@ -655,6 +657,21 @@ export function shownLanguage(
   if (asked && languages.includes(asked)) return asked;
   if (languages.includes(reader)) return reader;
   return languages[0] ?? null;
+}
+
+/**
+ * The language whose text applies to a version: the one recorded on it
+ * when it was sent for review, once the API gives it (a version in review
+ * or published keeps it whatever the setting becomes), else the one its
+ * language status was worked out against, else the client's main one.
+ */
+export function authoritativeOf(
+  version: Pick<DocumentVersion, "languageStatus"> & { authoritativeLocale?: unknown },
+  fallback: string,
+): string {
+  return typeof version.authoritativeLocale === "string" && version.authoritativeLocale
+    ? version.authoritativeLocale
+    : (version.languageStatus?.authoritative ?? fallback);
 }
 
 export type NotInForce = "retired" | "superseded" | "withdrawn" | "unpublished";

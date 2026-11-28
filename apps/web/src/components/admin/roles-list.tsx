@@ -97,10 +97,24 @@ export function RolesList({ lang, t }: AdminProps) {
                           </Link>
                           {role.isSystem && <Badge>{t.roles.builtIn}</Badge>}
                         </div>
+                        {role.description && (
+                          <p className="mt-1 max-w-xl text-xs text-muted">
+                            {pick(
+                              role.description,
+                              lang,
+                              session.tenant.defaultLocale,
+                            )}
+                          </p>
+                        )}
                       </td>
                       <td className="px-4 py-3 tabular-nums">{inUse(role)}</td>
-                      <td className="px-4 py-3 tabular-nums">
-                        {role.assignments}
+                      <td className="px-4 py-3">
+                        <span className="tabular-nums">{role.assignments}</span>
+                        {role.assignments === 0 && (
+                          <span className="mt-1 block text-xs whitespace-nowrap text-muted">
+                            {t.roles.nobodyYet}
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}

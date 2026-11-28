@@ -34,6 +34,7 @@ import { fill, languageNameIn, numberFormat } from "@/lib/format";
 import { pick, type Localized } from "@/lib/localized";
 import { styleLines, toggleBold, type LineStyle } from "@/lib/markup";
 import {
+  authoritativeOf,
   contentChunks,
   documentPath,
   SECTION_MAX,
@@ -44,8 +45,10 @@ import {
   type PolicyDocument,
 } from "@/lib/policies";
 import { Markup } from "./markup";
+import { RefusalNote } from "./refusal-note";
 import { textareaClass, type PoliciesProps } from "./types";
 import { useExplain } from "./use-explain";
+import { useSubmitRefusal, type SubmitRefusal } from "./use-submit-refusal";
 
 type Loaded = { doc: PolicyDocument; version: DocumentVersion };
 
@@ -120,11 +123,16 @@ function Editor({
   const router = useRouter();
   const readOnly = useReadOnly();
   const { defaultLocale } = session.tenant;
+  // The language whose text applies, as the API says for this version:
+  // its required sections and its summary of changes are written in it.
+  const authoritative = authoritativeOf(start, defaultLocale);
   const locales = [
-    defaultLocale,
-    ...session.tenant.locales.filter((l) => l !== defaultLocale),
+    authoritative,
+    ...session.tenant.locales.filter((l) => l !== authoritative),
   ];
   const explainError = useExplain(t, lang, start.sections);
+  const submitRefusal = useSubmitRefusal(t, lang, doc, start.sections);
+  const [refused, setRefused] = useState<SubmitRefusal | null>(null);
   const e = t.editor;
   const numbers = numberFormat(lang);
   const inLang = (text: Localized | null | undefined) =>
@@ -151,6 +159,7 @@ function Editor({
     () => () => {
       setMessage(null);
       setProgress(null);
+      setRefused(null);
     },
     [],
   );
@@ -344,6 +353,7 @@ function Editor({
   async function saveDraft() {
     setBusy(true);
     setMessage(null);
+    setRefused(null);
     const done = await save();
     if (done) setMessage({ ok: true, text: e.saved });
     setBusy(false);
@@ -352,6 +362,7 @@ function Editor({
   async function sendForReview() {
     setBusy(true);
     setMessage(null);
+    setRefused(null);
     setSummaryError(null);
     const done = await save();
     if (!done) return setBusy(false);
@@ -366,7 +377,7 @@ function Editor({
       const code = codeOf(err);
       const details = detailsOf(err);
       if (code === "missing_sections" && Array.isArray(details.sections)) {
-        const locale = String(details.locale ?? defaultLocale);
+        const locale = String(details.locale ?? authoritative);
         setFieldErrors(
           Object.fromEntries(
             (details.sections as string[]).map((key) => [
@@ -380,13 +391,13 @@ function Editor({
       if (code === "change_summary_required") {
         setSummaryError(t.errors.change_summary_required);
       }
-      setMessage({ ok: false, text: explainError(err) });
+      setRefused(await submitRefusal(err));
     }
     setBusy(false);
   }
 
   const missingHere = (locale: string) =>
-    locale === defaultLocale
+    locale === authoritative
       ? saved.sections.filter((s) => s.required && !text(locale, s.key).trim())
           .length
       : 0;
@@ -430,8 +441,15 @@ function Editor({
         </div>
       )}
 
+      {doc.reissueRequired && (
+        <div className="mt-4 flex max-w-3xl flex-col gap-1 rounded-lg border border-accent bg-accent-soft px-4 py-3 text-sm">
+          <p className="font-medium">{t.reissue.editorTitle}</p>
+          <p>{t.reissue.editorHelp}</p>
+        </div>
+      )}
+
       <p className="mt-4 max-w-3xl text-sm text-muted">
-        {fill(e.intro, { language: languageNameIn(lang)(defaultLocale) })}
+        {fill(e.intro, { language: languageNameIn(lang)(authoritative) })}
       </p>
 
       <ReadOnlyFieldset>
@@ -480,7 +498,11 @@ function Editor({
             </label>
           </div>
           <p className="-mt-3 text-xs text-muted">
-            {tab === defaultLocale ? e.defaultLanguageHelp : e.otherLanguageHelp}
+            {tab === authoritative
+              ? e.defaultLanguageHelp
+              : fill(e.otherLanguageHelp, {
+                  language: languageNameIn(lang)(authoritative),
+                })}
           </p>
 
           <ol className="flex flex-col gap-6">
@@ -488,7 +510,7 @@ function Editor({
               const value = text(tab, section.key);
               const error = fieldErrors[keyOf(tab, section.key)];
               const sectionName = pick(section.name, tab, defaultLocale);
-              const required = section.required && tab === defaultLocale;
+              const required = section.required && tab === authoritative;
               return (
                 <li
                   key={`${tab}:${section.key}`}
@@ -597,7 +619,11 @@ function Editor({
                 <legend className="mb-1 text-sm font-medium">
                   {saved.version >= 2 ? e.changeSummaryRequired : e.changeSummary}
                 </legend>
-                <p className="text-xs text-muted">{e.changeSummaryHelp}</p>
+                <p className="text-xs text-muted">
+                  {fill(e.changeSummaryHelp, {
+                    language: languageNameIn(lang)(authoritative),
+                  })}
+                </p>
                 <div className="grid gap-4 sm:grid-cols-2">
                   {locales.map((locale) => (
                     <Field key={locale} label={languageName(locale)}>
@@ -654,6 +680,7 @@ function Editor({
           </Panel>
 
           <div className="sticky bottom-0 z-10 -mx-4 flex flex-col gap-2 border-t border-line bg-background px-4 py-3 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8">
+            {refused && !progress && <RefusalNote refusal={refused} />}
             {(progress || message) && (
               <p
                 role={message && !message.ok ? "alert" : "status"}

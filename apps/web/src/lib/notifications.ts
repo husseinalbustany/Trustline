@@ -52,6 +52,11 @@ export type Notification = {
     /** With `review_due`: 60, 30 or 7 days before. */
     days?: number;
     /**
+     * With `review_due` and `review_overdue`: the document was approved
+     * before Trustline, so its review is a re-issue through the route.
+     */
+    reissue?: boolean;
+    /**
      * About severe harm, a death or a sentinel event. Missing from those
      * written before the API said so: read as not serious.
      */
@@ -108,7 +113,14 @@ export function sentenceFor(
   { kind, data }: Pick<Notification, "kind" | "data">,
 ): string {
   const general = kinds.other as string;
-  const wording = Object.hasOwn(kinds, kind) ? kinds[kind] : general;
+  // A review that is a re-issue has its own words, when there are any.
+  const own = `${kind}_reissue`;
+  const wording =
+    data?.reissue === true && Object.hasOwn(kinds, own)
+      ? kinds[own]
+      : Object.hasOwn(kinds, kind)
+        ? kinds[kind]
+        : general;
   if (typeof wording === "string") return wording;
   const detail = Object.hasOwn(detailOf, kind)
     ? data?.[detailOf[kind as keyof typeof detailOf]]

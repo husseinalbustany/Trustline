@@ -520,6 +520,14 @@ description, no comment text, no names of people).
   `POST /notifications/:id/read`, `POST /notifications/read-all`.
 - A user only ever reads and marks their own.
 
+> **Email (added later, `email.md`).** Some of these notifications are also
+> sent by email, from a queue written in the same transaction: at once,
+> `incident_reported` and `incident_handed_over` when the incident is
+> serious, and `sentinel_flagged`, `incident_assigned` and
+> `sign_off_requested` always; the incidents assigned to a person, with how
+> many are overdue, in their morning digest. The email says what the
+> notification says (the reference, "serious") and links to the incident.
+
 ## Web
 
 - **Reporter:** the incident page shows "Reported by" only when

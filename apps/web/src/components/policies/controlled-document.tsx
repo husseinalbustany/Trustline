@@ -14,6 +14,7 @@ import {
 } from "@/lib/format";
 import { pick, type Localized } from "@/lib/localized";
 import {
+  authoritativeOf,
   documentPath,
   notInForce,
   type DocumentVersion,
@@ -119,7 +120,7 @@ export function ControlledDocument({
   const standing = notInForce(document, version);
   const status = version.languageStatus;
   // The language whose text applies where two differ, as the API says.
-  const authoritative = status?.authoritative ?? fallback;
+  const authoritative = authoritativeOf(version, fallback);
   const stateOf = (key: string) =>
     status?.sections.find((x) => x.key === key)?.locales[textLang];
   const lagging =
@@ -161,8 +162,18 @@ export function ControlledDocument({
   if (ended) {
     rows.push([d.notInForceSince, dayOf.format(new Date(ended))]);
   }
+  // Approved before Trustline: what the original says, never shown as a
+  // Trustline approval, and its next review is a re-issue.
+  const before =
+    c.approvedThrough === "before_trustline"
+      ? (c.approvedBeforeTrustline ?? null)
+      : null;
+  const imported = c.approvedThrough === "before_trustline";
   if (!standing) {
-    rows.push([d.nextReviewOn, day(c.nextReviewOn) ?? d.notSet]);
+    rows.push([
+      imported ? t.imported.nextReviewReissue : d.nextReviewOn,
+      day(c.nextReviewOn) ?? d.notSet,
+    ]);
   }
 
   // Who prepared it, then each signature: one line each, the date and time
@@ -173,13 +184,16 @@ export function ControlledDocument({
     ) : (
       ""
     );
+  // An imported version was prepared by nobody in Trustline.
+  const preparedBy =
+    c.preparedBy !== undefined ? c.preparedBy : version.preparedBy;
   const signedLines = [
-    ...(version.preparedBy
+    ...(preparedBy && !imported
       ? [
           {
             key: "prepared",
             text: d.preparedBy,
-            person: version.preparedBy,
+            person: preparedBy,
             at: version.preparedAt,
           },
         ]
@@ -253,6 +267,9 @@ export function ControlledDocument({
             </div>
           ))}
         </dl>
+        {imported ? (
+          <ApprovedBefore lang={lang} t={t} before={before} />
+        ) : (
         <div className="border-t border-line px-4 py-3">
           <p className="text-sm font-medium">{d.approvals}</p>
           <ul className="mt-1 flex flex-col gap-1 text-sm">
@@ -269,6 +286,7 @@ export function ControlledDocument({
             )}
           </ul>
         </div>
+        )}
       </header>
 
       {notInMine && hasLocale(lang) && (
@@ -365,6 +383,75 @@ export function ControlledDocument({
         mark={standing ? t.notInForce[standing] : null}
       />
     </article>
+  );
+}
+
+/**
+ * In place of Trustline's approvals, for a version imported as approved
+ * before Trustline: what its original says of its approval, as the
+ * importer entered it, and who imported it and signed that this is its
+ * text. Said in so many words, on screen and on paper.
+ */
+function ApprovedBefore({
+  lang,
+  t,
+  before,
+}: {
+  lang: string;
+  t: PoliciesText;
+  before: NonNullable<DocumentVersion["control"]["approvedBeforeTrustline"]> | null;
+}) {
+  const session = useSession();
+  const day = dayFormat(lang);
+  const moment = dateTimeFormat(lang, session.tenant.timeZone);
+  const m = t.imported;
+  const rows: [string, ReactNode][] = before
+    ? [
+        ...(before.numberAsGiven
+          ? [[m.numberAsGiven, <bdi key="n" dir="ltr">{before.numberAsGiven}</bdi>] as [string, ReactNode]]
+          : []),
+        ...(before.revisionLabel
+          ? [[m.revisionLabel, <bdi key="r">{before.revisionLabel}</bdi>] as [string, ReactNode]]
+          : []),
+        [m.approvedOn, day(before.approvedOn) ?? ""],
+        [m.approvedBy, <bdi key="b" dir="auto">{before.approvedBy}</bdi>],
+        [
+          m.originalKeptAt,
+          <bdi key="k">{pick(before.originalKeptAt, lang, session.tenant.defaultLocale)}</bdi>,
+        ],
+      ]
+    : [];
+  return (
+    <div className="border-t border-line px-4 py-3">
+      <p className="text-sm font-medium">{m.title}</p>
+      <p className="mt-1 text-xs text-muted">{m.notThroughRoute}</p>
+      {rows.length > 0 && (
+        <dl className="mt-2 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+          {rows.map(([label, value]) => (
+            <div key={label} className="flex flex-wrap gap-x-2">
+              <dt className="text-muted">{label}</dt>
+              <dd className="font-medium break-words">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {before && (
+        <p className="mt-2 text-sm">
+          <Words
+            text={m.importedBy}
+            values={{
+              name: pick(before.importedBy.name, lang, session.tenant.defaultLocale) ||
+                t.document.unknownPerson,
+              date: (
+                <span className="whitespace-nowrap">
+                  {moment.format(new Date(before.importedAt))}
+                </span>
+              ),
+            }}
+          />
+        </p>
+      )}
+    </div>
   );
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { FileDown, Plus, Search, SlidersHorizontal } from "lucide-react";
+import { FileDown, FileUp, Plus, Search, SlidersHorizontal } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -28,6 +28,7 @@ import {
   documentStatuses,
   libraryPath,
   documentsExportPath,
+  importPath,
   libraryQuery,
   librarySorts,
   noLibraryFilters,
@@ -39,6 +40,7 @@ import {
 } from "@/lib/policies";
 import {
   DocumentStatusPill,
+  ImportedPill,
   RestrictedPill,
   ReviewPill,
   versionStatusWord,
@@ -188,10 +190,19 @@ export function Library({ lang, t }: PoliciesProps) {
         description={t.description}
         actions={
           can(session, "policies.manage") && (
-            <ButtonLink href={`/${lang}/policies/new`}>
-              <Plus className="size-4" aria-hidden />
-              {t.newDocument}
-            </ButtonLink>
+            <div className="flex flex-wrap gap-2">
+              {/* Importing is for those who manage documents for all of it. */}
+              {session.scope?.["policies.manage"] === "all" && (
+                <ButtonLink variant="secondary" href={importPath(lang)}>
+                  <FileUp className="size-4" aria-hidden />
+                  {t.importing.open}
+                </ButtonLink>
+              )}
+              <ButtonLink href={`/${lang}/policies/new`}>
+                <Plus className="size-4" aria-hidden />
+                {t.newDocument}
+              </ButtonLink>
+            </div>
           )
         }
       />
@@ -406,6 +417,7 @@ export function Library({ lang, t }: PoliciesProps) {
                         <DocumentStatusPill t={t} status={item.status} />
                       )}
                       <ReviewPill t={t} review={item.review} />
+                      {item.source === "imported" && <ImportedPill t={t} />}
                       {item.confidentiality === "restricted" && (
                         <RestrictedPill t={t} />
                       )}

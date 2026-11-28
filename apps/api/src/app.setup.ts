@@ -93,6 +93,9 @@ export async function listen(
   return address;
 }
 
+/** The unsubscribe link of an email, with or without the `/api/v1` prefix. */
+const UNSUBSCRIBE_PATH = /\/email\/unsubscribe\/[^/]+$/;
+
 /**
  * Settings every instance of the API needs, applied the same way when it is
  * served and when it is tested.
@@ -129,9 +132,17 @@ export function setupApp(app: INestApplication) {
 
   // Bodies are JSON only. A form posted from another site cannot be JSON
   // without the browser first asking permission, which the API never grants.
+  // One exception: an email's unsubscribe link, which a mail client posts
+  // as a form (RFC 8058), and whose page posts one. It needs no session:
+  // the signed token in its address is all it acts on, so a form posted
+  // from elsewhere can do nothing its sender could not do with the token.
   app.use((req: Request, res: Response, next: NextFunction) => {
     const hasBody = Number(req.headers['content-length'] ?? 0) > 0;
-    if (hasBody && !req.is('application/json')) {
+    const unsubscribing =
+      req.method === 'POST' &&
+      UNSUBSCRIBE_PATH.test(req.path) &&
+      req.is('application/x-www-form-urlencoded') !== false;
+    if (hasBody && !req.is('application/json') && !unsubscribing) {
       res
         .status(415)
         .json({ statusCode: 415, message: 'Unsupported Media Type' });

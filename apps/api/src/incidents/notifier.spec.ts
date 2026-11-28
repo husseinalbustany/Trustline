@@ -1,6 +1,7 @@
 import type { SQL } from 'drizzle-orm';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import type { Transaction } from '../database/client.js';
+import type { MailQueue } from '../email/mail-queue.service.js';
 import type { AccessService, Holders } from '../identity/access.service.js';
 import {
   inChunks,
@@ -11,8 +12,8 @@ import {
 
 /** What the driver can number in one statement: 16 bits' worth. */
 const MOST_PARAMETERS = 65_535;
-/** What one notification is written with: tenant, user, kind, incident, data. */
-const VALUES_PER_NOTIFICATION = 5;
+/** What one notification is written with: id, tenant, user, kind, incident, data. */
+const VALUES_PER_NOTIFICATION = 6;
 
 const id = (n: number) =>
   `00000000-0000-4000-8000-${n.toString(16).padStart(12, '0')}`;
@@ -57,7 +58,10 @@ function notifierWith(triagers: string[]) {
       },
     }),
   } as unknown as Transaction;
-  return { notifier: new Notifier(access), tx, inserts, lookups };
+  // Queues no email: none of these kinds is emailed, and the queue is
+  // tested with a database (email.e2e-spec.ts).
+  const mail = { enqueue: () => Promise.resolve(0) } as unknown as MailQueue;
+  return { notifier: new Notifier(access, mail), tx, inserts, lookups };
 }
 
 const overdue = (incidentId: string): Announcement => ({

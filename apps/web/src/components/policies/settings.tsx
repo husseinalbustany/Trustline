@@ -22,7 +22,12 @@ import { EmptyState, Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
 import { direction, hasLocale, localeNames } from "@/i18n/config";
 import { api, codeOf, detailsOf } from "@/lib/api";
-import { durationFormat, fill } from "@/lib/format";
+import {
+  durationFormat,
+  fill,
+  languageNameIn,
+  numberFormat,
+} from "@/lib/format";
 import { pick, type Localized } from "@/lib/localized";
 import {
   categoriesInOrder,
@@ -252,22 +257,55 @@ function General({ lang, t, lists, reload }: PartProps) {
   };
   const s = t.settings;
   const settings = lists.settings;
+  const { locales, defaultLocale } = session.tenant;
   const [busy, setBusy] = useState(false);
   const [message, say] = useMessage();
+  // The language chosen in the form, before it is saved: "" is the main one.
+  const [chosen, setChosen] = useState<string | null>(null);
+  // What a change of the language that applies did to versions in progress.
+  const [effect, setEffect] = useState<string | null>(null);
+  useLayoutEffect(() => () => setEffect(null), []);
   if (!settings) return <EmptyState>{t.loadError}</EmptyState>;
+  const named = languageNameIn(lang);
+  const numbers = numberFormat(lang);
+  const current = settings.authoritativeLocale ?? "";
+  const picked = chosen ?? current;
+  const willApply = picked || defaultLocale;
+  const changing = willApply !== settings.authoritative;
 
   async function submit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const months = Number(new FormData(e.currentTarget).get("maxReviewMonths"));
+    const data = new FormData(e.currentTarget);
+    const months = Number(data.get("maxReviewMonths"));
+    const language = String(data.get("authoritativeLocale") ?? "");
     setBusy(true);
     say(null);
+    setEffect(null);
     try {
-      await api("/policies/settings", {
+      const saved = await api<OrganizationSettings>("/policies/settings", {
         method: "PATCH",
-        body: { maxReviewMonths: months, revision: settings!.revision },
+        body: {
+          maxReviewMonths: months,
+          ...(locales.length > 1
+            ? { authoritativeLocale: language || null }
+            : {}),
+          revision: settings!.revision,
+        },
       });
+      setChosen(null);
       await reload();
       say({ ok: true, text: s.saved });
+      const v = saved.versionsInProgress;
+      if (v) {
+        setEffect(
+          fill(s.authoritativeChanged, {
+            language: named(saved.authoritative),
+            draft: numbers.format(v.draft),
+            inReview: numbers.format(v.in_review),
+            approved: numbers.format(v.approved),
+          }),
+        );
+      }
     } catch (err) {
       say({ ok: false, text: explain(err) });
     }
@@ -298,6 +336,51 @@ function General({ lang, t, lists, reload }: PartProps) {
               />
             </Field>
           </div>
+          {locales.length > 1 ? (
+            <div className="flex max-w-xl flex-col gap-2">
+              <div className="max-w-xs">
+                <Field
+                  label={s.authoritative}
+                  help={fill(s.authoritativeHelp, {
+                    language: named(settings.authoritative),
+                  })}
+                >
+                  <select
+                    name="authoritativeLocale"
+                    value={picked}
+                    onChange={(e) => setChosen(e.target.value)}
+                    className={inputClass}
+                  >
+                    <option value="">
+                      {fill(s.authoritativeMain, {
+                        language: languageName(defaultLocale),
+                      })}
+                    </option>
+                    {locales.map((l) => (
+                      <option key={l} value={l} lang={l}>
+                        {languageName(l)}
+                      </option>
+                    ))}
+                  </select>
+                </Field>
+              </div>
+              {changing && (
+                <p
+                  role="note"
+                  className="rounded-md border border-warn bg-warn-soft px-3 py-2 text-sm"
+                >
+                  {fill(s.authoritativeWillChange, {
+                    from: named(settings.authoritative),
+                    to: named(willApply),
+                  })}
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-muted">
+              {fill(s.authoritativeOnly, { language: named(defaultLocale) })}
+            </p>
+          )}
           <div>
             <Button type="submit" disabled={busy}>
               {s.save}
@@ -305,6 +388,11 @@ function General({ lang, t, lists, reload }: PartProps) {
           </div>
         </ReadOnlyFieldset>
         {message}
+        {effect && (
+          <p role="status" className="max-w-xl rounded-md bg-surface px-3 py-2 text-sm">
+            {effect}
+          </p>
+        )}
       </form>
     </Panel>
   );

@@ -1,4 +1,4 @@
-import { CalendarClock, Lock } from "lucide-react";
+import { CalendarClock, Lock, Stamp } from "lucide-react";
 import { Pill } from "@/components/ui/pill";
 import type {
   DocumentStatus,
@@ -77,6 +77,31 @@ export function RestrictedPill({ t }: { t: PoliciesText }) {
       icon={<Lock className="size-3 shrink-0" aria-hidden />}
     >
       {t.confidentiality.restricted}
+    </Pill>
+  );
+}
+
+/** Approved before Trustline: imported, never through Trustline's route. */
+export function ImportedPill({ t }: { t: PoliciesText }) {
+  return (
+    <Pill tone="neutral" icon={<Stamp className="size-3 shrink-0" aria-hidden />}>
+      {t.imported.pill}
+    </Pill>
+  );
+}
+
+/** Its next review is a re-issue through the approval route. */
+export function ReissuePill({
+  t,
+  review = "due",
+}: {
+  t: PoliciesText;
+  /** Said louder once its review is due, and loudest when it is past. */
+  review?: ReviewState;
+}) {
+  return (
+    <Pill tone={review === "overdue" ? "danger" : review ? "warn" : "neutral"}>
+      {t.reissue.pill}
     </Pill>
   );
 }

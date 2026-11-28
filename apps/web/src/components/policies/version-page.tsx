@@ -29,6 +29,7 @@ import {
 } from "@/lib/format";
 import { pick, type Localized } from "@/lib/localized";
 import {
+  authoritativeOf,
   documentPath,
   shownLanguage,
   todayIn,
@@ -43,9 +44,11 @@ import { ControlledDocument, LanguageSwitch } from "./controlled-document";
 import { Markup } from "./markup";
 import { PasswordPrompt } from "./password-prompt";
 import { VersionStatusPill } from "./pills";
+import { RefusalNote } from "./refusal-note";
 import { isStale, textareaClass, type PoliciesProps } from "./types";
 import { Sentence } from "./sentence";
 import { useExplain } from "./use-explain";
+import { useSubmitRefusal, type SubmitRefusal } from "./use-submit-refusal";
 
 type Loaded = { doc: PolicyDocument; version: DocumentVersion };
 
@@ -338,7 +341,7 @@ function VersionView({
               </ul>
               <p className="text-muted">
                 {fill(r.notUpdatedHelp, {
-                  authoritative: languageName(status!.authoritative),
+                  authoritative: languageName(authoritativeOf(version, session.tenant.defaultLocale)),
                 })}
               </p>
             </div>
@@ -399,18 +402,46 @@ function VersionView({
           )}
           <Panel title={r.facts}>
             <dl className="flex flex-col gap-3 px-4 py-3 text-sm">
-              <div>
-                <dt className="text-xs text-muted">{r.preparedBy}</dt>
-                <dd>
-                  <bdi>{name(version.preparedBy)}</bdi>
-                  {version.preparedAt && (
-                    <span className="text-muted">
-                      {" · "}
-                      {moments.format(new Date(version.preparedAt))}
-                    </span>
+              {version.imported ? (
+                <>
+                  <div>
+                    <dt className="text-xs text-muted">{t.imported.importedByLabel}</dt>
+                    <dd>
+                      <bdi>{name(version.imported.importedBy)}</bdi>
+                      <span className="text-muted">
+                        {" · "}
+                        {moments.format(new Date(version.imported.importedAt))}
+                      </span>
+                    </dd>
+                  </div>
+                  {version.imported.sectionsNotWritten.length > 0 && (
+                    <div>
+                      <dt className="text-xs text-muted">{t.imported.notWrittenLabel}</dt>
+                      <dd>
+                        {new Intl.ListFormat(lang, { type: "conjunction" }).format(
+                          version.imported.sectionsNotWritten.map((x) => {
+                            const section = version.sections.find((y) => y.key === x.key);
+                            return section ? inLang(section.name) : x.key;
+                          }),
+                        )}
+                      </dd>
+                    </div>
                   )}
-                </dd>
-              </div>
+                </>
+              ) : (
+                <div>
+                  <dt className="text-xs text-muted">{r.preparedBy}</dt>
+                  <dd>
+                    <bdi>{name(version.preparedBy)}</bdi>
+                    {version.preparedAt && (
+                      <span className="text-muted">
+                        {" · "}
+                        {moments.format(new Date(version.preparedAt))}
+                      </span>
+                    )}
+                  </dd>
+                </div>
+              )}
               <div>
                 <dt className="text-xs text-muted">{r.acknowledgement}</dt>
                 <dd>
@@ -482,7 +513,7 @@ function Comparison({
         <p className="rounded-md border border-warn bg-warn-soft px-3 py-2 text-sm text-warn">
           {fill(r.laggingCount, {
             count: numberFormat(lang).format(behind),
-            authoritative: languageName(status.authoritative),
+            authoritative: languageName(authoritativeOf(version, session.tenant.defaultLocale)),
           })}
         </p>
       )}
@@ -520,7 +551,7 @@ function Comparison({
                 >
                   {fill(r.laggingHere, {
                     language: languageName(locale),
-                    authoritative: languageName(status.authoritative),
+                    authoritative: languageName(authoritativeOf(version, session.tenant.defaultLocale)),
                   })}
                 </p>
               )}
@@ -720,11 +751,13 @@ function VersionActions({
 }) {
   const session = useSession();
   const explainError = useExplain(t, lang, version.sections);
+  const submitRefusal = useSubmitRefusal(t, lang, doc, version.sections);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState<
     "approve" | "return" | "withdraw" | "recall" | null
   >(null);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [refused, setRefused] = useState<SubmitRefusal | null>(null);
   const [when, setWhen] = useState<"now" | "later">("now");
   const r = t.review;
   const x = t.actions;
@@ -736,6 +769,7 @@ function VersionActions({
     () => () => {
       setOpen(null);
       setMessage(null);
+      setRefused(null);
     },
     [],
   );
@@ -743,6 +777,7 @@ function VersionActions({
   async function act(path: string, body: Record<string, unknown>, said: string) {
     setBusy(true);
     setMessage(null);
+    setRefused(null);
     try {
       await api(`${base}/${path}`, {
         method: "POST",
@@ -754,7 +789,8 @@ function VersionActions({
       setBusy(false);
       return true;
     } catch (err) {
-      setMessage({ ok: false, text: explainError(err) });
+      if (path === "submit") setRefused(await submitRefusal(err));
+      else setMessage({ ok: false, text: explainError(err) });
       if (isStale(err)) await refresh();
       setBusy(false);
       return false;
@@ -1034,6 +1070,7 @@ function VersionActions({
               </div>
             ))}
 
+          {refused && <RefusalNote refusal={refused} />}
           {message && (
             <p
               role={message.ok ? "status" : "alert"}
