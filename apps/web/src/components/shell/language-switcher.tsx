@@ -35,6 +35,10 @@ export function LanguageSwitcher({
           <Link
             key={other}
             href={`/${other}/${rest}${query}`}
+            // Not fetched ahead: a page with an id answered 404 to the
+            // prefetch in the other languages, and a change of language is
+            // rare enough to load when asked.
+            prefetch={false}
             lang={other}
             className={`inline-flex items-center rounded-md hover:bg-surface hover:text-foreground ${roomy ? "h-11 px-3" : "h-9 px-1.5 sm:px-2"}`}
           >
