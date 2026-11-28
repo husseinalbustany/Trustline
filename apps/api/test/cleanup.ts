@@ -77,86 +77,91 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
   const { db, pool } = createDatabase(requireEnv('DATABASE_URL'));
   const ours = sql`starts_with(${tenants.slug}, ${slugPrefix})`;
   try {
-    const ids = db.select({ id: tenants.id }).from(tenants).where(ours);
-    const admins = db
-      .select({ id: platformAdmins.id })
-      .from(platformAdmins)
-      .where(eq(platformAdmins.email, adminEmail));
-    await db
-      .delete(platformAuditLog)
-      .where(
-        or(
-          inArray(platformAuditLog.targetTenantId, ids),
-          inArray(platformAuditLog.adminId, admins),
-        ),
-      );
-    // A document and its published version point at each other.
-    await db
-      .update(documents)
-      .set({ publishedVersionId: null, status: 'draft' })
-      .where(inArray(documents.tenantId, ids));
-    // Children before what they point to: the email outbox before its
-    // queue, the queue and preferences before notifications and users;
-    // notifications, the timeline and
-    // comments before incidents, incidents before categories, users and org
-    // units; acknowledgements, reviews and run steps before signatures,
-    // runs before routes, versions before documents before their types;
-    // imports before their batches, signatures and versions.
-    for (const table of [
-      subscriptions,
-      emailOutbox,
-      emailQueue,
-      emailPreferences,
-      emailSettings,
-      moduleStarts,
-      policyImportWindows,
-      notifications,
-      policyReminders,
-      documentSettings,
-      documentAcknowledgements,
-      documentReviewApprovals,
-      documentReviews,
-      documentReviewRounds,
-      documentImports,
-      documentImportBatches,
-      approvalRunSteps,
-      approvalRuns,
-      signatures,
-      approvalRouteSteps,
-      approvalRoutes,
-      documentAudiences,
-      documentVersions,
-      documents,
-      documentTypes,
-      documentCategories,
-      incidentResponseRules,
-      incidentEvents,
-      incidentComments,
-      incidents,
-      incidentCategories,
-      referenceCounters,
-      // A whole test client's audit trail, its chain with it. Never the
-      // entries of a client that is kept: its chain would break
-      // (docs/specs/audit-trail.md, "Tests").
-      auditChainVerifications,
-      auditChainCheckpoints,
-      auditChain,
-      auditChainHeads,
-      auditLog,
-      userTokens,
-      sessions,
-      roleAssignments,
-      users,
-      roles,
-      orgUnits,
-    ]) {
-      await db.delete(table).where(inArray(table.tenantId, ids));
-    }
-    await db.delete(tenants).where(ours);
-    await db
-      .delete(plans)
-      .where(sql`starts_with(${plans.code}, ${slugPrefix})`);
-    await db.delete(platformAdmins).where(eq(platformAdmins.email, adminEmail));
+    // In one transaction: another test file, which may be reading every
+    // client at that moment, never sees one half removed (a client with
+    // no subscription, say).
+    await db.transaction(async (tx) => {
+      const ids = tx.select({ id: tenants.id }).from(tenants).where(ours);
+      const admins = tx
+        .select({ id: platformAdmins.id })
+        .from(platformAdmins)
+        .where(eq(platformAdmins.email, adminEmail));
+      await tx
+        .delete(platformAuditLog)
+        .where(
+          or(
+            inArray(platformAuditLog.targetTenantId, ids),
+            inArray(platformAuditLog.adminId, admins),
+          ),
+        );
+      // A document and its published version point at each other.
+      await tx
+        .update(documents)
+        .set({ publishedVersionId: null, status: 'draft' })
+        .where(inArray(documents.tenantId, ids));
+      // Children before what they point to: the email outbox before its
+      // queue, the queue and preferences before notifications and users;
+      // notifications, the timeline and
+      // comments before incidents, incidents before categories, users and org
+      // units; acknowledgements, reviews and run steps before signatures,
+      // runs before routes, versions before documents before their types;
+      // imports before their batches, signatures and versions.
+      for (const table of [
+        subscriptions,
+        emailOutbox,
+        emailQueue,
+        emailPreferences,
+        emailSettings,
+        moduleStarts,
+        policyImportWindows,
+        notifications,
+        policyReminders,
+        documentSettings,
+        documentAcknowledgements,
+        documentReviewApprovals,
+        documentReviews,
+        documentReviewRounds,
+        documentImports,
+        documentImportBatches,
+        approvalRunSteps,
+        approvalRuns,
+        signatures,
+        approvalRouteSteps,
+        approvalRoutes,
+        documentAudiences,
+        documentVersions,
+        documents,
+        documentTypes,
+        documentCategories,
+        incidentResponseRules,
+        incidentEvents,
+        incidentComments,
+        incidents,
+        incidentCategories,
+        referenceCounters,
+        // A whole test client's audit trail, its chain with it. Never the
+        // entries of a client that is kept: its chain would break
+        // (docs/specs/audit-trail.md, "Tests").
+        auditChainVerifications,
+        auditChainCheckpoints,
+        auditChain,
+        auditChainHeads,
+        auditLog,
+        userTokens,
+        sessions,
+        roleAssignments,
+        users,
+        roles,
+        orgUnits,
+      ]) {
+        await tx.delete(table).where(inArray(table.tenantId, ids));
+      }
+      await tx.delete(tenants).where(ours);
+      await tx
+        .delete(plans)
+        .where(sql`starts_with(${plans.code}, ${slugPrefix})`);
+      await tx.delete(platformAdmins).where(eq(platformAdmins.email, adminEmail));
+    });
   } finally {
     await pool.end();
   }

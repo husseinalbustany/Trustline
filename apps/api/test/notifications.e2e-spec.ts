@@ -683,10 +683,13 @@ describe('notifications', () => {
       expect(everything).not.toContain('happened again');
       // And in the table itself no notification carries anything but a
       // reference, whether it is serious (which every one says) and, for
-      // some kinds, a word from a fixed list.
+      // some kinds, a word from a fixed list. One kind apart, held to its
+      // own rule below: that someone was given `policies.import`, which
+      // names them (docs/specs/audit-trail.md, decided by the business).
       const odd = await bench.owner.db.execute(
         sql`select data from notifications n
             where tenant_id = ${a.id}
+              and n.kind <> 'policies_import_granted'
               and (not (n.data ? 'serious') or exists (
                 select from jsonb_each_text(n.data) d
                 where d.key not in ('reference', 'deadline', 'decision', 'change', 'serious')
@@ -694,6 +697,19 @@ describe('notifications', () => {
                    or (d.key not in ('reference', 'serious') and d.value not in ('triage', 'closure', 'signed_off', 'sent_back', 'withdrawn', 'closed', 'rejected', 'reopened'))))`,
       );
       expect(odd.rows).toEqual([]);
+      // That one says only who was given it: a member of staff given the
+      // permission, never the reporter, and nothing else.
+      const { rows: granted } = await bench.owner.db.execute<{ data: Record<string, unknown>; holds: boolean }>(sql`
+        select n.data, exists (
+          select from role_assignments ra join roles r on r.id = ra.role_id
+          where ra.user_id = (n.data ->> 'personId')::uuid and 'policies.import' = any(r.permissions)
+        ) as holds
+        from notifications n where n.tenant_id = ${a.id} and n.kind = 'policies_import_granted'`);
+      for (const row of granted) {
+        expect(Object.keys(row.data).sort()).toEqual(['personId', 'serious']);
+        expect(row).toMatchObject({ holds: true, data: { serious: false } });
+        expect(row.data.personId).not.toBe(reporter.id);
+      }
     });
 
     it('written with a follow-up code is told to the handlers, and to nobody as its reporter', async () => {
