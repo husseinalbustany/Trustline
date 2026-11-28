@@ -2271,7 +2271,7 @@
       "approvedOn": "Approved on",
       "approvedBy": "Approved by (as written on the original)",
       "originalKeptAt": "Signed original kept at",
-      "importedBy": "Imported into Trustline by {name} on {date}, who signed that this text matches the original.",
+      "importedBy": "Imported into Trustline by {name} on {date}, who signed that this text matches the original, except as noted.",
       "nextReviewReissue": "Next review (re-issue)",
       "importedByLabel": "Imported by",
       "notWrittenLabel": "Sections missing from the original",

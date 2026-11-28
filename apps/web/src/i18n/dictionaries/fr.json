@@ -2271,7 +2271,7 @@
       "approvedOn": "Approuvé le",
       "approvedBy": "Approuvé par (tel qu’écrit sur l’original)",
       "originalKeptAt": "Lieu de conservation de l’original signé",
-      "importedBy": "Importé dans Trustline par {name} le {date}, avec une signature attestant que ce texte est celui de l’original.",
+      "importedBy": "Importé dans Trustline par {name} le {date}, avec une signature attestant que ce texte correspond à l’original, sauf ce qui est indiqué.",
       "nextReviewReissue": "Prochaine révision (réédition)",
       "importedByLabel": "Importé par",
       "notWrittenLabel": "Sections absentes de l’original",

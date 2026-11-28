@@ -2271,7 +2271,7 @@
       "approvedOn": "تاريخ الاعتماد",
       "approvedBy": "مَن اعتمدها (كما ورد في الأصل)",
       "originalKeptAt": "مكان حفظ الأصل الموقّع",
-      "importedBy": "الاستيراد إلى Trustline: {name}، {date}، بتوقيع يشهد بأن هذا النص مطابق للأصل.",
+      "importedBy": "الاستيراد إلى Trustline: {name}، {date}، بتوقيع يشهد بأن هذا النص مطابق للأصل، باستثناء ما هو مذكور.",
       "nextReviewReissue": "المراجعة القادمة (إعادة إصدار)",
       "importedByLabel": "الاستيراد",
       "notWrittenLabel": "أقسام لم ترد في الأصل",
