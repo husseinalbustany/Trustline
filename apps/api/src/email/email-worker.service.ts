@@ -31,7 +31,7 @@ import {
   type NotificationKind,
 } from '../incidents/notifier.js';
 import {
-  allows,
+  allows, exitWindowOf,
   EntitlementsService,
 } from '../subscriptions/entitlements.service.js';
 import { BackgroundContext } from './background-context.js';
@@ -41,6 +41,7 @@ import { EmailPreferencesService } from './email-preferences.service.js';
 import {
   COMPULSORY_FOR_ASSIGNEES,
   COMPULSORY_FOR_EVERYONE,
+  OPEN_IN_EXIT_WINDOW,
   DATA_EXPORT_CHANGES,
   COMPULSORY_FOR_TRIAGERS,
   IMMEDIATE,
@@ -156,7 +157,7 @@ export type EmailRunResult = {
 
 type Client = {
   id: string;
-  status: 'active' | 'suspended';
+  status: 'active' | 'suspended' | 'deleted';
   timeZone: string;
   name: Localized;
   locales: string[];
@@ -756,7 +757,10 @@ export class EmailWorker implements OnModuleDestroy {
     } else {
       if (!notification) return { skip: 'gone' };
       const kind = notification.kind as NotificationKind;
-      if (!allows(entitlements, NOTIFICATION_MODULE[kind])) {
+      // In a cancelled client's exit window, the exports' own emails go
+      // on (docs/specs/data-export.md); nothing else does.
+      const exitOpen = !!exitWindowOf(entitlements, momentIn(now, client.timeZone).slice(0, 10));
+      if (!allows(entitlements, NOTIFICATION_MODULE[kind]) && !(exitOpen && OPEN_IN_EXIT_WINDOW.includes(kind))) {
         return { skip: 'module_off' };
       }
       if (suspended && !SAFETY_WHILE_SUSPENDED.includes(kind)) {
@@ -848,6 +852,11 @@ export class EmailWorker implements OnModuleDestroy {
         action,
         href: link('/notifications'),
       };
+    }
+    if (kind === 'contract_ending') {
+      const day = typeof data.endsOn === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data.endsOn) ? data.endsOn : null;
+      if (!day) return null;
+      return { category: 'immediate', kind, day, href: link('/admin/data-export') };
     }
     if (kind === 'data_export_changed') {
       const change = DATA_EXPORT_CHANGES.find((c) => c === data.change);

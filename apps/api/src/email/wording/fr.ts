@@ -89,6 +89,10 @@ export const fr: Wording = {
       subject: "L’export complet des données de votre organisation n’a pas pu être préparé",
       body: "L’export complet des données de votre organisation n’a pas pu être préparé, malgré plusieurs tentatives. Vous pouvez en demander un nouveau.",
     },
+    contract_ending: {
+      subject: "Le contrat de votre organisation prend fin le {day}",
+      body: "Le contrat de votre organisation avec Trustline prend fin le {day}. Vous pouvez en exporter les données d’ici là, depuis Administration, « Export des données ».",
+    },
     audit_chain_head: {
       subject: 'Journal d’audit : le sceau de la semaine',
       body: 'Le journal d’audit de votre établissement a été vérifié le {day} : il est intact jusqu’à l’entrée {count}. Le sceau de cette entrée est :',

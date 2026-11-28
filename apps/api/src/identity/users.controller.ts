@@ -421,7 +421,7 @@ export class UsersController {
         // review 12, L6).
         const importers =
           existing.status === 'disabled' && nextStatus
-            ? await this.provisioning.importHolders(tx)
+            ? await this.provisioning.watchedHolders(tx)
             : null;
 
         // Someone may stay in a unit that was switched off since, but
@@ -445,7 +445,7 @@ export class UsersController {
           await this.provisioning.voidInvites(tx, userId);
         }
         if (importers) {
-          await this.provisioning.tellOfImportGrants(tx, tenant.id, actor.id, importers);
+          await this.provisioning.tellOfWatchedGrants(tx, tenant.id, actor.id, importers);
         }
 
         // Which fields changed, and for a move or a change of status, from

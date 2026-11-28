@@ -236,6 +236,13 @@ export const AUDIT_ACTIONS = {
   data_export_downloaded: code('exports', 'tenant', ['exportId', 'archiveSha256', 'download'], { module: 'core' }),
   // Its file deleted: past its last day, or downloaded the most times.
   data_export_expired: code('exports', 'tenant', ['exportId', 'by'], { module: 'core' }),
+  // Trustline's second approval, for a client with one holder of
+  // `data.export`, on its contract contact's written request (decision 3):
+  // written by `data_export_second_approval()`, called by the portal.
+  data_export_approved_by_trustline: code('exports', 'tenant', ['exportId', 'writtenRequest', 'platformAdminId', 'platformAdminName'], { module: 'core', by: 'platform' }),
+  // The contract's end, its exit window and its retention, set by
+  // Trustline's staff (docs/specs/data-export.md).
+  contract_end_set: code('trustline', 'tenant', ['endsOn', 'exitUntil', 'retainUntil', 'platformAdminId', 'platformAdminName'], { by: 'platform' }),
 } as const satisfies Record<string, ActionInfo>;
 
 /** The module each area belongs to, unless its action says otherwise. */

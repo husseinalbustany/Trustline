@@ -13,6 +13,7 @@ import { allows } from '../subscriptions/entitlements.service.js';
 import {
   MODULE_KEY,
   noSuchRoute,
+  OPEN_IN_EXIT_WINDOW_KEY,
   OPEN_WHILE_SUSPENDED_KEY,
 } from '../subscriptions/module.decorator.js';
 import type { ModuleKey } from '../subscriptions/modules.js';
@@ -80,6 +81,15 @@ export class SessionGuard implements CanActivate {
     const auth = token ? await this.auth.resolve(token) : null;
     if (!auth) throw new UnauthorizedException();
     req.auth = auth;
+
+    // A cancelled client's exit window: its export routes alone, with
+    // signing out and `/auth/me` (docs/specs/data-export.md).
+    if (auth.tenant.exit) {
+      if (!this.reflector.getAllAndOverride<boolean>(OPEN_IN_EXIT_WINDOW_KEY, targets)) {
+        throw new ForbiddenException({ code: 'subscription_cancelled' });
+      }
+      return true;
+    }
 
     const { modules, subscription } = auth.tenant;
     if (!allows({ modules, status: subscription.status }, module)) {

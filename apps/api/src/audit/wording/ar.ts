@@ -114,6 +114,8 @@ export const ar: AuditWording = {
     data_export_failed: "تعذّر إعداد التصدير الكامل للبيانات",
     data_export_downloaded: "تنزيل التصدير الكامل للبيانات",
     data_export_expired: "انتهاء صلاحية التصدير الكامل للبيانات",
+    data_export_approved_by_trustline: "اعتماد Trustline طلب التصدير الكامل للبيانات بناءً على طلب مكتوب",
+    contract_end_set: "تحديد Trustline تواريخ انتهاء العقد",
   },
   areas: {
     sign_in: 'تسجيل الدخول',
@@ -165,6 +167,11 @@ export const ar: AuditWording = {
     no: "لا",
     change: "من {from} إلى {to}",
     fields: {
+      endsOn: "انتهاء العقد",
+      exitUntil: "آخر يوم في فترة الخروج",
+      retainUntil: "حفظ البيانات حتى",
+      writtenRequest: "الطلب المكتوب",
+      receivedOn: "تاريخ الاستلام",
       exportId: "التصدير",
       note: "ملاحظة",
       includePdfs: "طلب ملفات PDF",
@@ -354,6 +361,7 @@ export const ar: AuditWording = {
       medicalOptionAllowed: "السماح بالخيار الطبي",
     },
     values: {
+      subscription_cancelled: "الاشتراك ملغى",
       contract_end: "انتهاء العقد",
       on_request: "بناءً على طلب",
       policies: "الوثائق",

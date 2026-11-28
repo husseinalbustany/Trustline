@@ -186,6 +186,7 @@ export function renderMail(content: MailContent, envelope: MailEnvelope): Render
       version: content.version ?? '',
       count: content.count ?? '',
       hash: content.hash ?? '',
+      day: content.day ? formatDay(content.day, envelope.locale) : '',
     };
     subject = say(text.subject, values);
     body.push({ kind: 'text', text: say(text.body, values) });

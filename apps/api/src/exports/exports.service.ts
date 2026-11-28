@@ -114,6 +114,8 @@ export class ExportsService {
         lapsesAt: r.status === 'requested' ? r.lapsesAt : null,
         approvedBy: person(r.approvedBy),
         approvedAt: r.approvedAt,
+        // Trustline's approval, for a client with one holder (decision 3).
+        approvedByTrustline: r.trustlineApprovedAt ? { at: r.trustlineApprovedAt, writtenRequest: r.writtenRequest } : null,
         refusedBy: person(r.refusedBy),
         refusedAt: r.refusedAt,
         refusedReason: r.refusedReason,

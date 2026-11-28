@@ -552,7 +552,10 @@ export class AuthService {
     if (issuedAt && issuedBeforeReset(issuedAt, tenant, entitlements)) {
       return null;
     }
-    const stored = exit ? 'suspended' : (entitlements?.status ?? 'active');
+    // In the exit window, as suspended: what is open while suspended,
+    // within the export routes alone.
+    const stored: Exclude<SubscriptionStatus, 'cancelled'> =
+      exit || !entitlements || entitlements.status === 'cancelled' ? (exit ? 'suspended' : 'active') : entitlements.status;
 
     const access = await this.accessOf(tx, user.id, user.kind);
     if (exit && !covers(access, 'data.export', null)) return null;

@@ -11,7 +11,11 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { z } from 'zod';
-import type { Database } from '../database/client.js';
+import { eq, sql } from 'drizzle-orm';
+import type { Database, Transaction } from '../database/client.js';
+import { subscriptions, tenants } from '../database/schema.js';
+import { dayOf, shiftDay } from '../i18n/time-zones.js';
+import { EXIT_WINDOW_DAYS } from '../subscriptions/entitlements.service.js';
 import { PLATFORM_DATABASE } from '../database/database.constants.js';
 import { TenantDb } from '../database/tenant-db.service.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
@@ -92,11 +96,42 @@ export class PlatformSubscriptionsController {
           result.before.status !== 'cancelled'
         ) {
           await this.provisioning.endAllAccess(appTx);
+          await this.openExitWindow(tx, tenantId, req.platformAdmin);
         }
         return result.after;
       }),
     );
     return { ...after, usage: await this.usage(tenantId) };
+  }
+
+  /**
+   * On cancelling: the exit window, 90 days from today on the client's
+   * calendar unless staff set one already, and the retention date at its
+   * end unless set (docs/specs/data-export.md; business decision). In both
+   * logs, as the contract's dates are.
+   */
+  private async openExitWindow(tx: Transaction, tenantId: string, admin: { id: string; name: string }) {
+    const [row] = await tx
+      .select({ exitUntil: subscriptions.exitUntil, retainUntil: subscriptions.retainUntil, timeZone: tenants.timeZone })
+      .from(subscriptions)
+      .innerJoin(tenants, eq(tenants.id, subscriptions.tenantId))
+      .where(eq(subscriptions.tenantId, tenantId));
+    if (!row || row.exitUntil) return;
+    const exitUntil = shiftDay(dayOf(new Date(), row.timeZone), EXIT_WINDOW_DAYS);
+    const retainUntil = row.retainUntil && row.retainUntil >= exitUntil ? row.retainUntil : exitUntil;
+    await tx.update(subscriptions).set({ exitUntil, retainUntil }).where(eq(subscriptions.tenantId, tenantId));
+    await this.auth.audit(admin.id, 'exit_window_set', tenantId, { from: null, to: exitUntil }, tx);
+    if (retainUntil !== row.retainUntil) {
+      await this.auth.audit(admin.id, 'retention_set', tenantId, { from: row.retainUntil, to: retainUntil }, tx);
+    }
+    await tx.execute(sql`
+      insert into audit_log (tenant_id, action, entity_type, entity_id, changes)
+      values (${tenantId}, 'contract_end_set', 'tenant', ${tenantId}, ${JSON.stringify({
+        exitUntil: { from: null, to: exitUntil },
+        ...(retainUntil !== row.retainUntil && { retainUntil: { from: row.retainUntil, to: retainUntil } }),
+        platformAdminId: admin.id,
+        platformAdminName: admin.name,
+      })}::jsonb)`);
   }
 
   /** What the client uses of the limits that are counted. */

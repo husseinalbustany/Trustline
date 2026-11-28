@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { OrganizationModule } from '../organization/organization.module.js';
 import { PlatformAiController } from './platform-ai.controller.js';
 import { PlatformAuthController } from './platform-auth.controller.js';
+import { PlatformContractController } from './platform-contract.controller.js';
 import { PlatformAuthGuard } from './platform-auth.guard.js';
 import { PlatformAuthService } from './platform-auth.service.js';
 import { PlatformImportWindowController } from './platform-import-window.controller.js';
@@ -22,6 +23,7 @@ import { PlatformTenantsController } from './platform-tenants.controller.js';
     PlatformImportWindowController,
     PlatformAiController,
     PlatformTenantAiController,
+    PlatformContractController,
   ],
   providers: [PlatformAuthService, PlatformAuthGuard],
 })

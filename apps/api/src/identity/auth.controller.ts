@@ -23,7 +23,7 @@ import {
 } from './auth.service.js';
 import {
   ForModule,
-  OpenWhileSuspended,
+  OpenInExitWindow, OpenWhileSuspended,
 } from '../subscriptions/module.decorator.js';
 import { permissionInUse } from './permissions.js';
 import {
@@ -110,6 +110,7 @@ export class AuthController {
 
   @Get('me')
   @UseGuards(SessionGuard)
+  @OpenInExitWindow()
   /**
    * Who is signed in, for the screens: the client with the modules it has
    * and the state of its subscription, and the user's permissions. Only the
@@ -136,6 +137,7 @@ export class AuthController {
   @HttpCode(204)
   @UseGuards(SessionGuard)
   @OpenWhileSuspended()
+  @OpenInExitWindow()
   @OpenToReviewers()
   async logout(
     @Req() req: AuthedRequest,

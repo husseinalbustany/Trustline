@@ -114,6 +114,8 @@ export const en: AuditWording = {
     data_export_failed: "Full data export could not be made",
     data_export_downloaded: "Full data export downloaded",
     data_export_expired: "Full data export expired",
+    data_export_approved_by_trustline: "Full data export approved by Trustline, on a written request",
+    contract_end_set: "Contract end dates set by Trustline",
   },
   areas: {
     sign_in: 'Sign-in',
@@ -165,6 +167,11 @@ export const en: AuditWording = {
     no: "No",
     change: "{from} → {to}",
     fields: {
+      endsOn: "Contract ends",
+      exitUntil: "Last day of the exit window",
+      retainUntil: "Data kept until",
+      writtenRequest: "Written request",
+      receivedOn: "Received on",
       exportId: "Export",
       note: "Note",
       includePdfs: "PDF files asked for",
@@ -354,6 +361,7 @@ export const en: AuditWording = {
       medicalOptionAllowed: "Medical option allowed",
     },
     values: {
+      subscription_cancelled: "the subscription is cancelled",
       contract_end: "End of contract",
       on_request: "On request",
       policies: "Documents",

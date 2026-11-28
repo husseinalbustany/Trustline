@@ -1,7 +1,7 @@
 import { BadRequestException, Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { requireEverywhere, requirePermission, SessionGuard, type AuthedRequest } from '../identity/session.guard.js';
-import { ForModule, OpenWhileSuspended } from '../subscriptions/module.decorator.js';
+import { ForModule, OpenInExitWindow, OpenWhileSuspended } from '../subscriptions/module.decorator.js';
 import { ExportsService } from './exports.service.js';
 import { approveSchema, cancelSchema, downloadSchema, listQuery, refuseSchema, requestSchema } from './input.js';
 import { ExportStorage } from './storage.js';
@@ -16,11 +16,13 @@ function parse<T>(schema: { safeParse(v: unknown): { success: true; data: T } | 
  * Full data export (docs/specs/data-export.md, "API outline"): for holders
  * of `data.export` for the whole organization, on every route. Exporting
  * stays open while the subscription is suspended (decision 6). An export
- * of another client is 404.
+ * of another client is 404. During a cancelled client's exit window,
+ * these routes still answer, for its holders of `data.export`.
  */
 @Controller('exports')
 @UseGuards(SessionGuard)
 @ForModule('core')
+@OpenInExitWindow()
 export class ExportsController {
   constructor(
     private readonly exports: ExportsService,

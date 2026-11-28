@@ -35,6 +35,8 @@ export const IMMEDIATE: Partial<Record<NotificationKind, 'always' | 'serious'>> 
   // A full data export asked for, approved, made or downloaded: something
   // an administrator must know the same day (docs/specs/data-export.md).
   data_export_changed: 'always',
+  // The contract ends in 90, 30 or 7 days: its data can be exported first.
+  contract_ending: 'always',
 };
 
 export type ImmediateKind =
@@ -48,7 +50,8 @@ export type ImmediateKind =
   | 'signing_pin_changed'
   | 'signing_pin_locked'
   | 'audit_chain_head'
-  | 'data_export_changed';
+  | 'data_export_changed'
+  | 'contract_ending';
 
 export const IMMEDIATE_KINDS = Object.keys(IMMEDIATE) as ImmediateKind[];
 
@@ -90,7 +93,14 @@ export const SAFETY_WHILE_SUSPENDED: NotificationKind[] = [
   'audit_chain_head',
   // Exporting stays open while suspended (data export, decision 6).
   'data_export_changed',
+  'contract_ending',
 ];
+
+/**
+ * What is still emailed during a cancelled client's exit window, when only
+ * its holders of `data.export` may sign in: the exports themselves.
+ */
+export const OPEN_IN_EXIT_WINDOW: NotificationKind[] = ['data_export_changed'];
 
 /**
  * The immediate emails some people may not switch off (business decision
@@ -119,6 +129,7 @@ export const COMPULSORY_FOR_EVERYONE: NotificationKind[] = [
   // To those who may export or manage the settings only: a full export of
   // everything is not to be missed.
   'data_export_changed',
+  'contract_ending',
 ];
 
 /** What the preferences answer says is always on, and why. */

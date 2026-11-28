@@ -9,6 +9,7 @@ import { AUDIT_ACTIONS } from '../audit/actions.js';
 import { TrailService } from '../audit/trail.service.js';
 import { AUDIT_WORDING } from '../audit/wording/index.js';
 import type { Database, Transaction } from '../database/client.js';
+import type { WrittenRequest } from '../database/schema.js';
 import { PLATFORM_DATABASE } from '../database/database.constants.js';
 import { TenantDb } from '../database/tenant-db.service.js';
 import { pickText, SUPPORTED_LOCALES, type Locale, type Localized } from '../i18n/locales.js';
@@ -38,7 +39,10 @@ export type ArchiveJob = {
   reason: string;
   includePdfs: boolean;
   requestedBy: string;
-  approvedBy: string;
+  /** The client's second holder; null when Trustline approved (decision 3). */
+  approvedBy: string | null;
+  /** Trustline's approval, on the contract contact's written request. */
+  trustline: { at: Date; writtenRequest: WrittenRequest } | null;
 };
 
 export type Phase = 'data' | 'documents' | 'archive';
@@ -194,7 +198,7 @@ export class ArchiveBuilder {
     await this.writeDocuments(files, data.tenant);
 
     await onPhase('archive');
-    const people = await this.namesOf(files, [job.requestedBy, job.approvedBy]);
+    const people = await this.namesOf(files, [job.requestedBy, ...(job.approvedBy ? [job.approvedBy] : [])]);
     const fileList = await this.listFiles(files);
     const manifestFiles = [];
     for (const path of fileList) {
@@ -219,7 +223,9 @@ export class ArchiveBuilder {
       locale: job.locale,
       pdfs: { asked: job.includePdfs, included: false, reason: 'renderer_not_available' },
       requestedBy: { id: job.requestedBy, name: people.get(job.requestedBy) ?? null },
-      approvedBy: { id: job.approvedBy, name: people.get(job.approvedBy) ?? null },
+      approvedBy: job.approvedBy
+        ? { id: job.approvedBy, name: people.get(job.approvedBy) ?? null }
+        : { trustline: job.trustline ? { at: job.trustline.at.toISOString(), writtenRequest: job.trustline.writtenRequest } : null },
       auditChain: data.chain,
       counts: data.counts,
       signingKeyId: signer?.keyId ?? null,
@@ -473,6 +479,7 @@ export class ArchiveBuilder {
         // Every module: a module switched off is still exported (spec).
         modules: [...MODULES],
         subscription: { status: 'active', notice: null },
+        exit: null,
       },
       user: { id: userId, name: {}, email: '', orgUnitId: null, kind: 'staff', access: null },
       permissions: [...PERMISSIONS],

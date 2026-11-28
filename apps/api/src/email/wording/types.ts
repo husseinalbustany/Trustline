@@ -47,6 +47,8 @@ export type Wording = {
     data_export_ready: { subject: string; body: string };
     data_export_downloaded: { subject: string; body: string };
     data_export_failed: { subject: string; body: string };
+    /** The contract ends on {day}: its data can be exported first. */
+    contract_ending: { subject: string; body: string };
     /** The week's head of the audit chain: {count} its number, {hash} its seal. */
     audit_chain_head: { subject: string; body: string; keep: string };
   };

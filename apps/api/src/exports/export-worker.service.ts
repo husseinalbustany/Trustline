@@ -206,7 +206,8 @@ export class ExportWorker implements OnModuleDestroy {
           reason: job.reason,
           includePdfs: job.includePdfs,
           requestedBy: job.requestedBy,
-          approvedBy: job.approvedBy!,
+          approvedBy: job.approvedBy,
+          trustline: job.trustlineApprovedAt && job.writtenRequest ? { at: job.trustlineApprovedAt, writtenRequest: job.writtenRequest } : null,
         },
         work,
         async (phase) => void (await heartbeat(phase)),
@@ -241,7 +242,7 @@ export class ExportWorker implements OnModuleDestroy {
           sizeBytes: built.sizeBytes,
           counts: built.counts,
         });
-        await tellOfExport(tx, tenantId, job.id, 'ready', [...(await authorityOf(tx)), job.requestedBy, job.approvedBy!]);
+        await tellOfExport(tx, tenantId, job.id, 'ready', [...(await authorityOf(tx)), job.requestedBy, ...(job.approvedBy ? [job.approvedBy] : [])]);
         return true;
       });
       if (!ready) await this.storage.remove(tenantId, job.id, stored.storageKey);
@@ -270,7 +271,7 @@ export class ExportWorker implements OnModuleDestroy {
           attempt: job.attempts,
           final,
         });
-        if (final) await tellOfExport(tx, tenantId, job.id, 'failed', [job.requestedBy, job.approvedBy!]);
+        if (final) await tellOfExport(tx, tenantId, job.id, 'failed', [job.requestedBy, ...(job.approvedBy ? [job.approvedBy] : [])]);
       });
       return final ? 'failed' : 'retry';
     }

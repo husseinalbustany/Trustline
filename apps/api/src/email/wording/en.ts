@@ -87,6 +87,10 @@ export const en: Wording = {
       subject: "A full export of your organization’s data could not be made",
       body: "A full export of your organization’s data could not be made. Trustline tried more than once. You can ask for a new one.",
     },
+    contract_ending: {
+      subject: "Your organization’s contract ends on {day}",
+      body: "Your organization’s contract with Trustline ends on {day}. You can export its data before then, from Administration, “Data export”.",
+    },
     audit_chain_head: {
       subject: 'This week’s seal of your audit trail',
       body: 'Your organization’s audit trail was checked on {day} and is unbroken up to entry {count}. The seal of that entry is:',

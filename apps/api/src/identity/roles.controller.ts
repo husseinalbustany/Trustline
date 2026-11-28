@@ -199,14 +199,14 @@ export class RolesController {
           .limit(1);
         if (reviewer) throw new ConflictException({ code: 'held_by_external_reviewer' });
       }
-      const importers = await this.provisioning.importHolders(tx);
+      const importers = await this.provisioning.watchedHolders(tx);
       const [updated] = await tx
         .update(roles)
         .set(parsed.data)
         .where(eq(roles.id, role.id))
         .returning();
       // Its holders given `policies.import` by this: the others are told.
-      await this.provisioning.tellOfImportGrants(tx, tenant.id, actor.id, importers);
+      await this.provisioning.tellOfWatchedGrants(tx, tenant.id, actor.id, importers);
       await this.provisioning.audit(
         tx,
         tenant.id,

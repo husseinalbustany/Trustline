@@ -61,6 +61,9 @@ export const NOTIFICATION_MODULE: Record<NotificationKind, ModuleKey> = {
   audit_chain_head: 'core',
   // A full data export (docs/specs/data-export.md): core.
   data_export_changed: 'core',
+  // About the organization's contract and who may export its data: core.
+  contract_ending: 'core',
+  data_export_granted: 'core',
   // About how the organization uses AI: the AI module's.
   ai_provider_changed: 'ai_assistant',
   ai_allowance_warning: 'ai_assistant',
