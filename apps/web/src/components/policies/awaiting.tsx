@@ -27,8 +27,8 @@ type ReviewToSign = {
   number: string;
   title: Localized;
   dueOn: string;
-  /** The owner who asked: by name when the API gives one, else only an id. */
-  requestedBy: Named | string | null;
+  /** The owner who asked; their name may be gone. */
+  requestedBy: Named | null;
   requestedAt: string;
 };
 
@@ -163,7 +163,7 @@ export function Awaiting({ lang, t }: PoliciesProps) {
                     <bdi>{inLang(item.title)}</bdi>
                   </p>
                   <p className="mt-1 text-xs text-muted">
-                    {item.requestedBy && typeof item.requestedBy === "object"
+                    {item.requestedBy
                       ? fill(a.reviewAsked, {
                           name: inLang(item.requestedBy.name) || t.document.unknownPerson,
                           date: moments.format(new Date(item.requestedAt)),

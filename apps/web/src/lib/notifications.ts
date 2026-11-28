@@ -57,6 +57,9 @@ export type Notification = {
     confirmationDueOn?: string;
     /** With `signing_pin_changed`: set, changed or reset. */
     action?: string;
+    /** With `review_approval_turned_off`: the document type changed. */
+    typeId?: string;
+    typeCode?: string;
     /** With `document_step_assigned`: review or approve. */
     step?: string;
     /** With `review_due`: 60, 30 or 7 days before. */

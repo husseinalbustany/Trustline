@@ -8,6 +8,12 @@ export type SignedOutReason = (typeof signedOutReasons)[number];
 /** The query parameter that carries the reason to the sign-in page. */
 export const SIGNED_OUT = "signedOut";
 
+/** The reason a sign-in page's address gives, when it is one of ours. */
+export function signedOutReasonIn(search: string): SignedOutReason | null {
+  const asked = new URLSearchParams(search).get(SIGNED_OUT);
+  return signedOutReasons.find((r) => r === asked) ?? null;
+}
+
 /**
  * To the sign-in page, saying why, and back to this page once signed in.
  * A full page load, so nothing of the ended session stays mounted.

@@ -24,6 +24,7 @@ import { Field, inputClass } from "@/components/ui/field";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
+import { ConfirmationStatePill } from "./import-confirmation";
 import { api, download } from "@/lib/api";
 import { dayFormat, fill, languageNameIn, numberFormat } from "@/lib/format";
 import type { OrgUnit } from "@/lib/identity";
@@ -489,6 +490,9 @@ export function Library({ lang, t }: PoliciesProps) {
                         <ReviewPill t={t} review={item.review} />
                       )}
                       {item.source === "imported" && <ImportedPill t={t} />}
+                      {item.confirmation && (
+                        <ConfirmationStatePill t={t} state={item.confirmation} />
+                      )}
                       {item.confidentiality === "restricted" && (
                         <RestrictedPill t={t} />
                       )}

@@ -29,7 +29,7 @@ import { statusTone } from "./users-list";
 type Message = {
   kind: "ok" | "error";
   text: string;
-  at?: "roles" | "access";
+  at?: "roles" | "access" | "signIn";
 };
 // roleId -> org unit id, or "" for the whole organization
 type Grants = Record<string, string>;
@@ -110,6 +110,9 @@ export function UserForm({
     if (code === "unknown_org_unit") return f.unknownUnit;
     if (code === "outside_scope") return f.outsideScope;
     if (code === "cannot_change_self") return f.ownAccount;
+    // Someone who signs in by single sign-on, with a signing PIN, is given
+    // no password by a link.
+    if (code === "signs_with_pin") return f.signsWithPin;
     if (code?.endsWith("higher_access")) return f.higherAccess;
     if (statusOf(err) === 403) return t.noAccess;
     return statusOf(err) === 400 ? f.invalid : f.error;
@@ -181,7 +184,7 @@ export function UserForm({
   const newLink = () =>
     run(async () => {
       setInvite(await api<Invite>(`/users/${id}/invite`, { method: "POST" }));
-    });
+    }, "signIn");
 
   if (problem) return <EmptyState>{problem}</EmptyState>;
   if (!ready) return <EmptyState>{t.loading}</EmptyState>;
@@ -481,6 +484,14 @@ export function UserForm({
                         ? f.newInvite
                         : f.resetPassword}
                     </Button>
+                    {message?.at === "signIn" && (
+                      <p
+                        role={message.kind === "error" ? "alert" : "status"}
+                        className={`text-sm ${message.kind === "error" ? "text-danger" : "text-accent"}`}
+                      >
+                        {message.text}
+                      </p>
+                    )}
                     {invite && (
                       <InviteLink
                         lang={lang}

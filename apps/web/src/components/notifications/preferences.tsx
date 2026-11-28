@@ -19,6 +19,7 @@ import { hasLocale, localeNames, type Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/dictionaries";
 import { api, codeOf, statusOf } from "@/lib/api";
 import { fill, languageNameIn } from "@/lib/format";
+import { afterSigningRefusal } from "@/lib/signing";
 import { Words } from "@/components/policies/sentence";
 
 /** A person's email preferences, as the API gives them. */
@@ -123,7 +124,7 @@ export function NotificationPreferences({
         )}
         {/* For those who sign with a PIN: their own, set after signing in. */}
         {session.signingMethod && session.signingMethod !== "password" && (
-          <SigningPin t={t} />
+          <SigningPin lang={lang} t={t} />
         )}
         <p className="text-sm">
           <Link
@@ -371,12 +372,14 @@ function Items({ items }: { items: string[] }) {
  * changed within a few minutes of signing in, as the API requires. The
  * PIN lives only in the inputs, which are emptied whatever the answer.
  */
-function SigningPin({ t }: { t: Text }) {
+function SigningPin({ lang, t }: { lang: Locale; t: Text }) {
   const session = useSession();
   const refreshSession = useRefreshSession();
   const has = session.signingMethod === "pin";
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  // Locked after too many wrong PINs, until an administrator resets it.
+  const [locked, setLocked] = useState(false);
   // Visited pages stay mounted: nothing typed, and no message, waits there.
   useLayoutEffect(() => () => setMessage(null), []);
 
@@ -386,16 +389,29 @@ function SigningPin({ t }: { t: Text }) {
     const data = new FormData(form);
     const pin = String(data.get("pin") ?? "");
     const again = String(data.get("pinAgain") ?? "");
+    // To change a PIN, the current one, checked as a signature.
+    const currentPin = has ? String(data.get("currentPin") ?? "") : "";
     form.reset();
     if (pin !== again) return setMessage({ ok: false, text: t.pinMismatch });
     setBusy(true);
     setMessage(null);
     try {
-      await api("/me/signing-pin", { method: "PUT", body: { pin } });
-      setMessage({ ok: true, text: t.pinSaved });
+      await api("/me/signing-pin", {
+        method: "PUT",
+        body: has ? { pin, currentPin } : { pin },
+      });
+      setMessage({ ok: true, text: has ? t.pinChanged : t.pinSaved });
       await refreshSession();
     } catch (err) {
+      const refusal = await afterSigningRefusal(err, lang);
+      // Signed out: on the way to the sign-in page, which says why.
+      if (refusal === "gone") return;
+      if (refusal === "locked") setLocked(true);
       const code = codeOf(err);
+      // Changed or reset meanwhile: how they sign now decides what is asked.
+      if (code === "stale_signing_pin" || code === "current_pin_required") {
+        void refreshSession();
+      }
       setMessage({
         ok: false,
         text:
@@ -405,9 +421,21 @@ function SigningPin({ t }: { t: Text }) {
               ? t.pinFresh
               : code === "signs_with_password"
                 ? t.pinNotYours
-                : statusOf(err) === 400
-                  ? t.pinRules
-                  : t.saveError,
+                : code === "current_pin_required"
+                  ? t.pinCurrentRequired
+                  : code === "wrong_password"
+                    ? t.pinCurrentWrong
+                    : code === "password_locked"
+                      ? t.pinCurrentLocked
+                      : code === "signing_pin_locked"
+                        ? t.pinLocked
+                        : code === "stale_signing_pin"
+                          ? t.pinStale
+                          : code === "signing_pin_unavailable"
+                            ? t.pinUnavailable
+                            : statusOf(err) === 400
+                              ? t.pinRules
+                              : t.saveError,
       });
     }
     setBusy(false);
@@ -419,6 +447,26 @@ function SigningPin({ t }: { t: Text }) {
         <form onSubmit={save} className="flex flex-col gap-4 p-4">
           <p className="text-sm text-muted">{has ? t.pinHelpSet : t.pinHelpNone}</p>
           <p className="text-sm text-muted">{t.pinWhen}</p>
+          <p className="text-sm text-muted">{t.pinEmailed}</p>
+          {has && !locked && (
+            <div className="max-w-md">
+              <Field label={t.pinCurrent} help={t.pinCurrentHelp}>
+                <input
+                  name="currentPin"
+                  type="password"
+                  required
+                  inputMode="numeric"
+                  pattern="[0-9]{6,12}"
+                  minLength={6}
+                  maxLength={12}
+                  autoComplete="off"
+                  dir="ltr"
+                  className={inputClass}
+                />
+              </Field>
+            </div>
+          )}
+          {!locked && (
           <div className="grid max-w-md gap-4 sm:grid-cols-2">
             <Field label={has ? t.pinNew : t.pin} help={t.pinRules}>
               <input
@@ -449,6 +497,7 @@ function SigningPin({ t }: { t: Text }) {
               />
             </Field>
           </div>
+          )}
           {message && (
             <p
               role={message.ok ? "status" : "alert"}
@@ -458,7 +507,7 @@ function SigningPin({ t }: { t: Text }) {
             </p>
           )}
           <div>
-            <Button type="submit" disabled={busy}>
+            <Button type="submit" disabled={busy || locked}>
               {has ? t.pinChange : t.pinSet}
             </Button>
           </div>

@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type FormEvent,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
 import { api, statusOf } from "@/lib/api";
@@ -8,6 +14,10 @@ import type { Dictionary } from "@/i18n/dictionaries";
 import type { Locale } from "@/i18n/config";
 import { AuthCard } from "./auth-card";
 import { loadPage, returnPath } from "@/lib/navigate";
+import { signedOutReasonIn } from "@/lib/signing";
+
+/** The address does not change while the sign-in page is open. */
+const noChange = () => () => {};
 
 const ORG_KEY = "trustline.org";
 
@@ -20,6 +30,15 @@ export function LoginForm({
   appName: string;
   t: Dictionary["auth"];
 }) {
+  // Sent here because the session ended while a page was open: said why,
+  // for a reason this app knows. Read from the address as the page shows,
+  // so the page itself stays the same for everyone.
+  const reason = useSyncExternalStore(
+    noChange,
+    () => signedOutReasonIn(window.location.search),
+    () => null,
+  );
+  const notice = reason ? t.login.signedOut[reason] : null;
   const orgInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -89,6 +108,14 @@ export function LoginForm({
   return (
     <AuthCard eyebrow={appName} title={t.login.title}>
       <form onSubmit={submit} className="flex flex-col gap-5">
+        {notice && (
+          <p
+            role="status"
+            className="rounded-md border border-warn bg-warn-soft px-3 py-2 text-sm"
+          >
+            {notice}
+          </p>
+        )}
         <Field label={t.login.org} help={t.login.orgHelp}>
           <input
             name="org"

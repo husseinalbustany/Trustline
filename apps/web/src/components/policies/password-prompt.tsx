@@ -86,9 +86,13 @@ export function PasswordPrompt({
       refusal = await afterSigningRefusal(err, lang);
       said =
         code === "wrong_password"
-          ? t.errors.wrong_password
+          ? pin
+            ? t.signature.wrongPin
+            : t.errors.wrong_password
           : code === "password_locked"
-            ? t.errors.password_locked
+            ? pin
+              ? t.signature.pinPaused
+              : t.errors.password_locked
             : explainError(err);
     }
     // Emptied whatever the answer: a password is typed for one request.

@@ -608,6 +608,8 @@
         "other": "Your signing PIN was changed. If you did not do this, tell your administrator at once."
       },
       "document_owner_assigned_confirm": "You are now the owner of {reference}: confirm by {confirmBy} that what was imported matches the approved original. Its periodic review and its re-issue are yours.",
+      "signing_pin_locked": "Signing with your PIN is locked after too many wrong PINs, and the session they were typed in was signed out. Ask your administrator to reset it. If it was not you, say so.",
+      "review_approval_turned_off": "A “no change” review of {reference} documents no longer needs the Approving authority's signature: the setting was turned off.",
       "other": "There is an update on {reference}."
     },
     "descriptionGeneral": "What has happened that concerns you. A notification names no one.",
@@ -674,14 +676,24 @@
       "pin": "Signing PIN",
       "pinNew": "New signing PIN",
       "pinAgain": "Type it again",
-      "pinRules": "6 to 12 digits, not all the same and not a run such as 123456.",
+      "pinRules": "6 to 12 digits, not easy to guess: no runs such as 123456, repeats, dates or common PINs.",
       "pinSet": "Set the PIN",
       "pinChange": "Change the PIN",
-      "pinSaved": "Your signing PIN is set. Use it wherever you are asked to sign.",
+      "pinSaved": "Your signing PIN is set, and your other sessions were signed out. Use it wherever you are asked to sign.",
       "pinMismatch": "The two entries are not the same. Type the PIN again.",
-      "pinTooSimple": "This PIN is too simple: not all the same digit, and not a run such as 123456 or 987654.",
+      "pinTooSimple": "This PIN is too easy to guess. Avoid repeated, doubled or mirrored digits, runs such as 123456, dates and common PINs.",
       "pinFresh": "More than 10 minutes have passed since you signed in. Sign out, sign in again, then do this at once.",
-      "pinNotYours": "You sign with your password, so you have no signing PIN."
+      "pinNotYours": "You sign with your password, so you have no signing PIN.",
+      "pinCurrent": "Current signing PIN",
+      "pinCurrentHelp": "To change your PIN, type the one you sign with now.",
+      "pinCurrentRequired": "Type your current signing PIN to change it.",
+      "pinCurrentWrong": "The current signing PIN is not right, so nothing was changed. After 10 wrong PINs in all, signing with your PIN is locked.",
+      "pinCurrentLocked": "Too many wrong signing PINs: try again in 15 minutes. Nothing was changed.",
+      "pinLocked": "Signing with your PIN is locked after too many wrong PINs. Ask your administrator to reset it; you can then set a new one here.",
+      "pinStale": "Your signing PIN was changed or reset in the meantime, perhaps in another tab or by an administrator. Check the form below, then try again.",
+      "pinUnavailable": "Signing PINs cannot be set at the moment: the server is not set up for them. Tell your administrator.",
+      "pinChanged": "Your signing PIN is changed, and your other sessions were signed out.",
+      "pinEmailed": "You are always told by email when your PIN is set, changed, reset or locked, whatever your email settings."
     },
     "preferencesLink": "Email preferences"
   },
@@ -1083,7 +1095,11 @@
       "failed": "The organization, email or password is wrong, or the account is locked. Check them, or wait 15 minutes and try again. If it still fails, your organization's access to Trustline may have ended: ask your administrator.",
       "invalid": "The organization ID or the email contains a character that cannot be part of it, perhaps from pasting. Type both again, then sign in.",
       "error": "Could not sign in. Try again.",
-      "forgot": "Forgot your password? Ask your administrator for a reset link."
+      "forgot": "Forgot your password? Ask your administrator for a reset link.",
+      "signedOut": {
+        "ended": "You were signed out. Sign in again to carry on.",
+        "pinLocked": "After too many wrong signing PINs, you were signed out and signing with your PIN is locked. Sign in again; to sign, ask your administrator to reset your PIN."
+      }
     },
     "invite": {
       "title": "Set your password",
@@ -1185,7 +1201,8 @@
         "pinResetCancel": "Cancel",
         "pinResetDone": "The signing PIN is reset. The person is told in Trustline.",
         "pinNone": "This person has no signing PIN.",
-        "pinResetFailed": "The PIN could not be reset. Try again."
+        "pinResetFailed": "The PIN could not be reset. Try again.",
+        "signsWithPin": "This person signs with a signing PIN, so they are given no password by a link. Reset their signing PIN instead."
       }
     },
     "roles": {
@@ -1630,7 +1647,9 @@
       "pin": "Your signing PIN",
       "pinHelp": "Typed again to sign. It is checked once and not kept.",
       "pinNeeded": "You sign with a signing PIN, and have not set one yet.",
-      "setPin": "Set your signing PIN"
+      "setPin": "Set your signing PIN",
+      "wrongPin": "That signing PIN is not right. Nothing was signed. Type it again; after 10 wrong PINs in all, signing with your PIN is locked.",
+      "pinPaused": "Too many wrong signing PINs: signing is paused for 15 minutes. Nothing was signed."
     },
     "actions": {
       "title": "What you can do",
@@ -2116,10 +2135,17 @@
       "no_review_pending": "No “no change” review is waiting for a signature. The page shows the latest state.",
       "not_review_approver": "You cannot sign this review: the Approving authority for this document's area signs it, or an administrator where there is none.",
       "signs_with_password": "You sign with your password, so you have no signing PIN.",
-      "pin_too_simple": "This PIN is too simple: not all the same digit, and not a run such as 123456 or 987654.",
+      "pin_too_simple": "This PIN is too easy to guess. Avoid repeated, doubled or mirrored digits, runs such as 123456, dates and common PINs.",
       "fresh_sign_in_required": "More than 10 minutes have passed since you signed in. Sign out, sign in again, then do this at once.",
       "signing_pin_required": "You sign with a signing PIN, and have not set one yet. Set it on your preferences page, then sign again.",
-      "no_signing_pin": "This person has no signing PIN."
+      "no_signing_pin": "This person has no signing PIN.",
+      "owner_is_importer": "The person who imported this document cannot be its owner while the owner's confirmation is awaited: they would confirm their own import. Choose someone else.",
+      "importer_cannot_confirm": "You imported this document, so you cannot confirm the import yourself. Its owner confirms it.",
+      "current_pin_required": "Type your current signing PIN to change it.",
+      "signing_pin_locked": "Signing with your PIN is locked after too many wrong PINs. Nothing was signed. Ask your administrator to reset your PIN, then set a new one.",
+      "stale_signing_pin": "Your signing PIN was changed or reset in the meantime, perhaps in another tab or by an administrator. Reload the page, then try again.",
+      "signing_pin_unavailable": "Signing PINs cannot be used at the moment: the server is not set up for them. Nothing was signed. Tell your administrator.",
+      "signs_with_pin": "This person signs with a signing PIN, so they are given no password by a link. Reset their signing PIN instead."
     },
     "importing": {
       "open": "Import documents",
@@ -2421,7 +2447,10 @@
         "awaiting": "Its owner is to confirm, by {date}, that what was imported matches the approved original.",
         "overdue": "Its owner's confirmation that what was imported matches the approved original was due on {date}.",
         "confirmed": "Confirmed by its owner, {name}, on {date}.",
-        "byImport": "Confirmed by the import: the owner imported it."
+        "byImport": "Confirmed by the import: the owner imported it.",
+        "awaitingFrom": "{name}, its owner, is to confirm by {date} that what was imported matches the approved original.",
+        "overdueFrom": "The confirmation from {name}, its owner, that what was imported matches the approved original was due on {date}.",
+        "confirmedThen": "Confirmed on {date} by {name}, its owner at the time."
       },
       "label": "Owner's confirmation",
       "confirmTitle": "Confirm this import",

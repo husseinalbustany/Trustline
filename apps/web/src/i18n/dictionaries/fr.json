@@ -608,6 +608,8 @@
         "other": "Votre code de signature a été modifié. Si ce n’était pas vous, prévenez aussitôt votre administrateur."
       },
       "document_owner_assigned_confirm": "Vous êtes désormais responsable du document {reference} : confirmez au plus tard le {confirmBy} que ce qui a été importé correspond à l’original approuvé. Sa révision périodique et sa réédition vous reviennent.",
+      "signing_pin_locked": "La signature par votre code est bloquée après trop de codes erronés, et la session dans laquelle ils ont été saisis a été déconnectée. Demandez à votre administrateur de le réinitialiser. Si ce n’était pas vous, dites-le-lui.",
+      "review_approval_turned_off": "Une révision « sans modification » des documents {reference} ne nécessite plus la signature de l’Autorité d’approbation : ce réglage a été désactivé.",
       "other": "Du nouveau concernant l’incident {reference}."
     },
     "descriptionGeneral": "Ce qui s’est passé et vous concerne. Une notification ne nomme personne.",
@@ -674,14 +676,24 @@
       "pin": "Code de signature",
       "pinNew": "Nouveau code de signature",
       "pinAgain": "Saisissez-le de nouveau",
-      "pinRules": "6 à 12 chiffres, pas tous identiques ni en suite comme 123456.",
+      "pinRules": "6 à 12 chiffres, difficiles à deviner : ni suite comme 123456, ni répétition, ni date, ni code courant.",
       "pinSet": "Définir le code",
       "pinChange": "Modifier le code",
-      "pinSaved": "Votre code de signature est défini. Utilisez-le partout où une signature vous est demandée.",
+      "pinSaved": "Votre code de signature est défini, et vos autres sessions ont été déconnectées. Utilisez-le partout où une signature vous est demandée.",
       "pinMismatch": "Les deux saisies diffèrent. Saisissez de nouveau le code.",
-      "pinTooSimple": "Ce code est trop simple : pas un seul chiffre répété, ni une suite comme 123456 ou 987654.",
+      "pinTooSimple": "Ce code est trop facile à deviner. Évitez les chiffres répétés, doublés ou en miroir, les suites comme 123456, les dates et les codes courants.",
       "pinFresh": "Plus de 10 minutes se sont écoulées depuis votre connexion. Déconnectez-vous, reconnectez-vous, puis recommencez aussitôt.",
-      "pinNotYours": "Vous signez avec votre mot de passe : vous n’avez pas de code de signature."
+      "pinNotYours": "Vous signez avec votre mot de passe : vous n’avez pas de code de signature.",
+      "pinCurrent": "Code de signature actuel",
+      "pinCurrentHelp": "Pour modifier votre code, saisissez celui avec lequel vous signez actuellement.",
+      "pinCurrentRequired": "Saisissez votre code de signature actuel pour le modifier.",
+      "pinCurrentWrong": "Le code de signature actuel n’est pas le bon : rien n’a été modifié. Après 10 codes erronés au total, la signature par votre code est bloquée.",
+      "pinCurrentLocked": "Trop de codes de signature erronés : réessayez dans 15 minutes. Rien n’a été modifié.",
+      "pinLocked": "La signature par votre code est bloquée après trop de codes erronés. Demandez à votre administrateur de le réinitialiser ; vous pourrez ensuite en définir un nouveau ici.",
+      "pinStale": "Votre code de signature a été modifié ou réinitialisé entre-temps, peut-être dans un autre onglet ou par un administrateur. Vérifiez le formulaire ci-dessous, puis réessayez.",
+      "pinUnavailable": "Les codes de signature ne peuvent pas être définis pour le moment : le serveur n’est pas configuré pour cela. Prévenez votre administrateur.",
+      "pinChanged": "Votre code de signature est modifié, et vos autres sessions ont été déconnectées.",
+      "pinEmailed": "Vous êtes toujours prévenu par e-⁠mail lorsque votre code est défini, modifié, réinitialisé ou bloqué, quels que soient vos réglages d’e-⁠mail."
     },
     "preferencesLink": "Préférences d’e-⁠mail"
   },
@@ -1083,7 +1095,11 @@
       "failed": "L’établissement, l’e-⁠mail ou le mot de passe est incorrect, ou le compte est verrouillé. Vérifiez-les, ou patientez 15 minutes avant de réessayer. Si cela persiste, l’accès de votre établissement à Trustline a peut-être pris fin : adressez-vous à votre administrateur.",
       "invalid": "L’identifiant de l’établissement ou l’e-⁠mail contient un caractère qui ne peut pas en faire partie, peut-être à cause d’un copier-coller. Saisissez-les de nouveau, puis connectez-vous.",
       "error": "Connexion impossible. Réessayez.",
-      "forgot": "Mot de passe oublié ? Demandez un lien de réinitialisation à votre administrateur."
+      "forgot": "Mot de passe oublié ? Demandez un lien de réinitialisation à votre administrateur.",
+      "signedOut": {
+        "ended": "Vous avez été déconnecté. Reconnectez-vous pour continuer.",
+        "pinLocked": "Après trop de codes de signature erronés, vous avez été déconnecté et la signature par votre code est bloquée. Reconnectez-vous ; pour signer, demandez à votre administrateur de réinitialiser votre code."
+      }
     },
     "invite": {
       "title": "Définir votre mot de passe",
@@ -1185,7 +1201,8 @@
         "pinResetCancel": "Annuler",
         "pinResetDone": "Le code de signature est réinitialisé. La personne en est informée dans Trustline.",
         "pinNone": "Cette personne n’a pas de code de signature.",
-        "pinResetFailed": "Impossible de réinitialiser le code. Réessayez."
+        "pinResetFailed": "Impossible de réinitialiser le code. Réessayez.",
+        "signsWithPin": "Cette personne signe avec un code de signature : aucun mot de passe ne lui est donné par un lien. Réinitialisez plutôt son code de signature."
       }
     },
     "roles": {
@@ -1630,7 +1647,9 @@
       "pin": "Votre code de signature",
       "pinHelp": "Saisi de nouveau pour signer. Il est vérifié une fois et n’est pas conservé.",
       "pinNeeded": "Vous signez avec un code de signature, que vous n’avez pas encore défini.",
-      "setPin": "Définir votre code de signature"
+      "setPin": "Définir votre code de signature",
+      "wrongPin": "Ce code de signature n’est pas le bon. Rien n’a été signé. Saisissez-le de nouveau ; après 10 codes erronés au total, la signature par votre code est bloquée.",
+      "pinPaused": "Trop de codes de signature erronés : la signature est suspendue pendant 15 minutes. Rien n’a été signé."
     },
     "actions": {
       "title": "Ce que vous pouvez faire",
@@ -2116,10 +2135,17 @@
       "no_review_pending": "Aucune révision « sans modification » n’attend de signature. La page affiche son dernier état.",
       "not_review_approver": "Vous ne pouvez pas signer cette révision : l’Autorité d’approbation de l’entité de ce document la signe, ou un administrateur s’il n’y en a pas.",
       "signs_with_password": "Vous signez avec votre mot de passe : vous n’avez pas de code de signature.",
-      "pin_too_simple": "Ce code est trop simple : pas un seul chiffre répété, ni une suite comme 123456 ou 987654.",
+      "pin_too_simple": "Ce code est trop facile à deviner. Évitez les chiffres répétés, doublés ou en miroir, les suites comme 123456, les dates et les codes courants.",
       "fresh_sign_in_required": "Plus de 10 minutes se sont écoulées depuis votre connexion. Déconnectez-vous, reconnectez-vous, puis recommencez aussitôt.",
       "signing_pin_required": "Vous signez avec un code de signature, que vous n’avez pas encore défini. Définissez-le sur votre page de préférences, puis signez de nouveau.",
-      "no_signing_pin": "Cette personne n’a pas de code de signature."
+      "no_signing_pin": "Cette personne n’a pas de code de signature.",
+      "owner_is_importer": "La personne qui a importé ce document ne peut pas en être responsable tant que la confirmation du responsable est attendue : elle confirmerait sa propre importation. Choisissez quelqu’un d’autre.",
+      "importer_cannot_confirm": "Vous avez importé ce document : vous ne pouvez pas confirmer vous-même son importation. C’est à son responsable de le faire.",
+      "current_pin_required": "Saisissez votre code de signature actuel pour le modifier.",
+      "signing_pin_locked": "La signature par votre code est bloquée après trop de codes erronés. Rien n’a été signé. Demandez à votre administrateur de réinitialiser votre code, puis définissez-en un nouveau.",
+      "stale_signing_pin": "Votre code de signature a été modifié ou réinitialisé entre-temps, peut-être dans un autre onglet ou par un administrateur. Rechargez la page, puis réessayez.",
+      "signing_pin_unavailable": "Les codes de signature ne peuvent pas être utilisés pour le moment : le serveur n’est pas configuré pour cela. Rien n’a été signé. Prévenez votre administrateur.",
+      "signs_with_pin": "Cette personne signe avec un code de signature : aucun mot de passe ne lui est donné par un lien. Réinitialisez plutôt son code de signature."
     },
     "importing": {
       "open": "Importer des documents",
@@ -2421,7 +2447,10 @@
         "awaiting": "Son responsable doit confirmer, au plus tard le {date}, que ce qui a été importé correspond à l’original approuvé.",
         "overdue": "La confirmation par son responsable que ce qui a été importé correspond à l’original approuvé était due le {date}.",
         "confirmed": "Confirmé par son responsable, {name}, le {date}.",
-        "byImport": "Confirmé par l’importation : le responsable l’a importé lui-même."
+        "byImport": "Confirmé par l’importation : le responsable l’a importé lui-même.",
+        "awaitingFrom": "{name}, son responsable, doit confirmer au plus tard le {date} que ce qui a été importé correspond à l’original approuvé.",
+        "overdueFrom": "La confirmation de {name}, son responsable, que ce qui a été importé correspond à l’original approuvé était due le {date}.",
+        "confirmedThen": "Confirmé le {date} par {name}, son responsable à cette date."
       },
       "label": "Confirmation du responsable",
       "confirmTitle": "Confirmer cette importation",

@@ -10,7 +10,9 @@ import type { PoliciesText } from "./types";
 type Confirmation = Omit<ImportConfirmation, "signatureId">;
 
 /** The state as one word: by the import, confirmed, overdue or awaiting. */
-const stateOf = (c: Confirmation) =>
+export type ConfirmationState = "byImport" | "confirmed" | "overdue" | "awaiting";
+
+const stateOf = (c: Confirmation): ConfirmationState =>
   c.state === "confirmed"
     ? c.byImport
       ? "byImport"
@@ -21,17 +23,19 @@ const stateOf = (c: Confirmation) =>
 
 /** Where the owner's confirmation of an import stands, as a pill. */
 export function ConfirmationPill({ t, c }: { t: PoliciesText; c: Confirmation }) {
-  const state = stateOf(c);
+  return <ConfirmationStatePill t={t} state={stateOf(c)} />;
+}
+
+/** The same from the state alone, as the library list gives it. */
+export function ConfirmationStatePill({
+  t,
+  state,
+}: {
+  t: PoliciesText;
+  state: ConfirmationState;
+}) {
   return (
-    <Pill
-      tone={
-        state === "overdue"
-          ? "danger"
-          : state === "awaiting"
-            ? "warn"
-            : "ok"
-      }
-    >
+    <Pill tone={state === "overdue" ? "danger" : state === "awaiting" ? "warn" : "ok"}>
       {t.confirmation.pill[state]}
     </Pill>
   );

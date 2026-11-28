@@ -171,6 +171,8 @@ export type DocumentListItem = {
   review: ReviewState;
   access: "full" | "other";
   myAcknowledgement: { dueOn: string | null; overdue: boolean } | null;
+  /** Of the version in force when it was imported: its owner's confirmation. */
+  confirmation?: "awaiting" | "overdue" | "confirmed" | "byImport" | null;
 };
 
 export type DocumentList = { items: DocumentListItem[]; total: number };

@@ -55,6 +55,15 @@ const queryOf = ({ unread, page }: { unread: boolean; page: number }) => {
   return query.toString();
 };
 
+/** About no record, yet not about the organization's settings either. */
+const ownPlace = new Set([
+  overdueDigest,
+  emailTurnedOff,
+  "signing_pin_changed",
+  "signing_pin_locked",
+  "review_approval_turned_off",
+]);
+
 /**
  * The reader's own notifications, newest first: a sentence each, how long
  * ago, and a way into the incident. Opening one marks it read.
@@ -202,6 +211,7 @@ export function NotificationsView({
       n.incident?.reference ??
       n.data?.number ??
       doc?.number ??
+      n.data?.typeCode ??
       "";
     // About the organization rather than an incident or a document:
     // nothing to open, except the settings, for whoever may change them.
@@ -219,7 +229,12 @@ export function NotificationsView({
               ? `/${lang}/notifications/preferences`
               : n.kind === "signing_pin_changed"
                 ? `/${lang}/notifications/preferences#signing-pin`
-                : null;
+                : // A type's setting changed: its settings, for whoever
+                  // may change them back.
+                  n.kind === "review_approval_turned_off" &&
+                    session.scope?.["policies.manage"] === "all"
+                  ? `/${lang}/policies/settings`
+                  : null;
     const title = doc?.canOpen && doc.title
       ? pick(doc.title, lang, session.tenant.defaultLocale)
       : null;
@@ -302,11 +317,7 @@ export function NotificationsView({
               {doc ? t.documentUnavailable : t.unavailable}
             </p>
           )}
-          {!about &&
-            settingsPath &&
-            n.kind !== overdueDigest &&
-            n.kind !== emailTurnedOff &&
-            n.kind !== "signing_pin_changed" && (
+          {!about && settingsPath && !ownPlace.has(n.kind) && (
             <p className="mt-1 text-sm">
               <Link
                 href={settingsPath}
