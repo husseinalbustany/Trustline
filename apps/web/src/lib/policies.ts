@@ -98,6 +98,11 @@ export type PolicyDocument = {
   lastReviewedOn: string | null;
   review: ReviewState;
   /**
+   * The day "confirm no change" opens for its periodic review, by the
+   * API's rule; null with no review date.
+   */
+  reviewOpensOn?: string | null;
+  /**
    * In force as approved before Trustline: its next review is a re-issue
    * through the route, not a confirmation that nothing changed.
    */
@@ -543,6 +548,12 @@ export type ApprovalRoute = {
   steps: RouteStep[];
 };
 
+/**
+ * The days ahead the API's "re-issue due" filter looks (`reissueDue`), for
+ * its label only: which documents match is the API's to say.
+ */
+export const REISSUE_DUE_DAYS = 60;
+
 /** The largest section and version the API takes, in characters. */
 export const SECTION_MAX = 20_000;
 export const VERSION_MAX = 200_000;
@@ -846,6 +857,26 @@ export type PersonAcknowledgements = {
     state: "acknowledged" | "pending" | "overdue" | (string & {});
     /** Acknowledged after the due day, or not and the day has passed. */
     late: boolean;
+  }[];
+  total: number;
+};
+
+/** Approval steps past their due date, in the documents the reader manages. */
+export type OverdueSteps = {
+  today: string;
+  items: {
+    /** The title is null where the reader may not open the document. */
+    document: { id: string; number: string; title: Localized | null; canOpen: boolean };
+    version: { id: string; version: number };
+    position: number;
+    kind: StepKind | (string & {});
+    /** Null when nobody can decide it. */
+    assignee:
+      | { type: "person" | "role" | (string & {}); id: string; name: Localized }
+      | null;
+    dueAt: string;
+    dueOn: string;
+    daysOverdue: number;
   }[];
   total: number;
 };

@@ -85,7 +85,7 @@ export function ImportRegister({ lang, t }: PoliciesProps) {
   }
 
   const fingerprint = (value: string) => (
-    <code dir="ltr" className="font-mono text-xs break-all">
+    <code dir="ltr" className="block text-start font-mono text-xs break-all">
       {value}
     </code>
   );
@@ -136,11 +136,18 @@ export function ImportRegister({ lang, t }: PoliciesProps) {
                     ? [
                         [
                           r.original,
-                          <bdi key="o" dir="auto">
+                          // Each in its own direction: an Arabic-letter number
+                          // beside "Rev. 4".
+                          <span key="o">
                             {[item.numberAsGiven, item.revisionLabel]
-                              .filter(Boolean)
-                              .join(" · ")}
-                          </bdi>,
+                              .filter((x): x is string => !!x)
+                              .map((x, i) => (
+                                <span key={i}>
+                                  {i > 0 && " · "}
+                                  <bdi dir="auto">{x}</bdi>
+                                </span>
+                              ))}
+                          </span>,
                         ] as [string, ReactNode],
                       ]
                     : []),

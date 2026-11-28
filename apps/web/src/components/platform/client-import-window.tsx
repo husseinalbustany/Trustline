@@ -13,6 +13,7 @@ import { Pill } from "@/components/ui/pill";
 import { codeOf, detailsOf, statusOf } from "@/lib/api";
 import { dateTimeFormat, dayFormat, fill } from "@/lib/format";
 import { platformApi } from "@/lib/platform-api";
+import { Words } from "@/components/policies/sentence";
 import { deviceTime } from "@/lib/time-zone";
 import type { PlatformProps } from "./types";
 
@@ -165,10 +166,16 @@ export function ClientImportWindow({
         </dl>
         <p className="text-sm">
           {shown.setByTrustline && shown.setAt
-            ? fill(w.setByTrustline, {
-                date: moment.format(new Date(shown.setAt)),
-                reason: shown.reason ?? "",
-              })
+            ? (
+                // The reason in its own direction, whatever the page's.
+                <Words
+                  text={w.setByTrustline}
+                  values={{
+                    date: moment.format(new Date(shown.setAt)),
+                    reason: <bdi dir="auto">{shown.reason ?? ""}</bdi>,
+                  }}
+                />
+              )
             : w.byDefault}
         </p>
 

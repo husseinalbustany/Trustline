@@ -327,6 +327,10 @@ function Batches({ lang, t, ready }: PoliciesProps & { ready: Ready }) {
   const problemText = (p: ImportProblem, items: { row: Row }[]) => {
     if (p.code === "invalid_document") {
       const fields = Array.isArray(p.fields) ? (p.fields as string[]) : [];
+      // Only the number: said with the rule for numbers.
+      if (fields.length > 0 && fields.every((f) => f.split(".")[0] === "number")) {
+        return explainError(asRefusal(p));
+      }
       const columns = [...new Set(fields.map((f) => columnOfField(f) ?? f))];
       return fill(m.invalidColumns, {
         columns: unitList(

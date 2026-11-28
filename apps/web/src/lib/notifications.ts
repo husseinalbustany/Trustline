@@ -93,6 +93,15 @@ export const aboutReview = new Set([
 /** A link in an email switched some emails off: the person's own setting. */
 export const emailTurnedOff = "email_turned_off";
 
+/**
+ * Where the weekly summary leads: the late acknowledgements, or the late
+ * approval steps when it counts only those.
+ */
+export const weeklySummaryPath = (lang: string, data: Notification["data"]) =>
+  (data?.overdue ?? 0) === 0 && (data?.stepsOverdue ?? 0) > 0
+    ? `/${lang}/policies/steps/overdue`
+    : `/${lang}/policies/overdue`;
+
 /** About no one document: the overdue acknowledgements of the week. */
 export const overdueDigest = "acknowledgements_overdue_digest";
 

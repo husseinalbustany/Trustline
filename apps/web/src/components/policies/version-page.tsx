@@ -516,14 +516,17 @@ function Comparison({
     (s) => s.locales[locale]?.changed || standIn(s)?.changed,
   ).length;
   const behind = sections.filter((s) => lags(s.key)).length;
+  // Some sections are shown in the language that applies: the count says so.
+  const anyStandIn = sections.some((s) => standIn(s));
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted">
         {changed === 0
           ? r.noChanges
-          : fill(r.changedCount, {
+          : fill(anyStandIn ? r.changedCountOther : r.changedCount, {
               count: numberFormat(lang).format(changed),
               total: numberFormat(lang).format(sections.length),
+              other: languageName(authoritative),
             })}
       </p>
       {behind > 0 && status && (
@@ -590,11 +593,17 @@ function Comparison({
                   })}
                 </p>
               )}
-              <div className="px-4 py-3" lang={shownIn} dir={direction(shownIn)}>
+              <div className="px-4 py-3">
                 {!here ? (
-                  <p className="text-sm text-muted">{r.emptyHere}</p>
+                  <p lang={lang} dir={direction(lang)} className="text-sm text-muted">
+                    {r.emptyHere}
+                  </p>
                 ) : here.changed ? (
-                  <ul className="flex flex-col gap-0.5 text-sm">
+                  <ul
+                    lang={shownIn}
+                    dir={direction(shownIn)}
+                    className="flex flex-col gap-0.5 text-sm"
+                  >
                     {here.lines.map((line, j) => (
                       <li
                         key={j}
@@ -622,10 +631,14 @@ function Comparison({
                   </ul>
                 ) : (
                   <details>
-                    <summary className="cursor-pointer text-sm text-accent">
+                    <summary
+                      lang={lang}
+                      dir={direction(lang)}
+                      className="cursor-pointer text-sm text-accent"
+                    >
                       {r.showText}
                     </summary>
-                    <div className="mt-2">
+                    <div className="mt-2" lang={shownIn} dir={direction(shownIn)}>
                       <Markup text={version.content[shownIn]?.[section.key] ?? ""} />
                     </div>
                   </details>

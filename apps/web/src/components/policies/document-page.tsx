@@ -197,7 +197,7 @@ function DocumentView({
         actions={
           <div className="flex flex-wrap items-center gap-2 print:hidden">
             <DocumentStatusPill t={t} status={doc.status} />
-            <ReviewPill t={t} review={doc.review} />
+            {!doc.reissueRequired && <ReviewPill t={t} review={doc.review} />}
             {doc.published?.source === "imported" && <ImportedPill t={t} />}
             {doc.reissueRequired && <ReissuePill t={t} review={doc.review} />}
             {doc.confidentiality === "restricted" && <RestrictedPill t={t} />}
@@ -848,6 +848,7 @@ function DocumentActions({
   onDone,
 }: PoliciesProps & { doc: PolicyDocument; onDone: () => Promise<void> }) {
   const router = useRouter();
+  const session = useSession();
   const explainError = useExplain(t, lang);
   const [open, setOpen] = useState<"review" | "retire" | null>(null);
   const [confirmRetire, setConfirmRetire] = useState(false);
@@ -932,6 +933,29 @@ function DocumentActions({
               )}
             </div>
           )}
+
+          {/* Before it can be confirmed: say when it can, by the API's day. */}
+          {!doc.moves.includes("confirm_review") &&
+            !doc.reissueRequired &&
+            doc.status === "active" &&
+            !!doc.reviewOpensOn &&
+            doc.reviewOpensOn > doc.today &&
+            (doc.moves.includes("edit") || doc.owner.id === session.user.id) && (
+              <div className="flex flex-col gap-2">
+                <p className="text-sm font-medium">{x.periodicReview}</p>
+                <p className="text-sm text-muted">
+                  {fill(
+                    doc.moves.includes("new_version")
+                      ? t.document.reviewOpens
+                      : t.document.reviewOpensOwner,
+                    {
+                      opensOn: dayFormat(lang)(doc.reviewOpensOn) ?? "",
+                      dueOn: dayFormat(lang)(doc.nextReviewOn) ?? "",
+                    },
+                  )}
+                </p>
+              </div>
+            )}
 
           {doc.moves.includes("confirm_review") && (
             <div className="flex flex-col gap-2">

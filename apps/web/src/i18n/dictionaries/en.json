@@ -41,6 +41,7 @@
       "settings": "Settings",
       "policiesAwaiting": "Awaiting me",
       "policiesOverdue": "Late acknowledgements",
+      "policiesStepsOverdue": "Overdue approval steps",
       "policiesSettings": "Document settings"
     }
   },
@@ -570,7 +571,7 @@
       "acknowledgement_overdue": "Your acknowledgement of {reference} version {version} was due on {date}.",
       "acknowledgements_overdue_digest": {
         "acknowledgements": "Weekly summary of overdue acknowledgements in the areas you follow: {overdue} overdue, people concerned: {people}.",
-        "steps": "Weekly summary for the documents you manage: approval steps overdue: {stepsOverdue}.",
+        "steps": "Weekly summary for the documents you manage. Approval steps overdue: {stepsOverdue}.",
         "both": "Weekly summary of overdue acknowledgements in the areas you follow: {overdue} overdue, people concerned: {people}. Approval steps overdue: {stepsOverdue}."
       },
       "review_due": {
@@ -588,9 +589,9 @@
       },
       "review_overdue_reissue": "{reference} was approved before Trustline and its re-issue was due on {date}: start a new version and send it through the approval route.",
       "email_turned_off": {
-        "immediate": "A link in one of your emails turned off your immediate emails. You can turn them back on in your email preferences.",
-        "digest": "A link in one of your emails turned off your morning summary emails. You can turn them back on in your email preferences.",
-        "other": "A link in one of your emails turned off some of your emails. You can turn them back on in your email preferences."
+        "immediate": "Your immediate emails were turned off from the link in one of your emails. If that was not you, or to get them again, turn them back on in your email preferences.",
+        "digest": "Your morning summary emails were turned off from the link in one of your emails. If that was not you, or to get them again, turn them back on in your email preferences.",
+        "other": "Some of your emails were turned off from the link in one of your emails. If that was not you, or to get them again, turn them back on in your email preferences."
       },
       "document_owner_assigned": "You are now the owner of {reference}: its periodic review and its re-issue are yours.",
       "other": "There is an update on {reference}."
@@ -629,7 +630,7 @@
         "reviews": "periodic reviews due",
         "incidents": "incidents assigned to you, overdue ones marked"
       },
-      "weekly": "If you manage documents, this also covers the weekly summary of overdue acknowledgements in your teams.",
+      "weekly": "If you manage documents, this also covers the weekly summary of overdue acknowledgements and approval steps.",
       "noDetails": "Emails carry references and counts only, never a name, a description or a document's text: sign in to see them.",
       "languageTitle": "Language of your emails",
       "language": "Language",
@@ -642,7 +643,8 @@
       "saved": "Saved.",
       "saveError": "Could not save. Try again.",
       "reliedOnApproves": "You decide approval steps: without immediate emails, a step waiting for your decision reaches you only in Trustline and in the morning summary, and the steps after it wait.",
-      "reliedOnTriages": "You triage incidents: without immediate emails, a serious incident reported in your area reaches you only in Trustline and in the morning summary."
+      "reliedOnTriages": "You triage incidents: without immediate emails, a serious incident reported in your area reaches you only in Trustline. The morning summary lists only incidents assigned to you.",
+      "reliedOnApprovesNoDigest": "You decide approval steps: without immediate emails, a step waiting for your decision reaches you only in Trustline, and the steps after it wait."
     },
     "preferencesLink": "Email preferences"
   },
@@ -1013,13 +1015,13 @@
       "closed": "Closed",
       "what": "From the first day of its Policies and procedures module, this client can import documents approved before Trustline, until the last day below (90 days by default). Only documents approved before that first day can be imported.",
       "startedOn": "First day of Policies and procedures",
-      "closesOn": "Imports accepted until",
+      "closesOn": "Last day of imports",
       "latestApprovedOn": "Latest approval date allowed",
       "byDefault": "This is the default end: Trustline has not changed it.",
       "setByTrustline": "Last changed by Trustline on {date}. Reason: {reason}",
       "change": "Change the end of the window",
       "newClosesOn": "Last day of imports",
-      "newClosesOnHelp": "The earliest is {earliest}, the day before the first day of Policies and procedures, which closes the window. The latest is a year from today.",
+      "newClosesOnHelp": "The earliest is {earliest}, the day before Policies and procedures started: choosing it closes the window. The latest is a year from today.",
       "reason": "Reason",
       "reasonHelp": "Required, on one line. Kept in Trustline's log and in the client's own audit log.",
       "save": "Save the change",
@@ -1349,13 +1351,15 @@
       },
       "optOuts": {
         "title": "Who has switched emails off",
-        "help": "Names only. Someone others rely on, who decides approval steps or triages incidents, is marked.",
+        "help": "Only names are shown here. People others depend on, because they decide approval steps or triage incidents, are marked.",
         "empty": "Nobody has switched their emails off.",
         "immediateOff": "Immediate emails off",
         "digestOff": "Morning summary off",
         "approves": "Decides approval steps",
         "triages": "Triages incidents",
-        "reliedHelp": "Without immediate emails, the work waiting for them reaches them only in Trustline and in the morning summary."
+        "reliedHelpApproves": "Without immediate emails, a step waiting for their decision reaches them only in Trustline and in the morning summary.",
+        "reliedHelpApprovesNoDigest": "Without immediate emails or the morning summary, a step waiting for their decision reaches them only in Trustline.",
+        "reliedHelpTriages": "Without immediate emails, a serious incident reported in their area reaches them only in Trustline: the morning summary lists only incidents assigned to them."
       }
     },
     "permissions": {
@@ -1479,7 +1483,7 @@
       "sourceLabel": "Origin",
       "sourceImported": "Approved before Trustline",
       "sourceWritten": "Written in Trustline",
-      "reissueDue": "Re-issue due"
+      "reissueDue": "Re-issue due within {days} days, or past"
     },
     "document": {
       "controlBlock": "Controlled document",
@@ -1556,7 +1560,9 @@
       "changeReason": "Reason:",
       "none": "none",
       "otherDetail": "Another detail",
-      "printHeaderOriginal": "{number} · Version {version} ({revision} on the original) · {title}"
+      "printHeaderOriginal": "{number} · Version {version} ({revision} on the original) · {title}",
+      "reviewOpens": "Confirming that it needs no change is possible from {opensOn}, as its review date ({dueOn}) approaches. To change it now, start a new version.",
+      "reviewOpensOwner": "Confirming that it needs no change is possible from {opensOn}, as its review date ({dueOn}) approaches."
     },
     "acknowledge": {
       "title": "Acknowledge this document",
@@ -1693,7 +1699,8 @@
       "reviewedDone": "Your review is signed.",
       "approvedDone": "Your approval is signed.",
       "returnedDone": "The version is returned with your comments.",
-      "outOfSight": "Your part in this review is done, so this version is no longer shown to you."
+      "outOfSight": "Your part in this review is done, so this version is no longer shown to you.",
+      "changedCountOther": "{count} of {total} sections changed, in this language or, where it has no text, in {other}."
     },
     "editor": {
       "title": "Writing version {version}",
@@ -2003,10 +2010,10 @@
       "effective_before_approval": "It cannot have come into force before its approval date.",
       "effective_in_future": "The date it came into force cannot be after today: an imported document is already in force. A document that comes into force later goes through the approval route.",
       "review_before_approval": "The next review must be after the approval date.",
-      "review_date_too_far": "The next review can be no later than {date}: {max} from {from}, your organization's longest review period.",
-      "invalid_number": "This number cannot be used. Use the number as written on the original, in Latin letters, or the letters of your organization's languages, and digits, with spaces, -, ., / or _ between them: at most 40 characters.",
-      "number_script": "A document number can use only Latin letters, or the letters of your organization's languages, with digits and ⁦- . / _ ( )⁩. Write the number as it is on the original, with these characters.",
-      "number_mixed_scripts": "This number mixes letters of different scripts. Use the number as written on the original, in Latin letters, or the letters of your organization's languages, and digits, without mixing them.",
+      "review_date_too_far": "The next review can be no later than {date}: {max} after {from}, the later of its approval and its last review on the original, is your organization's longest review period.",
+      "invalid_number": "This number cannot be used. Use the number as written on the original, in letters (Latin, or those of your organization's languages) and digits, with spaces, hyphens, full stops, slashes, underscores or brackets between them, at most 40 characters.",
+      "number_script": "This number has letters a document number cannot use. Write it as it is on the original, in letters (Latin, or those of your organization's languages) and digits, with spaces, hyphens, full stops, slashes, underscores or brackets between them, at most 40 characters.",
+      "number_mixed_scripts": "This number mixes letters of different scripts. Use the number as written on the original, with the letters of one script only, in letters (Latin, or those of your organization's languages) and digits, with spaces, hyphens, full stops, slashes, underscores or brackets between them, at most 40 characters.",
       "number_taken": "Another document already has this number.",
       "number_taken_by": "Another document already has this number: {number}.",
       "content_required": "Write at least one section in {language}.",
@@ -2030,7 +2037,7 @@
       "body_too_deep": "This file cannot be sent as it is: its contents are nested too deeply. Lay it out as the layout page shows and try again.",
       "no_assignee_role_manager": "Not sent for review yet: nobody can decide step {position} of its approval route ({kind}, by the role “{role}”). Nobody holds this role for this document's responsible area, or only someone who prepared this version does. Give the role “{role}” to the person who decides this step, then send the version again.",
       "no_assignee_person_manager": "Not sent for review yet: step {position} of its approval route ({kind}) names {name}, who cannot decide it: their account is not active, no role of theirs allows it, or they prepared this version. Change the route in the document settings, then send the version again.",
-      "review_not_due": "This review can be confirmed from {opensOn}; it is due on {dueOn}.",
+      "review_not_due": "Not yet: this review can be confirmed as unchanged from {opensOn}, as its due date ({dueOn}) approaches. To change the document now, start a new version.",
       "language_mismatch_differences": "Write the differences from the original only in your organization's languages.",
       "reviewed_before_approval": "The last review on the original cannot be before its approval date.",
       "reviewed_in_future": "The last review on the original cannot be after today.",
@@ -2048,7 +2055,7 @@
       "original": "The original",
       "originalHelp": "As the signed original gives it. None of this can be changed after the import: a change is made through a new version.",
       "number": "Number on the original",
-      "numberHelp": "As written on the original, in Latin letters, or the letters of your organization's languages, and digits. Leave empty for Trustline to number it.",
+      "numberHelp": "As written on the original, in letters (Latin, or those of your organization's languages) and digits, with spaces, hyphens, full stops, slashes, underscores or brackets between them, at most 40 characters. Leave empty for Trustline to number it.",
       "revisionLabel": "Revision on the original",
       "revisionLabelHelp": "Optional, for example “Rev. 3”.",
       "approvedOn": "Approved on",
@@ -2180,7 +2187,7 @@
           "Dates are written as year-month-day, for example 2024-03-01.",
           "Several values in one column are separated by |, for example ICU|ER.",
           "“acknowledge” is yes or no; “confidentiality” is all_staff or restricted.",
-          "A number left empty is given by Trustline. A number given is kept as written on the original, in Latin letters, or the letters of your organization's languages, and digits, and must not already be used.",
+          "A number left empty is given by Trustline. A number given is kept as written on the original, in letters (Latin, or those of your organization's languages) and digits, with spaces, hyphens, full stops, slashes, underscores or brackets between them, at most 40 characters, and must not already be used.",
           "Tables and figures cannot be imported as such. Write a table as a list, one line per row; for a figure or a flowchart, say so in “differences”, for example “Appendix B flowchart not reproduced, see the original”."
         ],
         "limits": "A batch holds at most {documents} documents and {characters} characters of text. A larger file is split into several batches, and each batch is a separate signature.",
@@ -2255,12 +2262,13 @@
         "description": "Every document imported as approved before Trustline, newest first: the original it came from, who imported it and when, and what each signature covers.",
         "download": "Export the register (CSV)",
         "empty": "No document has been imported.",
-        "original": "On the original",
+        "original": "Number and revision on the original",
         "importedBy": "Imported by",
         "batch": "Batch",
         "batchPlace": "Document {index} of {size}; fingerprint of the batch:",
         "signed": "Fingerprint of what was signed"
-      }
+      },
+      "languageText": "{language}: {text}"
     },
     "imported": {
       "pill": "Approved before Trustline",
@@ -2271,13 +2279,15 @@
       "approvedOn": "Approved on",
       "approvedBy": "Approved by (as written on the original)",
       "originalKeptAt": "Signed original kept at",
-      "importedBy": "Imported into Trustline by {name} on {date}, who signed that this text matches the original, except as noted.",
+      "importedBy": "Imported into Trustline by {name} on {date}, who signed that this text matches the original.",
       "nextReviewReissue": "Next review (re-issue)",
       "importedByLabel": "Imported by",
       "notWrittenLabel": "Sections missing from the original",
       "lastReviewedOn": "Last reviewed on the original",
       "differences": "Differences from the original",
-      "notInOriginal": "The original came without these sections, so they are not in this text: {sections}."
+      "notInOriginal": "These sections are not in the original, so this text does not have them: {sections}.",
+      "importedByNoted": "Imported into Trustline by {name} on {date}, who signed that this text matches the original, except as noted above.",
+      "quoted": "“{name}”"
     },
     "reissue": {
       "pill": "Re-issue required",
@@ -2311,6 +2321,15 @@
       "asked": "Asked on {date}",
       "due": "Due by {date}",
       "acknowledgedAt": "Acknowledged on {date}"
+    },
+    "overdueSteps": {
+      "title": "Overdue approval steps",
+      "description": "Review and approval steps past their due date in the documents you manage, most overdue first.",
+      "empty": "No approval step is overdue in the documents you manage.",
+      "noAccess": "This list is for those who manage documents.",
+      "late": "Due {date} · {days} late",
+      "step": "Step {position}: {kind}",
+      "nobody": "Nobody can decide it"
     }
   }
 }

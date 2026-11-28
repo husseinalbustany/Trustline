@@ -1,6 +1,7 @@
 import {
   BookCheck,
   CalendarClock,
+  Hourglass,
   Building2,
   ChartColumn,
   FileText,
@@ -34,6 +35,7 @@ export type ModuleKey =
 export type SubItemKey =
   | "policiesAwaiting"
   | "policiesOverdue"
+  | "policiesStepsOverdue"
   | "policiesSettings";
 
 export type NavItemKey = "dashboard" | ModuleKey | SubItemKey;
@@ -130,6 +132,15 @@ export const navigation: { key: NavGroupKey; items: NavItem[] }[] = [
         // Where the weekly digest leads: for those who see acknowledgement
         // figures.
         permissions: ["policies.manage", "policies.view_all"],
+      },
+      {
+        key: "policiesStepsOverdue",
+        href: "/policies/steps/overdue",
+        icon: Hourglass,
+        module: "policies",
+        // Steps of the documents one manages: where the weekly summary
+        // leads when it counts steps only.
+        permissions: ["policies.manage"],
       },
       {
         key: "policiesSettings",

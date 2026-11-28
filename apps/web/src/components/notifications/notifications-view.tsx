@@ -29,6 +29,7 @@ import {
   emailTurnedOff,
   overdueDigest,
   sentenceFor,
+  weeklySummaryPath,
   type Notification,
   type NotificationList,
 } from "@/lib/notifications";
@@ -213,7 +214,7 @@ export function NotificationsView({
         : doc?.canOpen
           ? `/${lang}/policies/${doc.id}`
           : n.kind === overdueDigest
-            ? `/${lang}/policies/overdue`
+            ? weeklySummaryPath(lang, n.data)
             : n.kind === emailTurnedOff
               ? `/${lang}/notifications/preferences`
               : null;

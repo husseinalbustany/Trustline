@@ -40,6 +40,7 @@ import {
   librarySorts,
   noLibraryFilters,
   readLibraryFilters,
+  REISSUE_DUE_DAYS,
   todayIn,
   type DocumentCategory,
   type DocumentList,
@@ -51,6 +52,7 @@ import {
   DocumentStatusPill,
   ImportedPill,
   RestrictedPill,
+  ReissuePill,
   ReviewPill,
   versionStatusWord,
 } from "./pills";
@@ -228,7 +230,7 @@ export function Library({ lang, t }: PoliciesProps) {
               {/* The register stays, whatever the import window. */}
               {importer && (
                 <ButtonLink variant="secondary" href={importPath(lang, "register")}>
-                  <ListChecks className="size-4" aria-hidden />
+                  <ListChecks className="size-4 rtl:-scale-x-100" aria-hidden />
                   {t.importing.register.open}
                 </ButtonLink>
               )}
@@ -440,7 +442,7 @@ export function Library({ lang, t }: PoliciesProps) {
                 checked={filters.reissueDue}
                 onChange={(e) => ask({ reissueDue: e.target.checked })}
               />
-              {l.reissueDue}
+              {fill(l.reissueDue, { days: numbers.format(REISSUE_DUE_DAYS) })}
             </label>
           </div>
         )}
@@ -478,7 +480,12 @@ export function Library({ lang, t }: PoliciesProps) {
                       {item.status !== "active" && (
                         <DocumentStatusPill t={t} status={item.status} />
                       )}
-                      <ReviewPill t={t} review={item.review} />
+                      {/* In force as imported: its review is a re-issue, said once. */}
+                      {item.source === "imported" && item.status === "active" ? (
+                        item.review && <ReissuePill t={t} review={item.review} />
+                      ) : (
+                        <ReviewPill t={t} review={item.review} />
+                      )}
                       {item.source === "imported" && <ImportedPill t={t} />}
                       {item.confidentiality === "restricted" && (
                         <RestrictedPill t={t} />

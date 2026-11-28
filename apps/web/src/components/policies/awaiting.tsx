@@ -174,10 +174,10 @@ export function Awaiting({ lang, t }: PoliciesProps) {
                     >
                       {number(item.number)}
                     </Link>
+                    {/* A re-issue is said once, as urgent as the review it replaces. */}
                     <Pill tone={item.state === "overdue" ? "danger" : "warn"}>
-                      {t.reviewState[item.state]}
+                      {item.reissue ? t.reissue.pill : t.reviewState[item.state]}
                     </Pill>
-                    {item.reissue && <Pill tone="warn">{t.reissue.pill}</Pill>}
                     {item.mine && <Pill tone="ok">{a.youOwn}</Pill>}
                   </div>
                   <p className="mt-1 text-sm">

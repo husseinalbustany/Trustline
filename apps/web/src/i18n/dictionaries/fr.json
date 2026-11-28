@@ -41,6 +41,7 @@
       "settings": "Paramètres",
       "policiesAwaiting": "À traiter",
       "policiesOverdue": "Confirmations en retard",
+      "policiesStepsOverdue": "Étapes d’approbation en retard",
       "policiesSettings": "Paramètres des documents"
     }
   },
@@ -570,7 +571,7 @@
       "acknowledgement_overdue": "Votre prise de connaissance de la version {version} du document {reference} était attendue le {date}.",
       "acknowledgements_overdue_digest": {
         "acknowledgements": "Récapitulatif hebdomadaire des prises de connaissance en retard dans les entités que vous suivez : {overdue} en retard, personnes concernées : {people}.",
-        "steps": "Récapitulatif hebdomadaire des documents que vous gérez : étapes d’approbation en retard : {stepsOverdue}.",
+        "steps": "Récapitulatif hebdomadaire des documents que vous gérez. Étapes d’approbation en retard : {stepsOverdue}.",
         "both": "Récapitulatif hebdomadaire des prises de connaissance en retard dans les entités que vous suivez : {overdue} en retard, personnes concernées : {people}. Étapes d’approbation en retard : {stepsOverdue}."
       },
       "review_due": {
@@ -588,9 +589,9 @@
       },
       "review_overdue_reissue": "Le document {reference} a été approuvé avant Trustline ; sa réédition était due le {date} : commencez une nouvelle version et soumettez-la au circuit d’approbation.",
       "email_turned_off": {
-        "immediate": "Un lien dans l’un de vos e-⁠mails a désactivé vos e-⁠mails immédiats. Vous pouvez les réactiver dans vos préférences d’e-⁠mail.",
-        "digest": "Un lien dans l’un de vos e-⁠mails a désactivé vos e-⁠mails de récapitulatif du matin. Vous pouvez les réactiver dans vos préférences d’e-⁠mail.",
-        "other": "Un lien dans l’un de vos e-⁠mails a désactivé certains de vos e-⁠mails. Vous pouvez les réactiver dans vos préférences d’e-⁠mail."
+        "immediate": "Vos e-⁠mails immédiats ont été désactivés depuis le lien d’un de vos e-⁠mails. Si ce n’était pas vous, ou pour les recevoir de nouveau, réactivez-les dans vos préférences d’e-⁠mail.",
+        "digest": "Vos récapitulatifs du matin par e-⁠mail ont été désactivés depuis le lien d’un de vos e-⁠mails. Si ce n’était pas vous, ou pour les recevoir de nouveau, réactivez-les dans vos préférences d’e-⁠mail.",
+        "other": "Certains de vos e-⁠mails ont été désactivés depuis le lien d’un de vos e-⁠mails. Si ce n’était pas vous, ou pour les recevoir de nouveau, réactivez-les dans vos préférences d’e-⁠mail."
       },
       "document_owner_assigned": "Vous êtes désormais responsable du document {reference} : sa révision périodique et sa réédition vous reviennent.",
       "other": "Du nouveau concernant l’incident {reference}."
@@ -629,7 +630,7 @@
         "reviews": "les révisions périodiques à faire",
         "incidents": "les incidents qui vous sont attribués, en signalant ceux en retard"
       },
-      "weekly": "Si vous gérez des documents, ce réglage couvre aussi le récapitulatif hebdomadaire des prises de connaissance en retard dans vos équipes.",
+      "weekly": "Si vous gérez des documents, ce réglage couvre aussi le récapitulatif hebdomadaire des prises de connaissance et des étapes d’approbation en retard.",
       "noDetails": "Les e-⁠mails ne contiennent que des références et des nombres, jamais un nom, une description ni le texte d’un document : connectez-vous pour les consulter.",
       "languageTitle": "Langue de vos e-⁠mails",
       "language": "Langue",
@@ -641,8 +642,9 @@
       "saving": "Enregistrement…",
       "saved": "Enregistré.",
       "saveError": "Impossible d’enregistrer. Réessayez.",
-      "reliedOnApproves": "Vous décidez d’étapes d’approbation : sans e-⁠mails immédiats, une étape qui attend votre décision ne vous parvient que dans Trustline et dans le récapitulatif du matin, et les étapes suivantes attendent.",
-      "reliedOnTriages": "Vous triez les incidents : sans e-⁠mails immédiats, un incident grave déclaré dans votre périmètre ne vous parvient que dans Trustline et dans le récapitulatif du matin."
+      "reliedOnApproves": "Vous décidez des étapes d’approbation : sans e-⁠mails immédiats, une étape qui attend votre décision ne vous parvient que dans Trustline et dans le récapitulatif du matin, et les étapes suivantes attendent.",
+      "reliedOnTriages": "Vous triez les incidents : sans e-⁠mails immédiats, un incident grave déclaré dans votre périmètre ne vous parvient que dans Trustline ; le récapitulatif du matin ne liste que les incidents qui vous sont attribués.",
+      "reliedOnApprovesNoDigest": "Vous décidez des étapes d’approbation : sans e-⁠mails immédiats, une étape qui attend votre décision ne vous parvient que dans Trustline, et les étapes suivantes attendent."
     },
     "preferencesLink": "Préférences d’e-⁠mail"
   },
@@ -1013,13 +1015,13 @@
       "closed": "Fermée",
       "what": "À compter du premier jour de son module Politiques et procédures, ce client peut importer des documents approuvés avant Trustline, jusqu’au dernier jour ci-dessous (90 jours par défaut). Seuls les documents approuvés avant ce premier jour peuvent être importés.",
       "startedOn": "Premier jour du module Politiques et procédures",
-      "closesOn": "Importations acceptées jusqu’au",
+      "closesOn": "Dernier jour d’importation",
       "latestApprovedOn": "Dernière date d’approbation acceptée",
       "byDefault": "C’est la fin par défaut : Trustline ne l’a pas modifiée.",
       "setByTrustline": "Dernière modification par Trustline le {date}. Motif : {reason}",
       "change": "Modifier la fin de la période d’importation",
       "newClosesOn": "Dernier jour d’importation",
-      "newClosesOnHelp": "Au plus tôt le {earliest}, la veille du premier jour du module Politiques et procédures : cette date ferme la période. Au plus tard dans un an.",
+      "newClosesOnHelp": "Au plus tôt le {earliest}, la veille du début du module Politiques et procédures : choisir cette date ferme la période. Au plus tard dans un an.",
       "reason": "Motif",
       "reasonHelp": "Obligatoire, sur une ligne. Conservé dans le journal de Trustline et dans le journal d’audit du client.",
       "save": "Enregistrer la modification",
@@ -1349,13 +1351,15 @@
       },
       "optOuts": {
         "title": "Qui a désactivé ses e-⁠mails",
-        "help": "Noms seulement. Les personnes dont d’autres dépendent, qui décident d’étapes d’approbation ou trient les incidents, sont signalées.",
+        "help": "Seuls les noms figurent ici. Les personnes dont dépend le travail des autres, parce qu’elles décident des étapes d’approbation ou trient les incidents, sont signalées.",
         "empty": "Personne n’a désactivé ses e-⁠mails.",
         "immediateOff": "E-mails immédiats désactivés",
         "digestOff": "Récapitulatif du matin désactivé",
-        "approves": "Décide d’étapes d’approbation",
+        "approves": "Décide des étapes d’approbation",
         "triages": "Trie les incidents",
-        "reliedHelp": "Sans e-⁠mails immédiats, le travail qui l’attend ne lui parvient que dans Trustline et dans le récapitulatif du matin."
+        "reliedHelpApproves": "Sans e-⁠mails immédiats, une étape qui attend sa décision ne lui parvient que dans Trustline et dans le récapitulatif du matin.",
+        "reliedHelpApprovesNoDigest": "Sans e-⁠mails immédiats ni récapitulatif du matin, une étape qui attend sa décision ne lui parvient que dans Trustline.",
+        "reliedHelpTriages": "Sans e-⁠mails immédiats, un incident grave déclaré dans son périmètre ne lui parvient que dans Trustline ; le récapitulatif du matin ne liste que les incidents qui lui sont attribués."
       }
     },
     "permissions": {
@@ -1479,7 +1483,7 @@
       "sourceLabel": "Origine",
       "sourceImported": "Approuvé avant Trustline",
       "sourceWritten": "Rédigé dans Trustline",
-      "reissueDue": "Réédition à faire"
+      "reissueDue": "Réédition à faire dans les {days} jours, ou en retard"
     },
     "document": {
       "controlBlock": "Document maîtrisé",
@@ -1556,7 +1560,9 @@
       "changeReason": "Motif :",
       "none": "aucun",
       "otherDetail": "Autre information",
-      "printHeaderOriginal": "{number} · Version {version} ({revision} sur l’original) · {title}"
+      "printHeaderOriginal": "{number} · Version {version} ({revision} sur l’original) · {title}",
+      "reviewOpens": "La confirmation sans modification est possible à partir du {opensOn}, à l’approche de son échéance du {dueOn}. Pour modifier le document dès maintenant, commencez une nouvelle version.",
+      "reviewOpensOwner": "La confirmation sans modification est possible à partir du {opensOn}, à l’approche de son échéance du {dueOn}."
     },
     "acknowledge": {
       "title": "Confirmer la prise de connaissance",
@@ -1633,7 +1639,7 @@
       "noChanges": "Aucune section n’a changé dans cette langue.",
       "changedCount": "Sections modifiées dans cette langue : {count} sur {total}.",
       "changed": "Modifiée",
-      "changedIn": "Modifié en {language}",
+      "changedIn": "Modifiée en {language}",
       "unchanged": "Inchangée",
       "lagging": "Non mise à jour",
       "laggingHere": "Modifiée en {authoritative}, non mise à jour en {language}.",
@@ -1693,7 +1699,8 @@
       "reviewedDone": "Votre vérification est signée.",
       "approvedDone": "Votre approbation est signée.",
       "returnedDone": "La version est renvoyée avec vos remarques.",
-      "outOfSight": "Votre rôle dans cette vérification est terminé : cette version ne vous est donc plus affichée."
+      "outOfSight": "Votre rôle dans cette vérification est terminé : cette version ne vous est donc plus affichée.",
+      "changedCountOther": "Sections modifiées : {count} sur {total}, dans cette langue ou, là où elle n’a pas de texte, en {other}."
     },
     "editor": {
       "title": "Rédaction de la version {version}",
@@ -2003,10 +2010,10 @@
       "effective_before_approval": "Il ne peut pas être entré en vigueur avant sa date d’approbation.",
       "effective_in_future": "La date d’entrée en vigueur ne peut pas être postérieure à aujourd’hui : un document importé est déjà en vigueur. Un document qui entre en vigueur plus tard passe par le circuit d’approbation.",
       "review_before_approval": "La prochaine révision doit être postérieure à la date d’approbation.",
-      "review_date_too_far": "La prochaine révision ne peut pas être postérieure au {date} : {max} à compter du {from}, la périodicité la plus longue de votre établissement.",
-      "invalid_number": "Ce numéro ne peut pas être utilisé. Indiquez le numéro tel qu’il est écrit sur l’original, en lettres latines, ou celles des langues de votre établissement, et en chiffres, séparés au besoin par des espaces, -, ., / ou _ : 40 caractères au plus.",
-      "number_script": "Un numéro de document ne peut contenir que des lettres latines, ou celles des langues de votre établissement, avec des chiffres et ⁦- . / _ ( )⁩. Écrivez le numéro de l’original avec ces caractères.",
-      "number_mixed_scripts": "Ce numéro mélange des lettres de plusieurs écritures. Indiquez le numéro tel qu’il est écrit sur l’original, en lettres latines, ou celles des langues de votre établissement, et en chiffres, sans les mélanger.",
+      "review_date_too_far": "La prochaine révision ne peut pas être postérieure au {date} : la périodicité la plus longue de votre établissement est de {max} après le {from}, la plus récente de sa date d’approbation et de sa dernière révision sur l’original.",
+      "invalid_number": "Ce numéro ne peut pas être utilisé. Indiquez le numéro tel qu’il est écrit sur l’original, en lettres (latines, ou celles des langues de votre établissement) et en chiffres, séparés au besoin par des espaces, tirets, points, barres obliques, tirets bas ou parenthèses : 40 caractères au plus.",
+      "number_script": "Ce numéro contient des lettres qu’un numéro de document ne peut pas utiliser. Indiquez-le tel qu’il est écrit sur l’original, en lettres (latines, ou celles des langues de votre établissement) et en chiffres, séparés au besoin par des espaces, tirets, points, barres obliques, tirets bas ou parenthèses : 40 caractères au plus.",
+      "number_mixed_scripts": "Ce numéro mélange des lettres de plusieurs écritures. Indiquez le numéro tel qu’il est écrit sur l’original, avec les lettres d’une seule écriture, en lettres (latines, ou celles des langues de votre établissement) et en chiffres, séparés au besoin par des espaces, tirets, points, barres obliques, tirets bas ou parenthèses : 40 caractères au plus.",
       "number_taken": "Un autre document porte déjà ce numéro.",
       "number_taken_by": "Un autre document porte déjà ce numéro : {number}.",
       "content_required": "Rédigez au moins une section en {language}.",
@@ -2030,7 +2037,7 @@
       "body_too_deep": "Ce fichier ne peut pas être envoyé tel quel : son contenu est imbriqué trop profondément. Préparez-le comme l’indique la page sur la préparation du fichier, puis réessayez.",
       "no_assignee_role_manager": "Pas encore soumise à vérification : personne ne peut décider de l’étape {position} de son circuit d’approbation ({kind}, par le rôle « {role} »). Personne n’a ce rôle pour l’entité responsable de ce document, ou seule une personne qui a préparé cette version l’a. Donnez le rôle « {role} » à la personne qui décide de cette étape, puis soumettez de nouveau la version.",
       "no_assignee_person_manager": "Pas encore soumise à vérification : l’étape {position} de son circuit d’approbation ({kind}) désigne {name}, qui ne peut pas en décider : son compte n’est pas actif, aucun de ses rôles ne le permet, ou cette personne a préparé cette version. Modifiez le circuit dans les paramètres des documents, puis soumettez de nouveau la version.",
-      "review_not_due": "Cette révision peut être confirmée à partir du {opensOn} ; elle est due le {dueOn}.",
+      "review_not_due": "Pas encore : la révision peut être confirmée sans modification à partir du {opensOn}, à l’approche de son échéance du {dueOn}. Pour modifier le document dès maintenant, commencez une nouvelle version.",
       "language_mismatch_differences": "Rédigez les écarts par rapport à l’original seulement dans les langues de votre établissement.",
       "reviewed_before_approval": "La dernière révision sur l’original ne peut pas être antérieure à sa date d’approbation.",
       "reviewed_in_future": "La dernière révision sur l’original ne peut pas être postérieure à aujourd’hui.",
@@ -2048,7 +2055,7 @@
       "original": "L’original",
       "originalHelp": "Tel que le donne l’original signé. Rien de cela ne peut être modifié après l’importation : une modification passe par une nouvelle version.",
       "number": "Numéro sur l’original",
-      "numberHelp": "Tel qu’il est écrit sur l’original, en lettres latines, ou celles des langues de votre établissement, et en chiffres. Laissez vide pour que Trustline le numérote.",
+      "numberHelp": "Tel qu’il est écrit sur l’original, en lettres (latines, ou celles des langues de votre établissement) et en chiffres, séparés au besoin par des espaces, tirets, points, barres obliques, tirets bas ou parenthèses : 40 caractères au plus. Laissez vide pour que Trustline le numérote.",
       "revisionLabel": "Indice de révision sur l’original",
       "revisionLabelHelp": "Facultatif, par exemple « Rév. 3 ».",
       "approvedOn": "Approuvé le",
@@ -2180,7 +2187,7 @@
           "Les dates s’écrivent sous la forme année-mois-jour, par exemple 2024-03-01.",
           "Plusieurs valeurs dans une même colonne sont séparées par |, par exemple ICU|ER.",
           "« acknowledge » vaut yes ou no ; « confidentiality » vaut all_staff ou restricted.",
-          "Un numéro laissé vide est attribué par Trustline. Un numéro donné est conservé tel qu’il est écrit sur l’original, en lettres latines, ou celles des langues de votre établissement, et en chiffres, et ne doit pas être déjà utilisé.",
+          "Un numéro laissé vide est attribué par Trustline. Un numéro donné est conservé tel qu’il est écrit sur l’original, en lettres (latines, ou celles des langues de votre établissement) et en chiffres, séparés au besoin par des espaces, tirets, points, barres obliques, tirets bas ou parenthèses : 40 caractères au plus, et ne doit pas être déjà utilisé.",
           "Les tableaux et les figures ne peuvent pas être importés tels quels. Rédigez un tableau sous forme de liste, une ligne par rangée ; pour une figure ou un logigramme, indiquez-le dans « differences », par exemple « Logigramme de l’annexe B non reproduit, voir l’original »."
         ],
         "limits": "Un lot compte au plus {documents} documents et {characters} caractères de texte. Un fichier plus grand est réparti en plusieurs lots, et chaque lot est une signature distincte.",
@@ -2255,12 +2262,13 @@
         "description": "Chaque document importé comme approuvé avant Trustline, du plus récent au plus ancien : l’original dont il vient, qui l’a importé et quand, et ce que couvre chaque signature.",
         "download": "Exporter le registre (CSV)",
         "empty": "Aucun document n’a été importé.",
-        "original": "Sur l’original",
+        "original": "Numéro et indice de révision sur l’original",
         "importedBy": "Importé par",
         "batch": "Lot",
         "batchPlace": "Document {index} sur {size} ; empreinte du lot :",
         "signed": "Empreinte du contenu signé"
-      }
+      },
+      "languageText": "{language} : {text}"
     },
     "imported": {
       "pill": "Approuvé avant Trustline",
@@ -2271,13 +2279,15 @@
       "approvedOn": "Approuvé le",
       "approvedBy": "Approuvé par (tel qu’écrit sur l’original)",
       "originalKeptAt": "Lieu de conservation de l’original signé",
-      "importedBy": "Importé dans Trustline par {name} le {date}, avec une signature attestant que ce texte correspond à l’original, sauf ce qui est indiqué.",
+      "importedBy": "Importé dans Trustline par {name} le {date}, avec une signature attestant que ce texte correspond à l’original.",
       "nextReviewReissue": "Prochaine révision (réédition)",
       "importedByLabel": "Importé par",
       "notWrittenLabel": "Sections absentes de l’original",
       "lastReviewedOn": "Dernière révision sur l’original",
       "differences": "Écarts par rapport à l’original",
-      "notInOriginal": "L’original ne comportait pas ces sections, qui ne figurent donc pas dans ce texte : {sections}."
+      "notInOriginal": "L’original ne comportait pas ces sections, qui ne figurent donc pas dans ce texte : {sections}.",
+      "importedByNoted": "Importé dans Trustline par {name} le {date}, avec une signature attestant que ce texte correspond à l’original, sauf ce qui est indiqué ci-dessus.",
+      "quoted": "« {name} »"
     },
     "reissue": {
       "pill": "Réédition à faire",
@@ -2311,6 +2321,15 @@
       "asked": "Demandée le {date}",
       "due": "Au plus tard le {date}",
       "acknowledgedAt": "Confirmée le {date}"
+    },
+    "overdueSteps": {
+      "title": "Étapes d’approbation en retard",
+      "description": "Étapes de vérification et d’approbation en retard dans les documents que vous gérez, les plus en retard d’abord.",
+      "empty": "Aucune étape d’approbation n’est en retard dans les documents que vous gérez.",
+      "noAccess": "Cette liste est réservée aux personnes qui gèrent des documents.",
+      "late": "Échéance {date} · {days} de retard",
+      "step": "Étape {position} : {kind}",
+      "nobody": "Personne ne peut en décider"
     }
   }
 }

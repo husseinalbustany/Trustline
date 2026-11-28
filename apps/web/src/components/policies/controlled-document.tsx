@@ -297,10 +297,13 @@ export function ControlledDocument({
       {notInOriginal.length > 0 && (
         <p className="rounded-md border border-line px-3 py-2 text-sm text-muted">
           {fill(t.imported.notInOriginal, {
-            sections: new Intl.ListFormat(lang, { type: "conjunction" }).format(
+            // Each name quoted, so that one does not run into the next.
+            sections: new Intl.ListFormat(lang, { type: "unit" }).format(
               notInOriginal.map((x) => {
                 const section = version.sections.find((y) => y.key === x.key);
-                return section ? inLang(section.name) : x.key;
+                return fill(t.imported.quoted, {
+                  name: section ? inLang(section.name) : x.key,
+                });
               }),
             ),
           })}
@@ -426,6 +429,11 @@ function ApprovedBefore({
   const day = dayFormat(lang);
   const moment = dateTimeFormat(lang, session.tenant.timeZone);
   const m = t.imported;
+  // Whether the importer noted differences: the signature says "except as
+  // noted above" only then.
+  const noted =
+    !!before?.differences &&
+    Object.values(before.differences).some((v) => v?.trim());
   const rows: [string, ReactNode][] = before
     ? [
         ...(before.numberAsGiven
@@ -461,8 +469,7 @@ function ApprovedBefore({
       )}
       {/* What the text here does not reproduce of the original: part of
           what the importer signed, so on screen and on paper. */}
-      {before?.differences &&
-        Object.values(before.differences).some((v) => v?.trim()) && (
+      {noted && before?.differences && (
           <div className="mt-2 text-sm">
             <p className="text-muted">{m.differences}</p>
             <p dir="auto" className="font-medium whitespace-pre-wrap break-words">
@@ -473,7 +480,7 @@ function ApprovedBefore({
       {before && (
         <p className="mt-2 text-sm">
           <Words
-            text={m.importedBy}
+            text={noted ? m.importedByNoted : m.importedBy}
             values={{
               name: pick(before.importedBy.name, lang, session.tenant.defaultLocale) ||
                 t.document.unknownPerson,

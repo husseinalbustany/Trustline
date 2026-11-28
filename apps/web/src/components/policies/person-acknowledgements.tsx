@@ -194,24 +194,20 @@ export function PersonAcknowledgementsView({ lang, t }: PoliciesProps) {
                       <bdi>{inLang(item.document.title)}</bdi>
                     </p>
                   )}
-                  <p className="text-xs text-muted">
-                    {fill(p.asked, {
-                      date: moment.format(new Date(item.assignedAt)),
-                    })}{" "}
-                    <span className="inline-block">
-                      {"· "}
-                      {fill(p.due, { date: day(item.dueOn) ?? "" })}
+                  {/* Laid out with gaps: a wrapped line never starts with a separator. */}
+                  <p className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted">
+                    <span>
+                      {fill(p.asked, {
+                        date: moment.format(new Date(item.assignedAt)),
+                      })}
                     </span>
+                    <span>{fill(p.due, { date: day(item.dueOn) ?? "" })}</span>
                     {item.acknowledgedAt && (
-                      <>
-                        {" "}
-                        <span className="inline-block">
-                          {"· "}
-                          {fill(p.acknowledgedAt, {
-                            date: moment.format(new Date(item.acknowledgedAt)),
-                          })}
-                        </span>
-                      </>
+                      <span>
+                        {fill(p.acknowledgedAt, {
+                          date: moment.format(new Date(item.acknowledgedAt)),
+                        })}
+                      </span>
                     )}
                   </p>
                 </li>

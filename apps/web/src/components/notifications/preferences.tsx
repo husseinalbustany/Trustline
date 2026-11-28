@@ -209,7 +209,7 @@ function PreferencesForm({
               text={t.sentTo}
               values={{
                 email: (
-                  <span dir="ltr" className="font-medium break-all text-foreground">
+                  <span dir="ltr" className="font-medium text-foreground [overflow-wrap:anywhere]">
                     {session.user.email}
                   </span>
                 ),
@@ -230,7 +230,10 @@ function PreferencesForm({
                 role="note"
                 className="mt-1 flex flex-col gap-1 rounded-md border border-warn bg-warn-soft px-3 py-2 text-sm text-foreground"
               >
-                {saved.reliedOn?.approves && <p>{t.reliedOnApproves}</p>}
+                {/* Said of the morning summary only while it is on. */}
+                {saved.reliedOn?.approves && (
+                  <p>{digest ? t.reliedOnApproves : t.reliedOnApprovesNoDigest}</p>
+                )}
                 {saved.reliedOn?.triages && <p>{t.reliedOnTriages}</p>}
               </div>
             )}

@@ -124,8 +124,18 @@ export function ImportWindowNote({
  * A refusal of one document of a batch, worded as the refusal it would
  * have alone: the API gives the same code and details.
  */
-export const asRefusal = (problem: ImportProblem) =>
-  new ApiError(problem.status, problem.code, undefined, undefined, problem);
+export const asRefusal = (problem: ImportProblem) => {
+  // A number the API's shape refuses is said as a number, not as a field
+  // that cannot be read.
+  const fields = Array.isArray(problem.fields) ? (problem.fields as string[]) : [];
+  const numberOnly =
+    problem.code === "invalid_document" &&
+    fields.length > 0 &&
+    fields.every((f) => f.split(".")[0] === "number");
+  return numberOnly
+    ? new ApiError(400, "invalid_number", undefined, undefined, {})
+    : new ApiError(problem.status, problem.code, undefined, undefined, problem);
+};
 
 /** The sections of a type, a text per language for each, as an import takes them. */
 export function SectionsFields({
@@ -356,10 +366,17 @@ export function NotedDifferences({
                   dir={direction(l)}
                   className="whitespace-pre-wrap break-words"
                 >
-                  {session.tenant.locales.length > 1 && (
-                    <span className="text-xs text-muted">{`${ownName(l)}: `}</span>
+                  {session.tenant.locales.length > 1 ? (
+                    <Words
+                      text={m.languageText}
+                      values={{
+                        language: <span className="text-xs text-muted">{ownName(l)}</span>,
+                        text: item.differences![l],
+                      }}
+                    />
+                  ) : (
+                    item.differences![l]
                   )}
-                  {item.differences![l]}
                 </p>
               ))}
           </li>
