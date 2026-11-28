@@ -33,6 +33,10 @@ export const PERMISSIONS = [
   // grant for the whole organization counts: a trail for one unit would
   // still name records and people outside it.
   'audit.view',
+  // Ask for a correction of a month's figures, and set the client's targets
+  // and reporting baseline (docs/specs/reports-and-measures.md). For the
+  // whole organization only.
+  'reports.manage',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -76,6 +80,7 @@ export const PERMISSION_MODULE: Record<Permission, ModuleKey> = {
   'roles.manage': 'core',
   'settings.manage': 'core',
   'audit.view': 'core',
+  'reports.manage': 'core',
 };
 
 /** Whether a permission does anything for a client with these modules. */
@@ -144,6 +149,7 @@ export const SYSTEM_ROLES: {
       'policies.import',
       'reports.view',
       'audit.view',
+      'reports.manage',
     ],
   },
   {

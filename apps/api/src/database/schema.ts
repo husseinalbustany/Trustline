@@ -8,6 +8,7 @@ import {
   boolean,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgPolicy,
   pgRole,
@@ -2739,4 +2740,100 @@ export const policyImportWindows = pgTable(
       withCheck: sql`true`,
     }),
   ],
+);
+
+// Reports and measures over time (docs/specs/reports-and-measures.md).
+
+export const measureStatus = pgEnum('measure_status', ['provisional', 'final']);
+export const measureMethod = pgEnum('measure_method', ['snapshot', 'reconstructed', 'corrected']);
+
+/**
+ * One measure's figure for one month, for the organization (`org_unit_id`
+ * null) or one unit and everything beneath it. Never changed nor deleted
+ * (SELECT and INSERT only, and a trigger: migration 0066): a correction, and
+ * a provisional figure becoming final, are new revisions.
+ */
+export const measureSnapshots = pgTable(
+  'measure_snapshots',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    // The first day of the month, on the client's calendar.
+    month: date({ mode: 'string' }).notNull(),
+    // Its code (reports/measures.ts).
+    measure: text().notNull(),
+    orgUnitId: uuid(),
+    // Which unit a record counts for: where it happened, its owner, the
+    // person's own unit.
+    unitBasis: text().notNull(),
+    // The unit's path, from the top, when the figure was taken.
+    unitPath: uuid().array(),
+    value: numeric({ mode: 'number' }),
+    numerator: integer(),
+    denominator: integer(),
+    details: jsonb().$type<Record<string, unknown>>().notNull().default({}),
+    target: numeric({ mode: 'number' }),
+    // `business` (the default in code), `client` (its own), `baseline`
+    // (the client's figure from before Trustline), `first_months` (the
+    // first three months in Trustline), or null.
+    targetSource: text(),
+    status: measureStatus().notNull(),
+    method: measureMethod().notNull(),
+    revision: integer().notNull(),
+    // Why a correction was asked for, and by whom. Null for the check.
+    reason: text(),
+    requestedBy: uuid(),
+    // The end of the month: the first moment of the next, on its clock.
+    asAt: timestamp({ withTimezone: true }).notNull(),
+    takenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    definitionVersion: integer().notNull(),
+  },
+  (t) => [
+    uniqueIndex('measure_snapshots_once').on(
+      t.tenantId,
+      t.month,
+      t.measure,
+      sql`coalesce(${t.orgUnitId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+      t.unitBasis,
+      t.revision,
+    ),
+    index('measure_snapshots_series_idx').on(t.tenantId, t.measure, t.orgUnitId, t.month),
+    foreignKey({
+      name: 'measure_snapshots_unit_fk',
+      columns: [t.tenantId, t.orgUnitId],
+      foreignColumns: [orgUnits.tenantId, orgUnits.id],
+    }),
+    check('measure_snapshots_measure_code', sql`${t.measure} ~ '^[a-z_]+\\.[a-z_]+$'`),
+    check('measure_snapshots_month_first', sql`extract(day from ${t.month}) = 1`),
+    check('measure_snapshots_revision', sql`${t.revision} >= 1`),
+    check(
+      'measure_snapshots_correction_said',
+      sql`(${t.method} = 'corrected') = (${t.reason} is not null)`,
+    ),
+    tenantIsolation(),
+  ],
+);
+
+/**
+ * A client's own targets and reporting baseline (decisions 1 and 2): one
+ * row once it changed something. Targets by measure code; the baseline is
+ * its monthly average of reports before Trustline, with where it comes
+ * from.
+ */
+export const reportSettings = pgTable(
+  'report_settings',
+  {
+    tenantId: uuid()
+      .primaryKey()
+      .references(() => tenants.id),
+    targets: jsonb().$type<Record<string, number>>().notNull().default({}),
+    baselineMonthlyAverage: numeric({ mode: 'number' }),
+    baselineNote: jsonb().$type<Localized>(),
+    revision: integer().notNull().default(1),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedBy: uuid(),
+  },
+  () => [tenantIsolation()],
 );
