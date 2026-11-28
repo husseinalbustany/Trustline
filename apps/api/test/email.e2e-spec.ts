@@ -230,6 +230,11 @@ describe('email', () => {
         // A quality officer decides approval steps and triages (quality
         // review 3, S3): the screen warns before they switch these off.
         reliedOn: { approves: true, triages: true },
+        // What their switch does not stop (business decision 4).
+        alwaysOn: [
+          { emails: 'serious_incident_alerts', reason: 'triages' },
+          { emails: 'approval_steps', reason: 'decides_approval_steps' },
+        ],
       });
     });
 
@@ -259,6 +264,11 @@ describe('email', () => {
         language: 'ar',
         organizationEnabled: true,
         reliedOn: { approves: true, triages: true },
+        // What their switch does not stop (business decision 4).
+        alwaysOn: [
+          { emails: 'serious_incident_alerts', reason: 'triages' },
+          { emails: 'approval_steps', reason: 'decides_approval_steps' },
+        ],
       });
       await setPreferences(arabic.cookie, { language: 'ar' }).expect(200);
       const entries = (await auditOf(a, 'notification_preferences_changed')).slice(before);
@@ -450,7 +460,9 @@ describe('email', () => {
       expect(outcome).toEqual({
         admin: 'sent',
         [quality.name]: 'sent',
-        [arabic.name]: 'skipped opted_out',
+        // They triage: a serious incident's alert is always sent to them,
+        // whatever their switch says (business decision 4).
+        [arabic.name]: 'sent',
         [leaver.name]: 'skipped inactive',
       });
       await setPreferences(arabic.cookie, { immediate: true }).expect(200);

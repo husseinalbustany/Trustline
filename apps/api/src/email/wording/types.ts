@@ -31,6 +31,7 @@ export type Wording = {
     sign_off_requested: { subject: string; body: string };
     document_step_review: { subject: string; body: string };
     document_step_approve: { subject: string; body: string };
+    review_approval_requested: { subject: string; body: string };
   };
   weekly: {
     subject: string;
@@ -74,6 +75,8 @@ export type Wording = {
     doneImmediate: string;
     doneDigest: string;
     turnBackOn: string;
+    /** On the immediate emails' pages: what always goes (business decision 4). */
+    alwaysOn: string;
     invalid: string;
   };
 };

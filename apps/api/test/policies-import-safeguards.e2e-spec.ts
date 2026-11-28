@@ -97,7 +97,7 @@ describe('policies: the safeguards of importing documents', () => {
     b = await bench.createHospital('b');
     const facility = await bench.createUnit(a, 'facility', 'F', null);
     dept = await bench.createUnit(a, 'department', 'NUR', facility);
-    await bench.createRole(a, 'writer', ['policies.view', 'policies.manage']);
+    await bench.createRole(a, 'writer', ['policies.view', 'policies.manage', 'policies.import']);
     writer = await bench.createStaff(a, 'writer', { role: 'writer', orgUnitId: null });
     reader = await bench.createStaff(a, 'reader', { role: 'reporter', orgUnitId: null });
     // Who decides the starting route's steps.

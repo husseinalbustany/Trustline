@@ -53,7 +53,11 @@ export function confirmPage(locale: Locale, which: EmailSwitch) {
   const w = WORDING[locale];
   return page(
     locale,
-    [which === 'immediate' ? w.page.confirmImmediate : w.page.confirmDigest],
+    // The emails that stay on, whoever asks (business decision 4): said
+    // the same to everyone, so the page tells nothing of the person.
+    which === 'immediate'
+      ? [w.page.confirmImmediate, w.page.alwaysOn]
+      : [w.page.confirmDigest],
     `<form method="post" action=""><input type="hidden" name="List-Unsubscribe" value="One-Click"><button type="submit" style="font-size:16px;padding:8px 16px">${escapeHtml(w.page.button)}</button></form>`,
   );
 }
@@ -63,6 +67,7 @@ export function donePage(locale: Locale, which: EmailSwitch) {
   const w = WORDING[locale];
   return page(locale, [
     which === 'immediate' ? w.page.doneImmediate : w.page.doneDigest,
+    ...(which === 'immediate' ? [w.page.alwaysOn] : []),
     w.page.turnBackOn,
   ]);
 }

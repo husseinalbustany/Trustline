@@ -1012,10 +1012,14 @@ export class DocumentsService {
     // Trustline, the importer's signature that this is its text, and the
     // sections it came without. For every reader of the version: it is
     // what its control block stands on.
-    const imported =
+    const original =
       version.source === 'imported'
         ? await this.importedOriginal(tx, version)
         : null;
+    // With where its owner's confirmation stands (business decision 1).
+    const imported = original
+      ? { ...original, confirmation: await this.importConfirmationOf(tx, version.id, today) }
+      : null;
 
     // What the viewer may do with it.
     const pending = latest ? this.engine.pendingStep(latest) : null;
@@ -1139,6 +1143,16 @@ export class DocumentsService {
               sectionsNotInOriginal: imported.sectionsNotWritten,
               importedBy: imported.importedBy,
               importedAt: imported.importedAt,
+              // Business decision 1: whether its owner has confirmed it.
+              ownerConfirmation: imported.confirmation
+                ? {
+                    state: imported.confirmation.state,
+                    dueOn: imported.confirmation.dueOn,
+                    confirmedAt: imported.confirmation.confirmedAt,
+                    confirmedBy: imported.confirmation.confirmedBy,
+                    byImport: imported.confirmation.byImport,
+                  }
+                : null,
             }
           : null,
         // For the print header: "Version 1 (Rev. 4 on the original)".

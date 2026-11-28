@@ -61,6 +61,8 @@ export const DEFAULT_DOCUMENT_TYPES: {
   name: Name;
   numberPrefix: string;
   defaultReviewMonths: number;
+  /** Business decision 6: on for policies, off for the others. */
+  noChangeNeedsApproval: boolean;
   position: number;
   sections: DefaultSection[];
 }[] = [
@@ -69,6 +71,7 @@ export const DEFAULT_DOCUMENT_TYPES: {
     name: { en: 'Policy', ar: 'سياسة', fr: 'Politique' },
     numberPrefix: 'POL',
     defaultReviewMonths: 36,
+    noChangeNeedsApproval: true,
     position: 1,
     sections: [
       PURPOSE,
@@ -90,6 +93,7 @@ export const DEFAULT_DOCUMENT_TYPES: {
     name: { en: 'Procedure', ar: 'إجراء', fr: 'Procédure' },
     numberPrefix: 'PRC',
     defaultReviewMonths: 24,
+    noChangeNeedsApproval: false,
     position: 2,
     sections: [
       PURPOSE,
@@ -124,6 +128,7 @@ export const DEFAULT_DOCUMENT_TYPES: {
     },
     numberPrefix: 'WI',
     defaultReviewMonths: 12,
+    noChangeNeedsApproval: false,
     position: 3,
     sections: [
       PURPOSE,

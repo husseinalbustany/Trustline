@@ -94,3 +94,27 @@ export function reachOf(
   }
   return [...ids];
 }
+
+/**
+ * Permissions that may be given by someone who does not hold them, and
+ * what they must hold instead, for the same place. Importing documents is
+ * the Quality officer's, not the Administrator's (business decision 1),
+ * but whoever manages documents there may still give it, and with it the
+ * Quality officer's role, to someone else: never to themselves, as nobody
+ * changes their own access (`cannot_change_self`).
+ */
+const GRANTED_BY: Partial<Record<Permission, Permission>> = {
+  'policies.import': 'policies.manage',
+};
+
+/** Whether the person may give this permission for this place. */
+export function mayGrant(
+  auth: { scope: Scope },
+  permission: Permission,
+  orgUnitId: string | null,
+): boolean {
+  if (covers(auth, permission, orgUnitId)) return true;
+  const instead = GRANTED_BY[permission];
+  return !!instead && covers(auth, instead, orgUnitId);
+}
+

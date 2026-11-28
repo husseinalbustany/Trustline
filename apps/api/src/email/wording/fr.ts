@@ -37,6 +37,10 @@ export const fr: Wording = {
       subject: 'Le document {number} attend votre approbation',
       body: 'Le document {number}, version {version}, attend votre approbation.',
     },
+    review_approval_requested: {
+      subject: 'Document {number} : une révision sans modification attend votre signature',
+      body: 'Le responsable du document {number} a confirmé lors de sa révision périodique qu’il n’a pas besoin de modification. Sa prochaine révision n’est fixée qu’après votre signature.',
+    },
   },
   weekly: {
     subject: 'Prises de connaissance en retard cette semaine',
@@ -77,6 +81,7 @@ export const fr: Wording = {
     doneImmediate: 'Vous ne recevrez plus les e-mails immédiats.',
     doneDigest: 'Vous ne recevrez plus les e-mails de synthèse.',
     turnBackOn: 'Vous pouvez les réactiver dans Trustline, dans vos préférences d’e-mail.',
+    alwaysOn: 'Les alertes d’incidents graves et d’événements sentinelles, pour celles et ceux qui les trient, et les étapes d’approbation qui vous sont attribuées sont toujours envoyées : d’autres en dépendent.',
     invalid: 'Ce lien n’est pas valide ou a expiré. Vous pouvez modifier vos préférences d’e-mail dans Trustline.',
   },
 };

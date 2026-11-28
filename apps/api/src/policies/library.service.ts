@@ -57,6 +57,7 @@ import { inChunks } from '../incidents/notifier.js';
 import { csv, csvFileName } from './csv.js';
 import { loadDocument } from './document-access.js';
 import {
+  confirmationState,
   REVIEW_DUE_DAYS,
   reviewsAwaitingFor,
   reviewState,
@@ -282,6 +283,13 @@ export class LibraryService {
           from ${documentImports} di where di.version_id = ${documents.publishedVersionId})`,
         differences: sql<Localized | null>`(select di.differences
           from ${documentImports} di where di.version_id = ${documents.publishedVersionId})`,
+        // Where its owner's confirmation stands (business decision 1).
+        confirmation: sql<'confirmed' | 'byImport' | 'overdue' | 'awaiting' | null>`(select
+          case when di.confirmed_by_import then 'byImport'
+               when di.confirmed_at is not null then 'confirmed'
+               when di.confirmation_due_on < ${today}::date then 'overdue'
+               else 'awaiting' end
+          from ${documentImports} di where di.version_id = ${documents.publishedVersionId})`,
       })
       .from(documents)
       .innerJoin(documentTypes, eq(documentTypes.id, documents.typeId))
@@ -317,6 +325,7 @@ export class LibraryService {
           acknowledgementRequired: _ack,
           originalLastReviewedOn: _original,
           differences: _differences,
+          confirmation: _confirmation,
           ...row
         }) => ({
           ...row,
@@ -413,6 +422,7 @@ export class LibraryService {
           h.approvedBeforeTrustline,
           h.originalLastReviewedOn,
           h.differences,
+          h.ownerConfirmation,
         ],
         rows.map((r) => {
           const review = reviewState(r, today);
@@ -444,6 +454,7 @@ export class LibraryService {
               : words[r.source === 'imported' ? 'yes' : 'no'],
             r.originalLastReviewedOn,
             r.differences ? name(r.differences) : null,
+            r.confirmation ? words[`confirmation.${r.confirmation}`] : null,
           ];
         }),
       );
@@ -1556,12 +1567,28 @@ export class LibraryService {
         limit: input.pageSize,
         offset: (input.page - 1) * input.pageSize,
       });
-      const people = await this.namesOf(tx, rows.map((r) => r.importedBy));
+      const people = await this.namesOf(
+        tx,
+        rows.flatMap((r) => [r.importedBy, ...(r.confirmedBy ? [r.confirmedBy] : [])]),
+      );
+      const today = dayOf(new Date(), auth.tenant.timeZone);
       return {
-        items: rows.map(({ importedBy, ...r }) => ({
-          ...r,
-          importedBy: { id: importedBy, name: people.get(importedBy) ?? null },
-        })),
+        items: rows.map(
+          ({ importedBy, confirmationDueOn, confirmedAt, confirmedBy, confirmedByImport, ...r }) => ({
+            ...r,
+            importedBy: { id: importedBy, name: people.get(importedBy) ?? null },
+            // The owner's confirmation (business decision 1).
+            confirmation: {
+              state: confirmationState({ confirmedAt, dueOn: confirmationDueOn }, today),
+              dueOn: confirmationDueOn,
+              confirmedAt,
+              confirmedBy: confirmedBy
+                ? { id: confirmedBy, name: people.get(confirmedBy) ?? null }
+                : null,
+              byImport: confirmedByImport,
+            },
+          }),
+        ),
         total,
       };
     });
@@ -1577,6 +1604,7 @@ export class LibraryService {
       const rows = await this.importRows(tx, { limit: EXPORT_MAX_ROWS, offset: 0 });
       const people = await this.namesOf(tx, rows.map((r) => r.importedBy));
       const h = IMPORT_REGISTER_HEADINGS[locale];
+      const words = EXPORT_VALUES[locale];
       const name = (text: Localized | null | undefined) =>
         pickText(text, locale, defaultLocale);
       const body = csv(
@@ -1595,6 +1623,9 @@ export class LibraryService {
           h.batch,
           h.batchListHash,
           h.signatureFingerprint,
+          h.ownerConfirmation,
+          h.confirmationDueOn,
+          h.confirmedAt,
         ],
         rows.map((r) => [
           r.number,
@@ -1611,6 +1642,13 @@ export class LibraryService {
           r.batch.id,
           r.batch.listHash,
           r.contentHash,
+          words[
+            r.confirmedByImport
+              ? 'confirmation.byImport'
+              : (`confirmation.${confirmationState({ confirmedAt: r.confirmedAt, dueOn: r.confirmationDueOn }, today)}` as const)
+          ],
+          r.confirmationDueOn,
+          r.confirmedAt ? momentIn(r.confirmedAt, timeZone) : null,
         ]),
       );
       await this.provisioning.audit(
@@ -1652,6 +1690,10 @@ export class LibraryService {
         },
         signatureId: documentImports.signatureId,
         contentHash: signatures.contentHash,
+        confirmationDueOn: documentImports.confirmationDueOn,
+        confirmedAt: documentImports.confirmedAt,
+        confirmedBy: documentImports.confirmedBy,
+        confirmedByImport: documentImports.confirmedByImport,
       })
       .from(documentImports)
       .innerJoin(documents, eq(documents.id, documentImports.documentId))

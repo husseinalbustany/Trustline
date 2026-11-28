@@ -280,6 +280,10 @@ export const EXPORT_VALUES: Words<
   | 'account.active'
   | 'account.left'
   | 'account.invited'
+  | 'confirmation.awaiting'
+  | 'confirmation.overdue'
+  | 'confirmation.confirmed'
+  | 'confirmation.byImport'
 > = {
   en: {
     'status.draft': 'Draft',
@@ -303,6 +307,10 @@ export const EXPORT_VALUES: Words<
     'account.active': 'Active',
     'account.left': 'No longer active',
     'account.invited': 'Invited, not signed in yet',
+    'confirmation.awaiting': 'Awaiting the owner',
+    'confirmation.overdue': 'Overdue',
+    'confirmation.confirmed': 'Confirmed',
+    'confirmation.byImport': 'Confirmed by the import (the owner imported it)',
   },
   ar: {
     'status.draft': 'مسودة',
@@ -326,6 +334,10 @@ export const EXPORT_VALUES: Words<
     'account.active': 'نشط',
     'account.left': 'لم يعد نشطًا',
     'account.invited': 'دعوة لم تُقبل بعد',
+    'confirmation.awaiting': 'بانتظار المسؤول عن الوثيقة',
+    'confirmation.overdue': 'تجاوز الموعد',
+    'confirmation.confirmed': 'مؤكَّد',
+    'confirmation.byImport': 'مؤكَّد بالاستيراد (المسؤول عن الوثيقة هو من استوردها)',
   },
   fr: {
     'status.draft': 'Brouillon',
@@ -349,6 +361,10 @@ export const EXPORT_VALUES: Words<
     'account.active': 'Actif',
     'account.left': 'N’est plus actif',
     'account.invited': 'Invitation envoyée, pas encore acceptée',
+    'confirmation.awaiting': 'En attente du responsable',
+    'confirmation.overdue': 'En retard',
+    'confirmation.confirmed': 'Confirmé',
+    'confirmation.byImport': 'Confirmé par l’import (le responsable l’a importé)',
   },
 };
 

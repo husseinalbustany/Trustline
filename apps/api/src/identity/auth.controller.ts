@@ -6,6 +6,7 @@ import {
   HttpCode,
   NotFoundException,
   Post,
+  Put,
   Req,
   Res,
   UnauthorizedException,
@@ -87,12 +88,15 @@ export class AuthController {
    * permissions of modules the client has, so that the menu holds nothing
    * of a module that is off; the roles keep the others.
    */
-  me(@Req() req: AuthedRequest) {
+  async me(@Req() req: AuthedRequest) {
     const { tenant, user, permissions, scope } = req.auth;
     const inUse = (p: string) => permissionInUse(p, tenant.modules);
     return {
       tenant,
       user,
+      // How they sign (business decision 9): `password`, `pin` (no
+      // password: single sign-on only), or `none` until they set a PIN.
+      signingMethod: await this.auth.signingMethodOf(req.auth),
       permissions: permissions.filter(inUse),
       scope: Object.fromEntries(
         Object.entries(scope).filter(([p]) => inUse(p)),
@@ -137,3 +141,28 @@ export class AuthController {
     }
   }
 }
+
+const signingPinSchema = z.strictObject({ pin: z.string().max(40) });
+
+/**
+ * The person's own signing PIN (business decision 9), for a person who has
+ * no password: set or changed only by them, within ten minutes of signing
+ * in. Never shown, to anyone. Open while the subscription is suspended: it
+ * is about the person, as their preferences are.
+ */
+@Controller('me')
+@UseGuards(SessionGuard)
+@ForModule('core')
+export class SigningPinController {
+  constructor(private readonly auth: AuthService) {}
+
+  @Put('signing-pin')
+  @HttpCode(204)
+  @OpenWhileSuspended()
+  async set(@Body() body: unknown, @Req() req: AuthedRequest) {
+    const parsed = signingPinSchema.safeParse(body);
+    if (!parsed.success) throw new BadRequestException();
+    await this.auth.setSigningPin(req.auth, parsed.data.pin, req.ip ?? null);
+  }
+}
+

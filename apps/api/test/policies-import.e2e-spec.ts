@@ -133,7 +133,7 @@ describe('policies: importing documents, the approving authority, the authoritat
     dept = await bench.createUnit(a, 'department', 'NUR', facility);
     ward = await bench.createUnit(a, 'unit', 'WARD', dept);
     pharmacy = await bench.createUnit(a, 'department', 'PHA', facility);
-    await bench.createRole(a, 'writer', ['policies.view', 'policies.manage']);
+    await bench.createRole(a, 'writer', ['policies.view', 'policies.manage', 'policies.import']);
     await bench.createRole(a, 'auditor', ['policies.view_all']);
     await bench.createRole(a, 'none', ['reports.view']);
     importer = await staff(a, 'importer', 'quality_officer', null, facility);
@@ -145,7 +145,7 @@ describe('policies: importing documents, the approving authority, the authoritat
     auditor = await staff(a, 'auditor', 'auditor', null, facility);
     nobody = await staff(a, 'nobody', 'none', null, ward);
     const bUnit = await bench.createUnit(b, 'facility', 'F', null);
-    await bench.createRole(b, 'writer', ['policies.view', 'policies.manage']);
+    await bench.createRole(b, 'writer', ['policies.view', 'policies.manage', 'policies.import']);
     bWriter = await staff(b, 'bwriter', 'writer', null, bUnit);
     types = Object.fromEntries(
       (await get(a.cookie, '/types').expect(200)).body.map((t: { code: string; id: string }) => [t.code, t.id]),
@@ -201,10 +201,12 @@ describe('policies: importing documents, the approving authority, the authoritat
   describe('importing one document', () => {
     it('is for those who manage documents for the whole organization, and checks everything before the password', async () => {
       await http().post('/policies/documents/import').send({ password, ...document() }).expect(401);
+      // Importing is `policies.import`, for the whole organization
+      // (business decision 1).
       for (const who of [reader, auditor, nobody, phaWriter, authority]) {
         expect((await importOne(who.cookie, document()).expect(403)).body).toEqual({
           code: 'missing_permission',
-          permission: 'policies.manage',
+          permission: 'policies.import',
         });
       }
       // Strict input.
@@ -332,7 +334,7 @@ describe('policies: importing documents, the approving authority, the authoritat
       // with the authoritative language recorded on it (security review 7,
       // finding 3).
       const original = (control.approvedBeforeTrustline as Record<string, unknown>);
-      const { importedBy: _by, importedAt: _at, sectionsNotInOriginal: _missing, ...said } = original;
+      const { importedBy: _by, importedAt: _at, sectionsNotInOriginal: _missing, ownerConfirmation: _confirmation, ...said } = original;
       expect(version.authoritativeLocale).toBe('en');
       expect(details.signature.contentHash).toBe(
         contentHash(
@@ -728,10 +730,12 @@ describe('policies: importing documents, the approving authority, the authoritat
         .map((line) => [...line.matchAll(/"((?:[^"]|"")*)"/g)].map((m) => m[1]));
       // After it, since quality review 3, what the original says of its
       // last review and its differences, so earlier columns keep their place.
-      expect(rows[0].slice(-3)).toEqual([
+      expect(rows[0].slice(-4)).toEqual([
         'Approved before Trustline',
         'Last reviewed on the original',
         'Differences from the original',
+        // Business decision 1.
+        'Owner’s confirmation of the import',
       ]);
       const column = rows[0].indexOf('Approved before Trustline');
       expect(rows.find((r) => r[0] === late.number)![column]).toBe('Yes');

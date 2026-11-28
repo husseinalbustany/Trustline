@@ -39,6 +39,7 @@ describe('what is emailed at once', () => {
       'incident_assigned',
       'sign_off_requested',
       'document_step_assigned',
+      'review_approval_requested',
     ] as const) {
       expect(categoryOf(kind, { serious: false })).toBe('immediate');
     }
@@ -62,10 +63,12 @@ describe('what is emailed at once', () => {
   });
 
   it('still sends what is about incidents while the subscription is suspended, and not approvals', () => {
-    for (const kind of IMMEDIATE_KINDS.filter((k) => k !== 'document_step_assigned')) {
+    // Approvals wait: a step, and a "no change" review (business decision 6).
+    const approvals = ['document_step_assigned', 'review_approval_requested'];
+    for (const kind of IMMEDIATE_KINDS.filter((k) => !approvals.includes(k))) {
       expect(SAFETY_WHILE_SUSPENDED).toContain(kind);
     }
-    expect(SAFETY_WHILE_SUSPENDED).not.toContain('document_step_assigned');
+    for (const kind of approvals) expect(SAFETY_WHILE_SUSPENDED).not.toContain(kind);
     expect(SAFETY_WHILE_SUSPENDED).toContain('acknowledgements_overdue_digest');
   });
 });

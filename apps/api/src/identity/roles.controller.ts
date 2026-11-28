@@ -27,7 +27,7 @@ import {
 } from '../i18n/locales.js';
 import { PERMISSIONS, type Permission } from './permissions.js';
 import { ProvisioningService } from './provisioning.service.js';
-import { covers } from './scope.js';
+import { covers, mayGrant } from './scope.js';
 import {
   requireEverywhere,
   requirePermission,
@@ -101,7 +101,7 @@ export class RolesController {
    * organization: holding it for one department is not enough.
    */
   private assertWithinOwn(req: AuthedRequest, permissions?: Permission[]) {
-    if (permissions?.some((p) => !covers(req.auth, p, null))) {
+    if (permissions?.some((p) => !mayGrant(req.auth, p, null))) {
       throw new ForbiddenException({ code: 'cannot_grant_higher_access' });
     }
   }

@@ -18,6 +18,9 @@ export const IMMEDIATE: Partial<Record<NotificationKind, 'always' | 'serious'>> 
   incident_assigned: 'always',
   sign_off_requested: 'always',
   document_step_assigned: 'always',
+  // A "no change" review awaiting the Approving authority's signature
+  // (business decision 6): as an approval step assigned to them.
+  review_approval_requested: 'always',
 };
 
 export type ImmediateKind =
@@ -26,7 +29,8 @@ export type ImmediateKind =
   | 'sentinel_flagged'
   | 'incident_assigned'
   | 'sign_off_requested'
-  | 'document_step_assigned';
+  | 'document_step_assigned'
+  | 'review_approval_requested';
 
 export const IMMEDIATE_KINDS = Object.keys(IMMEDIATE) as ImmediateKind[];
 
@@ -62,3 +66,26 @@ export const SAFETY_WHILE_SUSPENDED: NotificationKind[] = [
   'sign_off_requested',
   'acknowledgements_overdue_digest',
 ];
+
+/**
+ * The immediate emails some people may not switch off (business decision
+ * 4): the people others rely on. Serious-incident and sentinel alerts to
+ * those who triage, and approval steps (a "no change" review included) to
+ * those assigned them. The organization's switch still stops everything.
+ */
+export const COMPULSORY_FOR_TRIAGERS: NotificationKind[] = [
+  'incident_reported',
+  'incident_handed_over',
+  'sentinel_flagged',
+];
+export const COMPULSORY_FOR_ASSIGNEES: NotificationKind[] = [
+  'document_step_assigned',
+  'review_approval_requested',
+];
+
+/** What the preferences answer says is always on, and why. */
+export type AlwaysOn = {
+  emails: 'serious_incident_alerts' | 'approval_steps';
+  reason: 'triages' | 'decides_approval_steps';
+};
+

@@ -3,8 +3,10 @@ import {
   Body,
   ConflictException,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
+  HttpCode,
   NotFoundException,
   Param,
   Patch,
@@ -31,7 +33,7 @@ import { optionalLine } from '../i18n/text.js';
 import { OrgUnitsService } from '../organization/org-units.service.js';
 import type { Permission } from './permissions.js';
 import { ProvisioningService, type RoleGrant } from './provisioning.service.js';
-import { covers } from './scope.js';
+import { covers, mayGrant } from './scope.js';
 import {
   requirePermission,
   SessionGuard,
@@ -204,7 +206,7 @@ export class UsersController {
     if (byRole === null) throw new BadRequestException();
     const within = grants.every((grant) =>
       (byRole.get(grant.roleId) ?? []).every((p) =>
-        covers(req.auth, p as Permission, grant.orgUnitId),
+        mayGrant(req.auth, p as Permission, grant.orgUnitId),
       ),
     );
     if (!within) {
@@ -228,7 +230,7 @@ export class UsersController {
     const theirs = await this.provisioning.grantsOfUser(tx, target.id);
     const within = theirs.every((grant) =>
       grant.permissions.every((p) =>
-        covers(req.auth, p as Permission, grant.orgUnitId),
+        mayGrant(req.auth, p as Permission, grant.orgUnitId),
       ),
     );
     if (!within) {
@@ -561,6 +563,40 @@ export class UsersController {
         { purpose },
       );
       return { ...invite, org: tenant.slug };
+    });
+  }
+
+  /**
+   * Resets a person's signing PIN (business decision 9), for whoever may
+   * manage them: it is removed, and they set a new one after signing in
+   * again. An administrator can never set or see one. Audited; the person
+   * is told in Trustline. Open while the subscription is suspended, as the
+   * sign-in link is.
+   */
+  @Delete(':id/signing-pin')
+  @HttpCode(204)
+  @OpenWhileSuspended()
+  resetSigningPin(@Param('id') id: string, @Req() req: AuthedRequest) {
+    requirePermission(req, 'users.manage');
+    const userId = this.parseId(id);
+    const { tenant, user: actor } = req.auth;
+    return this.tenantDb.withTenant(tenant.id, async (tx) => {
+      const [existing] = await tx
+        .select({ id: users.id, orgUnitId: users.orgUnitId, signingPinHash: users.signingPinHash })
+        .from(users)
+        .where(eq(users.id, userId))
+        .for('update');
+      if (!existing) throw new NotFoundException();
+      await this.assertCanManage(tx, req, existing);
+      if (!existing.signingPinHash) {
+        throw new ConflictException({ code: 'no_signing_pin' });
+      }
+      await tx
+        .update(users)
+        .set({ signingPinHash: null, signingPinSetAt: null, updatedAt: new Date() })
+        .where(eq(users.id, userId));
+      await this.provisioning.audit(tx, tenant.id, actor.id, 'signing_pin_reset', 'user', userId, null);
+      await this.provisioning.tellAboutSigningPin(tx, tenant.id, userId, 'reset');
     });
   }
 

@@ -1,7 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { OrganizationModule } from '../organization/organization.module.js';
 import { AccessService } from './access.service.js';
-import { AuthController } from './auth.controller.js';
+import { AuthController, SigningPinController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { ProvisioningService } from './provisioning.service.js';
 import { RolesController } from './roles.controller.js';
@@ -14,7 +14,7 @@ import { UsersController } from './users.controller.js';
 @Module({
   // For checking the org unit a user or a role grant is placed in.
   imports: [OrganizationModule],
-  controllers: [AuthController, UsersController, RolesController],
+  controllers: [AuthController, SigningPinController, UsersController, RolesController],
   providers: [
     AccessService,
     AuthService,

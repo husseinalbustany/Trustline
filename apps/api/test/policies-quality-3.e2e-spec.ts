@@ -109,7 +109,7 @@ describe('policies: quality review 3', () => {
     dept = await bench.createUnit(a, 'department', 'NUR', facility);
     ward = await bench.createUnit(a, 'unit', 'WARD', dept);
     pharmacy = await bench.createUnit(a, 'department', 'PHA', facility);
-    await bench.createRole(a, 'writer', ['policies.view', 'policies.manage']);
+    await bench.createRole(a, 'writer', ['policies.view', 'policies.manage', 'policies.import']);
     writer = await staff(a, 'writer', 'writer', null, dept);
     owner = await staff(a, 'owner', 'writer', null, dept);
     phaManager = await staff(a, 'phamanager', 'writer', pharmacy, pharmacy);
@@ -196,7 +196,7 @@ describe('policies: quality review 3', () => {
         },
       });
       // What the importer signed covers both.
-      const { importedBy: _by, importedAt: _at, sectionsNotInOriginal: _s, ...said } = version.control.approvedBeforeTrustline;
+      const { importedBy: _by, importedAt: _at, sectionsNotInOriginal: _s, ownerConfirmation: _c, ...said } = version.control.approvedBeforeTrustline;
       expect(version.imported.signature.contentHash).toBe(
         contentHash(
           signedImport(
@@ -213,8 +213,8 @@ describe('policies: quality review 3', () => {
 
       // The master list: its last two columns.
       const list = cells((await get(writer.cookie, '/exports/documents?locale=en').expect(200)).text);
-      expect(list[0].slice(-2)).toEqual(['Last reviewed on the original', 'Differences from the original']);
-      expect(list.find((r) => r[0] === imported.number)!.slice(-2)).toEqual([shiftDay(today, -200), differences.en]);
+      expect(list[0].slice(-3, -1)).toEqual(['Last reviewed on the original', 'Differences from the original']);
+      expect(list.find((r) => r[0] === imported.number)!.slice(-3, -1)).toEqual([shiftDay(today, -200), differences.en]);
     });
 
     it('tells the owner, and not the importer, that the document is theirs', async () => {
@@ -272,6 +272,8 @@ describe('policies: quality review 3', () => {
         'Approved by (as written on the original)', 'Last reviewed on the original', 'Where the signed original is kept',
         'Differences from the original', 'Imported by', 'Imported at', 'Batch', 'Fingerprint of the batch',
         'Fingerprint of what was signed',
+        // Business decision 1.
+        'Owner’s confirmation', 'Confirmation due on', 'Confirmed at',
       ]);
       expect(file.find((r) => r[0] === `DIFF-${run}`)![12]).toBe(diff.batch.listHash);
       expect((await auditOf('imports_exported')).slice(before)).toEqual([

@@ -14,6 +14,7 @@ import type { AuthContext } from '../identity/auth.service.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
 import type { Locale } from '../i18n/locales.js';
 import { MAIL_SENDER, type MailSender } from './sender.js';
+import type { AlwaysOn } from './kinds.js';
 import type { EmailSwitch, UnsubscribeClaim } from './unsubscribe-token.js';
 
 export type PreferenceChange = {
@@ -73,6 +74,8 @@ export class EmailPreferencesService {
       // incidents, in the modules the organization has. The screen warns
       // before such a person switches them off.
       reliedOn: reliedOnOf(auth),
+      // What their own switch does not stop (business decision 4).
+      alwaysOn: alwaysOnOf(auth),
     };
   }
 
@@ -334,3 +337,20 @@ function reliedOnOf(auth: AuthContext) {
       modules.includes('incidents') && auth.permissions.includes('incidents.triage'),
   };
 }
+
+/**
+ * The immediate emails a person may not switch off, and why (business
+ * decision 4): kinds.ts says which notifications they are.
+ */
+export function alwaysOnOf(auth: AuthContext): AlwaysOn[] {
+  const relied = reliedOnOf(auth);
+  return [
+    ...(relied.triages
+      ? [{ emails: 'serious_incident_alerts' as const, reason: 'triages' as const }]
+      : []),
+    ...(relied.approves
+      ? [{ emails: 'approval_steps' as const, reason: 'decides_approval_steps' as const }]
+      : []),
+  ];
+}
+

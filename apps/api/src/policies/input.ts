@@ -281,6 +281,9 @@ export const typeCreateSchema = z.strictObject({
   numberPrefix: prefix,
   sections: sectionsSchema,
   defaultReviewMonths: z.number().int().min(1).max(120),
+  // Business decision 6: a "no change" review also signed by the
+  // Approving authority.
+  noChangeNeedsApproval: z.boolean().default(false),
   position: z.number().int().min(0).max(10_000).default(0),
 });
 
@@ -290,6 +293,7 @@ export const typeUpdateSchema = z
     numberPrefix: prefix.optional(),
     sections: sectionsSchema.optional(),
     defaultReviewMonths: z.number().int().min(1).max(120).optional(),
+    noChangeNeedsApproval: z.boolean().optional(),
     active: z.boolean().optional(),
     position: z.number().int().min(0).max(10_000).optional(),
     revision,

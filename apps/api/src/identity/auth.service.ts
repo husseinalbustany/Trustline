@@ -1,5 +1,12 @@
 import { randomBytes } from 'node:crypto';
-import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { and, eq, gt, isNull, lt, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Database, Transaction } from '../database/client.js';
@@ -30,6 +37,21 @@ import { hashToken, ProvisioningService } from './provisioning.service.js';
 import { buildScope, covers, type Scope } from './scope.js';
 
 export const MAX_FAILED_ATTEMPTS = 5;
+
+/** A signing PIN: 6 to 12 digits (business decision 9). */
+const SIGNING_PIN = /^\d{6,12}$/;
+/** Setting a signing PIN needs a sign-in this recent, for this session. */
+export const SIGNING_PIN_FRESH_MS = 10 * 60_000;
+
+/**
+ * Whether a PIN is too easily guessed: all one digit, or digits going up
+ * or down one at a time (123456, 987654, 890123).
+ */
+export function pinTooSimple(pin: string) {
+  const digits = [...pin].map(Number);
+  const steps = digits.slice(1).map((d, i) => (d - digits[i] + 10) % 10);
+  return steps.every((s) => s === 0) || steps.every((s) => s === 1) || steps.every((s) => s === 9);
+}
 const LOCK_MINUTES = 15;
 export const SESSION_HOURS = 8;
 export const MIN_PASSWORD_LENGTH = 12;
@@ -374,12 +396,23 @@ export class AuthService {
     const tenantId = auth.tenant.id;
     const [user] = await this.tenantDb.withTenant(tenantId, (tx) =>
       tx
-        .select({ id: users.id, passwordHash: users.passwordHash })
+        .select({
+          id: users.id,
+          passwordHash: users.passwordHash,
+          signingPinHash: users.signingPinHash,
+        })
         .from(users)
         .where(eq(users.id, auth.user.id)),
     );
-    const valid = user?.passwordHash
-      ? await verifyPassword(password, user.passwordHash)
+    // A person with a password signs with it; one with none (who signs in
+    // only through single sign-on) with their signing PIN (business
+    // decision 9); one with neither cannot sign until they set a PIN.
+    const credential = user?.passwordHash ?? user?.signingPinHash ?? null;
+    if (user && !credential) {
+      throw new ForbiddenException({ code: 'signing_pin_required' });
+    }
+    const valid = credential
+      ? await verifyPassword(password, credential)
       : (await this.burnTime(password), false);
     const outcome = await this.tenantDb.withTenant(tenantId, async (tx) => {
       // Under a row lock, as at sign-in: parallel guesses are counted one by
@@ -388,16 +421,18 @@ export class AuthService {
         .select({
           status: users.status,
           passwordHash: users.passwordHash,
+          signingPinHash: users.signingPinHash,
           lockedUntil: users.lockedUntil,
         })
         .from(users)
         .where(eq(users.id, auth.user.id))
         .for('update');
       const locked = !!fresh?.lockedUntil && fresh.lockedUntil > new Date();
+      // The same credential as was checked, unchanged since.
       const stillValid =
         valid &&
         fresh?.status === 'active' &&
-        fresh.passwordHash === user?.passwordHash;
+        (fresh.passwordHash ?? fresh.signingPinHash ?? null) === credential;
       if (!locked && stillValid) {
         await tx
           .update(users)
@@ -432,6 +467,72 @@ export class AuthService {
     if (outcome === 'wrong') {
       throw new UnauthorizedException({ code: 'wrong_password' });
     }
+  }
+
+  /**
+   * How the person signs (business decision 9): with their password; with
+   * their signing PIN if they have no password; or not at all until they
+   * set one.
+   */
+  async signingMethodOf(auth: AuthContext): Promise<'password' | 'pin' | 'none'> {
+    const [user] = await this.tenantDb.withTenant(auth.tenant.id, (tx) =>
+      tx
+        .select({ passwordHash: users.passwordHash, signingPinHash: users.signingPinHash })
+        .from(users)
+        .where(eq(users.id, auth.user.id)),
+    );
+    if (user?.passwordHash) return 'password';
+    return user?.signingPinHash ? 'pin' : 'none';
+  }
+
+  /**
+   * Sets or changes the person's own signing PIN (business decision 9):
+   * only for a person with no password, only within SIGNING_PIN_FRESH_MS of
+   * signing in for this session (403 `fresh_sign_in_required`), and only a
+   * PIN that is not too simple (400 `pin_too_simple`). Hashed as a
+   * password is, audited, and the person is told in Trustline.
+   */
+  async setSigningPin(auth: AuthContext, pin: string, ip: string | null) {
+    if (!SIGNING_PIN.test(pin)) throw new BadRequestException();
+    if (pinTooSimple(pin)) throw new BadRequestException({ code: 'pin_too_simple' });
+    const hash = await hashPassword(pin);
+    await this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
+      const [user] = await tx
+        .select({
+          passwordHash: users.passwordHash,
+          signingPinHash: users.signingPinHash,
+        })
+        .from(users)
+        .where(eq(users.id, auth.user.id))
+        .for('update');
+      if (!user) throw new UnauthorizedException();
+      if (user.passwordHash) {
+        throw new ConflictException({ code: 'signs_with_password' });
+      }
+      const [session] = await tx
+        .select({ createdAt: sessions.createdAt })
+        .from(sessions)
+        .where(eq(sessions.tokenHash, hashToken(auth.token)));
+      if (!session || session.createdAt.getTime() < Date.now() - SIGNING_PIN_FRESH_MS) {
+        throw new ForbiddenException({ code: 'fresh_sign_in_required' });
+      }
+      const action = user.signingPinHash ? 'changed' : 'set';
+      await tx
+        .update(users)
+        .set({ signingPinHash: hash, signingPinSetAt: new Date(), updatedAt: new Date() })
+        .where(eq(users.id, auth.user.id));
+      await this.provisioning.audit(
+        tx,
+        auth.tenant.id,
+        auth.user.id,
+        'signing_pin_set',
+        'user',
+        auth.user.id,
+        { action },
+        ip,
+      );
+      await this.provisioning.tellAboutSigningPin(tx, auth.tenant.id, auth.user.id, action);
+    });
   }
 
   async logout(auth: AuthContext) {

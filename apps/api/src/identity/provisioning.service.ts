@@ -15,6 +15,7 @@ import {
   sessions,
   users,
   userTokens,
+  notifications,
 } from '../database/schema.js';
 import type { Localized } from '../i18n/locales.js';
 import { DEFAULT_INCIDENT_CATEGORIES } from '../incidents/categories.js';
@@ -327,6 +328,25 @@ export class ProvisioningService {
       email: user.email,
     });
     return user;
+  }
+
+  /**
+   * Tells a person, in Trustline, that their signing PIN was set, changed
+   * or reset (business decision 9): so that a change they did not make is
+   * seen. Never the PIN.
+   */
+  async tellAboutSigningPin(
+    tx: Transaction,
+    tenantId: string,
+    userId: string,
+    action: 'set' | 'changed' | 'reset',
+  ) {
+    await tx.insert(notifications).values({
+      tenantId,
+      userId,
+      kind: 'signing_pin_changed',
+      data: { action, serious: false },
+    });
   }
 
   /**

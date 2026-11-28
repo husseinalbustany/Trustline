@@ -39,6 +39,7 @@ const typeFields = {
   numberPrefix: documentTypes.numberPrefix,
   sections: documentTypes.sections,
   defaultReviewMonths: documentTypes.defaultReviewMonths,
+  noChangeNeedsApproval: documentTypes.noChangeNeedsApproval,
   active: documentTypes.active,
   position: documentTypes.position,
   revision: documentTypes.revision,
@@ -114,6 +115,7 @@ export class PolicySettingsService {
       numberPrefix: string;
       sections: DocumentSection[];
       defaultReviewMonths: number;
+      noChangeNeedsApproval: boolean;
       position: number;
     },
   ) {
@@ -157,6 +159,7 @@ export class PolicySettingsService {
       numberPrefix: string;
       sections: DocumentSection[];
       defaultReviewMonths: number;
+      noChangeNeedsApproval: boolean;
       active: boolean;
       position: number;
     }> & { revision: number },

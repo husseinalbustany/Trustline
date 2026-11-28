@@ -35,6 +35,10 @@ export const en: Wording = {
       subject: 'Document {number} awaits your approval',
       body: 'Document {number}, version {version}, awaits your approval.',
     },
+    review_approval_requested: {
+      subject: 'Document {number}: a review with no change awaits your signature',
+      body: 'The owner of document {number} has confirmed at its periodic review that it needs no change. Its next review date moves once you sign.',
+    },
   },
   weekly: {
     subject: 'Overdue acknowledgements this week',
@@ -75,6 +79,7 @@ export const en: Wording = {
     doneImmediate: 'You will no longer receive the immediate emails.',
     doneDigest: 'You will no longer receive the summary emails.',
     turnBackOn: 'You can turn them back on in Trustline, in your email preferences.',
+    alwaysOn: 'Alerts of serious incidents and sentinel events, for those who triage them, and approval steps assigned to you are always sent: others rely on them.',
     invalid: 'This link is not valid or has expired. You can change your email preferences in Trustline.',
   },
 };

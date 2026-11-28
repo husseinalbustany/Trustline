@@ -38,6 +38,8 @@ import { describeMail, type MailConfig } from './config.js';
 import { DigestService } from './digest.service.js';
 import { EmailPreferencesService } from './email-preferences.service.js';
 import {
+  COMPULSORY_FOR_ASSIGNEES,
+  COMPULSORY_FOR_TRIAGERS,
   IMMEDIATE,
   SAFETY_WHILE_SUSPENDED,
   switchOf,
@@ -695,14 +697,27 @@ export class EmailWorker implements OnModuleDestroy {
             .from(notifications)
             .where(eq(notifications.id, row.notificationId))
         : [];
-      return { enabled, entitlements, mailbox, switches, notification };
+      // Whether the person triages incidents: some emails are always on
+      // for them (business decision 4).
+      const { rows: triage } = await tx.execute<{ yes: boolean }>(sql`
+        select exists (select from role_assignments ra join roles r on r.id = ra.role_id
+          where ra.user_id = ${row.userId} and 'incidents.triage' = any(r.permissions)) as yes`);
+      return { enabled, entitlements, mailbox, switches, notification, triages: !!triage[0]?.yes };
     });
     if (!found.enabled) return { skip: 'organization_off' };
     const { entitlements, mailbox, switches, notification } = found;
     if (!mailbox || mailbox.status !== 'active') return { skip: 'inactive' };
     if (!this.deliverable(mailbox.email)) return { skip: 'no_address' };
     const which = switchOf(row.category);
-    if (!switches[which]) return { skip: 'opted_out' };
+    // Business decision 4: the emails others rely on are sent whatever the
+    // person's own switch says.
+    const kindOf_ = notification?.kind as NotificationKind | undefined;
+    const compulsory =
+      row.category === 'immediate' &&
+      !!kindOf_ &&
+      (COMPULSORY_FOR_ASSIGNEES.includes(kindOf_) ||
+        (COMPULSORY_FOR_TRIAGERS.includes(kindOf_) && found.triages));
+    if (!switches[which] && !compulsory) return { skip: 'opted_out' };
 
     const locale = localeFor(mailbox.preferredLocale, client);
     const link = (path: string) => `${this.config.webBaseUrl}/${locale}${path}`;
@@ -813,6 +828,16 @@ export class EmailWorker implements OnModuleDestroy {
       };
     }
     if (!IMMEDIATE[kind]) return null;
+    if (kind === 'review_approval_requested') {
+      const number = short(data.number);
+      if (!number || !notification.documentId) return null;
+      return {
+        category: 'immediate',
+        kind,
+        number,
+        href: link(`/policies/${notification.documentId}`),
+      };
+    }
     if (kind === 'document_step_assigned') {
       const number = short(data.number);
       if (!number || !notification.documentId) return null;
