@@ -15,7 +15,7 @@ export type DataExportChange = (typeof DATA_EXPORT_CHANGES)[number];
  * notification is written. Every other kind is in-app only, or reaches the
  * person through the daily digest.
  */
-export const IMMEDIATE: Partial<Record<NotificationKind, 'always' | 'serious'>> = {
+export const IMMEDIATE: Partial<Record<NotificationKind, 'always' | 'serious' | 'extreme'>> = {
   incident_reported: 'serious',
   incident_handed_over: 'serious',
   sentinel_flagged: 'always',
@@ -37,6 +37,13 @@ export const IMMEDIATE: Partial<Record<NotificationKind, 'always' | 'serious'>> 
   data_export_changed: 'always',
   // The contract ends in 90, 30 or 7 days: its data can be exported first.
   contract_ending: 'always',
+  // A risk put before a committee in the band Extreme (risk management,
+  // "Notifications and email"): the committee and the owner, at once. The
+  // person may switch it off (business decision 16).
+  risk_escalated: 'extreme',
+  // An acceptance or closure step that becomes someone's: an approval step,
+  // as for documents.
+  risk_step_assigned: 'always',
 };
 
 export type ImmediateKind =
@@ -51,12 +58,14 @@ export type ImmediateKind =
   | 'signing_pin_locked'
   | 'audit_chain_head'
   | 'data_export_changed'
-  | 'contract_ending';
+  | 'contract_ending'
+  | 'risk_escalated'
+  | 'risk_step_assigned';
 
 export const IMMEDIATE_KINDS = Object.keys(IMMEDIATE) as ImmediateKind[];
 
 /** The notifications sent by email as the weekly digest. */
-export const WEEKLY: NotificationKind[] = ['acknowledgements_overdue_digest'];
+export const WEEKLY: NotificationKind[] = ['acknowledgements_overdue_digest', 'risks_overdue_digest'];
 
 /** Which email a notification is sent as, if any. */
 export function categoryOf(
@@ -66,6 +75,7 @@ export function categoryOf(
   const rule = IMMEDIATE[kind];
   if (rule === 'always') return 'immediate';
   if (rule === 'serious') return data.serious === true ? 'immediate' : null;
+  if (rule === 'extreme') return data.band === 'extreme' ? 'immediate' : null;
   if (WEEKLY.includes(kind)) return 'weekly_digest';
   return null;
 }
@@ -94,6 +104,8 @@ export const SAFETY_WHILE_SUSPENDED: NotificationKind[] = [
   // Exporting stays open while suspended (data export, decision 6).
   'data_export_changed',
   'contract_ending',
+  // An extreme risk put before a committee is safety work.
+  'risk_escalated',
 ];
 
 /**
@@ -123,6 +135,7 @@ export const COMPULSORY_FOR_TRIAGERS: NotificationKind[] = [
 export const COMPULSORY_FOR_ASSIGNEES: NotificationKind[] = [
   'document_step_assigned',
   'review_approval_requested',
+  'risk_step_assigned',
 ];
 /**
  * Security notices about the person's own signing PIN, for everyone; and

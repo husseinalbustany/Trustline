@@ -519,6 +519,20 @@
       "when": 1795862966376,
       "tag": "0073_ai_grants_functions_and_safeguards",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1795866214152,
+      "tag": "0074_risk_management_and_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 75,
+      "version": "7",
+      "when": 1795866312202,
+      "tag": "0075_risk_management_grants_rules_and_existing_clients",
+      "breakpoints": true
     }
   ]
 }

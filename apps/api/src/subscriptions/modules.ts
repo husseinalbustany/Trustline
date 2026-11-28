@@ -41,7 +41,7 @@ export const MODULE_RULES: Record<ModuleCode, ModuleRule> = {
   // Fed by any other module that is on, but a tracker on its own works.
   actions: { built: false, requiresAnyOf: [] },
   policies: { built: true, requiresAnyOf: [] },
-  risks: { built: false, requiresAnyOf: [] },
+  risks: { built: true, requiresAnyOf: [] },
   training: { built: false, requiresAnyOf: [] },
   // Assists another module: on its own it has nothing to assist.
   ai_assistant: {

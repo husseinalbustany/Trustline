@@ -331,8 +331,10 @@ export class EmailPreferencesService {
 function reliedOnOf(auth: AuthContext) {
   const { modules } = auth.tenant;
   return {
+    // Documents' approval steps, and risks' acceptance and closure steps.
     approves:
-      modules.includes('policies') && auth.permissions.includes('policies.approve'),
+      (modules.includes('policies') && auth.permissions.includes('policies.approve')) ||
+      (modules.includes('risks') && auth.permissions.includes('risks.approve')),
     triages:
       modules.includes('incidents') && auth.permissions.includes('incidents.triage'),
   };

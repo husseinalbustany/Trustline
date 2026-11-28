@@ -27,6 +27,8 @@ export const AUDIT_AREAS = [
   'organization',
   'incidents',
   'documents',
+  'risks',
+  'actions',
   'exports',
   'trustline',
   'audit',
@@ -45,14 +47,19 @@ export type AuditEntityType =
   | 'document_category'
   | 'approval_route'
   | 'subscription'
-  | 'ai_draft';
+  | 'ai_draft'
+  | 'risk'
+  | 'risk_matrix'
+  | 'risk_category'
+  | 'risk_committee'
+  | 'action';
 
 /**
  * The module an entry belongs to: one of a module the client does not have
  * is not shown in the viewer, as the module's routes answer as if they did
  * not exist. It stays in the chain, and in the chain file as a seal only.
  */
-export type AuditModule = 'core' | 'incidents' | 'policies';
+export type AuditModule = 'core' | 'incidents' | 'policies' | 'risks';
 
 type ActionInfo = {
   area: AuditArea;
@@ -181,6 +188,66 @@ export const AUDIT_ACTIONS = {
   import_confirmations_corrected_by_system: migration('documents', 'tenant', ['reason', 'imports', 'confirmationDueIn']),
   import_confirmations_backfilled_by_system: migration('documents', 'tenant', ['recordedBy', 'imports', 'confirmedByImport']),
 
+  // Risks (docs/specs/risk-management.md, "Audit"). The register.
+  risk_created: code('risks', 'risk', ['reference', 'source', 'status', 'orgUnitId', 'categoryId', 'ownerId', 'treatment', 'targetOn', 'ratings', 'nextReviewOn', 'incidentId', 'incidentReference', 'linkKind']),
+  risk_updated: code('risks', 'risk', ['reasonGiven', 'noteId', 'title', 'cause', 'event', 'consequence', 'orgUnitId', 'categoryId', 'ownerId', 'references', 'keywords', 'treatment', 'targetOn']),
+  risk_proposal_accepted: code('risks', 'risk', ['ownerId', 'ratings', 'nextReviewOn']),
+  risk_proposal_rejected: code('risks', 'risk', ['reasonGiven']),
+  risk_rated: code('risks', 'risk', ['kind', 'from', 'to', 'matrixId', 'nextReviewOn']),
+  risk_control_added: code('risks', 'risk', ['controlId', 'kind', 'hierarchy', 'ownerId', 'effectiveness', 'assessedOn', 'documentId']),
+  risk_control_updated: code('risks', 'risk', ['controlId', 'description', 'kind', 'hierarchy', 'ownerId', 'effectiveness', 'assessedOn', 'documentId', 'active', 'reasonGiven']),
+  // Text written once, corrected by a manager (security review 15, M1):
+  // which, never the text.
+  risk_text_corrected: code('risks', 'risk', ['kind', 'ratingId', 'reviewId', 'controlId', 'noteId', 'field', 'linkId']),
+  risk_reviewed: code('risks', 'risk', ['reviewId', 'outcome', 'late', 'dueOn', 'nextReviewOn', 'committeeId', 'current', 'target', 'controls', 'treatment', 'targetOn']),
+  // Put before a committee, by hand (with a reason) or automatically by a
+  // rating (`automatic`, with the band), and taken off its list.
+  risk_escalated: code('risks', 'risk', ['committeeId', 'from', 'automatic', 'band', 'reasonGiven', 'noteId']),
+  risk_de_escalated: code('risks', 'risk', ['committeeId', 'band', 'reasonGiven', 'noteId']),
+  // Acceptance above tolerance and closure (step 6), signed through the
+  // approval engine. Text people write (a rationale, a comment, a reason)
+  // is never in these: only that it was given.
+  risk_acceptance_requested: code('risks', 'risk', ['acceptanceId', 'runId', 'routeId', 'band', 'score', 'tolerance', 'untilOn', 'signatureRequired']),
+  risk_acceptance_step_approved: code('risks', 'risk', ['acceptanceId', 'runId', 'position', 'kind', 'signatureId', 'contentHash', 'commentGiven']),
+  risk_acceptance_returned: code('risks', 'risk', ['acceptanceId', 'runId', 'position', 'commentGiven']),
+  risk_acceptance_withdrawn: code('risks', 'risk', ['acceptanceId', 'runId', 'noteId']),
+  risk_accepted: code('risks', 'risk', ['acceptanceId', 'untilOn', 'band', 'score', 'signatureRequired', 'runId']),
+  // Written by the system: its last day passed, its score rose, its category changed.
+  risk_acceptance_lapsed: code('risks', 'risk', ['acceptanceId', 'reason', 'score']),
+  risk_closure_requested: code('risks', 'risk', ['runId', 'routeId', 'mergedIntoId', 'reasonGiven']),
+  risk_closure_step_approved: code('risks', 'risk', ['runId', 'position', 'kind', 'signatureId', 'contentHash', 'commentGiven']),
+  risk_closure_returned: code('risks', 'risk', ['runId', 'position', 'commentGiven']),
+  risk_closed: code('risks', 'risk', ['mergedIntoId', 'reasonGiven', 'signedOff', 'runId']),
+  risk_reopened: code('risks', 'risk', ['noteId', 'current', 'nextReviewOn']),
+  // Links to incidents (step 7): never who reported one or how.
+  risk_incident_linked: code('risks', 'risk', ['linkId', 'incidentId', 'incidentReference', 'kind', 'noteGiven']),
+  risk_incident_unlinked: code('risks', 'risk', ['linkId', 'incidentId', 'reasonGiven']),
+  // The module's settings.
+  risk_settings_changed: code('risks', 'tenant', ['inherentRequired', 'frameworkDocumentId', 'assessmentThresholdBand', 'acceptanceMaxMonths']),
+  risk_matrix_created: code('risks', 'risk_matrix', ['version', 'likelihoodLevels', 'impactLevels', 'copiedFromId']),
+  // The wording of a matrix in use, or anything of a draft.
+  risk_matrix_changed: code('risks', 'risk_matrix', ['version', 'status', 'levels', 'domains', 'bands', 'cells']),
+  risk_matrix_discarded: code('risks', 'risk_matrix', ['version']),
+  risk_matrix_put_in_use: code('risks', 'risk_matrix', ['version', 'previousMatrixId', 'risksRebanded', 'risksOutOfRange', 'risksTargetAboveCurrent', 'risksAwaitingAcceptance', 'riskIds']),
+  risk_category_created: code('risks', 'risk_category', ['code', 'name', 'position', 'appetite', 'appetiteStatement', 'toleranceBand']),
+  risk_category_updated: code('risks', 'risk_category', ['name', 'position', 'active', 'appetite', 'appetiteStatement', 'toleranceBand']),
+  risk_committee_created: code('risks', 'risk_committee', ['code', 'name', 'position', 'memberRoleId', 'chairRoleId']),
+  risk_committee_updated: code('risks', 'risk_committee', ['name', 'position', 'memberRoleId', 'chairRoleId', 'active']),
+  risk_approval_route_created: code('risks', 'approval_route', ['subject', 'variant', 'name', 'steps']),
+  risk_approval_route_updated: code('risks', 'approval_route', ['name', 'steps', 'active']),
+  risk_defaults_created_by_system: migration('risks', 'tenant', ['matrix', 'categories', 'committees', 'routes']),
+
+  // The shared actions engine (docs/specs/actions.md).
+  action_created: code('actions', 'action', ['reference', 'sourceType', 'sourceId', 'ownerId', 'orgUnitId', 'dueOn', 'strength', 'hierarchy']),
+  action_updated: code('actions', 'action', ['title', 'description', 'ownerId', 'orgUnitId', 'strength', 'hierarchy', 'status']),
+  action_due_changed: code('actions', 'action', ['from', 'to', 'reasonGiven', 'noteId', 'originalDueOn']),
+  action_completed: code('actions', 'action', ['from', 'onTime', 'dueOn']),
+  action_verified: code('actions', 'action', ['outcome']),
+  action_cancelled: code('actions', 'action', ['from', 'reasonGiven']),
+  action_reopened: code('actions', 'action', ['from', 'reasonGiven', 'noteId']),
+  // A note corrected by a manager of the source (security review 15, M1): which, never the text.
+  action_text_corrected: code('actions', 'action', ['field', 'noteId']),
+
   // Exports: what was downloaded, in which language, how many rows.
   documents_exported: code('exports', 'tenant', ['filters', 'locale', 'rows']),
   acknowledgements_exported: code('exports', 'document', ['versionId', 'version', 'locale', 'rows']),
@@ -252,6 +319,10 @@ const AREA_MODULE: Record<AuditArea, AuditModule> = {
   organization: 'core',
   incidents: 'incidents',
   documents: 'policies',
+  // Risk management; and the shared actions engine, whose every action is a
+  // risk's so far (docs/specs/actions.md, decision 3).
+  risks: 'risks',
+  actions: 'risks',
   exports: 'policies',
   trustline: 'core',
   audit: 'core',

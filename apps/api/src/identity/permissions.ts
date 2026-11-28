@@ -42,6 +42,18 @@ export const PERMISSIONS = [
   // restricted documents included. Only a grant for the whole organization
   // counts. Built-in: the Administrator.
   'data.export',
+  // Risk management (docs/specs/risk-management.md). Read the risks of the
+  // units a grant covers; risks of the whole organization need a grant for
+  // the whole organization.
+  'risks.view',
+  // Keep the register of the units a grant covers: create, edit, rate,
+  // take proposals onto it. For the whole organization, also the module's
+  // settings (matrix, categories, committees).
+  'risks.manage',
+  // May be named, by role, in a step of a risk's acceptance or closure
+  // route. Being assigned a step gives the right to read that risk and
+  // decide that step, nothing else, as `policies.approve` does.
+  'risks.approve',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -57,6 +69,9 @@ export const READ_ONLY_PERMISSIONS: readonly Permission[] = [
   'policies.view_all',
   'reports.view',
   'audit.view',
+  // The risk register (risk management, decision 17): risks, ratings,
+  // controls and reviews, read only.
+  'risks.view',
 ];
 
 /**
@@ -87,6 +102,9 @@ export const PERMISSION_MODULE: Record<Permission, ModuleKey> = {
   'audit.view': 'core',
   'reports.manage': 'core',
   'data.export': 'core',
+  'risks.view': 'risks',
+  'risks.manage': 'risks',
+  'risks.approve': 'risks',
 };
 
 /** Whether a permission does anything for a client with these modules. */
@@ -137,9 +155,9 @@ export const SYSTEM_ROLES: {
       fr: 'Responsable qualité',
     },
     description: {
-      en: 'Triages incidents, manages actions and policies, and views reports.',
-      ar: 'يفرز الحوادث ويدير الإجراءات التصحيحية والسياسات ويطّلع على التقارير.',
-      fr: 'Trie les incidents, gère les actions et les politiques, et consulte les rapports.',
+      en: 'Triages incidents, manages actions, policies and risks, and views reports.',
+      ar: 'يفرز الحوادث ويدير الإجراءات التصحيحية والسياسات والمخاطر ويطّلع على التقارير.',
+      fr: 'Trie les incidents, gère les actions, les politiques et les risques, et consulte les rapports.',
     },
     permissions: [
       'incidents.report',
@@ -156,15 +174,18 @@ export const SYSTEM_ROLES: {
       'reports.view',
       'audit.view',
       'reports.manage',
+      'risks.view',
+      'risks.manage',
+      'risks.approve',
     ],
   },
   {
     code: 'department_manager',
     name: { en: 'Department manager', ar: 'مدير القسم', fr: 'Chef de service' },
     description: {
-      en: 'Sees incidents, manages actions, and reads and approves documents for a department.',
-      ar: 'يطّلع على الحوادث ويدير الإجراءات التصحيحية ويقرأ الوثائق ويعتمدها في قسمه.',
-      fr: 'Consulte les incidents, gère les actions, et lit et approuve les documents de son service.',
+      en: 'Sees incidents, manages actions and risks, and reads and approves documents for a department.',
+      ar: 'يطّلع على الحوادث ويدير الإجراءات التصحيحية والمخاطر ويقرأ الوثائق ويعتمدها في قسمه.',
+      fr: 'Consulte les incidents, gère les actions et les risques, et lit et approuve les documents de son service.',
     },
     permissions: [
       'incidents.report',
@@ -174,6 +195,8 @@ export const SYSTEM_ROLES: {
       'policies.approve',
       'policies.view_all',
       'reports.view',
+      'risks.view',
+      'risks.manage',
     ],
   },
   {
@@ -196,7 +219,14 @@ export const SYSTEM_ROLES: {
     },
     // `reports.view` from migration 0067 (reports decision 6): with no
     // incident permission, it sees the document measures only.
-    permissions: ['policies.view', 'policies.view_all', 'policies.approve', 'reports.view'],
+    permissions: [
+      'policies.view',
+      'policies.view_all',
+      'policies.approve',
+      'reports.view',
+      'risks.view',
+      'risks.approve',
+    ],
   },
   {
     code: 'reporter',
@@ -216,10 +246,11 @@ export const SYSTEM_ROLES: {
     code: 'external_reviewer',
     name: { en: 'External reviewer', ar: 'مقيّم خارجي', fr: 'Évaluateur externe' },
     description: {
-      en: "Reads, for a limited time, the audit trail, all documents, reports, and incidents without the reporters' names. For surveyors and auditors from outside.",
-      ar: 'يطّلع لمدة محدودة على سجل التدقيق وجميع الوثائق والتقارير، وعلى الحوادث دون أسماء المبلّغين. للمقيّمين والمدققين من خارج المنشأة.',
-      fr: 'Consulte pour une durée limitée le journal d’audit, tous les documents, les rapports et les incidents sans le nom des déclarants. Pour les évaluateurs et auditeurs extérieurs.',
+      en: "Reads, for a limited time, the audit trail, all documents, reports, the risk register, and incidents without the reporters' names. For surveyors and auditors from outside.",
+      ar: 'يطّلع لمدة محدودة على سجل التدقيق وجميع الوثائق والتقارير وسجل المخاطر، وعلى الحوادث دون أسماء المبلّغين. للمقيّمين والمدققين من خارج المنشأة.',
+      fr: 'Consulte pour une durée limitée le journal d’audit, tous les documents, les rapports, le registre des risques et les incidents sans le nom des déclarants. Pour les évaluateurs et auditeurs extérieurs.',
     },
-    permissions: ['audit.view', 'policies.view_all', 'incidents.view', 'reports.view'],
+    // `risks.view` from migration 0075 (risk management, decision 17).
+    permissions: ['audit.view', 'policies.view_all', 'incidents.view', 'reports.view', 'risks.view'],
   },
 ];

@@ -1,6 +1,7 @@
 # Risk management: specification
 
-Status: proposed, not built. Read `CLAUDE.md`, `README.md`,
+Status: steps 1 to 5 built in the API (see the "Built" sections
+at the end); the rest proposed. Read `CLAUDE.md`, `README.md`,
 `docs/business-requirements.md` and `modules-and-subscriptions.md` first.
 This spec also has to fit `audit-trail.md`, `reports-and-measures.md`,
 `data-export.md`, `email.md` and `ai-insights.md`. If something here is
@@ -1788,3 +1789,438 @@ The business asked for work to continue without stopping for questions:
 every recommendation above is taken as decided. Decision 20 follows the
 business document: the risks module is in the Professional plan and above.
 Any of these can be revisited before the pilot.
+
+## Built: steps 1 and 2, API
+
+The API side of "Order of build" steps 1 (settings and permissions) and 2
+(the register). The screens, the menu without `phase: 2` and `built: true`
+in `apps/web/src/config/modules.ts` come next, from the web contract.
+`built: true` is set in `apps/api/src/subscriptions/modules.ts`.
+
+### What there is
+
+- **Permissions:** `risks.view`, `risks.manage` and `risks.approve`, of the
+  `risks` module, labelled in the three dictionaries. The built-in roles hold
+  them as the table under "Permissions" says; the Quality officer's and the
+  Department manager's descriptions now name risks. Clients that existed
+  before get them from migration 0075, with one
+  `built_in_roles_changed_by_system` entry each. `risks.approve` does
+  nothing yet: the acceptance and closure routes are step 6.
+- **Tables** (`schema.ts`, migration 0074): `risk_committees`,
+  `risk_matrices`, `risk_matrix_levels`, `risk_impact_domains`,
+  `risk_bands`, `risk_matrix_cells`, `risk_categories`, `risk_settings`,
+  `risks`, `risk_ratings`, `risk_controls`, `risk_events`. Each has
+  `tenant_id`, `tenant_isolation`, composite keys with the tenant, and its
+  grants in 0075; `risk_ratings` and `risk_events` are insert-only.
+- **Rules the database keeps** (0075, functions with
+  `search_path = pg_catalog, public, pg_temp`, none `SECURITY DEFINER`):
+  - a matrix keeps its size and version, and its status goes draft → in
+    use or retired, in use → retired;
+  - once a matrix leaves draft, its cells, its levels and its bands'
+    intervals, escalation and signature setting do not change, and it takes
+    no new cell, level or band; wording (labels, descriptors, band names,
+    domains) still does;
+  - a rating is made on the matrix in use only, and points at its cell with
+    the band the cell gives (a five-column key), as does each rating copy
+    on `risks`;
+  - a risk keeps its reference, source and author; `highest_band` only
+    rises, and `closure_sign_off_needed` becomes true for good once the risk
+    has been High or Extreme, or escalated.
+- **Defaults:** `apps/api/src/risks/defaults.ts`, in English, Arabic and
+  French: the 5×5 matrix with the levels, frequencies and descriptors of
+  "The matrix", five impact domains with a descriptor per level, the four
+  bands (365, 180, 90 and 30 days; High to the risk committee, Extreme to
+  the governing body), the cells by score, nine categories and two
+  committees. `ProvisioningService.ensureRiskDefaults()` gives them to a new
+  client (beside `ensurePolicyDefaults()`, and in the seed); migration 0075
+  gives them to the clients that existed, with one
+  `risk_defaults_created_by_system` entry each.
+- **The settings API** (`RiskSettingsController`): the settings, the
+  matrix versions (draft by copy or whole, change, discard, put in use),
+  categories, committees, and pickers for roles and people.
+- **The register API** (`RisksController`): list with the filters and
+  sorts of the API outline that exist so far, detail with `moves`, create,
+  edit, rate, controls, and taking proposals onto the register or not.
+- **`apps/api/src/risks/visibility.ts`**: readers and managers, as the
+  section "Permissions" says, used by every list and lookup.
+- **Audit:** new area `risks`, entity types `risk`, `risk_matrix`,
+  `risk_category`, `risk_committee`; 17 actions worded in
+  `apps/api/src/audit/wording/{en,ar,fr}.ts`.
+- **Tests:** `apps/api/test/risks.e2e-spec.ts` (the routes, for each:
+  401, 403, 404 for another client's record, 400, and the working case;
+  tenant isolation, module off, the starting settings, settings by a
+  manager for the whole organization only, scope by unit, the
+  organization's own risks, stale revisions, the rating rules, the database
+  rules, a new matrix version, suspension) and
+  `apps/api/test/risks-migration.e2e-spec.ts` (migration 0075 on clients
+  of its own, twice: the same as a new client, audited once each). The
+  tests that pinned the built-in roles' permission lists
+  (`incidents.e2e-spec.ts`, `policies-import.e2e-spec.ts`,
+  `policies-migration.e2e-spec.ts`) now list the risks permissions too.
+
+### Decided while building
+
+Where the spec left something open, this was chosen:
+
+1. **A matrix's size is fixed per version.** A different size is a new
+   draft, written whole (every level and cell) or copied and then changed.
+   A version in use takes wording only; anything that decides a band
+   (cells, review intervals, escalation, the signature setting, the size)
+   is 409 `matrix_in_use`, to be made in a new version. A draft's size is
+   fixed too (409 `matrix_size_fixed`). One draft at a time
+   (`draft_exists`); a draft not wanted is discarded (retired), and its
+   version number is not reused.
+2. **Bands rise with likelihood and impact.** A matrix where a cell's band
+   is lower than that of a cell with lower or equal likelihood and impact is
+   refused (400 `bands_out_of_order`): a client may move single cells, but
+   not so that a worse rating gives a lower band.
+3. **Putting a version in use** moves the open and proposed risks onto it
+   (closed and rejected ones keep theirs). A rating copy whose levels the
+   new version does not hold keeps its band on the old version, and the risk
+   says `rerateNeeded`. Each risk's next review comes no later than today
+   plus the interval of its band in the new version. The preview counts
+   both cases.
+4. **Starting appetite:** `cautious` for every category, with no
+   statement, beside the tolerance of Medium (decision 6). Medium's
+   acceptance above tolerance needs a signature; Low's setting is moot, as
+   Low is never above a tolerance, and is off.
+5. **"A target above the current rating"** is one with a higher score or a
+   higher band, either.
+6. **A target is required when a risk is opened** above tolerance (created
+   with a current rating, or a proposal taken onto the register), not at a
+   later re-rating: a risk that rises above tolerance then shows "above
+   tolerance, not addressed", which is what the register and measures make
+   visible.
+7. **Cause, event and consequence are required**, in any one of the
+   client's languages (decision 14); the title in the default language.
+8. **The settings are read by anyone signed in with the module**, since an
+   owner may hold no permission of it and still rates on the matrix. They
+   hold the organization's criteria, nothing about a record.
+9. **Proposals are taken onto the register or not in step 2**, as creating
+   a risk without a current rating proposes it.
+10. **Committees** have a `code`, like categories, so that the starting ones
+    are found again. Members are the holders of the member role or the chair
+    role, granted for the whole organization. A committee that a band of the
+    version in use or of the draft escalates to is not switched off (409
+    `committee_in_use`).
+11. **The next review day** is set when a risk is opened and brought forward
+    by a current rating into a band with a shorter interval (part of step 3,
+    pulled forward so the data is right from the start). Reviews and the
+    manager's earlier day are step 3.
+12. **The trend** is against the current rating before the latest one,
+    until reviews give "since the last review".
+13. **Where a risk stands against tolerance** is `within` or
+    `above_not_addressed` for now; "being treated" comes with actions (step
+    4) and "accepted" with approvals (step 6). `notAddressed` filters the
+    same as `aboveTolerance` until then.
+14. **Controls** have a required owner, their own revision (409
+    `stale_control`), and raise the risk's revision. A document linked as a
+    control is a document in force, while the policies module is on; the
+    risk page gets its number, version in force, review state and
+    `pastReview`, and its title only for a reader who may open it, through
+    `policies/linked-documents.ts` (the risks area never reads the
+    policies tables). The flags' notifications are step 7.
+15. **Two audit actions** beyond the spec's list: `risk_matrix_created` and
+    `risk_matrix_discarded`, for drafts.
+16. **Notifications** came with steps 3 to 5 (see below).
+
+### Not done, for the merge
+
+- **External reviewers (decision 17):** done on the merge; see "Merged onto
+  the main branch".
+- **`audit.actions` in the web dictionaries.** This branch's base has none;
+  the keys are in the web contract, to add beside the others.
+- Migrations: regenerated on top of the main branch as 0074 (generated
+  from `schema.ts`, every table of steps 1 to 7) and 0075 (custom SQL only:
+  grants, the rules above, the built-in roles and the defaults and routes
+  for existing clients, with their audit entries, which quote its file
+  name).
+
+### Before deploying: Department manager grants
+
+Migration 0075 gives every built-in Department manager `risks.manage`
+(security review 15). A grant of `risks.manage` for the whole organization
+also covers the module's settings: the matrix, tolerances, committees and
+putting a matrix version in use. A client that has granted the Department
+manager role **for the whole organization** (rather than for a department)
+would find those people can then change its risk criteria. Before
+deploying, list such grants for each existing client:
+
+```sql
+select t.slug, u.email
+from role_assignments ra
+join roles r on r.id = ra.role_id and r.is_system and r.code = 'department_manager'
+join users u on u.id = ra.user_id and u.status <> 'disabled'
+join tenants t on t.id = ra.tenant_id
+where ra.org_unit_id is null
+order by t.slug, u.email;
+```
+
+and agree with each client whether those people keep the role for the whole
+organization or are given it for their departments.
+
+## Built: steps 3 to 5, API, and security review 15
+
+### Steps 3 to 5
+
+- **Reviews** (`POST /risks/:id/reviews`): by the owner, a manager, or a
+  member of the committee the risk is escalated to (a committee's review,
+  with `committeeId`). Each records a current rating (a new row naming the
+  review), the target, treatment and controls' effectiveness if changed, an
+  outcome, a comment, the next review (today plus the band's interval, or
+  earlier: 400 `review_interval_too_long` for later) and whether it was
+  late. Kept for ever (`risk_reviews`, insert-only but for the comment's
+  correction).
+- **The risk check** (`apps/api/src/risks/risk-check.service.ts`, started by
+  `main.ts`): review reminders 14 days ahead (or a quarter of the interval)
+  and the day after, and the weekly email to managers
+  (`risks_overdue_digest`), each claimed once in `risk_reminders`, on each
+  client's calendar, safe with several processes, skipping a client
+  without the module and catching up when it is back.
+- **"My risks and actions"** (`GET /risks/mine`), **"Reviews due"**
+  (`GET /risks/reviews`, managers), the dashboard's counts
+  (`GET /risks/summary`), and three digest sections: risks to review,
+  actions due, proposals (managers).
+- **The shared actions engine** (`apps/api/src/actions/`,
+  `docs/specs/actions.md`): actions on risks with their timeline, reminders
+  (`ActionCheck`), "My actions" and `actions.overdue`
+  (`actions/measures.ts`, from the definition in `reports/measures.ts`; shown as `overdueActions` in `/risks/summary`).
+  The engine imports no module; the risks module registers its rules.
+- **Escalation and committees:** automatic in the transaction of a current
+  rating (or a review), never to a lower committee and never repeated; by
+  hand by a manager; down by a member or a manager for the whole
+  organization once the band is below the committee's threshold; the
+  committee's list (`GET /risks/committees/:id/risks`); and the email at
+  once for an Extreme risk escalated (`IMMEDIATE`, rule `extreme`; it may
+  be switched off; it is sent while suspended).
+- **Notifications:** `risk_owner_assigned`, `risk_review_due`,
+  `risk_review_overdue`, `risk_above_tolerance`, `risk_escalated`,
+  `risk_de_escalated`, `risks_overdue_digest`, `action_assigned`,
+  `action_due_soon`, `action_overdue`, `action_escalated`,
+  `action_completed`, each naming its risk (`risk_id`) or action
+  (`action_id`), with references and `serious` only. The notifications list
+  names them with whether they can still be opened.
+- **Standing against tolerance** now says `above_treated` (treatment
+  "reduce", a target within tolerance, an open action); `notAddressed`
+  filters on it.
+
+### Decided while building (steps 3 to 5)
+
+1. **A review's outcome `no_change` needs the same current rating**
+   (400 `outcome_mismatch`).
+2. **The trend** is against the current rating at the last review, while a
+   later rating has changed it; else against the rating before.
+3. **Escalation follows ratings and reviews**, not a new matrix version
+   put in use; the next rating escalates.
+4. **Coming down from a committee** puts the risk before the lower committee
+   its band calls for, at once. A member who then no longer reads the risk is
+   answered `{ access: 'none', id, reference, escalatedToCommitteeId: null }`.
+5. **Committee members** are told when no role is set by those who manage
+   risks for the whole organization (spec, "Escalation").
+6. **An action's owner reads the risk's summary** (`access: 'summary'`)
+   while the action is open, in progress or completed, and is not shown the
+   risk in the register.
+7. **Escalation reasons, due-day reasons and cancellation reasons** are
+   recorded as given (`reasonGiven`), not their text, after M1. Cancel
+   reasons stay on the action, correctable. Since security review 17 (L5),
+   the reasons that had no place on the record are kept as notes and
+   named by id: see "Built: steps 6 and 7".
+8. **Reopening an action keeps its last note** until it is completed again,
+   so no text needs to go into the timeline.
+9. **Action notifications are the risks module's** while every action's
+   source is a risk (`docs/specs/actions.md`, decision 3).
+10. **The effectiveness check reminder** (30 days after completion) is left
+    to the actions module's settings (`docs/specs/actions.md`).
+
+### Security review 15, as the business decided
+
+- **M1.** The audit trail and the timeline record which text fields
+  changed (`{ changed: true }`) and that a reason was given
+  (`reasonGiven`), never the text. Ratings' rationales were never in the
+  trail. A manager of a risk corrects a rating's rationale, a review's
+  comment, a rejection reason or a control's reason
+  (`POST /risks/:id/corrections`), and an action's notes
+  (`POST /risks/actions/:id/corrections`), audited as `risk_text_corrected`
+  / `action_text_corrected` without the text, shown in the timeline as
+  `text_corrected`. The application role may update only `rationale` of a
+  rating and `comment` of a review.
+- **L1.** Linking a document (as a control or the framework) needs the
+  person to read it. A restricted document a reader may not open shows only
+  as `{ restricted: true }`.
+- **L2.** The matrix preview is for managers for the whole organization;
+  others get `preview: null`.
+- **L3.** A current rating below the stored target is refused
+  (`target_above_current`); a new version that leaves a target above the
+  current rating counts such risks (`risksTargetAboveCurrent`), says so in
+  their timeline, and lists show `targetAboveCurrent`.
+- **L4.** Wording changes to a matrix record the old and new label,
+  descriptor, frequency, band name and domain.
+- **Also:** nobody accepts their own proposal (403 `same_person`); 0075's
+  audit entry lists exactly what each role got; a rating while suspended
+  is refused where `moves` offers nothing; a version holds at most 12
+  domains (400 `too_many_domains`); and the Department manager note above.
+
+## Built: steps 6 and 7, API, and security review 17
+
+### Step 6: approvals
+
+- **The approval engine** takes risk subjects: routes of subject
+  `risk_acceptance` (one per band: `variant` medium, high or extreme) and
+  `risk_closure`; runs of subject `risk_acceptance` (the acceptance) and
+  `risk` (the closure). A risk of the whole organization (`orgUnitId`
+  null) is decided only by a grant for the whole organization. Documents'
+  routes, runs and signatures are unchanged, and the policies settings
+  neither show nor change a risk's route.
+- **Starting routes**, for a new client (`ensureRiskRoutes`) and for every
+  existing one (migration 0075, audited once as
+  `risk_defaults_created_by_system` with the routes it got): Medium and
+  High, one approval by the Approving authority; Extreme, a review by the
+  Quality officer then an approval by the Approving authority; closure,
+  one approval by the Quality officer; 7 days a step. Kept in
+  `GET/POST/PATCH /risks/settings/approval-routes` (a manager for the
+  whole organization; a role named must include `risks.approve`).
+- **Acceptance** (`POST /:id/acceptance`, `/approve`, `/return`,
+  `/withdraw`): as the spec says. The signed content is
+  `{ riskId, reference, title, categoryId, orgUnitId, current: {
+  likelihood, impact, score, band, matrixId }, tolerance, rationale,
+  conditions, until }`. While in approval, `risks_acceptance_in_progress`
+  (a trigger) keeps the title, category, unit and current rating, and
+  `risk_acceptances_content_fixed` keeps the acceptance; its status only
+  moves forward (`risk_acceptances_status_order`). In force, the risk shows
+  `standing: 'above_accepted'`, `acceptedUntil`, treatment "accept". It
+  lapses on its last day (the risk check), when the current score rises
+  above the score accepted (a rating or a review), or when the category
+  changes; the owner is reminded 30 days before.
+- **Closure** (`POST /:id/close`, `/closure/approve`, `/closure/return`)
+  and **reopening** (`POST /:id/reopen`), as the spec says. Nothing changes
+  on the risk while its closure waits for a signature (409
+  `closure_in_progress`), not even the reason's correction.
+- **"My approvals"** (`GET /risks/approvals`, `risks.approve`), the
+  `steps` of "My risks", the digest section "Risk steps to decide", and
+  `stepsOverdue` in the weekly email to managers for the whole
+  organization. `risk_step_assigned` is emailed at once and may not be
+  switched off by its assignees; it waits while suspended.
+- **An assignee** of a step in progress reads that risk; after deciding,
+  one who reads it no other way is answered `{ access: 'none', id,
+  reference }`.
+
+### Step 7: links
+
+- **Incidents** (`POST /:id/incident-links`, `DELETE
+  /:id/incident-links/:linkId` with a reason): by a manager of the risk
+  who sees the incident in full; 400 `unknown_incident` alike for one
+  they do not see, of another client, that does not exist, or while the
+  incidents module is off. The risk's page has `incidents: { items,
+  hidden, last12Months, categories }` (null while the module is off): only
+  the incidents the reader sees in full, each with its reference, type,
+  category, unit, day, harm level and status; a count of the others; never
+  the reporter, the channel or whether it was anonymous. The owner is told
+  (`risk_incident_linked`) by the risk's reference only.
+- **The incident's panel** (`GET /risks/for-incident/:incidentId`, for
+  whoever sees the incident): the linked risks the caller reads, and for
+  one who sees it in full what "Raise a risk" offers (`raise: { orgUnitId,
+  impact, linkKind }`, impact from the harm level: mild 2, moderate 3,
+  severe 4, death 5).
+- **"Raise a risk"** is `POST /risks` with `fromIncidentId` (and
+  `linkKind`, `raised` by default): by anyone who sees the incident in
+  full, `risks.manage` or not. Opened when its author manages risks there
+  and gives a current rating; proposed otherwise, the unit's managers told
+  (`risk_proposed`). Open while suspended, as a proposal only.
+- **Documents as controls:** a control's `flag` says `document_retired` or
+  `document_past_review` (never for a restricted document the reader may
+  not open). Retiring a document tells the owners of risks with an active
+  control on it (`risk_control_document_retired`), through
+  `LinkedDocuments.onRetired`. `GET /risks/for-document/:documentId` (for
+  a reader of the document) lists the risks the caller reads; `total`
+  counts all of them for readers for the whole organization only.
+
+### Security review 17, as folded in
+
+- **M1.** Escalation by hand to the committee a risk is before, or to one
+  below it while that one is in use, is 409 `already_escalated`.
+- **L1.** A member reviewing for a committee rates but does not set the
+  treatment (403); "accept" above tolerance is never set by hand, at
+  creation, in an edit or at a review (400 `acceptance_required`): it
+  comes from a signed acceptance. Whoever lowered a risk's current score
+  today (on the client's calendar) does not take it off its committee's
+  list (403 `same_person`).
+- **L2.** Whoever completed an action does not verify it (403
+  `same_person`; `verify` is not in their moves).
+- **L3.** A committee that open risks are before is not switched off (409
+  `committee_in_use`); a risk before a committee switched off by other
+  means is escalated as if it were before none.
+- **L4.** Corrections (`POST /:id/corrections`) also take a risk's title,
+  cause, event and consequence where it cannot be edited (rejected,
+  closed; 409 `use_edit` otherwise), the close reason, and a link's note
+  or removal reason (`link_text`); an action's corrections take its title
+  and description at any status. Audited by name only.
+- **L5.** Reasons that had no place on the record are kept as notes
+  (`risk_notes`: change of owner, unit or category, escalation, coming
+  down, reopening, withdrawing an acceptance; `action_notes`: a due day's
+  move, a reopening), shown on the page as `notes`, corrected by a manager
+  (`kind: 'note'`, recording who and when), and named in the timeline and
+  the trail by `noteId`. The application role may update only a note's
+  text and who corrected it when.
+- **L6.** An action's owner reads the action and its risk's summary while
+  the action is open, in progress or completed, as `visibility.ts` says;
+  not once verified or cancelled (404).
+- **Also:** an inherent rating is not refused because a new version of
+  the matrix left the target above the current rating; only a current or
+  target rating is held to it.
+
+### Decided while building (steps 6 and 7)
+
+1. **A band whose acceptance needs no signature** (`acceptanceNeedsSignature`
+   off: Medium may be set so) is accepted at once, audited as requested
+   and accepted with `signatureRequired: false`. Any other needs an active
+   route for its band (409 `no_route`).
+2. **A current rating on an older version** of the matrix is re-rated
+   before an acceptance is asked for (409 `rerate_needed`); putting a new
+   version in use leaves the current rating of a risk whose acceptance is
+   in approval as it was signed (`risksAwaitingAcceptance` in the entry).
+3. **The closure's signers exclude its requester and the risk's owner**,
+   as an acceptance's do. A closure asked for and returned keeps its
+   reason on the risk (correctable) for the next request.
+4. **A closed risk keeps its acceptance** until its last day; reopened, a
+   new current rating above the score accepted ends it.
+5. **The signed content and a step's comment are not correctable**: a
+   decided step is fixed by migration 0041's rule, and what was signed
+   must stay as it was. Neither is in the trail or the timeline
+   (`commentGiven`).
+6. **A link's note** is plain text in one language, as a review's comment
+   is.
+7. **The merged-into risk** must be another open risk the closer reads (400
+   `unknown_risk`).
+
+### Not done, for the merge
+
+- Migrations 0074 and 0075, on top of the main branch at 02568cb: see
+  "Merged onto the main branch" below.
+- The web screens of steps 6 and 7 (the wording keys are in the contract).
+
+## Merged onto the main branch
+
+- **Migrations** 0074 (generated) and 0075 (custom), in place of this
+  branch's 0060 to 0065. 0074 holds none of the main branch's own schema
+  that has no migration yet (the end of contract: `client_deletions`, the
+  subscription's exit days, exports approved by Trustline): that stays its
+  author's to generate on top.
+- **Audit:** every action and detail key is registered and worded in the
+  three languages (`details.fields`, `values`); the areas `risks` and
+  `actions` and the entity types are worded; both areas belong to the
+  `risks` module in the viewer (`AREA_MODULE`); an external reviewer's
+  reading of the register is named `risk` / `risks` among the screens.
+- **Exports:** every table of the module is in `exports/coverage.ts`, in
+  `risks/` and `actions/`; none is excluded.
+- **External reviewers** read the register (decision 17): `risks.view` is
+  in `READ_ONLY_PERMISSIONS`, and the built-in External reviewer role holds
+  it, given to existing clients by 0075 with its description reworded.
+- **The measure:** `actions/measures.ts` reads `actions.overdue` from
+  `reports/measures.ts` (code, target, direction, tenths of a percent).
+  It stays `taken: false` there: the month-end snapshot and the Reports
+  series for actions are the reports module's to build, with a reach rule
+  for actions.
+- **Email:** `risk_step_assigned` is an approval step in
+  `COMPULSORY_FOR_ASSIGNEES`, and the preferences screen counts a holder
+  of `risks.approve` among those who decide approval steps.
+

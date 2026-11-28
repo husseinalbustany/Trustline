@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { IncidentsModule } from '../incidents/incidents.module.js';
 import { PoliciesModule } from '../policies/policies.module.js';
+import { RisksModule } from '../risks/risks.module.js';
 import { BackgroundContext } from './background-context.js';
 import { DigestService } from './digest.service.js';
 import { EmailWorker } from './email-worker.service.js';
@@ -10,7 +11,7 @@ import { EmailWorker } from './email-worker.service.js';
  * made from what the incidents and policies modules show each person.
  */
 @Module({
-  imports: [IncidentsModule, PoliciesModule],
+  imports: [IncidentsModule, PoliciesModule, RisksModule],
   // BackgroundContext is this module's alone: exported to nothing.
   providers: [BackgroundContext, DigestService, EmailWorker],
 })

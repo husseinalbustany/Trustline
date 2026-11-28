@@ -666,7 +666,9 @@ describe('notifications', () => {
         // Names no person.
         person: null,
       });
+      // `action` and `risk` are for the notifications of the risks module.
       expect(Object.keys(latest).sort()).toEqual([
+        'action',
         'createdAt',
         'data',
         'document',
@@ -675,6 +677,7 @@ describe('notifications', () => {
         'kind',
         'person',
         'readAt',
+        'risk',
       ]);
       const everything = JSON.stringify(theirs);
       expect(everything).not.toContain(reporter.id);
@@ -1299,6 +1302,7 @@ describe('notifications', () => {
       expect(times).toEqual([...times].sort((x, y) => y - x));
       for (const item of list.items) {
         expect(Object.keys(item).sort()).toEqual([
+          'action',
           'createdAt',
           'data',
           'document',
@@ -1307,6 +1311,7 @@ describe('notifications', () => {
           'kind',
           'person',
           'readAt',
+          'risk',
         ]);
         expect(Object.keys(item.incident).sort()).toEqual([
           'canOpen',

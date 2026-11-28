@@ -703,6 +703,7 @@ export class EmailWorker implements OnModuleDestroy {
               data: notifications.data,
               incidentId: notifications.incidentId,
               documentId: notifications.documentId,
+              riskId: notifications.riskId,
             })
             .from(notifications)
             .where(eq(notifications.id, row.notificationId))
@@ -779,7 +780,8 @@ export class EmailWorker implements OnModuleDestroy {
       // weekly email says nothing of them, and goes only for what it has
       // left (quality review 3, S2).
       if (built.category === 'weekly_digest' && suspended) {
-        if (built.overdue === 0) return { skip: 'suspended' };
+        // Risk reviews and actions wait too, as approval steps do.
+        if (built.topic === 'risks' || built.overdue === 0) return { skip: 'suspended' };
         built.stepsOverdue = 0;
       }
       content = built;
@@ -829,6 +831,7 @@ export class EmailWorker implements OnModuleDestroy {
       data: NotificationData;
       incidentId: string | null;
       documentId: string | null;
+      riskId?: string | null;
     },
     link: (path: string) => string,
   ): MailContent | null {
@@ -847,7 +850,27 @@ export class EmailWorker implements OnModuleDestroy {
         href: link(overdue > 0 ? '/policies/overdue' : '/policies/steps/overdue'),
       };
     }
+    if (kind === 'risks_overdue_digest') {
+      return {
+        category: 'weekly_digest',
+        topic: 'risks',
+        reviewsOverdue: Number(data.reviewsOverdue) || 0,
+        actionsOverdue: Number(data.actionsOverdue) || 0,
+        stepsOverdue: Number(data.stepsOverdue) || 0,
+        href: link('/risks/reviews'),
+      };
+    }
     if (!IMMEDIATE[kind]) return null;
+    if (kind === 'risk_escalated' || kind === 'risk_step_assigned') {
+      const reference = short(data.reference);
+      if (!reference || !notification.riskId) return null;
+      return {
+        category: 'immediate',
+        kind,
+        reference,
+        href: link(`/risks/${notification.riskId}`),
+      };
+    }
     if (kind === 'signing_pin_changed' || kind === 'signing_pin_locked') {
       const action =
         data.action === 'set' || data.action === 'changed' || data.action === 'reset'

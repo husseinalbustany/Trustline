@@ -7,6 +7,7 @@ import {
   IncidentsController,
 } from './incidents.controller.js';
 import { IncidentsService } from './incidents.service.js';
+import { LinkedIncidents } from './linked-incidents.js';
 import { NotificationsController } from './notifications.controller.js';
 import { NotificationsService } from './notifications.service.js';
 import { Notifier } from './notifier.js';
@@ -33,6 +34,7 @@ import { IncidentSettingsController } from './settings.controller.js';
   providers: [
     DeadlineCheck,
     IncidentsService,
+    LinkedIncidents,
     NotificationsService,
     Notifier,
     PublicLimits,
@@ -40,6 +42,7 @@ import { IncidentSettingsController } from './settings.controller.js';
   ],
   // For the email digest: what is assigned to a person, as their screens
   // show it.
-  exports: [IncidentsService],
+  // For other modules: what they may show of an incident they link to.
+  exports: [IncidentsService, LinkedIncidents],
 })
 export class IncidentsModule {}

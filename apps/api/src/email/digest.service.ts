@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import type { AuthContext } from '../identity/auth.service.js';
 import { IncidentsService } from '../incidents/incidents.service.js';
 import { LibraryService } from '../policies/library.service.js';
+import { RiskWorkService } from '../risks/work.service.js';
 import { READ_PERMISSIONS } from '../policies/visibility.js';
 import { DIGEST_ITEMS, type DigestSection } from './render.js';
 
@@ -23,6 +24,7 @@ export class DigestService {
   constructor(
     private readonly incidents: IncidentsService,
     private readonly library: LibraryService,
+    private readonly risks: RiskWorkService,
   ) {}
 
   async sectionsFor(
@@ -119,6 +121,58 @@ export class DigestService {
             label: r.number,
             href: link(`/policies/${r.id}`),
             overdue: r.state === 'overdue',
+          })),
+        });
+      }
+    }
+
+    // Risks (risk management, "Notifications and email"): risks to review,
+    // actions due and, for managers, proposals. Reviews and proposals wait
+    // while suspended; completing an action is safety work and stays.
+    if (modules.includes('risks')) {
+      const waiting = await this.risks.digestFor(auth);
+      if (!safetyOnly && waiting.reviews.length > 0) {
+        sections.push({
+          key: 'riskReviews',
+          count: waiting.reviews.length,
+          items: waiting.reviews.slice(0, DIGEST_ITEMS).map((r) => ({
+            label: r.reference,
+            href: link(`/risks/${r.id}`),
+            overdue: r.overdue,
+          })),
+        });
+      }
+      if (waiting.actions.length > 0) {
+        sections.push({
+          key: 'actionsDue',
+          count: waiting.actions.length,
+          overdueCount: waiting.actions.filter((a) => a.overdue).length,
+          items: waiting.actions.slice(0, DIGEST_ITEMS).map((a) => ({
+            label: a.reference,
+            href: link(`/risks/${a.riskId}`),
+            overdue: a.overdue,
+          })),
+        });
+      }
+      // Steps to sign wait while suspended, as for documents.
+      if (!safetyOnly && waiting.steps.length > 0) {
+        sections.push({
+          key: 'riskSteps',
+          count: waiting.steps.length,
+          items: waiting.steps.slice(0, DIGEST_ITEMS).map((r) => ({
+            label: r.reference,
+            href: link(`/risks/${r.riskId}`),
+            overdue: r.overdue,
+          })),
+        });
+      }
+      if (!safetyOnly && waiting.proposals.length > 0) {
+        sections.push({
+          key: 'riskProposals',
+          count: waiting.proposals.length,
+          items: waiting.proposals.slice(0, DIGEST_ITEMS).map((r) => ({
+            label: r.reference,
+            href: link(`/risks/${r.id}`),
           })),
         });
       }

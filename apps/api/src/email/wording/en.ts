@@ -96,6 +96,14 @@ export const en: Wording = {
       body: 'Your organization’s audit trail was checked on {day} and is unbroken up to entry {count}. The seal of that entry is:',
       keep: 'Keep this email: if any entry up to that one were ever changed, removed or added afterwards, this seal would no longer match.',
     },
+    risk_escalated: {
+      subject: 'Extreme risk escalated: {reference}',
+      body: 'Risk {reference}, rated Extreme, has been put before a committee you sit on, or is a risk you own.',
+    },
+    risk_step_assigned: {
+      subject: 'A risk step to decide: {reference}',
+      body: 'A step of the acceptance or closure of risk {reference} is waiting for your decision.',
+    },
   },
   signInCode: {
     subject: 'Your Trustline sign-in code',
@@ -115,6 +123,14 @@ export const en: Wording = {
     stepsBody: 'Some approval steps of the documents you manage have passed their due date.',
     stepsOverdue: 'Approval steps overdue: {count}',
   },
+  weeklyRisks: {
+    subject: 'Risk reviews and actions overdue this week',
+    body: 'Some risks you manage have reviews or actions past their due date.',
+    reviewsOverdue: 'Risk reviews overdue: {count}',
+    actionsOverdue: 'Actions overdue: {count}',
+    stepsOverdue: 'Acceptance and closure steps overdue: {count}',
+    open: 'See the reviews due in Trustline',
+  },
   daily: {
     subject: 'What waits for you in Trustline: {day}',
     intro: 'This is what waits for you today.',
@@ -124,6 +140,10 @@ export const en: Wording = {
     reviews: 'Periodic reviews due: {count}',
     incidents: 'Incidents assigned to you: {count}',
     incidentsOverdue: 'Of these, overdue: {count}',
+    riskReviews: 'Risks to review: {count}',
+    actionsDue: 'Actions due: {count}',
+    riskProposals: 'Risks proposed for the register: {count}',
+    riskSteps: 'Risk steps to decide: {count}',
     more: 'And {count} more in Trustline.',
     open: 'Open Trustline',
   },

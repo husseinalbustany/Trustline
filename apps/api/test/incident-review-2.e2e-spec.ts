@@ -806,6 +806,9 @@ describe('incident reporting after the second quality review', () => {
           document: null,
           // About a person (`data.personId`): none.
           person: null,
+          // About a risk or an action of the risks module: none.
+          risk: null,
+          action: null,
           data: { limit: PUBLIC_REPORTS_PER_HOSPITAL_PER_HOUR, serious: false },
         });
         const count = await http()

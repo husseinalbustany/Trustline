@@ -68,6 +68,29 @@ export const NOTIFICATION_MODULE: Record<NotificationKind, ModuleKey> = {
   ai_provider_changed: 'ai_assistant',
   ai_allowance_warning: 'ai_assistant',
   ai_allowance_reached: 'ai_assistant',
+  risk_owner_assigned: 'risks',
+  risk_review_due: 'risks',
+  risk_review_overdue: 'risks',
+  risk_above_tolerance: 'risks',
+  risk_escalated: 'risks',
+  risk_de_escalated: 'risks',
+  risks_overdue_digest: 'risks',
+  // Of the module of their source (docs/specs/actions.md): every action is
+  // a risk's so far.
+  action_assigned: 'risks',
+  action_due_soon: 'risks',
+  action_overdue: 'risks',
+  action_escalated: 'risks',
+  action_completed: 'risks',
+  risk_step_assigned: 'risks',
+  risk_step_overdue: 'risks',
+  risk_acceptance_decided: 'risks',
+  risk_acceptance_ending: 'risks',
+  risk_acceptance_lapsed: 'risks',
+  risk_closed: 'risks',
+  risk_proposed: 'risks',
+  risk_incident_linked: 'risks',
+  risk_control_document_retired: 'risks',
 };
 
 /** The kinds a client with these modules is shown. */

@@ -557,7 +557,7 @@ describe('the audit trail', () => {
       await http().post('/auth/login/code').send({ org: a.slug, challenge, code: await codeFor(granted.reviewer.id) }).expect(401);
       const me = (await get(reviewer.cookie, '/auth/me').expect(200)).body;
       expect(me.user).toMatchObject({ kind: 'external_reviewer', access: { from: today, until: shiftDay(today, 29) } });
-      expect(me.permissions).toEqual(['audit.view', 'incidents.view', 'policies.view_all', 'reports.view']);
+      expect(me.permissions).toEqual(['audit.view', 'incidents.view', 'policies.view_all', 'reports.view', 'risks.view']);
       const audit = await bench.owner.db.select({ action: auditLog.action, changes: auditLog.changes }).from(auditLog).where(eq(auditLog.entityId, reviewer.id));
       expect(audit).toEqual(
         expect.arrayContaining([

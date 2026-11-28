@@ -5,7 +5,7 @@ import type { Transaction } from '../database/client.js';
 import { signatures } from '../database/schema.js';
 
 export type SignatureMeaning = (typeof signatures.meaning.enumValues)[number];
-export type SignedSubject = 'document_version' | 'document';
+export type SignedSubject = 'document_version' | 'document' | 'risk_acceptance' | 'risk';
 
 /**
  * JSON with every object's keys in order, so that the same content always
@@ -40,7 +40,8 @@ export const contentHash = (value: unknown) =>
 
 /**
  * Electronic signatures. Generic: a document version's approval, a
- * document's periodic review, an acknowledgement; later an investigation's.
+ * document's periodic review, an acknowledgement, a risk's acceptance
+ * above tolerance and its closure; later an investigation's.
  *
  * A signature is written only by a request in which the signer re-entered
  * their password (`AuthService.confirmPassword`, which the caller of `sign`
