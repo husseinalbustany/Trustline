@@ -10,6 +10,7 @@ import { OrganizationModule } from './organization/organization.module.js';
 import { PlatformModule } from './platform/platform.module.js';
 import { PoliciesModule } from './policies/policies.module.js';
 import { ReportsModule } from './reports/reports.module.js';
+import { ExportsModule } from './exports/exports.module.js';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module.js';
 
 @Module({
@@ -25,6 +26,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module.js';
     PlatformModule,
     AuditModule,
     ReportsModule,
+    ExportsModule,
   ],
   controllers: [HealthController],
 })

@@ -34,6 +34,7 @@ import {
   incidentResponseRules,
   incidents,
   measureSnapshots,
+  dataExports,
   notifications,
   orgUnits,
   plans,
@@ -168,6 +169,7 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
         // A whole test client's figures, before its units.
         measureSnapshots,
         reportSettings,
+        dataExports,
         // A whole test client's audit trail, its chain with it. Never the
         // entries of a client that is kept: its chain would break
         // (docs/specs/audit-trail.md, "Tests").

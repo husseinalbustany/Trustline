@@ -473,8 +473,31 @@ export class TrailService {
     range: { fromSeq?: number; toSeq?: number },
     write: (line: string) => Promise<void>,
   ) {
-    const shown = this.shownActions(auth);
     return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
+      const { first, last, entries, withheld } = await this.writeChainIn(tx, auth, range, write);
+      await this.provisioning.audit(tx, auth.tenant.id, auth.user.id, 'audit_chain_exported', 'tenant', auth.tenant.id, {
+        fromSeq: first,
+        toSeq: last,
+        entries,
+        withheld,
+      });
+      return { fileName: `audit-chain-${auth.tenant.slug.replace(/[^A-Za-z0-9-]/g, '-')}-${first}-${last}.jsonl` };
+    });
+  }
+
+  /**
+   * The chain file's lines, as `auth` may see them, in the caller's
+   * transaction (the chain file route, and a full data export's moment).
+   * Not audited here.
+   */
+  async writeChainIn(
+    tx: Transaction,
+    auth: AuthContext,
+    range: { fromSeq?: number; toSeq?: number },
+    write: (line: string) => Promise<void>,
+  ) {
+    const shown = this.shownActions(auth);
+    {
       const { rows: heads } = await tx.execute<{ seq: string | null }>(sql`select seq::text as seq from audit_chain_heads`);
       const head = Number(heads[0]?.seq ?? 0);
       const first = Math.max(1, range.fromSeq ?? 1);
@@ -580,14 +603,8 @@ export class TrailService {
           }),
         );
       }
-      await this.provisioning.audit(tx, auth.tenant.id, auth.user.id, 'audit_chain_exported', 'tenant', auth.tenant.id, {
-        fromSeq: first,
-        toSeq: last,
-        entries,
-        withheld,
-      });
-      return { fileName: `audit-chain-${auth.tenant.slug.replace(/[^A-Za-z0-9-]/g, '-')}-${first}-${last}.jsonl` };
-    });
+      return { first, last, entries, withheld };
+    }
   }
 
   /** The signed checkpoints, between two days, as a JSON file. Audited. */

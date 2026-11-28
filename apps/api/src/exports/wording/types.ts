@@ -46,6 +46,8 @@ export type ExportWording = {
   csv: Record<string, Record<string, string>>;
   /** Codes in the CSV files, as words. Codes not listed are worded by the audit trail's words, else shown as they are. */
   values: Record<string, string>;
+  /** Each language's name, in this language. */
+  languages: Record<'en' | 'ar' | 'fr', string>;
   yes: string;
   no: string;
   /** A unit or person no longer known. */

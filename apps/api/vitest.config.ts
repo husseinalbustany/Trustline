@@ -1,4 +1,4 @@
-import { generateKeyPairSync } from 'node:crypto';
+import { generateKeyPairSync, randomBytes } from 'node:crypto';
 import { defineConfig } from 'vitest/config';
 
 // A key for the audit chain's checkpoints, made afresh for each run: no
@@ -6,6 +6,12 @@ import { defineConfig } from 'vitest/config';
 const auditKey = generateKeyPairSync('ed25519')
   .privateKey.export({ type: 'pkcs8', format: 'der' })
   .toString('base64');
+// Likewise for full data exports: the manifest's key, and the key that
+// wraps each archive's own (docs/specs/data-export.md).
+const exportKey = generateKeyPairSync('ed25519')
+  .privateKey.export({ type: 'pkcs8', format: 'der' })
+  .toString('base64');
+const storageKey = randomBytes(32).toString('base64');
 
 export default defineConfig({
   // Resolves the path aliases declared in tsconfig.json, including the ones
@@ -26,6 +32,9 @@ export default defineConfig({
       SIGNING_PIN_PEPPER: 'test-only-pepper-for-signing-pins-0000000000',
       AUDIT_SIGNING_KEY: auditKey,
       AUDIT_PREVIOUS_PUBLIC_KEYS: '',
+      EXPORT_SIGNING_KEY: exportKey,
+      EXPORT_PREVIOUS_PUBLIC_KEYS: '',
+      EXPORT_STORAGE_KEY: storageKey,
     },
   },
 });

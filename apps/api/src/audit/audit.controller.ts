@@ -15,6 +15,7 @@ import { ForModule } from '../subscriptions/module.decorator.js';
 import { SUPPORTED_LOCALES, type Locale } from '../i18n/locales.js';
 import { CSV_CONTENT_TYPE } from '../policies/csv.js';
 import { AuditKeys } from './audit-keys.js';
+import { ExportKeys } from '../exports/export-keys.js';
 import { checkpointsQuery, chainQuery, entriesExportQuery, entriesQuery } from './input.js';
 import { readCursor, sealedBeforeIn, TrailService } from './trail.service.js';
 
@@ -248,10 +249,19 @@ export class AuditController {
 @Controller('audit/keys')
 @ForModule('core')
 export class AuditKeysController {
-  constructor(private readonly keys: AuditKeys) {}
+  constructor(
+    private readonly keys: AuditKeys,
+    private readonly exportKeys: ExportKeys,
+  ) {}
 
+  /**
+   * `keys`: the audit checkpoints' keys, which the chain verifier reads.
+   * `exportKeys`: the keys of full data exports' manifests
+   * (docs/specs/data-export.md), kept apart so that neither key's
+   * signature is taken for the other's.
+   */
   @Get()
   list() {
-    return { keys: this.keys.published };
+    return { keys: this.keys.published, exportKeys: this.exportKeys.published };
   }
 }
