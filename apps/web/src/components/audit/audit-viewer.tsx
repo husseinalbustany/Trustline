@@ -62,6 +62,7 @@ const recordPath = (lang: string, type: string, id: string) =>
 export function AuditViewer({ lang, t }: { lang: string; t: AuditText }) {
   const session = useSession();
   const allowed = session.scope?.["audit.view"] === "all";
+  const locale = session.tenant.locales.includes(lang) ? lang : session.tenant.defaultLocale;
   const asked = readAuditQuery(useSearchParams());
   const query = auditQueryString(asked);
   const [answer, setAnswer] = useState<{ query: string; page: AuditPage } | null>(null);
@@ -74,6 +75,9 @@ export function AuditViewer({ lang, t }: { lang: string; t: AuditText }) {
     let current = true;
     const q = auditApiQuery(asked);
     q.set("pageSize", String(PAGE_SIZE));
+    // The details, worded by the API in the page's language when the
+    // organization works in it.
+    q.set("locale", locale);
     if (asked.before) q.set("before", asked.before);
     api<AuditPage>(`/audit/entries?${q}`).then(
       (page) => {
@@ -93,7 +97,7 @@ export function AuditViewer({ lang, t }: { lang: string; t: AuditText }) {
     };
     // `asked` is read from `query`, which says all of it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [allowed, query, t]);
+  }, [allowed, query, t, locale]);
 
   const go = (next: Partial<AuditQuery>, keepNewer = false) => {
     if (!keepNewer) setNewer([]);
@@ -230,7 +234,11 @@ function EntryRow({
         title={t.filters.onlyPerson}
         className="font-medium text-accent hover:underline"
       >
-        <bdi>{inLang(actor.name) || t.list.formerUser}</bdi>
+        <bdi>
+          {actor.external
+            ? fill(t.list.externalReviewer, { name: inLang(actor.name) || t.list.formerUser })
+            : inLang(actor.name) || t.list.formerUser}
+        </bdi>
       </button>
     ) : actor.kind === "trustline_staff" && actor.name ? (
       <Words

@@ -3113,7 +3113,8 @@
       "staffNamed": "{actor} : {name}",
       "noRecord": "—",
       "label": "Entrées du journal d’audit",
-      "formerUser": "Un ancien utilisateur"
+      "formerUser": "Un ancien utilisateur",
+      "externalReviewer": "{name} (évaluateur externe)"
     },
     "downloads": {
       "title": "Fichiers à conserver ou à remettre à un évaluateur",
@@ -3134,7 +3135,7 @@
       "step2": "La dernière entrée correspond à un point de contrôle dont la signature est valide avec la clé publiée de Trustline.",
       "step3": "Un sceau conservé auparavant (un téléchargement, ou l’e-⁠mail hebdomadaire) apparaît toujours, inchangé.",
       "step4": "Les entrées lues dans le CSV ont le même contenu dans le fichier de chaîne.",
-      "script": "Le script publié par Trustline effectue ces vérifications sur l’ordinateur de l’évaluateur, sans envoyer le fichier nulle part :",
+      "script": "Le script publié par Trustline effectue ces vérifications sur l’ordinateur de l’évaluateur, sans envoyer le fichier nulle part. Il a besoin des clés publiques de Trustline dans keys.json, à télécharger ci-dessous :",
       "keys": "Télécharger les clés publiques de Trustline",
       "command": "node verify-audit-chain.mjs <fichier de chaîne> keys.json"
     },

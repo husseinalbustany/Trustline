@@ -31,7 +31,13 @@ export const auditEntityTypes = [
 
 /** Who acted. A person's name is theirs now; the reporter may be masked. */
 export type AuditActor =
-  | { kind: "person"; id: string; name: Localized | null }
+  | {
+      kind: "person";
+      id: string;
+      name: Localized | null;
+      /** An external reviewer, not a member of staff. */
+      external?: boolean;
+    }
   | { kind: "trustline_staff"; name: string | null }
   | { kind: "system" }
   | { kind: "reporter" }

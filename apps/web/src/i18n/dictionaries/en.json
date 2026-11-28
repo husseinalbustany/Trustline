@@ -3113,7 +3113,8 @@
       "staffNamed": "{actor}: {name}",
       "noRecord": "—",
       "label": "Entries of the audit trail",
-      "formerUser": "A former user"
+      "formerUser": "A former user",
+      "externalReviewer": "{name} (external reviewer)"
     },
     "downloads": {
       "title": "Files to keep or give a surveyor",
@@ -3134,7 +3135,7 @@
       "step2": "The last entry matches a checkpoint whose signature holds under Trustline's published key.",
       "step3": "A seal kept from earlier (a download, or the weekly email) still appears, unchanged.",
       "step4": "The entries read in the CSV have the same content in the chain file.",
-      "script": "Trustline's published script does these checks on the surveyor's own computer, without sending the file anywhere:",
+      "script": "Trustline's published script does these checks on the surveyor's own computer, without sending the file anywhere. It needs Trustline's public keys as keys.json, downloaded below:",
       "keys": "Download Trustline's public keys",
       "command": "node verify-audit-chain.mjs <chain file> keys.json"
     },
