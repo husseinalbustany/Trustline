@@ -1491,6 +1491,16 @@ describe('policies and procedures', () => {
         opensOn: shiftDay(current.nextReviewOn, -60),
       });
       expect(current.moves).not.toContain('confirm_review');
+      // Said in advance, by the same rule: the day it opens.
+      expect(current.reviewOpensOn).toBe(shiftDay(current.nextReviewOn, -60));
+      // On that day it opens; the day before, not yet.
+      const day = current.today as string;
+      for (const [offset, opens] of [[60, true], [61, false]] as const) {
+        await bench.owner.db.execute(sql`update documents set next_review_on = ${shiftDay(day, offset)}::date where id = ${doc.id}`);
+        const seen = (await get(writer.cookie, `/documents/${doc.id}`).expect(200)).body;
+        expect(seen.reviewOpensOn).toBe(shiftDay(day, offset - 60));
+        expect(seen.moves.includes('confirm_review')).toBe(opens);
+      }
       await bench.owner.db.execute(sql`update documents set next_review_on = current_date - 3 where id = ${doc.id}`);
       expect(
         (await post(writer.cookie, `/documents/${doc.id}/review`, { password: 'nope', comment, revision: current.revision }).expect(401)).body.code,
@@ -1512,6 +1522,7 @@ describe('policies and procedures', () => {
       await bench.owner.db.execute(sql`update documents set next_review_on = null where id = ${doc.id}`);
       const undated = (await get(writer.cookie, `/documents/${doc.id}`).expect(200)).body;
       expect(undated.moves).not.toContain('confirm_review');
+      expect(undated.reviewOpensOn).toBeNull();
       expect(
         (await post(writer.cookie, `/documents/${doc.id}/review`, { password, comment, revision: undated.revision }).expect(409)).body,
       ).toEqual({ code: 'review_not_due', dueOn: null, opensOn: null });

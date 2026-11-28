@@ -1228,7 +1228,9 @@ is audited.
 9. **"Confirm no change" only when the review is due.** Within 60 days of
    the due date, or after it; otherwise 409 `review_not_due` with `dueOn`
    and `opensOn`, checked before the password, and `confirm_review` is not
-   among the document's moves. Reversible if the business answers question
-   6 otherwise.
+   among the document's moves. The document answers `reviewOpensOn` (next
+   to `nextReviewOn`), the day it opens, from the same function
+   (`reviewConfirmation`) as the moves and the refusal. Reversible if the
+   business answers question 6 otherwise.
 10. **The original's revision for the print header:**
     `control.originalRevision` ("Version 1 (Rev. 4 on the original)").

@@ -94,6 +94,18 @@ export const REVIEW_DUE_DAYS = 30;
  */
 export const REVIEW_CONFIRM_DAYS = 60;
 
+/**
+ * When a document's periodic review may be confirmed as needing no change,
+ * by the one rule every place asks (`moves`, `reviewable()`, the answer's
+ * `reviewOpensOn`): from REVIEW_CONFIRM_DAYS before its due date. No date,
+ * no review to confirm.
+ */
+export function reviewConfirmation(nextReviewOn: string | null, today: string) {
+  if (!nextReviewOn) return { dueOn: null, opensOn: null, open: false };
+  const opensOn = shiftDay(nextReviewOn, -REVIEW_CONFIRM_DAYS);
+  return { dueOn: nextReviewOn, opensOn, open: today >= opensOn };
+}
+
 const versionFields = {
   id: documentVersions.id,
   documentId: documentVersions.documentId,
@@ -334,8 +346,7 @@ export class DocumentsService {
       (access.manages || access.owner) &&
       doc.status === 'active' &&
       !reissueRequired &&
-      !!doc.nextReviewOn &&
-      doc.nextReviewOn <= shiftDay(today, REVIEW_CONFIRM_DAYS)
+      reviewConfirmation(doc.nextReviewOn, today).open
     ) {
       moves.push('confirm_review');
     }
@@ -355,6 +366,9 @@ export class DocumentsService {
       references: doc.references,
       reviewMonths: doc.reviewMonths,
       nextReviewOn: doc.nextReviewOn,
+      // The day "confirm no change" opens for it, by the same rule as
+      // `moves` and the route (null with no review date).
+      reviewOpensOn: reviewConfirmation(doc.nextReviewOn, today).opensOn,
       lastReviewedOn: doc.lastReviewedOn,
       review: reviewState(doc, today),
       reissueRequired,
@@ -2460,15 +2474,15 @@ export class DocumentsService {
     // with nobody having looked.
     // With no review date there is no review to confirm, as `moves` says
     // (security review of quality 3, N3).
-    const today = dayOf(new Date(), auth.tenant.timeZone);
-    if (!doc.nextReviewOn) {
-      throw new ConflictException({ code: 'review_not_due', dueOn: null, opensOn: null });
-    }
-    if (doc.nextReviewOn > shiftDay(today, REVIEW_CONFIRM_DAYS)) {
+    const confirmation = reviewConfirmation(
+      doc.nextReviewOn,
+      dayOf(new Date(), auth.tenant.timeZone),
+    );
+    if (!confirmation.open) {
       throw new ConflictException({
         code: 'review_not_due',
-        dueOn: doc.nextReviewOn,
-        opensOn: shiftDay(doc.nextReviewOn, -REVIEW_CONFIRM_DAYS),
+        dueOn: confirmation.dueOn,
+        opensOn: confirmation.opensOn,
       });
     }
     return { viewer, doc };
