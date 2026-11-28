@@ -1,5 +1,6 @@
 import '../src/env.js';
 import { randomBytes, randomUUID } from 'node:crypto';
+import { Logger } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import type { MailConfig } from '../src/email/config.js';
 import {
@@ -753,14 +754,22 @@ describe('email', () => {
             values (${a.id}, ${quality.id}, 'daily_digest', '2020-01-01', 'sent', now() - interval '31 days')`,
       );
       const provisioning = bench.app.get(ProvisioningService);
-      const spy = vi.spyOn(provisioning, 'activeUserIds').mockRejectedValue(new Error('boom'));
+      // A failure as a lost connection gives it, its message holding data.
+      const lost = () => Object.assign(new Error(`connection to ${quality.email} lost`), { code: 'ECONNRESET' });
+      const spy = vi.spyOn(provisioning, 'activeUserIds').mockImplementation(() => Promise.reject(lost()));
+      const logged = vi.spyOn(Logger.prototype, 'error');
       worker.digestHour = 0;
       try {
         const done = await work();
         expect(done).toMatchObject({ kept: count, queued: 0 });
         expect(done.failed).toBeGreaterThan(0);
+        // Said with the client and the code, never the message.
+        const lines = logged.mock.calls.map((c) => String(c[0])).filter((l) => l.startsWith('Email digests'));
+        expect(lines).toContain(`Email digests could not be queued for client ${a.id}: Error (ECONNRESET)`);
+        expect(lines.join('\n')).not.toContain(quality.email);
       } finally {
         spy.mockRestore();
+        logged.mockRestore();
         worker.digestHour = 24;
       }
       const rows = await queue();

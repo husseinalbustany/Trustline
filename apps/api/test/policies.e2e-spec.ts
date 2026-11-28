@@ -1,6 +1,6 @@
 import '../src/env.js';
 import { randomBytes, randomUUID } from 'node:crypto';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import {
   approvalRouteSteps,
   approvalRunSteps,
@@ -1263,6 +1263,9 @@ describe('policies and procedures', () => {
           .from(approvalRunSteps)
           .innerJoin(signatures, eq(signatures.id, approvalRunSteps.signatureId))
           .where(eq(signatures.subjectId, pub.id))
+          // The first step, the quality officer's review: two steps of the
+          // run are decided, and without an order either may come first.
+          .orderBy(asc(approvalRunSteps.position))
           .limit(1);
         await expect(
           asApp((tx) => tx.update(approvalRunSteps).set({ assigneeUserId: writer.id }).where(eq(approvalRunSteps.id, step.id))),

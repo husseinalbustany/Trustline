@@ -101,15 +101,26 @@ const ADDRESS = /^[^\s@<>",;]+@[^\s@<>",;]+\.[^\s@<>",;]+$/;
 // RFC 2606 and 6761: names that are never anyone's mailbox.
 const RESERVED_DOMAIN = /\.(?:invalid|test|example|localhost)$/i;
 
-/** The kind of a failure, never its message: see deadline-check.service.ts. */
-const kindOf = (error: unknown) => {
-  if (!(error instanceof Error)) return 'unknown error';
+/**
+ * The kind of a failure and its code, never its message (which can hold
+ * data): the database's SQLSTATE, a system or library code (`ECONNRESET`,
+ * `EAUTH`), found on the error or what caused it, and the table and
+ * constraint for a database error. `no code` when there is none, so that a
+ * log line always says which it was.
+ */
+export const kindOf = (error: unknown) => {
+  if (!(error instanceof Error)) return 'unknown error (no code)';
   const name = error.name === 'Error' ? error.constructor.name : error.name;
-  const own = (error as { code?: unknown }).code;
-  const code =
-    databaseFailure(error)?.code ??
-    (typeof own === 'string' && ERROR_CODE.test(own) ? own : null);
-  return code ? `${name} (${code})` : name;
+  const database = databaseFailure(error);
+  let own: string | null = null;
+  for (let e: unknown = error, depth = 0; e && depth < 5 && !own; depth++) {
+    const code = (e as { code?: unknown }).code;
+    if (typeof code === 'string' && ERROR_CODE.test(code)) own = code;
+    e = (e as { cause?: unknown }).cause;
+  }
+  const code = database?.code ?? own;
+  const where = [database?.table, database?.constraint].filter(Boolean).join(', ');
+  return `${name} (${code ?? 'no code'}${where ? `; ${where}` : ''})`;
 };
 
 /** Whether the daily digest is due: from DIGEST_HOUR on, on the client's clock. */
