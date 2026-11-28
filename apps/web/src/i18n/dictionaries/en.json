@@ -609,7 +609,7 @@
       },
       "document_owner_assigned_confirm": "You are now the owner of {reference}: confirm by {confirmBy} that what was imported matches the approved original. Its periodic review and its re-issue are yours.",
       "signing_pin_locked": "Signing with your PIN is locked after too many wrong PINs, and the session they were typed in was signed out. Ask your administrator to reset it. If it was not you, say so.",
-      "review_approval_turned_off": "A “no change” review of {reference} documents no longer needs the Approving authority's signature: the setting was turned off.",
+      "review_approval_turned_off": "Documents of the type “{type}”: a “no change” review no longer needs the Approving authority's signature, as the setting was turned off.",
       "other": "There is an update on {reference}."
     },
     "descriptionGeneral": "What has happened that concerns you. A notification names no one.",

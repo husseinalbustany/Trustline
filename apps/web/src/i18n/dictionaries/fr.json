@@ -609,7 +609,7 @@
       },
       "document_owner_assigned_confirm": "Vous êtes désormais responsable du document {reference} : confirmez au plus tard le {confirmBy} que ce qui a été importé correspond à l’original approuvé. Sa révision périodique et sa réédition vous reviennent.",
       "signing_pin_locked": "La signature par votre code est bloquée après trop de codes erronés, et la session dans laquelle ils ont été saisis a été déconnectée. Demandez à votre administrateur de le réinitialiser. Si ce n’était pas vous, dites-le-lui.",
-      "review_approval_turned_off": "Une révision « sans modification » des documents {reference} ne nécessite plus la signature de l’Autorité d’approbation : ce réglage a été désactivé.",
+      "review_approval_turned_off": "Documents du type « {type} » : une révision « sans modification » ne nécessite plus la signature de l’Autorité d’approbation, ce réglage ayant été désactivé.",
       "other": "Du nouveau concernant l’incident {reference}."
     },
     "descriptionGeneral": "Ce qui s’est passé et vous concerne. Une notification ne nomme personne.",

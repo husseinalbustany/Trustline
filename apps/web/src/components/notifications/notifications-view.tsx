@@ -23,7 +23,8 @@ import {
   numberFormat,
   timeAgoFormat,
 } from "@/lib/format";
-import { pick } from "@/lib/localized";
+import { pick, type Localized } from "@/lib/localized";
+import type { DocumentType } from "@/lib/policies";
 import {
   aboutReview,
   emailTurnedOff,
@@ -138,6 +139,27 @@ export function NotificationsView({
   useLayoutEffect(() => () => setActionFailed(false), []);
 
   const data = answer?.query === query ? answer.list : null;
+
+  // A notice about a document type names it: the types' names, asked for
+  // once, when the list holds such a notice. Until then, or if they cannot
+  // be read, the type's code stands for its name.
+  const [typeNames, setTypeNames] = useState<Record<string, Localized> | null>(null);
+  const aboutTypes = !!data?.items.some((n) => n.kind === "review_approval_turned_off");
+  useEffect(() => {
+    if (!aboutTypes || typeNames) return;
+    let current = true;
+    api<DocumentType[]>("/policies/types").then(
+      (types) => {
+        if (current) setTypeNames(Object.fromEntries(types.map((x) => [x.id, x.name])));
+      },
+      () => {
+        if (current) setTypeNames({});
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [aboutTypes, typeNames]);
   const problem = !data && failed === query;
   const pages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
   const pastTheEnd = !!data && data.total > 0 && asked.page > pages;
@@ -211,7 +233,6 @@ export function NotificationsView({
       n.incident?.reference ??
       n.data?.number ??
       doc?.number ??
-      n.data?.typeCode ??
       "";
     // About the organization rather than an incident or a document:
     // nothing to open, except the settings, for whoever may change them.
@@ -249,6 +270,9 @@ export function NotificationsView({
       position: numbers.format(n.data?.position ?? 0),
       overdue: numbers.format(Number(n.data?.overdue ?? 0)),
       confirmBy: day(n.data?.confirmationDueOn) ?? "",
+      type:
+        pick(typeNames?.[n.data?.typeId ?? ""], lang, session.tenant.defaultLocale) ||
+        (n.data?.typeCode ?? ""),
       people: numbers.format(n.data?.people ?? 0),
       stepsOverdue: numbers.format(n.data?.stepsOverdue ?? 0),
     })
