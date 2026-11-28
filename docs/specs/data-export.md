@@ -533,3 +533,19 @@ The reviews:
     PDPL and the GDPR, and of the deletion certificate.
 12. **The first release without PDFs:** JSON, CSV and HTML first, with PDFs
     added once the renderer exists (recommended), or wait for the renderer.
+
+## Decided by the business (28 November 2026)
+
+Every recommendation in this spec is accepted. In particular:
+
+- **Records after the contract ends:** custody passes to the client with the
+  signed export; Trustline deletes its copy after a 90-day exit window. A
+  paid read-only archive may be offered as an option.
+- **A client with one administrator:** Trustline approves on the contract
+  contact's written request, and that request is recorded.
+- **First release:** JSON, CSV and documents as HTML; PDFs follow once the
+  renderer exists.
+- **Legal review** of the export and retention terms (PDPL and GDPR) before
+  the first contract is signed.
+- Every other decision in "Decisions needed" follows the recommendation
+  written there.

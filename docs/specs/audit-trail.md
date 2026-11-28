@@ -695,3 +695,21 @@ The reviews:
 10. **After the contract ends:** what Trustline keeps of the trail, and for
     how long (see `data-export.md`).
 11. **Publishing the verifier** as open source under Trustline's name.
+
+## Decided by the business (28 November 2026)
+
+Every recommendation in this spec is accepted. In particular:
+
+- **Who holds `audit.view` by default:** the Administrator and the Quality
+  officer.
+- **External reviewers:** at most 30 days, extendable once, with a one-time
+  code at sign-in; they do not count as named users.
+- **A break in the chain:** shown to the client at once.
+- **Anchoring:** a weekly email of the latest hash to the administrators
+  now; a timestamping service later.
+- **Giving someone the Quality officer role** (raised by security review
+  11): stays possible for an administrator alone, as it is audited; the
+  other Quality officers and administrators are also told in the app when
+  anyone is given `policies.import`.
+- Every other decision in "Decisions needed" follows the recommendation
+  written there.

@@ -704,3 +704,17 @@ The reviews:
 12. **Denominators** (staff numbers, patient days, production hours) for
     rates: with the KPI module in Phase 3 (recommended), or sooner for the
     pilot.
+
+## Decided by the business (28 November 2026)
+
+Every recommendation in this spec is accepted. In particular:
+
+- **Baseline for "more reports":** the client enters its figure from before
+  Trustline; without one, the first three months in Trustline are the
+  baseline.
+- **Targets:** each client may set its own, starting from the business
+  requirements' targets.
+- **Committee pack:** carries no incident descriptions, and is signed by the
+  committee chair when issued.
+- Every other decision in "Decisions needed" follows the recommendation
+  written there.
