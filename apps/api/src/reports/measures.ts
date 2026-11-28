@@ -138,15 +138,39 @@ export function metOf(direction: MeasureDefinition['direction'], value: number |
   return direction === 'below' ? value < target : direction === 'above' ? value > target : value >= target;
 }
 
-/** Rows for the whole organization (`null`) or for each of these units and what lies beneath. */
-export type UnitScope = { units: null } | { units: string[] };
+/**
+ * Rows for the whole organization (`null`) or for each of these units and
+ * what lies beneath. `structure`: the paths from the top to each unit as
+ * they were (a month's stored `unit_path`s), for a month worked out again
+ * on the structure it was taken on (decision 3); else the structure now.
+ */
+export type UnitScope = { units: null } | { units: string[]; structure?: string[][] };
 const ORGANIZATION = '';
 
+/** The pairs (ancestor, unit) of a structure as it was, for the units asked for. */
+export function subtreesOf(units: string[], structure: string[][]) {
+  const asked = new Set(units);
+  const pairs = new Set<string>();
+  for (const id of units) pairs.add(`${id} ${id}`);
+  for (const path of structure) {
+    const unit = path[path.length - 1];
+    for (const ancestor of path) if (asked.has(ancestor)) pairs.add(`${ancestor} ${unit}`);
+  }
+  return [...pairs].map((p) => p.split(' ') as [string, string]);
+}
+
 /** The subtree of each unit asked for, as `tree(ancestor, unit)`. */
-const treeOf = (units: string[]) => sql`
+const treeOf = (scope: { units: string[]; structure?: string[][] }) =>
+  scope.structure
+    ? sql`
+  with tree (ancestor, unit) as (
+    select (e ->> 0)::uuid, (e ->> 1)::uuid
+    from jsonb_array_elements(${JSON.stringify(subtreesOf(scope.units, scope.structure))}::jsonb) e
+  )`
+    : sql`
   with recursive tree (ancestor, unit) as (
     select u.id, u.id from org_units u
-    where u.id = any(array[${sql.join(units.map((id) => sql`${id}`), sql`, `)}]::uuid[])
+    where u.id = any(array[${sql.join(scope.units.map((id) => sql`${id}`), sql`, `)}]::uuid[])
     union
     select t.ancestor, u.id from tree t join org_units u on u.parent_id = t.unit
   )`;
@@ -199,7 +223,7 @@ export async function incidentFigures(
   const keys = input.units === null ? [null] : input.units;
   for (const k of keys) out.set(keyOf(k), emptyIncidents());
   if (input.units !== null && input.units.length === 0) return out;
-  const scope = input.units === null ? sql`` : treeOf(input.units);
+  const scope = input.units === null ? sql`` : treeOf(input);
   const from = input.units === null ? sql`from ${incidents}` : sql`from ${incidents} join tree t on t.unit = ${incidents.orgUnitId}`;
   const unit = input.units === null ? sql`null::uuid` : sql`t.ancestor`;
   const where = sql`${incidents.reportedAt} >= ${input.from} and ${incidents.reportedAt} < ${input.until}${input.where ? sql` and ${input.where}` : sql``}`;
@@ -288,7 +312,8 @@ const nextReviewIn = sql`case a.action when 'document_updated' then a.changes ->
 /**
  * The document measures at the end of a day (`day`, exclusive: what stands
  * before it), for the organization or each unit (owning unit for the
- * documents, the person's own unit for the acknowledgements), within
+ * documents; for the acknowledgements, the person's own unit, on
+ * documents owned within that unit), within
  * `where` (documents) and `acknowledgedWhere` (the acknowledgements' documents).
  *
  * `asAt` null: from the records as they stand (the live figure, and a
@@ -310,7 +335,7 @@ export async function documentFigures(
   const keys = input.units === null ? [null] : input.units;
   for (const k of keys) out.set(keyOf(k), emptyDocuments());
   if (input.units !== null && input.units.length === 0) return out;
-  const scope = input.units === null ? sql`` : treeOf(input.units);
+  const scope = input.units === null ? sql`` : treeOf(input);
   const unit = input.units === null ? sql`null::uuid` : sql`t.ancestor`;
   const at = input.asAt;
   const active = at
@@ -357,7 +382,12 @@ export async function documentFigures(
   const acksFrom = sql`from ${documentAcknowledgements}
     join ${documents} on ${documents.id} = (select v.document_id from document_versions v where v.id = ${documentAcknowledgements.versionId})
     join ${users} on ${users.id} = ${documentAcknowledgements.userId}
-    ${input.units === null ? sql`` : sql`join tree t on t.unit = ${users.orgUnitId}`}`;
+    ${input.units === null
+      ? sql``
+      : // A unit's own people, on documents owned within the same unit
+        // (security review 16, L3): what full sight over it shows.
+        sql`join tree t on t.unit = ${users.orgUnitId}
+        join tree o on o.ancestor = t.ancestor and o.unit = ${documents.ownerUnitId}`}`;
   const { rows: acks } = await tx.execute<{ unit: string | null; due: number; given: number; asked: number; asked_given: number }>(sql`${scope}
     select ${unit} as unit,
       (count(*) filter (where ${due}))::int as due,

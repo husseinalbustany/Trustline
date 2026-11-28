@@ -12,7 +12,7 @@ import { EmptyState, Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
 import type { Dictionary } from "@/i18n/dictionaries";
 import { api, download, statusOf } from "@/lib/api";
-import { dateTimeFormat, fill, numberFormat } from "@/lib/format";
+import { dateTimeFormat, durationFormat, fill, numberFormat } from "@/lib/format";
 import type { OrgUnit } from "@/lib/identity";
 import { pick, type Localized } from "@/lib/localized";
 import { unitOptions } from "@/lib/org-units";
@@ -123,7 +123,8 @@ export function ReportsView({ lang, t }: { lang: string; t: ReportsText }) {
 
   // The units within reach: every one, or those the grant covers.
   const reachable = units?.filter((u) => everywhere || (Array.isArray(reach) && reach.includes(u.id))) ?? [];
-  const options = unitOptions(reachable, (u) => inLang(u.name));
+  // Indented as the tree only for those who see the whole of it.
+  const options = unitOptions(reachable, (u) => inLang(u.name), null, everywhere);
   // Someone who sees only some units always looks at one of them.
   const unitId = params.get("unit") ?? (everywhere ? "" : (options[0]?.id ?? ""));
   const waiting = !everywhere && !unitId;
@@ -219,7 +220,7 @@ export function ReportsView({ lang, t }: { lang: string; t: ReportsText }) {
                 >
                   {periods.map((p) => (
                     <option key={p} value={p}>
-                      {fill(t.monthsBack, { count: numberFormat(lang).format(p) })}
+                      {fill(t.monthsBack, { months: durationFormat(lang)(p, "month") })}
                     </option>
                   ))}
                 </select>
@@ -367,6 +368,8 @@ function MeasurePanel({
     };
   });
   const taken = span.filter((mo) => byMonth.has(mo)).reverse();
+  // Months taken that hold a figure: without one, there is no line to draw.
+  const drawn = taken.some((mo) => byMonth.get(mo)?.value !== null);
   const c = m.current;
 
   return (
@@ -380,7 +383,7 @@ function MeasurePanel({
       <div className="flex flex-col gap-4 p-4">
         {/* The month so far, against the target in force now. */}
         <div className="flex flex-col gap-2 rounded-md bg-surface p-3">
-          <p className="text-xs font-medium text-muted uppercase">{t.current.title}</p>
+          <p className="text-xs font-medium text-muted">{t.current.title}</p>
           {c && c.value !== null ? (
             <>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -416,6 +419,9 @@ function MeasurePanel({
             <p className="text-sm text-muted">{t.trend.none}</p>
           ) : (
             <>
+              {!drawn ? (
+                <p className="text-sm text-muted">{t.trend.noFigures}</p>
+              ) : (
               <TrendChart
                 label={fill(t.trend.chart, {
                   measure: words.name,
@@ -426,7 +432,11 @@ function MeasurePanel({
                 target={m.target}
                 targetLabel={t.trend.targetLine}
                 ceiling={m.valueUnit === "percent" ? 100 : undefined}
+                format={(v) => f.value(m.valueUnit, v)}
+                firstMonth={f.month(span[0])}
+                lastMonth={f.month(span[span.length - 1])}
               />
+              )}
               <details className="text-sm">
                 <summary className="cursor-pointer text-accent">{t.trend.figures}</summary>
                 <MonthsTable

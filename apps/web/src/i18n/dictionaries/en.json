@@ -2826,7 +2826,7 @@
     "organization": "Whole organization",
     "unitHelp": "A unit's figures count the unit and everything under it.",
     "period": "Period",
-    "monthsBack": "Last {count}",
+    "monthsBack": "Last {months}",
     "measures": {
       "incidents.time_to_report": {
         "name": "Time to submit a report",
@@ -2890,7 +2890,8 @@
       "met": "Target met",
       "how": "How it was taken",
       "revisions": "Revisions",
-      "openRevisions": "Revisions of {month}"
+      "openRevisions": "Revisions of {month}",
+      "noFigures": "The months of this period have no figure: nothing was due or counted."
     },
     "status": {
       "provisional": "Provisional",

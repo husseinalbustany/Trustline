@@ -2826,7 +2826,7 @@
     "organization": "Tout l’établissement",
     "unitHelp": "Les chiffres d’une unité comptent l’unité et tout ce qui en dépend.",
     "period": "Période",
-    "monthsBack": "{count} derniers",
+    "monthsBack": "Sur {months}",
     "measures": {
       "incidents.time_to_report": {
         "name": "Durée de déclaration",
@@ -2890,7 +2890,8 @@
       "met": "Objectif atteint",
       "how": "Mode de relevé",
       "revisions": "Révisions",
-      "openRevisions": "Révisions de {month}"
+      "openRevisions": "Révisions de {month}",
+      "noFigures": "Les mois de cette période n’ont pas de chiffre : rien n’était dû ni compté."
     },
     "status": {
       "provisional": "Provisoire",

@@ -2790,8 +2790,13 @@ export const measureSnapshots = pgTable(
     // Why a correction was asked for, and by whom. Null for the check.
     reason: text(),
     requestedBy: uuid(),
+    // The month's first moment on its clock when taken (null on rows taken
+    // before migration 0070): a correction works the month out again on
+    // the same boundaries (security review 16, M1).
+    startsAt: timestamp({ withTimezone: true }),
     // The end of the month: the first moment of the next, on its clock.
     asAt: timestamp({ withTimezone: true }).notNull(),
+    // Set by the database for the application (migration 0070).
     takenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     definitionVersion: integer().notNull(),
   },
@@ -2817,6 +2822,15 @@ export const measureSnapshots = pgTable(
       'measure_snapshots_correction_said',
       sql`(${t.method} = 'corrected') = (${t.reason} is not null)`,
     ),
+    check(
+      'measure_snapshots_correction_requested',
+      sql`(${t.method} = 'corrected') = (${t.requestedBy} is not null)`,
+    ),
+    foreignKey({
+      name: 'measure_snapshots_requested_by_fk',
+      columns: [t.tenantId, t.requestedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
     tenantIsolation(),
   ],
 );
@@ -2840,7 +2854,14 @@ export const reportSettings = pgTable(
     updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     updatedBy: uuid(),
   },
-  () => [tenantIsolation()],
+  (t) => [
+    foreignKey({
+      name: 'report_settings_updated_by_fk',
+      columns: [t.tenantId, t.updatedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    tenantIsolation(),
+  ],
 );
 
 export const dataExportReason = pgEnum('data_export_reason', ['contract_end', 'on_request']);

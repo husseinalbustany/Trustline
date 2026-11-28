@@ -26,6 +26,9 @@ export function TrendChart({
   target,
   targetLabel,
   ceiling,
+  format,
+  firstMonth,
+  lastMonth,
 }: {
   label: string;
   points: Point[];
@@ -33,6 +36,11 @@ export function TrendChart({
   targetLabel: string;
   /** The top of the scale when it is fixed (100 for a share). */
   ceiling?: number;
+  /** A value on the scale, in the measure's own terms. */
+  format: (value: number) => string;
+  /** The period's first and last months, said under the line. */
+  firstMonth: string;
+  lastMonth: string;
 }) {
   const [active, setActive] = useState<number | null>(null);
   const values = points.map((p) => p.value).filter((v): v is number => v !== null);
@@ -92,6 +100,13 @@ export function TrendChart({
             />
           ))}
         </svg>
+        {/* The scale: its top and its bottom, at the inline start. */}
+        <span className="absolute start-0 top-0 text-xs text-muted tabular-nums" aria-hidden>
+          {format(Math.round(top))}
+        </span>
+        <span className="absolute start-0 bottom-[6%] text-xs text-muted tabular-nums" aria-hidden>
+          {format(0)}
+        </span>
         {target !== null && (
           <span
             className="absolute end-0 -translate-y-full bg-background/80 px-1 text-xs text-muted"
@@ -119,6 +134,10 @@ export function TrendChart({
             />
           ),
         )}
+      </div>
+      <div className="flex justify-between text-xs text-muted" aria-hidden>
+        <span>{firstMonth}</span>
+        <span>{lastMonth}</span>
       </div>
       <figcaption aria-live="polite" className="min-h-5 text-sm text-muted">
         {caption}

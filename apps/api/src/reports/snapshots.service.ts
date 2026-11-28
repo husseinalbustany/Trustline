@@ -40,6 +40,7 @@ export function monthsBetween(from: string, to: string) {
 
 /** A target in force, and where it comes from. */
 export type Target = { value: number | null; source: 'business' | 'client' | 'baseline' | 'first_months' | null };
+const NO_TARGET: Target = { value: null, source: null };
 
 /** A month's figure for one measure and one unit, ready to be stored. */
 export type SnapshotRow = {
@@ -49,7 +50,33 @@ export type SnapshotRow = {
   unitPath: string[] | null;
   figure: MeasureValue;
   target: Target;
+  startsAt: Date;
   asAt: Date;
+};
+
+/**
+ * The lock of one client's month, taken by the check when it makes a month
+ * final and by a correction (security review 16, L1), so that two never
+ * add the same revision.
+ */
+export const monthLock = (tenantId: string, month: string) =>
+  sql`hashtextextended(${`trustline.measures.${tenantId}.settle.${month}`}, 0)`;
+
+/** The key of a measure and unit within a month. */
+export const rowKey = (measure: string, orgUnitId: string | null) => `${measure} ${orgUnitId ?? ''}`;
+
+/**
+ * What a month was taken on, for working it out again (a correction, the
+ * triage made final): its boundaries, its structure and the target of each
+ * row, as stored, never as they are now (security review 16, M1). A later
+ * change of target, time zone or structure never rewrites a past month.
+ */
+export type TakenOn = {
+  startsAt: Date | null;
+  asAt: Date;
+  /** Each unit of the month, with its path from the top as it was. */
+  structure: Map<string, string[]>;
+  targets: Map<string, Target>;
 };
 
 /**
@@ -129,16 +156,30 @@ export class MeasureSnapshots {
    */
   async compute(
     tx: Transaction,
-    input: { module: SnapshotModule; month: string; zone: string; history: boolean; now: Date; onlyUnits?: (string | null)[] },
+    input: {
+      module: SnapshotModule;
+      month: string;
+      zone: string;
+      history: boolean;
+      now: Date;
+      onlyUnits?: (string | null)[];
+      /** Worked out again: on what the month was taken on. */
+      takenOn?: TakenOn;
+    },
   ): Promise<SnapshotRow[]> {
-    const from = startOfDay(input.month, input.zone);
-    const asAt = startOfDay(nextMonth(input.month), input.zone);
-    let units = await this.unitsOf(tx, from, asAt);
+    const again = input.takenOn;
+    const from = again?.startsAt ?? startOfDay(input.month, input.zone);
+    const asAt = again?.asAt ?? startOfDay(nextMonth(input.month), input.zone);
+    let units = again
+      ? [...again.structure].map(([id, path]) => ({ id, path }))
+      : await this.unitsOf(tx, from, asAt);
+    // The whole structure of the month, for the subtrees; rows for those asked.
+    const structure = again ? [...again.structure.values()] : undefined;
     if (input.onlyUnits) units = units.filter((u) => input.onlyUnits!.includes(u.id));
     const withOrganization = !input.onlyUnits || input.onlyUnits.includes(null);
     const ids = units.map((u) => u.id);
     const paths = new Map(units.map((u) => [u.id, u.path]));
-    const targets = await this.targetsOf(tx);
+    const targets = again ? null : await this.targetsOf(tx);
     const rows: SnapshotRow[] = [];
     const push = (key: string, figures: Partial<Record<MeasureCode, MeasureValue>>) => {
       const unit = key === ORGANIZATION_KEY ? null : key;
@@ -150,21 +191,61 @@ export class MeasureSnapshots {
           unitBasis: MEASURE_DEFINITIONS[code].unitBasis,
           unitPath: unit ? (paths.get(unit) ?? [unit]) : null,
           figure,
-          target: targets[code],
+          target: again
+            ? (again.targets.get(rowKey(code, unit)) ?? NO_TARGET)
+            : unit !== null && code === 'incidents.reported'
+              ? // The organization's baseline is no unit's target (security review 16, M2).
+                NO_TARGET
+              : targets![code],
+          startsAt: from,
           asAt,
         });
       }
     };
+    const scope = { units: ids, ...(structure && { structure }) };
     if (input.module === 'incidents') {
       const range = { from, until: asAt, at: input.now };
       for (const [key, f] of await incidentFigures(tx, { units: null, ...range })) push(key, incidentMeasures(f));
-      for (const [key, f] of await incidentFigures(tx, { units: ids, ...range })) push(key, incidentMeasures(f));
+      for (const [key, f] of await incidentFigures(tx, { ...scope, ...range })) push(key, incidentMeasures(f));
     } else {
+      // The day after the month on its own calendar, as it was taken.
       const at = { day: nextMonth(input.month), asAt: input.history ? asAt : null };
       for (const [key, f] of await documentFigures(tx, { units: null, ...at })) push(key, documentMeasures(f));
-      for (const [key, f] of await documentFigures(tx, { units: ids, ...at })) push(key, documentMeasures(f));
+      for (const [key, f] of await documentFigures(tx, { ...scope, ...at })) push(key, documentMeasures(f));
     }
     return rows;
+  }
+
+  /**
+   * What a month was taken on (TakenOn): from its stored rows, the latest
+   * revision of each measure and unit.
+   */
+  async takenOn(tx: Transaction, month: string): Promise<TakenOn | null> {
+    const rows = await tx
+      .selectDistinctOn([measureSnapshots.measure, measureSnapshots.orgUnitId], {
+        measure: measureSnapshots.measure,
+        orgUnitId: measureSnapshots.orgUnitId,
+        unitPath: measureSnapshots.unitPath,
+        target: measureSnapshots.target,
+        targetSource: measureSnapshots.targetSource,
+        startsAt: measureSnapshots.startsAt,
+        asAt: measureSnapshots.asAt,
+      })
+      .from(measureSnapshots)
+      .where(eq(measureSnapshots.month, month))
+      .orderBy(asc(measureSnapshots.measure), asc(measureSnapshots.orgUnitId), sql`${measureSnapshots.revision} desc`);
+    if (rows.length === 0) return null;
+    const structure = new Map<string, string[]>();
+    const targets = new Map<string, Target>();
+    for (const r of rows) {
+      if (r.orgUnitId) structure.set(r.orgUnitId, r.unitPath ?? [r.orgUnitId]);
+      targets.set(rowKey(r.measure, r.orgUnitId), {
+        value: r.target === null ? null : Number(r.target),
+        source: (r.targetSource as Target['source']) ?? null,
+      });
+    }
+    const first = rows[0];
+    return { startsAt: first.startsAt, asAt: first.asAt, structure, targets };
   }
 
   /** Stores rows as one revision each, after the latest of their month, measure and unit. */
@@ -183,7 +264,7 @@ export class MeasureSnapshots {
     if (rows.length === 0) return [];
     const latest = await this.latest(tx, month, [...new Set(rows.map((r) => r.measure))]);
     const values = rows.map((r) => {
-      const before = latest.get(`${r.measure} ${r.orgUnitId ?? ''}`);
+      const before = latest.get(rowKey(r.measure, r.orgUnitId));
       return {
         tenantId,
         month,
@@ -202,14 +283,23 @@ export class MeasureSnapshots {
         revision: (before?.revision ?? 0) + 1,
         reason: how.reason ?? null,
         requestedBy: how.requestedBy ?? null,
+        startsAt: r.startsAt,
         asAt: r.asAt,
         definitionVersion: MEASURE_DEFINITIONS[r.measure].definitionVersion,
       };
     });
+    // What was written, not what was meant to be: a revision another
+    // writer took first is left out (security review 16, L1).
+    const written = new Set<string>();
     for (let i = 0; i < values.length; i += 500) {
-      await tx.insert(measureSnapshots).values(values.slice(i, i + 500)).onConflictDoNothing();
+      const inserted = await tx
+        .insert(measureSnapshots)
+        .values(values.slice(i, i + 500))
+        .onConflictDoNothing()
+        .returning({ measure: measureSnapshots.measure, orgUnitId: measureSnapshots.orgUnitId });
+      for (const r of inserted) written.add(rowKey(r.measure, r.orgUnitId));
     }
-    return values;
+    return values.filter((v) => written.has(rowKey(v.measure, v.orgUnitId)));
   }
 
   /** The latest revision of each measure and unit of a month. */
@@ -228,7 +318,7 @@ export class MeasureSnapshots {
       .from(measureSnapshots)
       .where(and(eq(measureSnapshots.month, month), inArray(measureSnapshots.measure, measures)))
       .orderBy(asc(measureSnapshots.measure), asc(measureSnapshots.orgUnitId), sql`${measureSnapshots.revision} desc`);
-    return new Map(rows.map((r) => [`${r.measure} ${r.orgUnitId ?? ''}`, r]));
+    return new Map(rows.map((r) => [rowKey(r.measure, r.orgUnitId), r]));
   }
 
   /** The months of a module that have figures, any revision. */

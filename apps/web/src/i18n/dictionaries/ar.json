@@ -2826,7 +2826,7 @@
     "organization": "المنشأة كلها",
     "unitHelp": "تشمل أرقام الوحدة الوحدةَ وكل ما يندرج تحتها.",
     "period": "الفترة",
-    "monthsBack": "آخر {count}",
+    "monthsBack": "آخر {months}",
     "measures": {
       "incidents.time_to_report": {
         "name": "مدة تقديم البلاغ",
@@ -2890,7 +2890,8 @@
       "met": "تحقق الهدف",
       "how": "طريقة التسجيل",
       "revisions": "المراجعات",
-      "openRevisions": "مراجعات {month}"
+      "openRevisions": "مراجعات {month}",
+      "noFigures": "لا توجد أرقام لأشهر هذه الفترة: لم يكن هناك ما يُستحق أو يُحسب."
     },
     "status": {
       "provisional": "مؤقت",

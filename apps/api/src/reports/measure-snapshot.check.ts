@@ -11,6 +11,7 @@ import { EntitlementsService } from '../subscriptions/entitlements.service.js';
 import { ORGANIZATION_KEY } from './measures.js';
 import {
   MeasureSnapshots,
+  monthLock,
   monthOf,
   monthsBetween,
   nextMonth,
@@ -25,6 +26,13 @@ export const MEASURE_CHECK_STATEMENT_TIMEOUT_MS = 30_000;
 export const ON_TIME_MS = 6 * 3_600_000;
 /** The most months one run takes for a client and module. */
 const MONTHS_PER_RUN = 120;
+/**
+ * How long one run spends on one client before going on to the next
+ * (security review 16, L6): a long backfill is carried on next run, and
+ * never holds the other clients' month end past the on-time window.
+ */
+export const CLIENT_BUDGET_MS = 2 * 60_000;
+
 
 const ERROR_CODE = /^(?:[0-9A-Z]{5}|E[A-Z_]{2,30})$/;
 /** The kind of a failure, never its message: see deadline-check.service.ts. */
@@ -71,6 +79,7 @@ export class MeasureSnapshotCheck implements OnModuleDestroy {
   private current?: Promise<unknown>;
   private stopped = true;
   statementTimeoutMs = MEASURE_CHECK_STATEMENT_TIMEOUT_MS;
+  clientBudgetMs = CLIENT_BUDGET_MS;
 
   constructor(
     @Inject(DATABASE) private readonly db: Database,
@@ -141,10 +150,17 @@ export class MeasureSnapshotCheck implements OnModuleDestroy {
     return done;
   }
 
-  /** Every month due of one client, then the provisional months now settled. */
+  /**
+   * Every month due of one client, then the provisional months now settled.
+   * A month that fails is named in the log and tried again next run; the
+   * client's other months go on (security review 16, L6). Within the
+   * client's budget: what is left is carried on next run.
+   */
   private async takeClient(client: Client, now: Date) {
     const done = { months: 0, finals: 0 };
     const thisMonth = monthOf(dayOf(now, client.timeZone));
+    const until = Date.now() + this.clientBudgetMs;
+    let failed: unknown = null;
     for (const module of ['incidents', 'policies'] as SnapshotModule[]) {
       const plan = await this.tenantDb.withTenant(client.id, async (tx) => {
         await this.limitStatements(tx);
@@ -159,10 +175,18 @@ export class MeasureSnapshotCheck implements OnModuleDestroy {
           .slice(-MONTHS_PER_RUN);
       });
       for (const month of plan) {
-        if (await this.takeMonth(client, module, month, now)) done.months += 1;
+        if (Date.now() > until) break;
+        try {
+          if (await this.takeMonth(client, module, month, now)) done.months += 1;
+        } catch (error) {
+          failed ??= error;
+          this.logger.error(`Measure check failed for client ${client.id}, ${module} ${month}: ${kindOf(error)}`);
+        }
       }
     }
-    done.finals += await this.settle(client, now);
+    done.finals += await this.settle(client, now, until);
+    // Counted once for the client, after its other months were taken.
+    if (failed) throw failed;
     return done;
   }
 
@@ -195,19 +219,24 @@ export class MeasureSnapshotCheck implements OnModuleDestroy {
    * the month decided or past its first deadline. A final revision for each
    * row that is now settled.
    */
-  private async settle(client: Client, now: Date) {
+  private async settle(client: Client, now: Date, until = Infinity) {
     const months = await this.tenantDb.withTenant(client.id, (tx) => this.snapshots.provisionalMonths(tx));
     let finals = 0;
     for (const month of months) {
+      if (Date.now() > until) break;
       finals += await this.tenantDb.withTenant(client.id, async (tx) => {
         await this.limitStatements(tx);
         const { rows: lock } = await tx.execute<{ locked: boolean }>(
-          sql`select pg_try_advisory_xact_lock(hashtextextended(${`trustline.measures.${client.id}.settle.${month}`}, 0)) as locked`,
+          sql`select pg_try_advisory_xact_lock(${monthLock(client.id, month)}) as locked`,
         );
         if (!lock[0].locked) return 0;
         const latest = await this.snapshots.latest(tx, month, ['incidents.triaged_on_time']);
         const open = [...latest.values()].filter((r) => r.status === 'provisional');
         if (open.length === 0) return 0;
+        // On what the month was taken on: its target, boundaries and
+        // structure, never today's (security review 16, M1).
+        const takenOn = await this.snapshots.takenOn(tx, month);
+        if (!takenOn) return 0;
         const rows = await this.snapshots.compute(tx, {
           module: 'incidents',
           month,
@@ -215,6 +244,7 @@ export class MeasureSnapshotCheck implements OnModuleDestroy {
           history: false,
           now,
           onlyUnits: open.map((r) => r.orgUnitId),
+          takenOn,
         });
         const settled = rows.filter(
           (r) => r.measure === 'incidents.triaged_on_time' && !r.figure.provisional,

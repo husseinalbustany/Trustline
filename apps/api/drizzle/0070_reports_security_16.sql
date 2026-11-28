@@ -1,0 +1,4 @@
+ALTER TABLE "measure_snapshots" ADD COLUMN "starts_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "measure_snapshots" ADD CONSTRAINT "measure_snapshots_requested_by_fk" FOREIGN KEY ("tenant_id","requested_by") REFERENCES "public"."users"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "report_settings" ADD CONSTRAINT "report_settings_updated_by_fk" FOREIGN KEY ("tenant_id","updated_by") REFERENCES "public"."users"("tenant_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "measure_snapshots" ADD CONSTRAINT "measure_snapshots_correction_requested" CHECK (("measure_snapshots"."method" = 'corrected') = ("measure_snapshots"."requested_by" is not null));

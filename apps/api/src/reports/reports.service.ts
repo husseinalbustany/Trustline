@@ -27,7 +27,7 @@ import {
   type MeasureCode,
   type MeasureValue,
 } from './measures.js';
-import { MeasureSnapshots, MODULE_MEASURES, monthOf, type SnapshotModule } from './snapshots.service.js';
+import { MeasureSnapshots, MODULE_MEASURES, monthLock, monthOf, rowKey, type SnapshotModule } from './snapshots.service.js';
 import { REPORTS_WORDING } from './wording/index.js';
 
 /** The most months a series is asked for at once. */
@@ -90,11 +90,48 @@ export class ReportsService {
     return { unit, visible, toldReporters: reaches(reachOf(auth, ['incidents.see_reporter']), unit) };
   }
 
-  /** What a figure's details may say to this caller. */
-  private detailsFor(code: MeasureCode, details: Record<string, unknown>, toldReporters: boolean) {
-    if (code !== 'incidents.reported' || toldReporters) return details;
+  /**
+   * What a figure's details may say to this caller: how reports arrived
+   * only to those told reporters, and never for a unit row of a month whose
+   * unit has gained or lost units since (`moved`): the difference between
+   * two such rows would tell one unit's split (security review 16, L5).
+   */
+  private detailsFor(code: MeasureCode, details: Record<string, unknown>, toldReporters: boolean, moved = false) {
+    if (code !== 'incidents.reported' || (toldReporters && !moved)) return details;
     const { channel: _channel, ...rest } = details;
     return rest;
+  }
+
+  /**
+   * A row's target as this caller may be told it. The reporting volume's
+   * target is the organization's baseline: no unit's target, and a figure
+   * of the whole organization (security review 16, M2).
+   */
+  private targetOf(code: MeasureCode, unit: string | null, target: { value: number | null; source: string | null }) {
+    return unit !== null && code === 'incidents.reported' ? { value: null, source: null } : target;
+  }
+
+  /**
+   * The months, among these, whose stored subtree of the unit is not its
+   * subtree now: a unit taken that month moved in or out since. Compared
+   * over the units that had figures that month.
+   */
+  private async movedMonths(tx: Transaction, unit: string, from: string, to: string) {
+    const { rows: now } = await tx.execute<{ id: string }>(sql`
+      with recursive t (id) as (
+        select ${unit}::uuid
+        union
+        select u.id from org_units u join t on u.parent_id = t.id
+      ) select id from t`);
+    const today = new Set(now.map((r) => r.id));
+    const { rows } = await tx.execute<{ month: string; org_unit_id: string; inside: boolean }>(sql`
+      select distinct month::text as month, org_unit_id, coalesce(${unit}::uuid = any(unit_path), false) as inside
+      from measure_snapshots
+      where measure = 'incidents.reported' and org_unit_id is not null
+        and month between ${firstDay(from)}::date and ${firstDay(to)}::date`);
+    const moved = new Set<string>();
+    for (const r of rows) if (r.inside !== today.has(r.org_unit_id)) moved.add(r.month);
+    return moved;
   }
 
   /** The latest revision of each month of these measures, for one unit or the organization. */
@@ -140,44 +177,53 @@ export class ReportsService {
       const rows = await this.series(tx, unit, asked, query.from, query.to);
       const live = await this.live(tx, auth, unit, asked, now);
       const targets = await this.snapshots.targetsOf(tx);
+      const moved =
+        unit !== null && toldReporters && asked.includes('incidents.reported')
+          ? await this.movedMonths(tx, unit, query.from, query.to)
+          : new Set<string>();
       return {
         unitId: unit,
         measures: asked.map((code) => {
           const def = MEASURE_DEFINITIONS[code];
           const current = live[code]!;
+          const target = this.targetOf(code, unit, targets[code]);
           return {
             code,
             module: def.module,
             direction: def.direction,
             valueUnit: def.valueUnit,
             definitionVersion: def.definitionVersion,
-            target: targets[code].value,
-            targetSource: targets[code].source,
+            target: target.value,
+            targetSource: target.source,
             months: rows
               .filter((r) => r.measure === code)
-              .map((r) => ({
-                month: r.month.slice(0, 7),
-                value: r.value === null ? null : Number(r.value),
-                numerator: r.numerator,
-                denominator: r.denominator,
-                target: r.target === null ? null : Number(r.target),
-                targetSource: r.targetSource,
-                met: metOf(def.direction, r.value === null ? null : Number(r.value), r.target === null ? null : Number(r.target)),
-                status: r.status,
-                method: r.method,
-                revision: r.revision,
-                correctedAt: r.method === 'corrected' ? r.takenAt : null,
-                asAt: r.asAt,
-                takenAt: r.takenAt,
-                definitionVersion: r.definitionVersion,
-                details: this.detailsFor(code, r.details, toldReporters),
-              })),
+              .map((r) => {
+                const value = r.value === null ? null : Number(r.value);
+                const kept = this.targetOf(code, unit, { value: r.target === null ? null : Number(r.target), source: r.targetSource });
+                return {
+                  month: r.month.slice(0, 7),
+                  value,
+                  numerator: r.numerator,
+                  denominator: r.denominator,
+                  target: kept.value,
+                  targetSource: kept.source,
+                  met: metOf(def.direction, value, kept.value),
+                  status: r.status,
+                  method: r.method,
+                  revision: r.revision,
+                  correctedAt: r.method === 'corrected' ? r.takenAt : null,
+                  asAt: r.asAt,
+                  takenAt: r.takenAt,
+                  definitionVersion: r.definitionVersion,
+                  details: this.detailsFor(code, r.details, toldReporters, moved.has(r.month)),
+                };
+              }),
             current: {
               month: monthOf(dayOf(now, auth.tenant.timeZone)).slice(0, 7),
               value: current.value,
               numerator: current.numerator,
               denominator: current.denominator,
-              met: metOf(def.direction, current.value, targets[code].value),
+              met: metOf(def.direction, current.value, target.value),
               provisional: current.provisional,
               asOf: now,
               details: this.detailsFor(code, current.details, toldReporters),
@@ -207,26 +253,38 @@ export class ReportsService {
         )
         .orderBy(asc(measureSnapshots.revision));
       const def = MEASURE_DEFINITIONS[measure];
+      const moved =
+        unit !== null && toldReporters && measure === 'incidents.reported'
+          ? (await this.movedMonths(tx, unit, query.month, query.month)).size > 0
+          : false;
+      // A correction's reason is written for the whole organization, and
+      // may name wards or people: shown on a unit's row only to those who
+      // read reports for all of it (security review 16, L4).
+      const toldReasons = unit === null || reachOf(auth, ['reports.view']) === 'all';
       return {
         code: measure,
         month: query.month,
         unitId: unit,
-        revisions: rows.map(({ row: r, requesterName }) => ({
-          revision: r.revision,
-          value: r.value === null ? null : Number(r.value),
-          numerator: r.numerator,
-          denominator: r.denominator,
-          target: r.target === null ? null : Number(r.target),
-          met: metOf(def.direction, r.value === null ? null : Number(r.value), r.target === null ? null : Number(r.target)),
-          status: r.status,
-          method: r.method,
-          reason: r.reason,
-          requestedBy: r.requestedBy ? { id: r.requestedBy, name: requesterName } : null,
-          asAt: r.asAt,
-          takenAt: r.takenAt,
-          definitionVersion: r.definitionVersion,
-          details: this.detailsFor(measure, r.details, toldReporters),
-        })),
+        revisions: rows.map(({ row: r, requesterName }) => {
+          const value = r.value === null ? null : Number(r.value);
+          const kept = this.targetOf(measure, unit, { value: r.target === null ? null : Number(r.target), source: r.targetSource });
+          return {
+            revision: r.revision,
+            value,
+            numerator: r.numerator,
+            denominator: r.denominator,
+            target: kept.value,
+            met: metOf(def.direction, value, kept.value),
+            status: r.status,
+            method: r.method,
+            reason: toldReasons ? r.reason : null,
+            requestedBy: r.requestedBy ? { id: r.requestedBy, name: requesterName } : null,
+            asAt: r.asAt,
+            takenAt: r.takenAt,
+            definitionVersion: r.definitionVersion,
+            details: this.detailsFor(measure, r.details, toldReporters, moved),
+          };
+        }),
       };
     });
   }
@@ -300,25 +358,39 @@ export class ReportsService {
       const measures = input.measures.filter((m) => visible.includes(m));
       if (measures.length !== input.measures.length) throw new NotFoundException();
       const month = firstDay(input.month);
+      // One correction per client at a time, and never beside the check
+      // making the same month final (security review 16, L1 and L6): a
+      // correction works a month out again for every unit, so a second one
+      // waits its turn (409).
+      const { rows: free } = await tx.execute<{ client: boolean; month: boolean }>(sql`
+        select pg_try_advisory_xact_lock(hashtextextended(${`trustline.measures.${auth.tenant.id}.correct`}, 0)) as client,
+               pg_try_advisory_xact_lock(${monthLock(auth.tenant.id, month)}) as month`);
+      if (!free[0].client || !free[0].month) throw new ConflictException({ code: 'correction_in_progress' });
       const latest = await this.snapshots.latest(tx, month, measures);
       const units = input.unitId ? [input.unitId] : [...new Set([...latest.values()].map((r) => r.orgUnitId))];
-      if (latest.size === 0 || (input.unitId && ![...latest.values()].some((r) => r.orgUnitId === input.unitId))) {
+      const takenOn = await this.snapshots.takenOn(tx, month);
+      if (!takenOn || latest.size === 0 || (input.unitId && ![...latest.values()].some((r) => r.orgUnitId === input.unitId))) {
         throw new ConflictException({ code: 'no_snapshot' });
       }
       const revisions: { measure: MeasureCode; unitId: string | null; revision: number; from: unknown; to: unknown }[] = [];
       for (const module of ['incidents', 'policies'] as SnapshotModule[]) {
         const mine = measures.filter((m) => MODULE_MEASURES[module].includes(m));
         if (mine.length === 0) continue;
+        // On what the month was taken on: its targets, boundaries and
+        // structure; only the figures are worked out again (security
+        // review 16, M1).
         const rows = (
-          await this.snapshots.compute(tx, { module, month, zone: auth.tenant.timeZone, history: true, now, onlyUnits: units })
-        ).filter((r) => mine.includes(r.measure) && latest.has(`${r.measure} ${r.orgUnitId ?? ''}`));
+          await this.snapshots.compute(tx, { module, month, zone: auth.tenant.timeZone, history: true, now, onlyUnits: units, takenOn })
+        ).filter((r) => mine.includes(r.measure) && latest.has(rowKey(r.measure, r.orgUnitId)));
         const stored = await this.snapshots.store(tx, auth.tenant.id, month, rows, {
           method: 'corrected',
           reason: input.reason,
           requestedBy: auth.user.id,
         });
+        // A revision taken by another writer meanwhile: nothing is kept.
+        if (stored.length !== rows.length) throw new ConflictException({ code: 'stale_measures' });
         for (const s of stored) {
-          const before = latest.get(`${s.measure} ${s.orgUnitId ?? ''}`)!;
+          const before = latest.get(rowKey(s.measure, s.orgUnitId))!;
           revisions.push({
             measure: s.measure,
             unitId: s.orgUnitId,
