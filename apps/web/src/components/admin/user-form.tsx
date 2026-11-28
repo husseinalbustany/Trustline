@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
-import { useSession } from "@/components/shell/session";
+import { canIn, useSession } from "@/components/shell/session";
 import {
+  hasModule,
   ReadOnlyFieldset,
   useReadOnly,
   useSubscriptionRefusal,
@@ -20,6 +21,7 @@ import { fill } from "@/lib/format";
 import type { Invite, OrgUnit, Role, UnitRef, User } from "@/lib/identity";
 import { pick, readForm, type Localized } from "@/lib/localized";
 import { unitOptions } from "@/lib/org-units";
+import { personPath } from "@/lib/policies";
 import { LocalizedField } from "@/components/ui/localized-field";
 import type { AdminProps } from "./types";
 import { statusTone } from "./users-list";
@@ -313,9 +315,24 @@ export function UserForm({
         }
         actions={
           user && (
-            <Pill tone={statusTone[user.status]}>
-              {t.users.status[user.status]}
-            </Pill>
+            <div className="flex flex-wrap items-center gap-2">
+              <Pill tone={statusTone[user.status]}>
+                {t.users.status[user.status]}
+              </Pill>
+              {/* Their acknowledgements, for whoever manages documents
+                  where they work. */}
+              {hasModule(session, "policies") &&
+                (user.orgUnitId
+                  ? canIn(session, "policies.manage", user.orgUnitId)
+                  : session.scope?.["policies.manage"] === "all") && (
+                  <Link
+                    href={personPath(lang, user.id)}
+                    className="text-sm text-accent hover:underline"
+                  >
+                    {f.acknowledgementRecord}
+                  </Link>
+                )}
+            </div>
           )
         }
       />

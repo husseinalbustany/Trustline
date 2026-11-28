@@ -246,6 +246,12 @@ export type ApprovedBeforeTrustline = {
   nextReviewOn: string;
   importedBy: Named;
   importedAt: string;
+  /** When the original was last reviewed, as it says; null when not given. */
+  lastReviewedOn?: string | null;
+  /** What the text in Trustline does not reproduce of the original, per language. */
+  differences?: Localized | null;
+  /** Sections of the type the original came without, in the version's order. */
+  sectionsNotInOriginal?: { key: string; required: boolean }[];
 };
 
 export type ImportedVersion = Omit<
@@ -314,6 +320,8 @@ export type DocumentVersion = {
     /** Always empty for an imported version: it went through no route. */
     approvals: Approval[];
     approvedBeforeTrustline?: ApprovedBeforeTrustline | null;
+    /** The original's own revision, for the print header; null when none. */
+    originalRevision?: string | null;
   };
   run: Run | null;
   /** Every round of review, newest first, for those who see the runs. */
@@ -555,6 +563,10 @@ export type LibraryFilters = {
   ownerUnitId: string;
   status: "" | DocumentStatus;
   review: "" | "due" | "overdue";
+  /** Where the version in force came from: approved before Trustline, or written here. */
+  source: "" | "imported" | "written";
+  /** In force as imported, with its re-issue due within the reminder window or past. */
+  reissueDue: boolean;
   appliesToMe: boolean;
   awaitingMyAcknowledgement: boolean;
   sort: LibrarySort;
@@ -568,6 +580,8 @@ export const noLibraryFilters: LibraryFilters = {
   ownerUnitId: "",
   status: "",
   review: "",
+  source: "",
+  reissueDue: false,
   appliesToMe: false,
   awaitingMyAcknowledgement: false,
   sort: "number",
@@ -594,6 +608,8 @@ export function readLibraryFilters(params: {
     ownerUnitId: uuid(params.get("ownerUnitId")),
     status: oneOf(documentStatuses, params.get("status")) ?? "",
     review: oneOf(["due", "overdue"] as const, params.get("review")) ?? "",
+    source: oneOf(["imported", "written"] as const, params.get("source")) ?? "",
+    reissueDue: params.get("reissueDue") === "true",
     appliesToMe: params.get("appliesToMe") === "true",
     awaitingMyAcknowledgement:
       params.get("awaitingMyAcknowledgement") === "true",
@@ -635,8 +651,15 @@ export function documentsExportPath(
   return `/policies/exports/documents${text ? `?${text}` : ""}`;
 }
 
-export const importPath = (lang: string, part: "" | "batch" | "layout" = "") =>
+export const importPath = (
+  lang: string,
+  part: "" | "batch" | "layout" | "register" = "",
+) =>
   `/${lang}/policies/import${part ? `/${part}` : ""}`;
+
+/** One person's acknowledgement record. */
+export const personPath = (lang: string, userId: string) =>
+  `/${lang}/policies/people/${userId}`;
 
 export const documentPath = (lang: string, id: string) =>
   `/${lang}/policies/${id}`;
@@ -781,3 +804,48 @@ export function categoriesInOrder(list: DocumentCategory[]) {
   add(null, 0);
   return out;
 }
+
+/** One import, as the register lists it. */
+export type ImportRecord = {
+  documentId: string;
+  number: string;
+  title: Localized;
+  versionId: string;
+  numberAsGiven: string | null;
+  revisionLabel: string | null;
+  approvedOn: string;
+  approvedBy: string;
+  lastReviewedOn: string | null;
+  originalKeptAt: Localized;
+  differences: Localized | null;
+  effectiveOn: string;
+  nextReviewOn: string;
+  importedBy: Named;
+  importedAt: string;
+  batch: { id: string; index: number; size: number; listHash: string };
+  signatureId: string;
+  contentHash: string;
+};
+
+/** One person's acknowledgements, as a manager reads them. */
+export type PersonAcknowledgements = {
+  today: string;
+  person: {
+    id: string;
+    name: Localized;
+    status: "active" | "invited" | "disabled" | (string & {});
+    orgUnit: Named | null;
+  };
+  items: {
+    /** Null where the reader may not open it. */
+    document: { id: string; number: string; title: Localized } | null;
+    version: { id: string; version: number; status: VersionStatus } | null;
+    assignedAt: string;
+    dueOn: string;
+    acknowledgedAt: string | null;
+    state: "acknowledged" | "pending" | "overdue" | (string & {});
+    /** Acknowledged after the due day, or not and the day has passed. */
+    late: boolean;
+  }[];
+  total: number;
+};

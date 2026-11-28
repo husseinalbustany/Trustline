@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type ReactNode,
 } from "react";
 import { useSession } from "@/components/shell/session";
 import {
@@ -211,9 +212,11 @@ export function OriginalFields({
     revision?: string;
     approvedOn?: string;
     approvedBy?: string;
+    lastReviewedOn?: string;
     effectiveOn?: string;
     nextReviewOn?: string;
     keptAt?: Localized;
+    differences?: Localized;
   };
 }) {
   const session = useSession();
@@ -263,6 +266,15 @@ export function OriginalFields({
             className={inputClass}
           />
         </Field>
+        <Field label={m.lastReviewedOn} help={m.lastReviewedOnHelp}>
+          <input
+            name="lastReviewedOn"
+            type="date"
+            dir="ltr"
+            defaultValue={value?.lastReviewedOn ?? ""}
+            className={inputClass}
+          />
+        </Field>
         <Field label={m.effectiveOn} help={m.effectiveOnHelp}>
           <input
             name="effectiveOn"
@@ -294,6 +306,65 @@ export function OriginalFields({
         />
         <p className="text-xs text-muted">{m.keptAtHelp}</p>
       </div>
+      <div className="flex flex-col gap-1">
+        <LocalizedField
+          label={m.differences}
+          name="differences"
+          locales={locales}
+          value={value?.differences}
+          maxLength={2000}
+          multiline
+        />
+        <p className="text-xs text-muted">{m.differencesHelp}</p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Under the signing sentence ("matches the approved original, except as
+ * noted below"): what is noted, for each document that notes something,
+ * or that nothing is.
+ */
+export function NotedDifferences({
+  t,
+  items,
+}: PoliciesProps & {
+  items: { key: string; label?: ReactNode; differences?: Localized | null }[];
+}) {
+  const session = useSession();
+  const m = t.importing;
+  const noted = items.filter(
+    (x) => x.differences && Object.values(x.differences).some((v) => v?.trim()),
+  );
+  if (noted.length === 0) {
+    return <p className="mt-2 text-sm text-muted">{m.noDifferences}</p>;
+  }
+  return (
+    <div className="mt-2 flex flex-col gap-2 rounded-md border border-line bg-background px-3 py-2">
+      <p className="text-xs font-medium text-muted">{m.differencesNoted}</p>
+      <ul className="flex flex-col gap-2 text-sm">
+        {noted.map((item) => (
+          <li key={item.key} className="flex flex-col gap-0.5">
+            {item.label && <span className="text-xs text-muted">{item.label}</span>}
+            {session.tenant.locales
+              .filter((l) => item.differences?.[l]?.trim())
+              .map((l) => (
+                <p
+                  key={l}
+                  lang={l}
+                  dir={direction(l)}
+                  className="whitespace-pre-wrap break-words"
+                >
+                  {session.tenant.locales.length > 1 && (
+                    <span className="text-xs text-muted">{`${ownName(l)}: `}</span>
+                  )}
+                  {item.differences![l]}
+                </p>
+              ))}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -474,6 +545,10 @@ function ImportForm({ lang, t, ready }: PoliciesProps & { ready: Ready }) {
       approvedBy: text("approvedBy"),
       originalKeptAt: written(fields.keptAt),
       nextReviewOn: text("nextReviewOn"),
+      ...(text("lastReviewedOn") ? { lastReviewedOn: text("lastReviewedOn") } : {}),
+      ...(Object.keys(written(fields.differences)).length > 0
+        ? { differences: written(fields.differences) }
+        : {}),
       content: readSections(el),
       acknowledgementRequired: ackRequired,
       ...(ackRequired ? { acknowledgeWithinDays: days } : {}),
@@ -601,7 +676,16 @@ function ImportForm({ lang, t, ready }: PoliciesProps & { ready: Ready }) {
           </div>
           <PasswordPrompt
             t={t}
-            intro={m.signOne}
+            intro={
+              <>
+                <p>{m.signOne}</p>
+                <NotedDifferences
+                  lang={lang}
+                  t={t}
+                  items={[{ key: "one", differences: checked.body.differences }]}
+                />
+              </>
+            }
             confirm={m.signOneConfirm}
             explainError={explainError}
             onCancel={() => setChecked(null)}

@@ -568,7 +568,11 @@
       "acknowledgement_assigned": "Please read and acknowledge {reference} version {version} by {date}.",
       "acknowledgement_due": "Reminder: acknowledge {reference} version {version} by {date}.",
       "acknowledgement_overdue": "Your acknowledgement of {reference} version {version} was due on {date}.",
-      "acknowledgements_overdue_digest": "Weekly summary of overdue acknowledgements in the areas you follow: {overdue} overdue, people concerned: {people}.",
+      "acknowledgements_overdue_digest": {
+        "acknowledgements": "Weekly summary of overdue acknowledgements in the areas you follow: {overdue} overdue, people concerned: {people}.",
+        "steps": "Weekly summary for the documents you manage: approval steps overdue: {stepsOverdue}.",
+        "both": "Weekly summary of overdue acknowledgements in the areas you follow: {overdue} overdue, people concerned: {people}. Approval steps overdue: {stepsOverdue}."
+      },
       "review_due": {
         "60": "{reference} is due for its periodic review on {date}, in about two months.",
         "30": "{reference} is due for its periodic review on {date}, in about a month.",
@@ -588,6 +592,7 @@
         "digest": "A link in one of your emails turned off your morning summary emails. You can turn them back on in your email preferences.",
         "other": "A link in one of your emails turned off some of your emails. You can turn them back on in your email preferences."
       },
+      "document_owner_assigned": "You are now the owner of {reference}: its periodic review and its re-issue are yours.",
       "other": "There is an update on {reference}."
     },
     "descriptionGeneral": "What has happened that concerns you. A notification names no one.",
@@ -635,7 +640,9 @@
       "save": "Save",
       "saving": "Saving…",
       "saved": "Saved.",
-      "saveError": "Could not save. Try again."
+      "saveError": "Could not save. Try again.",
+      "reliedOnApproves": "You decide approval steps: without immediate emails, a step waiting for your decision reaches you only in Trustline and in the morning summary, and the steps after it wait.",
+      "reliedOnTriages": "You triage incidents: without immediate emails, a serious incident reported in your area reaches you only in Trustline and in the morning summary."
     },
     "preferencesLink": "Email preferences"
   },
@@ -1129,7 +1136,8 @@
         "inactiveDepartment": "{name} (inactive)",
         "outsideScope": "Your role does not cover this user, or the department chosen for them. Choose a department your role covers, or ask your administrator.",
         "rolesReadOnly": "Changes are paused for your organization's account: roles can be taken away, but not given.",
-        "enableReadOnly": "Changes are paused for your organization's account, so this account cannot be enabled again."
+        "enableReadOnly": "Changes are paused for your organization's account, so this account cannot be enabled again.",
+        "acknowledgementRecord": "Acknowledgement record"
       }
     },
     "roles": {
@@ -1338,6 +1346,16 @@
         "switchOff": "Switch off",
         "switchedOn": "Email is switched on.",
         "switchedOff": "Email is switched off."
+      },
+      "optOuts": {
+        "title": "Who has switched emails off",
+        "help": "Names only. Someone others rely on, who decides approval steps or triages incidents, is marked.",
+        "empty": "Nobody has switched their emails off.",
+        "immediateOff": "Immediate emails off",
+        "digestOff": "Morning summary off",
+        "approves": "Decides approval steps",
+        "triages": "Triages incidents",
+        "reliedHelp": "Without immediate emails, the work waiting for them reaches them only in Trustline and in the morning summary."
       }
     },
     "permissions": {
@@ -1407,7 +1425,7 @@
     },
     "export": {
       "list": "Export the list (CSV)",
-      "listHelp": "Every document matching these filters, in {language}, as a file for a spreadsheet. Its last column says whether each was approved before Trustline.",
+      "listHelp": "Every document matching these filters, in {language}, as a file for a spreadsheet. Its last columns say whether each was approved before Trustline, and what its original says.",
       "acknowledgements": "Export this version's acknowledgements (CSV)",
       "acknowledgementsHelp": "Everyone asked, people who have left included and marked, in {language}.",
       "preparing": "Preparing the file…",
@@ -1457,7 +1475,11 @@
       "page": "Page {page} of {pages}",
       "total": "{total} in total",
       "previous": "Previous",
-      "next": "Next"
+      "next": "Next",
+      "sourceLabel": "Origin",
+      "sourceImported": "Approved before Trustline",
+      "sourceWritten": "Written in Trustline",
+      "reissueDue": "Re-issue due"
     },
     "document": {
       "controlBlock": "Controlled document",
@@ -1533,7 +1555,8 @@
       "changeLine": "{field}: {from} → {to}",
       "changeReason": "Reason:",
       "none": "none",
-      "otherDetail": "Another detail"
+      "otherDetail": "Another detail",
+      "printHeaderOriginal": "{number} · Version {version} ({revision} on the original) · {title}"
     },
     "acknowledge": {
       "title": "Acknowledge this document",
@@ -1782,7 +1805,8 @@
       "empty": "No acknowledgement is overdue.",
       "noAccess": "This list is for those who manage documents or may read them all.",
       "late": "Due {date} · {days} late",
-      "documentHidden": "A document you cannot open"
+      "documentHidden": "A document you cannot open",
+      "download": "Export the list (CSV)"
     },
     "acknowledgements": {
       "title": "Acknowledgements",
@@ -1979,7 +2003,7 @@
       "effective_before_approval": "It cannot have come into force before its approval date.",
       "effective_in_future": "The date it came into force cannot be after today: an imported document is already in force. A document that comes into force later goes through the approval route.",
       "review_before_approval": "The next review must be after the approval date.",
-      "review_date_too_far": "The next review can be at most {max} from today, your organization's longest review period: {date} at the latest.",
+      "review_date_too_far": "The next review can be no later than {date}: {max} from {from}, your organization's longest review period.",
       "invalid_number": "This number cannot be used. Use the number as written on the original, in Latin letters, or the letters of your organization's languages, and digits, with spaces, -, ., / or _ between them: at most 40 characters.",
       "number_script": "A document number can use only Latin letters, or the letters of your organization's languages, with digits and ⁦- . / _ ( )⁩. Write the number as it is on the original, with these characters.",
       "number_mixed_scripts": "This number mixes letters of different scripts. Use the number as written on the original, in Latin letters, or the letters of your organization's languages, and digits, without mixing them.",
@@ -2005,7 +2029,12 @@
       "approved_after_start_since": "Your organization started managing its documents in Trustline on {date}. Only documents approved before then can be imported: create this one as a new document and send it through the approval route.",
       "body_too_deep": "This file cannot be sent as it is: its contents are nested too deeply. Lay it out as the layout page shows and try again.",
       "no_assignee_role_manager": "Not sent for review yet: nobody can decide step {position} of its approval route ({kind}, by the role “{role}”). Nobody holds this role for this document's responsible area, or only someone who prepared this version does. Give the role “{role}” to the person who decides this step, then send the version again.",
-      "no_assignee_person_manager": "Not sent for review yet: step {position} of its approval route ({kind}) names {name}, who cannot decide it: their account is not active, no role of theirs allows it, or they prepared this version. Change the route in the document settings, then send the version again."
+      "no_assignee_person_manager": "Not sent for review yet: step {position} of its approval route ({kind}) names {name}, who cannot decide it: their account is not active, no role of theirs allows it, or they prepared this version. Change the route in the document settings, then send the version again.",
+      "review_not_due": "This review can be confirmed from {opensOn}; it is due on {dueOn}.",
+      "language_mismatch_differences": "Write the differences from the original only in your organization's languages.",
+      "reviewed_before_approval": "The last review on the original cannot be before its approval date.",
+      "reviewed_in_future": "The last review on the original cannot be after today.",
+      "review_before_last_review": "The next review must be after the last review on the original."
     },
     "importing": {
       "open": "Import documents",
@@ -2047,7 +2076,7 @@
       "ackAsked": "Everyone it applies to will be asked to acknowledge it.",
       "ackNotAsked": "Nobody will be asked to acknowledge it.",
       "signTitle": "Sign the import",
-      "signOne": "By signing with your password, you confirm that the text entered here is that of the approved original, and that the details of its approval are as the original gives them. It is then published at once as approved before Trustline.",
+      "signOne": "By signing with your password, you confirm that the text entered here matches the approved original, except as noted below, and that the details of its approval are as the original gives them. It is then published at once as approved before Trustline.",
       "signOneConfirm": "Sign and import",
       "batchTitle": "Import a batch of documents",
       "batchDescription": "From a CSV or JSON file laid out as the layout page shows. Each document is checked first, without your password; you correct what is refused, then sign. A batch holds at most {documents} documents and {characters} characters of text: a larger file is split into several batches, each signed separately.",
@@ -2080,7 +2109,7 @@
       "checkFailed": "Not checked",
       "checkAgain": "Check again",
       "noProblemHere": "The other documents of this batch show no problem. The batch can be signed once every document in it can be imported.",
-      "signBatch": "By signing with your password, you confirm that the text of each of the {count} documents of batch {batch} of {batches} is that of its approved original, and that the details of their approval are as the originals give them. This signature covers this batch only.",
+      "signBatch": "By signing with your password, you confirm that the text of each of the {count} documents of batch {batch} of {batches} matches its approved original, except as noted below, and that the details of their approval are as the originals give them. This signature covers this batch only.",
       "signBatchConfirm": "Sign and import these documents ({count})",
       "signBatchOpen": "Sign batch {batch}",
       "signBatchHelp": "Your password is asked for this batch only. Each other batch is signed separately.",
@@ -2131,7 +2160,9 @@
         "keywords": "Keywords",
         "references": "References",
         "acknowledge": "Acknowledgement asked",
-        "acknowledgeDays": "Days allowed to acknowledge"
+        "acknowledgeDays": "Days allowed to acknowledge",
+        "lastReviewedOn": "Last reviewed on the original",
+        "differences": "Differences from the original"
       },
       "layout": {
         "title": "File layout for a batch import",
@@ -2149,7 +2180,8 @@
           "Dates are written as year-month-day, for example 2024-03-01.",
           "Several values in one column are separated by |, for example ICU|ER.",
           "“acknowledge” is yes or no; “confidentiality” is all_staff or restricted.",
-          "A number left empty is given by Trustline. A number given is kept as written on the original, in Latin letters, or the letters of your organization's languages, and digits, and must not already be used."
+          "A number left empty is given by Trustline. A number given is kept as written on the original, in Latin letters, or the letters of your organization's languages, and digits, and must not already be used.",
+          "Tables and figures cannot be imported as such. Write a table as a list, one line per row; for a figure or a flowchart, say so in “differences”, for example “Appendix B flowchart not reproduced, see the original”."
         ],
         "limits": "A batch holds at most {documents} documents and {characters} characters of text. A larger file is split into several batches, and each batch is a separate signature.",
         "columnsTitle": "Columns",
@@ -2177,7 +2209,9 @@
           "keywords": "Separated by |.",
           "references": "Separated by |, for example a standard and its clause.",
           "acknowledge": "yes to ask everyone it applies to to acknowledge it; no (the default) otherwise.",
-          "acknowledgeDays": "Days allowed to acknowledge, when it is asked. Empty: 14."
+          "acknowledgeDays": "Days allowed to acknowledge, when it is asked. Empty: 14.",
+          "lastReviewedOn": "Optional: the last review the original records. The next review must come after it, and is counted from it.",
+          "differences": "What the text in the file does not reproduce of the original, a column per language. Signed with the import."
         },
         "codesTitle": "Codes your organization uses",
         "codesHelp": "Write these codes in the file as they are here.",
@@ -2201,13 +2235,32 @@
           ],
           "revision": "Rev. 3",
           "section": "Text of this section as it reads on the original.",
-          "keywords": "documents|control"
+          "keywords": "documents|control",
+          "differences": "Table 2 written as a list."
         }
       },
       "latestApproval": "Only documents approved on {date} or earlier can be imported. A document approved since then goes through the approval route.",
       "approvedBeforeStart": "Only documents approved before {date}, the day your organization started managing its documents in Trustline, can be imported. A document approved since then goes through the approval route.",
       "numberNormalised": "Entered as {given}. Trustline records it as shown above.",
-      "allDoneLeftOut": "Every document of the file is imported, except those left out: {count}. Put one back to import it, or import it later from another file."
+      "allDoneLeftOut": "Every document of the file is imported, except those left out: {count}. Put one back to import it, or import it later from another file.",
+      "lastReviewedOn": "Last reviewed on the original",
+      "lastReviewedOnHelp": "Optional: the last review the original records after its approval. The next review is counted from it.",
+      "differences": "Differences from the original",
+      "differencesHelp": "What this text does not reproduce of the original, for example: “Table 2 written as a list; the flowchart of appendix B is not reproduced, see the original.” It is signed with the import and shown with the document, on screen and on paper.",
+      "noDifferences": "No difference from the original is noted.",
+      "differencesNoted": "Differences from the original, as noted:",
+      "register": {
+        "open": "Import register",
+        "title": "Import register",
+        "description": "Every document imported as approved before Trustline, newest first: the original it came from, who imported it and when, and what each signature covers.",
+        "download": "Export the register (CSV)",
+        "empty": "No document has been imported.",
+        "original": "On the original",
+        "importedBy": "Imported by",
+        "batch": "Batch",
+        "batchPlace": "Document {index} of {size}; fingerprint of the batch:",
+        "signed": "Fingerprint of what was signed"
+      }
     },
     "imported": {
       "pill": "Approved before Trustline",
@@ -2221,7 +2274,10 @@
       "importedBy": "Imported into Trustline by {name} on {date}, who signed that this text matches the original.",
       "nextReviewReissue": "Next review (re-issue)",
       "importedByLabel": "Imported by",
-      "notWrittenLabel": "Sections missing from the original"
+      "notWrittenLabel": "Sections missing from the original",
+      "lastReviewedOn": "Last reviewed on the original",
+      "differences": "Differences from the original",
+      "notInOriginal": "The original came without these sections, so they are not in this text: {sections}."
     },
     "reissue": {
       "pill": "Re-issue required",
@@ -2237,6 +2293,24 @@
       "byDate": "Re-issue by {date}",
       "editorTitle": "Re-issue of a document approved before Trustline",
       "editorHelp": "Write the sections missing from the original, then send it through the approval route. Whoever imported the document cannot decide a step of this re-issue."
+    },
+    "person": {
+      "title": "Acknowledgement record",
+      "description": "Every version a person was asked to acknowledge, newest first.",
+      "download": "Export the record (CSV)",
+      "notFound": "This record does not exist, or you may not see it.",
+      "empty": "This person has not been asked to acknowledge any document.",
+      "invited": "Invited, not signed in yet",
+      "left": "Has left: kept as evidence",
+      "state": {
+        "acknowledged": "Acknowledged",
+        "pending": "To acknowledge",
+        "overdue": "Overdue"
+      },
+      "late": "Late",
+      "asked": "Asked on {date}",
+      "due": "Due by {date}",
+      "acknowledgedAt": "Acknowledged on {date}"
     }
   }
 }

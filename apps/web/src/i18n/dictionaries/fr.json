@@ -568,7 +568,11 @@
       "acknowledgement_assigned": "Merci de lire la version {version} du document {reference} et de confirmer en avoir pris connaissance au plus tard le {date}.",
       "acknowledgement_due": "Rappel : confirmez avoir pris connaissance de la version {version} du document {reference} au plus tard le {date}.",
       "acknowledgement_overdue": "Votre prise de connaissance de la version {version} du document {reference} était attendue le {date}.",
-      "acknowledgements_overdue_digest": "Récapitulatif hebdomadaire des prises de connaissance en retard dans les entités que vous suivez : {overdue} en retard, personnes concernées : {people}.",
+      "acknowledgements_overdue_digest": {
+        "acknowledgements": "Récapitulatif hebdomadaire des prises de connaissance en retard dans les entités que vous suivez : {overdue} en retard, personnes concernées : {people}.",
+        "steps": "Récapitulatif hebdomadaire des documents que vous gérez : étapes d’approbation en retard : {stepsOverdue}.",
+        "both": "Récapitulatif hebdomadaire des prises de connaissance en retard dans les entités que vous suivez : {overdue} en retard, personnes concernées : {people}. Étapes d’approbation en retard : {stepsOverdue}."
+      },
       "review_due": {
         "60": "La révision périodique du document {reference} est prévue le {date}, dans deux mois environ.",
         "30": "La révision périodique du document {reference} est prévue le {date}, dans un mois environ.",
@@ -588,6 +592,7 @@
         "digest": "Un lien dans l’un de vos e-⁠mails a désactivé vos e-⁠mails de récapitulatif du matin. Vous pouvez les réactiver dans vos préférences d’e-⁠mail.",
         "other": "Un lien dans l’un de vos e-⁠mails a désactivé certains de vos e-⁠mails. Vous pouvez les réactiver dans vos préférences d’e-⁠mail."
       },
+      "document_owner_assigned": "Vous êtes désormais responsable du document {reference} : sa révision périodique et sa réédition vous reviennent.",
       "other": "Du nouveau concernant l’incident {reference}."
     },
     "descriptionGeneral": "Ce qui s’est passé et vous concerne. Une notification ne nomme personne.",
@@ -635,7 +640,9 @@
       "save": "Enregistrer",
       "saving": "Enregistrement…",
       "saved": "Enregistré.",
-      "saveError": "Impossible d’enregistrer. Réessayez."
+      "saveError": "Impossible d’enregistrer. Réessayez.",
+      "reliedOnApproves": "Vous décidez d’étapes d’approbation : sans e-⁠mails immédiats, une étape qui attend votre décision ne vous parvient que dans Trustline et dans le récapitulatif du matin, et les étapes suivantes attendent.",
+      "reliedOnTriages": "Vous triez les incidents : sans e-⁠mails immédiats, un incident grave déclaré dans votre périmètre ne vous parvient que dans Trustline et dans le récapitulatif du matin."
     },
     "preferencesLink": "Préférences d’e-⁠mail"
   },
@@ -1129,7 +1136,8 @@
         "inactiveDepartment": "{name} (service inactif)",
         "outsideScope": "Votre rôle ne couvre pas cet utilisateur, ou le service choisi pour lui. Choisissez un service couvert par votre rôle, ou adressez-vous à votre administrateur.",
         "rolesReadOnly": "Les modifications sont suspendues pour le compte de votre établissement : des rôles peuvent être retirés, mais pas attribués.",
-        "enableReadOnly": "Les modifications sont suspendues pour le compte de votre établissement : ce compte ne peut donc pas être réactivé."
+        "enableReadOnly": "Les modifications sont suspendues pour le compte de votre établissement : ce compte ne peut donc pas être réactivé.",
+        "acknowledgementRecord": "Relevé des prises de connaissance"
       }
     },
     "roles": {
@@ -1338,6 +1346,16 @@
         "switchOff": "Désactiver",
         "switchedOn": "L’e-⁠mail est activé.",
         "switchedOff": "L’e-⁠mail est désactivé."
+      },
+      "optOuts": {
+        "title": "Qui a désactivé ses e-⁠mails",
+        "help": "Noms seulement. Les personnes dont d’autres dépendent, qui décident d’étapes d’approbation ou trient les incidents, sont signalées.",
+        "empty": "Personne n’a désactivé ses e-⁠mails.",
+        "immediateOff": "E-mails immédiats désactivés",
+        "digestOff": "Récapitulatif du matin désactivé",
+        "approves": "Décide d’étapes d’approbation",
+        "triages": "Trie les incidents",
+        "reliedHelp": "Sans e-⁠mails immédiats, le travail qui l’attend ne lui parvient que dans Trustline et dans le récapitulatif du matin."
       }
     },
     "permissions": {
@@ -1407,7 +1425,7 @@
     },
     "export": {
       "list": "Exporter la liste (CSV)",
-      "listHelp": "Tous les documents correspondant à ces filtres, en {language}, dans un fichier pour tableur. Sa dernière colonne indique pour chacun s’il a été approuvé avant Trustline.",
+      "listHelp": "Tous les documents correspondant à ces filtres, en {language}, dans un fichier pour tableur. Ses dernières colonnes indiquent pour chacun s’il a été approuvé avant Trustline, et ce que dit son original.",
       "acknowledgements": "Exporter les prises de connaissance de cette version (CSV)",
       "acknowledgementsHelp": "Toutes les personnes sollicitées, y compris celles qui sont parties, signalées comme telles, en {language}.",
       "preparing": "Préparation du fichier…",
@@ -1457,7 +1475,11 @@
       "page": "Page {page} sur {pages}",
       "total": "{total} au total",
       "previous": "Précédente",
-      "next": "Suivante"
+      "next": "Suivante",
+      "sourceLabel": "Origine",
+      "sourceImported": "Approuvé avant Trustline",
+      "sourceWritten": "Rédigé dans Trustline",
+      "reissueDue": "Réédition à faire"
     },
     "document": {
       "controlBlock": "Document maîtrisé",
@@ -1533,7 +1555,8 @@
       "changeLine": "{field} : {from} → {to}",
       "changeReason": "Motif :",
       "none": "aucun",
-      "otherDetail": "Autre information"
+      "otherDetail": "Autre information",
+      "printHeaderOriginal": "{number} · Version {version} ({revision} sur l’original) · {title}"
     },
     "acknowledge": {
       "title": "Confirmer la prise de connaissance",
@@ -1782,7 +1805,8 @@
       "empty": "Aucune prise de connaissance en retard.",
       "noAccess": "Cette liste est réservée aux personnes qui gèrent les documents ou peuvent tous les lire.",
       "late": "Échéance : {date} · {days} de retard",
-      "documentHidden": "Un document que vous ne pouvez pas ouvrir"
+      "documentHidden": "Un document que vous ne pouvez pas ouvrir",
+      "download": "Exporter la liste (CSV)"
     },
     "acknowledgements": {
       "title": "Prises de connaissance",
@@ -1979,7 +2003,7 @@
       "effective_before_approval": "Il ne peut pas être entré en vigueur avant sa date d’approbation.",
       "effective_in_future": "La date d’entrée en vigueur ne peut pas être postérieure à aujourd’hui : un document importé est déjà en vigueur. Un document qui entre en vigueur plus tard passe par le circuit d’approbation.",
       "review_before_approval": "La prochaine révision doit être postérieure à la date d’approbation.",
-      "review_date_too_far": "La prochaine révision ne peut pas dépasser {max} à compter d’aujourd’hui, la périodicité la plus longue de votre établissement : le {date} au plus tard.",
+      "review_date_too_far": "La prochaine révision ne peut pas être postérieure au {date} : {max} à compter du {from}, la périodicité la plus longue de votre établissement.",
       "invalid_number": "Ce numéro ne peut pas être utilisé. Indiquez le numéro tel qu’il est écrit sur l’original, en lettres latines, ou celles des langues de votre établissement, et en chiffres, séparés au besoin par des espaces, -, ., / ou _ : 40 caractères au plus.",
       "number_script": "Un numéro de document ne peut contenir que des lettres latines, ou celles des langues de votre établissement, avec des chiffres et ⁦- . / _ ( )⁩. Écrivez le numéro de l’original avec ces caractères.",
       "number_mixed_scripts": "Ce numéro mélange des lettres de plusieurs écritures. Indiquez le numéro tel qu’il est écrit sur l’original, en lettres latines, ou celles des langues de votre établissement, et en chiffres, sans les mélanger.",
@@ -2005,7 +2029,12 @@
       "approved_after_start_since": "Votre établissement a commencé à gérer ses documents dans Trustline le {date}. Seuls les documents approuvés avant cette date peuvent être importés : créez celui-ci comme nouveau document et soumettez-le au circuit d’approbation.",
       "body_too_deep": "Ce fichier ne peut pas être envoyé tel quel : son contenu est imbriqué trop profondément. Préparez-le comme l’indique la page sur la préparation du fichier, puis réessayez.",
       "no_assignee_role_manager": "Pas encore soumise à vérification : personne ne peut décider de l’étape {position} de son circuit d’approbation ({kind}, par le rôle « {role} »). Personne n’a ce rôle pour l’entité responsable de ce document, ou seule une personne qui a préparé cette version l’a. Donnez le rôle « {role} » à la personne qui décide de cette étape, puis soumettez de nouveau la version.",
-      "no_assignee_person_manager": "Pas encore soumise à vérification : l’étape {position} de son circuit d’approbation ({kind}) désigne {name}, qui ne peut pas en décider : son compte n’est pas actif, aucun de ses rôles ne le permet, ou cette personne a préparé cette version. Modifiez le circuit dans les paramètres des documents, puis soumettez de nouveau la version."
+      "no_assignee_person_manager": "Pas encore soumise à vérification : l’étape {position} de son circuit d’approbation ({kind}) désigne {name}, qui ne peut pas en décider : son compte n’est pas actif, aucun de ses rôles ne le permet, ou cette personne a préparé cette version. Modifiez le circuit dans les paramètres des documents, puis soumettez de nouveau la version.",
+      "review_not_due": "Cette révision peut être confirmée à partir du {opensOn} ; elle est due le {dueOn}.",
+      "language_mismatch_differences": "Rédigez les écarts par rapport à l’original seulement dans les langues de votre établissement.",
+      "reviewed_before_approval": "La dernière révision sur l’original ne peut pas être antérieure à sa date d’approbation.",
+      "reviewed_in_future": "La dernière révision sur l’original ne peut pas être postérieure à aujourd’hui.",
+      "review_before_last_review": "La prochaine révision doit être postérieure à la dernière révision sur l’original."
     },
     "importing": {
       "open": "Importer des documents",
@@ -2047,7 +2076,7 @@
       "ackAsked": "Toutes les personnes concernées devront confirmer en avoir pris connaissance.",
       "ackNotAsked": "Aucune prise de connaissance ne sera demandée.",
       "signTitle": "Signer l’importation",
-      "signOne": "En signant avec votre mot de passe, vous attestez que le texte saisi ici est celui de l’original approuvé, et que les informations sur son approbation sont celles que donne l’original. Il est alors publié aussitôt comme approuvé avant Trustline.",
+      "signOne": "En signant avec votre mot de passe, vous attestez que le texte saisi ici correspond à l’original approuvé, sauf ce qui est indiqué ci-dessous, et que les informations sur son approbation sont celles que donne l’original. Il est alors publié aussitôt comme approuvé avant Trustline.",
       "signOneConfirm": "Signer et importer",
       "batchTitle": "Importer un lot de documents",
       "batchDescription": "Depuis un fichier CSV ou JSON préparé comme l’indique la page sur la préparation du fichier. Chaque document est d’abord contrôlé, sans votre mot de passe ; vous corrigez ce qui est refusé, puis vous signez. Un lot compte au plus {documents} documents et {characters} caractères de texte : un fichier plus grand est réparti en plusieurs lots, signés chacun séparément.",
@@ -2080,7 +2109,7 @@
       "checkFailed": "Non contrôlé",
       "checkAgain": "Contrôler de nouveau",
       "noProblemHere": "Les autres documents de ce lot ne présentent aucun problème. Le lot pourra être signé dès que tous ses documents pourront être importés.",
-      "signBatch": "En signant avec votre mot de passe, vous attestez que le texte de chacun des {count} documents du lot {batch} sur {batches} est celui de son original approuvé, et que les informations sur leur approbation sont celles que donnent les originaux. Cette signature ne vaut que pour ce lot.",
+      "signBatch": "En signant avec votre mot de passe, vous attestez que le texte de chacun des {count} documents du lot {batch} sur {batches} correspond à son original approuvé, sauf ce qui est indiqué ci-dessous, et que les informations sur leur approbation sont celles que donnent les originaux. Cette signature ne vaut que pour ce lot.",
       "signBatchConfirm": "Signer et importer ces documents ({count})",
       "signBatchOpen": "Signer le lot {batch}",
       "signBatchHelp": "Votre mot de passe est demandé pour ce lot seulement. Chaque autre lot est signé séparément.",
@@ -2131,7 +2160,9 @@
         "keywords": "Mots-clés",
         "references": "Références",
         "acknowledge": "Prise de connaissance demandée",
-        "acknowledgeDays": "Délai de prise de connaissance en jours"
+        "acknowledgeDays": "Délai de prise de connaissance en jours",
+        "lastReviewedOn": "Dernière révision sur l’original",
+        "differences": "Écarts par rapport à l’original"
       },
       "layout": {
         "title": "Format du fichier d’importation par lots",
@@ -2149,7 +2180,8 @@
           "Les dates s’écrivent sous la forme année-mois-jour, par exemple 2024-03-01.",
           "Plusieurs valeurs dans une même colonne sont séparées par |, par exemple ICU|ER.",
           "« acknowledge » vaut yes ou no ; « confidentiality » vaut all_staff ou restricted.",
-          "Un numéro laissé vide est attribué par Trustline. Un numéro donné est conservé tel qu’il est écrit sur l’original, en lettres latines, ou celles des langues de votre établissement, et en chiffres, et ne doit pas être déjà utilisé."
+          "Un numéro laissé vide est attribué par Trustline. Un numéro donné est conservé tel qu’il est écrit sur l’original, en lettres latines, ou celles des langues de votre établissement, et en chiffres, et ne doit pas être déjà utilisé.",
+          "Les tableaux et les figures ne peuvent pas être importés tels quels. Rédigez un tableau sous forme de liste, une ligne par rangée ; pour une figure ou un logigramme, indiquez-le dans « differences », par exemple « Logigramme de l’annexe B non reproduit, voir l’original »."
         ],
         "limits": "Un lot compte au plus {documents} documents et {characters} caractères de texte. Un fichier plus grand est réparti en plusieurs lots, et chaque lot est une signature distincte.",
         "columnsTitle": "Colonnes",
@@ -2177,7 +2209,9 @@
           "keywords": "Séparés par |.",
           "references": "Séparées par |, par exemple une norme et son chapitre.",
           "acknowledge": "yes pour demander à toutes les personnes concernées de confirmer en avoir pris connaissance ; no (par défaut) sinon.",
-          "acknowledgeDays": "Délai de prise de connaissance en jours, quand elle est demandée. Vide : 14."
+          "acknowledgeDays": "Délai de prise de connaissance en jours, quand elle est demandée. Vide : 14.",
+          "lastReviewedOn": "Facultatif : la dernière révision que l’original indique. La prochaine révision doit venir après elle, et se compte à partir d’elle.",
+          "differences": "Ce que le texte du fichier ne reproduit pas de l’original, une colonne par langue. Signé avec l’importation."
         },
         "codesTitle": "Codes de votre établissement",
         "codesHelp": "Écrivez ces codes dans le fichier tels qu’ils figurent ici.",
@@ -2201,13 +2235,32 @@
           ],
           "revision": "Rév. 3",
           "section": "Texte de cette section tel qu’il figure sur l’original.",
-          "keywords": "documents|maîtrise"
+          "keywords": "documents|maîtrise",
+          "differences": "Tableau 2 rédigé sous forme de liste."
         }
       },
       "latestApproval": "Seuls les documents approuvés le {date} ou avant peuvent être importés. Un document approuvé depuis passe par le circuit d’approbation.",
       "approvedBeforeStart": "Seuls les documents approuvés avant le {date}, date à laquelle votre établissement a commencé à gérer ses documents dans Trustline, peuvent être importés. Un document approuvé depuis passe par le circuit d’approbation.",
       "numberNormalised": "Saisi sous la forme {given}. Trustline l’enregistre tel qu’il apparaît ci-dessus.",
-      "allDoneLeftOut": "Tous les documents du fichier sont importés, sauf ceux qui ont été écartés : {count}. Reprenez-en un pour l’importer, ou importez-le plus tard depuis un autre fichier."
+      "allDoneLeftOut": "Tous les documents du fichier sont importés, sauf ceux qui ont été écartés : {count}. Reprenez-en un pour l’importer, ou importez-le plus tard depuis un autre fichier.",
+      "lastReviewedOn": "Dernière révision sur l’original",
+      "lastReviewedOnHelp": "Facultatif : la dernière révision que l’original indique après son approbation. La prochaine révision se compte à partir d’elle.",
+      "differences": "Écarts par rapport à l’original",
+      "differencesHelp": "Ce que ce texte ne reproduit pas de l’original, par exemple : « Tableau 2 rédigé sous forme de liste ; le logigramme de l’annexe B n’est pas reproduit, voir l’original. » Il est signé avec l’importation et affiché avec le document, à l’écran et sur papier.",
+      "noDifferences": "Aucun écart par rapport à l’original n’est indiqué.",
+      "differencesNoted": "Écarts par rapport à l’original, tels qu’indiqués :",
+      "register": {
+        "open": "Registre des importations",
+        "title": "Registre des importations",
+        "description": "Chaque document importé comme approuvé avant Trustline, du plus récent au plus ancien : l’original dont il vient, qui l’a importé et quand, et ce que couvre chaque signature.",
+        "download": "Exporter le registre (CSV)",
+        "empty": "Aucun document n’a été importé.",
+        "original": "Sur l’original",
+        "importedBy": "Importé par",
+        "batch": "Lot",
+        "batchPlace": "Document {index} sur {size} ; empreinte du lot :",
+        "signed": "Empreinte du contenu signé"
+      }
     },
     "imported": {
       "pill": "Approuvé avant Trustline",
@@ -2221,7 +2274,10 @@
       "importedBy": "Importé dans Trustline par {name} le {date}, avec une signature attestant que ce texte est celui de l’original.",
       "nextReviewReissue": "Prochaine révision (réédition)",
       "importedByLabel": "Importé par",
-      "notWrittenLabel": "Sections absentes de l’original"
+      "notWrittenLabel": "Sections absentes de l’original",
+      "lastReviewedOn": "Dernière révision sur l’original",
+      "differences": "Écarts par rapport à l’original",
+      "notInOriginal": "L’original ne comportait pas ces sections, qui ne figurent donc pas dans ce texte : {sections}."
     },
     "reissue": {
       "pill": "Réédition à faire",
@@ -2237,6 +2293,24 @@
       "byDate": "Réédition au plus tard le {date}",
       "editorTitle": "Réédition d’un document approuvé avant Trustline",
       "editorHelp": "Rédigez les sections absentes de l’original, puis soumettez la version au circuit d’approbation. La personne qui a importé le document ne peut décider d’aucune étape de cette réédition."
+    },
+    "person": {
+      "title": "Relevé des prises de connaissance",
+      "description": "Chaque version dont une personne devait confirmer la prise de connaissance, de la plus récente à la plus ancienne.",
+      "download": "Exporter le relevé (CSV)",
+      "notFound": "Ce relevé n’existe pas, ou vous ne pouvez pas le consulter.",
+      "empty": "Il n’a été demandé à cette personne de confirmer la prise de connaissance d’aucun document.",
+      "invited": "Invitation envoyée, pas encore acceptée",
+      "left": "A quitté l’établissement : conservé comme preuve",
+      "state": {
+        "acknowledged": "Confirmée",
+        "pending": "À confirmer",
+        "overdue": "En retard"
+      },
+      "late": "Hors délai",
+      "asked": "Demandée le {date}",
+      "due": "Au plus tard le {date}",
+      "acknowledgedAt": "Confirmée le {date}"
     }
   }
 }

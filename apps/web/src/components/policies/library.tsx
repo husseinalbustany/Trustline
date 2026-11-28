@@ -1,6 +1,13 @@
 "use client";
 
-import { FileDown, FileUp, Plus, Search, SlidersHorizontal } from "lucide-react";
+import {
+  FileDown,
+  FileUp,
+  ListChecks,
+  Plus,
+  Search,
+  SlidersHorizontal,
+} from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
@@ -187,6 +194,8 @@ export function Library({ lang, t }: PoliciesProps) {
     filters.categoryId,
     filters.ownerUnitId,
     filters.review,
+    filters.source,
+    filters.reissueDue,
   ].filter(Boolean).length;
   const showMore = moreOpen ?? inUse > 0;
   const narrowed =
@@ -216,6 +225,13 @@ export function Library({ lang, t }: PoliciesProps) {
           can(session, "policies.manage") && (
             <div className="flex flex-wrap gap-2">
               {/* Importing is for those who manage documents for all of it. */}
+              {/* The register stays, whatever the import window. */}
+              {importer && (
+                <ButtonLink variant="secondary" href={importPath(lang, "register")}>
+                  <ListChecks className="size-4" aria-hidden />
+                  {t.importing.register.open}
+                </ButtonLink>
+              )}
               {session.scope?.["policies.manage"] === "all" && importOpen && (
                 <ButtonLink variant="secondary" href={importPath(lang)}>
                   <FileUp className="size-4" aria-hidden />
@@ -404,6 +420,28 @@ export function Library({ lang, t }: PoliciesProps) {
                 <option value="overdue">{l.reviewOverdue}</option>
               </select>
             </Field>
+            <Field label={l.sourceLabel}>
+              <select
+                value={filters.source}
+                onChange={(e) =>
+                  ask({ source: e.target.value as LibraryFilters["source"] })
+                }
+                className={inputClass}
+              >
+                <option value="">{l.all}</option>
+                <option value="imported">{l.sourceImported}</option>
+                <option value="written">{l.sourceWritten}</option>
+              </select>
+            </Field>
+            <label className={`${check} min-[30rem]:col-span-2 lg:col-span-4`}>
+              <input
+                type="checkbox"
+                className="size-4 accent-accent"
+                checked={filters.reissueDue}
+                onChange={(e) => ask({ reissueDue: e.target.checked })}
+              />
+              {l.reissueDue}
+            </label>
           </div>
         )}
       </div>

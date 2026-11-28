@@ -14,6 +14,7 @@ export function LocalizedField({
   value,
   maxLength = 200,
   readOnly = false,
+  multiline = false,
 }: {
   label: string;
   name: string;
@@ -28,6 +29,8 @@ export function LocalizedField({
   maxLength?: number;
   /** Shown and sent as it is, but not editable. */
   readOnly?: boolean;
+  /** Several lines each: a note rather than a name. */
+  multiline?: boolean;
 }) {
   return (
     <div className="grid gap-5 sm:grid-cols-2">
@@ -40,16 +43,30 @@ export function LocalizedField({
               : label
           }
         >
-          <input
-            name={`${name}.${locale}`}
-            required={required === true || locale === required}
-            maxLength={maxLength}
-            lang={locale}
-            dir={direction(locale)}
-            defaultValue={value?.[locale] ?? ""}
-            readOnly={readOnly}
-            className={`${inputClass} read-only:bg-surface read-only:text-muted`}
-          />
+          {multiline ? (
+            <textarea
+              name={`${name}.${locale}`}
+              required={required === true || locale === required}
+              maxLength={maxLength}
+              lang={locale}
+              dir={direction(locale)}
+              rows={3}
+              defaultValue={value?.[locale] ?? ""}
+              readOnly={readOnly}
+              className="w-full rounded-md border border-line bg-background px-3 py-2 text-sm font-normal read-only:bg-surface read-only:text-muted"
+            />
+          ) : (
+            <input
+              name={`${name}.${locale}`}
+              required={required === true || locale === required}
+              maxLength={maxLength}
+              lang={locale}
+              dir={direction(locale)}
+              defaultValue={value?.[locale] ?? ""}
+              readOnly={readOnly}
+              className={`${inputClass} read-only:bg-surface read-only:text-muted`}
+            />
+          )}
         </Field>
       ))}
     </div>

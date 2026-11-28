@@ -29,6 +29,8 @@ type Preferences = {
   language: string | null;
   /** Whether the organization sends email at all. */
   organizationEnabled: boolean;
+  /** Whether others count on this person's emails: approval steps, triage. */
+  reliedOn?: { approves: boolean; triages: boolean };
 };
 
 type Text = Dictionary["notifications"]["preferences"];
@@ -222,6 +224,16 @@ function PreferencesForm({
           >
             <p>{t.immediateHelp}</p>
             <Items items={immediateItems} />
+            {/* Before an approver or a triager goes without them. */}
+            {!immediate && (saved.reliedOn?.approves || saved.reliedOn?.triages) && (
+              <div
+                role="note"
+                className="mt-1 flex flex-col gap-1 rounded-md border border-warn bg-warn-soft px-3 py-2 text-sm text-foreground"
+              >
+                {saved.reliedOn?.approves && <p>{t.reliedOnApproves}</p>}
+                {saved.reliedOn?.triages && <p>{t.reliedOnTriages}</p>}
+              </div>
+            )}
           </Switch>
           <Switch
             checked={digest}

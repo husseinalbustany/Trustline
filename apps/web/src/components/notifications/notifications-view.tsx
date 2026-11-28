@@ -231,6 +231,7 @@ export function NotificationsView({
       position: numbers.format(n.data?.position ?? 0),
       overdue: numbers.format(n.data?.overdue ?? 0),
       people: numbers.format(n.data?.people ?? 0),
+      stepsOverdue: numbers.format(n.data?.stepsOverdue ?? 0),
     })
       .split("{reference}")
       .flatMap((words, i) =>

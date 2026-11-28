@@ -169,6 +169,7 @@ export function ControlledDocument({
       ? (c.approvedBeforeTrustline ?? null)
       : null;
   const imported = c.approvedThrough === "before_trustline";
+  const notInOriginal = before?.sectionsNotInOriginal ?? [];
   if (!standing) {
     rows.push([
       imported ? t.imported.nextReviewReissue : d.nextReviewOn,
@@ -291,6 +292,20 @@ export function ControlledDocument({
 
       {/* Not written in the reader's language at all: said on paper too,
           so a printed copy explains why its text is in another language. */}
+      {/* Sections the original came without: the text below numbers only
+          what is written, so say which are missing, on paper too. */}
+      {notInOriginal.length > 0 && (
+        <p className="rounded-md border border-line px-3 py-2 text-sm text-muted">
+          {fill(t.imported.notInOriginal, {
+            sections: new Intl.ListFormat(lang, { type: "conjunction" }).format(
+              notInOriginal.map((x) => {
+                const section = version.sections.find((y) => y.key === x.key);
+                return section ? inLang(section.name) : x.key;
+              }),
+            ),
+          })}
+        </p>
+      )}
       {notInMine && hasLocale(lang) && (
         <p
           className={`rounded-md bg-surface px-3 py-2 text-sm text-muted print:border print:border-line ${
@@ -421,6 +436,9 @@ function ApprovedBefore({
           : []),
         [m.approvedOn, day(before.approvedOn) ?? ""],
         [m.approvedBy, <bdi key="b" dir="auto">{before.approvedBy}</bdi>],
+        ...(before.lastReviewedOn
+          ? [[m.lastReviewedOn, day(before.lastReviewedOn) ?? ""] as [string, ReactNode]]
+          : []),
         [
           m.originalKeptAt,
           <bdi key="k">{pick(before.originalKeptAt, lang, session.tenant.defaultLocale)}</bdi>,
@@ -441,6 +459,17 @@ function ApprovedBefore({
           ))}
         </dl>
       )}
+      {/* What the text here does not reproduce of the original: part of
+          what the importer signed, so on screen and on paper. */}
+      {before?.differences &&
+        Object.values(before.differences).some((v) => v?.trim()) && (
+          <div className="mt-2 text-sm">
+            <p className="text-muted">{m.differences}</p>
+            <p dir="auto" className="font-medium whitespace-pre-wrap break-words">
+              {pick(before.differences, lang, session.tenant.defaultLocale)}
+            </p>
+          </div>
+        )}
       {before && (
         <p className="mt-2 text-sm">
           <Words
@@ -567,9 +596,12 @@ function PrintedPages({
   const end = rtl ? "left" : "right";
   const shortTitle =
     title.length > LONGEST_TITLE ? `${title.slice(0, LONGEST_TITLE)}…` : title;
-  const head = fill(d.printHeader, {
+  // An imported version carries the original's revision beside its own.
+  const originalRevision = version.control.originalRevision;
+  const head = fill(originalRevision ? d.printHeaderOriginal : d.printHeader, {
     number: document.number,
     version: numberFormat(lang).format(version.version),
+    revision: originalRevision ?? "",
     title: shortTitle,
   });
   const link =

@@ -26,7 +26,7 @@ import { api, statusOf } from "@/lib/api";
 import { numberFormat } from "@/lib/format";
 import { followUpUrl, publicReportUrl } from "@/lib/identity";
 import { harmLevels, type HarmLevel } from "@/lib/incidents";
-import { readForm } from "@/lib/localized";
+import { pick, readForm, type Localized } from "@/lib/localized";
 import { SubscriptionPanel } from "./subscription-panel";
 import type { AdminProps } from "./types";
 
@@ -125,6 +125,7 @@ export function SettingsView(props: Props) {
           <DeadlinesPanel {...props} editable={wholeOrganization} />
         )}
         {wholeOrganization && <EmailPanel {...props} />}
+        {wholeOrganization && <OptOutsPanel {...props} />}
         {wholeOrganization && <SubscriptionPanel {...props} />}
       </div>
     </>
@@ -246,6 +247,88 @@ function EmailPanel({ lang, t }: Props) {
           </Button>
         </div>
       </div>
+    </Panel>
+  );
+}
+
+/** A person who has switched some of their emails off. */
+type OptOut = {
+  id: string;
+  name: Localized;
+  immediate: boolean;
+  digest: boolean;
+  /** Whether others count on their emails: approval steps, triage. */
+  reliedOn: { approves: boolean; triages: boolean };
+};
+
+/**
+ * Who has switched which emails off, by name only: so that an
+ * administrator can see when someone others rely on, an approver or a
+ * triager, would hear of their work only in Trustline.
+ */
+function OptOutsPanel({ lang, t }: Props) {
+  const session = useSession();
+  const [list, setList] = useState<{ items: OptOut[]; total: number } | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const o = t.settings.optOuts;
+  const inLang = (text: Localized | null | undefined) =>
+    pick(text, lang, session.tenant.defaultLocale);
+
+  useEffect(() => {
+    let current = true;
+    api<{ items: OptOut[]; total: number }>("/settings/email/opt-outs")
+      .then((loaded) => {
+        if (!current) return;
+        setList(loaded);
+        setProblem(null);
+      })
+      .catch(
+        (err) =>
+          current &&
+          setProblem(statusOf(err) === 403 ? t.settings.wholeOrganization : t.loadError),
+      );
+    return () => {
+      current = false;
+    };
+  }, [t]);
+
+  return (
+    <Panel title={o.title}>
+      {problem ? (
+        <EmptyState>{problem}</EmptyState>
+      ) : !list ? (
+        <EmptyState>{t.loading}</EmptyState>
+      ) : list.items.length === 0 ? (
+        <EmptyState>{o.empty}</EmptyState>
+      ) : (
+        <>
+          <p className="px-4 pt-3 text-sm text-muted">{o.help}</p>
+          <ul className="mt-2">
+            {list.items.map((person) => {
+              const relied = person.reliedOn.approves || person.reliedOn.triages;
+              return (
+                <li
+                  key={person.id}
+                  className={`flex flex-col gap-1.5 border-t border-line py-3 pe-4 text-sm ${
+                    relied ? "border-s-4 border-s-warn ps-3" : "ps-4"
+                  }`}
+                >
+                  <bdi className="font-medium">{inLang(person.name)}</bdi>
+                  <div className="flex flex-wrap gap-1.5">
+                    {!person.immediate && <Pill tone="neutral">{o.immediateOff}</Pill>}
+                    {!person.digest && <Pill tone="neutral">{o.digestOff}</Pill>}
+                    {person.reliedOn.approves && <Pill tone="warn">{o.approves}</Pill>}
+                    {person.reliedOn.triages && <Pill tone="warn">{o.triages}</Pill>}
+                  </div>
+                  {relied && !person.immediate && (
+                    <p className="text-xs text-warn">{o.reliedHelp}</p>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
     </Panel>
   );
 }

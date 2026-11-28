@@ -103,9 +103,17 @@ export function explain(
   const day = (value: unknown) =>
     typeof value === "string" ? (names.day?.(value) ?? value) : "";
   if (code === "review_date_too_far") {
+    // Counted from the later of the approval and the last review on paper.
     return fill(errors.review_date_too_far, {
       date: day(details.latest),
       max: months(details.maxReviewMonths),
+      from: day(details.from),
+    });
+  }
+  if (code === "review_not_due") {
+    return fill(errors.review_not_due, {
+      opensOn: day(details.opensOn),
+      dueOn: day(details.dueOn),
     });
   }
   if (code === "number_taken") {
@@ -123,6 +131,9 @@ export function explain(
   }
   if (code === "language_mismatch" && details.field === "originalKeptAt") {
     return errors.language_mismatch_kept_at;
+  }
+  if (code === "language_mismatch" && details.field === "differences") {
+    return errors.language_mismatch_differences;
   }
   // Imports are for migration: the latest approval day allowed, and the
   // day the import window closed, when the API gives them.

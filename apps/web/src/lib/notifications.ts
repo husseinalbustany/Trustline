@@ -44,6 +44,8 @@ export type Notification = {
     effectiveOn?: string;
     /** With `document_step_overdue`: the step's place in the route. */
     position?: number;
+    /** With `acknowledgements_overdue_digest`: approval steps overdue. */
+    stepsOverdue?: number;
     /** With `acknowledgements_overdue_digest`: how many, and for how many people. */
     overdue?: number;
     people?: number;
@@ -119,6 +121,18 @@ export function sentenceFor(
   { kind, data }: Pick<Notification, "kind" | "data">,
 ): string {
   const general = kinds.other as string;
+  // The weekly summary: overdue acknowledgements, overdue approval steps,
+  // or both, whichever it counts.
+  if (kind === overdueDigest) {
+    const wording = kinds[kind];
+    if (typeof wording === "string") return wording;
+    const acks = (data?.overdue ?? 0) > 0;
+    const steps = (data?.stepsOverdue ?? 0) > 0;
+    return (
+      wording[acks && steps ? "both" : steps ? "steps" : "acknowledgements"] ??
+      general
+    );
+  }
   // A review that is a re-issue has its own words, when there are any.
   const own = `${kind}_reissue`;
   const wording =

@@ -1,17 +1,19 @@
 "use client";
 
+import { FileDown } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
-import { useSession } from "@/components/shell/session";
+import { useEffect, useLayoutEffect, useState } from "react";
+import { canIn, useSession } from "@/components/shell/session";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
-import { api, statusOf } from "@/lib/api";
+import { api, download, statusOf } from "@/lib/api";
 import { dayFormat, durationFormat, fill, numberFormat } from "@/lib/format";
 import { pick, type Localized } from "@/lib/localized";
-import { documentPath, type OverdueList } from "@/lib/policies";
+import { documentPath, personPath, type OverdueList } from "@/lib/policies";
 import type { PoliciesProps } from "./types";
+import { useExplain } from "./use-explain";
 
 const PAGE_SIZE = 50;
 
@@ -35,6 +37,31 @@ export function OverdueAcknowledgements({ lang, t }: PoliciesProps) {
   const days = durationFormat(lang);
   const inLang = (text: Localized | null | undefined) =>
     pick(text, lang, session.tenant.defaultLocale);
+  const explainError = useExplain(t, lang);
+  const [busy, setBusy] = useState(false);
+  const [exported, setExported] = useState<{ ok: boolean; text: string } | null>(null);
+  useLayoutEffect(() => () => setExported(null), []);
+  // The file is in the reader's language when the client uses it.
+  const fileLocale = session.tenant.locales.includes(lang) ? lang : null;
+  // A person's own record is for those who manage documents where they work.
+  const opensPerson = (orgUnitId: string | null | undefined) =>
+    orgUnitId
+      ? canIn(session, "policies.manage", orgUnitId)
+      : session.scope?.["policies.manage"] === "all";
+
+  async function exportList() {
+    setBusy(true);
+    setExported(null);
+    try {
+      await download(
+        `/policies/exports/acknowledgements/overdue${fileLocale ? `?locale=${fileLocale}` : ""}`,
+      );
+      setExported({ ok: true, text: t.export.done });
+    } catch (err) {
+      setExported({ ok: false, text: explainError(err) });
+    }
+    setBusy(false);
+  }
 
   useEffect(() => {
     let current = true;
@@ -64,7 +91,26 @@ export function OverdueAcknowledgements({ lang, t }: PoliciesProps) {
 
   return (
     <>
-      <PageHeader title={o.title} description={o.description} />
+      <PageHeader
+        title={o.title}
+        description={o.description}
+        actions={
+          list && list.items.length > 0 ? (
+            <Button variant="secondary" disabled={busy} onClick={exportList}>
+              <FileDown className="size-4" aria-hidden />
+              {busy ? t.export.preparing : o.download}
+            </Button>
+          ) : null
+        }
+      />
+      {exported && (
+        <p
+          role={exported.ok ? "status" : "alert"}
+          className={`mt-3 text-sm ${exported.ok ? "text-accent" : "text-danger"}`}
+        >
+          {exported.text}
+        </p>
+      )}
       <div className="mt-6">
         {failed ? (
           <EmptyState>{failed}</EmptyState>
@@ -84,9 +130,18 @@ export function OverdueAcknowledgements({ lang, t }: PoliciesProps) {
                 >
                   <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                     <span>
-                      <bdi className="font-medium">
-                        {inLang(item.user.name) || t.document.unknownPerson}
-                      </bdi>
+                      {opensPerson(item.orgUnit?.id) ? (
+                        <Link
+                          href={personPath(lang, item.user.id)}
+                          className="font-medium text-accent hover:underline"
+                        >
+                          <bdi>{inLang(item.user.name) || t.document.unknownPerson}</bdi>
+                        </Link>
+                      ) : (
+                        <bdi className="font-medium">
+                          {inLang(item.user.name) || t.document.unknownPerson}
+                        </bdi>
+                      )}
                       {item.orgUnit && (
                         <span className="text-muted">
                           {" · "}

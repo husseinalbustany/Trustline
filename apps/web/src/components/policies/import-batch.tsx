@@ -54,6 +54,7 @@ import {
   CheckedLines,
   ImportWindowNote,
   importWindowOf,
+  NotedDifferences,
   OriginalFields,
   windowClosed,
   readSections,
@@ -543,11 +544,34 @@ function Batches({ lang, t, ready }: PoliciesProps & { ready: Ready }) {
                 {signing === batch.signature ? (
                   <PasswordPrompt
                     t={t}
-                    intro={fill(m.signBatch, {
-                      count: numbers.format(batch.items.length),
-                      batch: numbers.format(signedCount + b + 1),
-                      batches: numbers.format(signedCount + batches.length),
-                    })}
+                    intro={
+                      <>
+                        <p>
+                          {fill(m.signBatch, {
+                            count: numbers.format(batch.items.length),
+                            batch: numbers.format(signedCount + b + 1),
+                            batches: numbers.format(signedCount + batches.length),
+                          })}
+                        </p>
+                        <NotedDifferences
+                          lang={lang}
+                          t={t}
+                          items={batch.items.map((item) => ({
+                            key: item.row.key,
+                            label: (
+                              <>
+                                {placeOf(item.row.at)}{" "}
+                                <bdi>
+                                  {item.row.fields.number ||
+                                    inLang(item.row.fields.title)}
+                                </bdi>
+                              </>
+                            ),
+                            differences: item.body?.differences,
+                          }))}
+                        />
+                      </>
+                    }
                     confirm={fill(m.signBatchConfirm, {
                       count: numbers.format(batch.items.length),
                     })}
@@ -868,6 +892,7 @@ function RowEditor({
         owner: owner ? inLang(owner.name) : f.owner,
         approvedOn: text("approvedOn"),
         approvedBy: text("approvedBy"),
+        lastReviewedOn: text("lastReviewedOn"),
         effectiveOn: text("effectiveOn"),
         nextReviewOn: text("nextReviewOn"),
         reviewMonths: text("reviewMonths"),
@@ -880,6 +905,7 @@ function RowEditor({
         acknowledgeDays: text("acknowledgeDays"),
         title: localized(fields.title),
         keptAt: localized(fields.keptAt),
+        differences: localized(fields.differences),
         sections,
       },
     });
@@ -987,9 +1013,11 @@ function RowEditor({
           revision: f.revision,
           approvedOn: f.approvedOn,
           approvedBy: f.approvedBy,
+          lastReviewedOn: f.lastReviewedOn,
           effectiveOn: f.effectiveOn,
           nextReviewOn: f.nextReviewOn,
           keptAt: f.keptAt,
+          differences: f.differences,
         }}
       />
       <div className="grid gap-5 sm:grid-cols-2">

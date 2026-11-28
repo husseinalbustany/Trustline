@@ -37,7 +37,11 @@ export type ImportDocument = {
   revisionLabel?: string;
   approvedOn: string;
   approvedBy: string;
+  /** When the original was last reviewed, as it says. */
+  lastReviewedOn?: string;
   originalKeptAt: Localized;
+  /** What the text here does not reproduce of the original, per language. */
+  differences?: Localized;
   effectiveOn?: string;
   nextReviewOn: string;
   content: Record<string, Record<string, string>>;
@@ -97,9 +101,11 @@ export const importColumns = [
   "title",
   "approvedOn",
   "approvedBy",
+  "lastReviewedOn",
   "effectiveOn",
   "nextReviewOn",
   "keptAt",
+  "differences",
   "section",
   "reviewMonths",
   "confidentiality",
@@ -116,6 +122,7 @@ export type ImportColumn = (typeof importColumns)[number];
 export const perLanguageColumns: readonly ImportColumn[] = [
   "title",
   "keptAt",
+  "differences",
   "section",
 ];
 
@@ -151,6 +158,7 @@ export type RowFields = {
   owner: string;
   approvedOn: string;
   approvedBy: string;
+  lastReviewedOn: string;
   effectiveOn: string;
   nextReviewOn: string;
   reviewMonths: string;
@@ -163,6 +171,7 @@ export type RowFields = {
   acknowledgeDays: string;
   title: Localized;
   keptAt: Localized;
+  differences: Localized;
   /** Per section key, per language. */
   sections: Record<string, Localized>;
 };
@@ -192,6 +201,7 @@ const blankFields = (): RowFields => ({
   owner: "",
   approvedOn: "",
   approvedBy: "",
+  lastReviewedOn: "",
   effectiveOn: "",
   nextReviewOn: "",
   reviewMonths: "",
@@ -204,6 +214,7 @@ const blankFields = (): RowFields => ({
   acknowledgeDays: "",
   title: {},
   keptAt: {},
+  differences: {},
   sections: {},
 });
 
@@ -270,9 +281,10 @@ export function parseCsv(text: string): string[][] {
 }
 
 /** A column name the file uses, read: its field, language and section. */
+type Localizable = "title" | "keptAt" | "differences";
 type ColumnRef =
-  | { column: Exclude<ImportColumn, "title" | "keptAt" | "section"> }
-  | { column: "title" | "keptAt"; locale: string }
+  | { column: Exclude<ImportColumn, Localizable | "section"> }
+  | { column: Localizable; locale: string }
   | { column: "section"; key: string; locale: string };
 
 function readColumnName(name: string): ColumnRef | null {
@@ -281,7 +293,11 @@ function readColumnName(name: string): ColumnRef | null {
   if (head === "section" && parts.length === 3 && parts[1] && parts[2]) {
     return { column: "section", key: parts[1], locale: parts[2] };
   }
-  if ((head === "title" || head === "keptAt") && parts.length === 2 && parts[1]) {
+  if (
+    (head === "title" || head === "keptAt" || head === "differences") &&
+    parts.length === 2 &&
+    parts[1]
+  ) {
     return { column: head, locale: parts[1] };
   }
   if (
@@ -290,7 +306,7 @@ function readColumnName(name: string): ColumnRef | null {
     !perLanguageColumns.includes(head as ImportColumn)
   ) {
     return {
-      column: head as Exclude<ImportColumn, "title" | "keptAt" | "section">,
+      column: head as Exclude<ImportColumn, Localizable | "section">,
     };
   }
   return null;
@@ -300,7 +316,11 @@ function put(fields: RowFields, ref: ColumnRef, value: string) {
   if (ref.column === "section") {
     if (!value) return;
     fields.sections[ref.key] = { ...fields.sections[ref.key], [ref.locale]: value };
-  } else if (ref.column === "title" || ref.column === "keptAt") {
+  } else if (
+    ref.column === "title" ||
+    ref.column === "keptAt" ||
+    ref.column === "differences"
+  ) {
     if (value) fields[ref.column] = { ...fields[ref.column], [ref.locale]: value };
   } else {
     Object.assign(fields, {
@@ -370,7 +390,8 @@ function fromJson(text: string): FileRow[] | FileProblem {
     for (const k of Object.keys(o)) if (!known.has(k)) unknown.add(k);
     const fields = blankFields();
     for (const column of importColumns) {
-      if (column === "title" || column === "keptAt") fields[column] = asLocalized(o[column]);
+      if (column === "title" || column === "keptAt" || column === "differences")
+        fields[column] = asLocalized(o[column]);
       else if (column === "section") continue;
       else
         Object.assign(fields, {
@@ -527,6 +548,8 @@ export function toImportDocument(
   if (fields.number) body.number = fields.number;
   if (fields.revision) body.revisionLabel = fields.revision;
   if (fields.effectiveOn) body.effectiveOn = fields.effectiveOn;
+  if (fields.lastReviewedOn) body.lastReviewedOn = fields.lastReviewedOn;
+  if (Object.keys(fields.differences).length > 0) body.differences = fields.differences;
   if (fields.reviewMonths) body.reviewMonths = number(fields.reviewMonths);
   if (fields.acknowledgeDays && acknowledgementRequired === true) {
     body.acknowledgeWithinDays = number(fields.acknowledgeDays);
@@ -550,6 +573,8 @@ export function columnOfField(field: string): ImportColumn | null {
     revisionLabel: "revision",
     approvedOn: "approvedOn",
     approvedBy: "approvedBy",
+    lastReviewedOn: "lastReviewedOn",
+    differences: "differences",
     effectiveOn: "effectiveOn",
     nextReviewOn: "nextReviewOn",
     originalKeptAt: "keptAt",
@@ -625,6 +650,8 @@ export type ExampleWords = {
   revision: string;
   section: string;
   keywords: string;
+  /** What the first example does not reproduce of its original. */
+  differences: string;
 };
 
 export type ExampleRow = Record<string, string>;
@@ -665,9 +692,11 @@ export function exampleRows(input: {
     ...locales.map((l) => `title.${l}`),
     "approvedOn",
     "approvedBy",
+    "lastReviewedOn",
     "effectiveOn",
     "nextReviewOn",
     ...locales.map((l) => `keptAt.${l}`),
+    ...locales.map((l) => `differences.${l}`),
     ...sections.flatMap((s) => locales.map((l) => `section.${s.key}.${l}`)),
     "confidentiality",
     "appliesTo",
@@ -686,6 +715,8 @@ export function exampleRows(input: {
       owner,
       approvedOn: addDays(approvedOn, i * 30),
       approvedBy: main.approvedBy[i] ?? "",
+      // Reviewed on paper since its approval: the first only.
+      lastReviewedOn: i === 0 ? addDays(approvedOn, 200) : "",
       effectiveOn: addDays(approvedOn, i * 30 + 14),
       nextReviewOn: addDays(today, 90 + i * 90),
       confidentiality: "all_staff",
@@ -697,6 +728,7 @@ export function exampleRows(input: {
     for (const l of locales) {
       row[`title.${l}`] = inLocale(l).titles[i] ?? "";
       row[`keptAt.${l}`] = inLocale(l).keptAt[i] ?? "";
+      row[`differences.${l}`] = i === 0 ? inLocale(l).differences : "";
       for (const s of sections) row[`section.${s.key}.${l}`] = inLocale(l).section;
     }
     return row;
@@ -723,7 +755,7 @@ export function exampleJson({ rows }: { columns: string[]; rows: ExampleRow[] })
       if (parts[0] === "section") {
         sections[parts[1]] = { ...sections[parts[1]], [parts[2]]: value };
       } else if (parts.length === 2) {
-        out[parts[0]] = { ...(out[parts[0]] as object), [parts[1]]: value };
+        if (value) out[parts[0]] = { ...(out[parts[0]] as object), [parts[1]]: value };
       } else if (name === "appliesTo" || name === "keywords") {
         out[name] = splitList(value);
       } else if (name === "acknowledge") {
