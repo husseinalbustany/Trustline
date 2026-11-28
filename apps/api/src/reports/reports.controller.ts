@@ -4,7 +4,7 @@ import { SUPPORTED_LOCALES, type Locale } from '../i18n/locales.js';
 import { requireEverywhere, requirePermission, SessionGuard, type AuthedRequest } from '../identity/session.guard.js';
 import { CSV_CONTENT_TYPE } from '../policies/csv.js';
 import { ForModule } from '../subscriptions/module.decorator.js';
-import { correctionSchema, historyQuery, seriesExportQuery, seriesQuery, settingsSchema } from './input.js';
+import { correctionSchema, historyQuery, incidentsExportQuery, incidentsQuery, seriesExportQuery, seriesQuery, settingsSchema } from './input.js';
 import { ReportsService } from './reports.service.js';
 
 function parse<T>(schema: { safeParse(v: unknown): { success: true; data: T } | { success: false } }, value: unknown): T {
@@ -54,6 +54,24 @@ export class ReportsController {
     requirePermission(req, 'reports.view');
     const { locale, ...series } = parse(seriesExportQuery, query);
     const file = await this.reports.exportMeasures(req.auth, series, fileLocale(req, locale));
+    res.setHeader('Content-Type', CSV_CONTENT_TYPE);
+    res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
+    res.setHeader('Cache-Control', 'no-store');
+    return file.body;
+  }
+
+  /** The reports of a period by month, type, harm level, category, unit or channel. */
+  @Get('incidents')
+  incidents(@Query() query: unknown, @Req() req: AuthedRequest) {
+    requirePermission(req, 'reports.view');
+    return this.reports.incidents(req.auth, parse(incidentsQuery, query));
+  }
+
+  @Get('exports/incidents')
+  async exportIncidents(@Query() query: unknown, @Req() req: AuthedRequest, @Res({ passthrough: true }) res: Response) {
+    requirePermission(req, 'reports.view');
+    const { locale, ...breakdown } = parse(incidentsExportQuery, query);
+    const file = await this.reports.exportIncidents(req.auth, breakdown, fileLocale(req, locale));
     res.setHeader('Content-Type', CSV_CONTENT_TYPE);
     res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
     res.setHeader('Cache-Control', 'no-store');

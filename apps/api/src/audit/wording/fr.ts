@@ -154,6 +154,7 @@ export const fr: AuditWording = {
     measures_recomputed_by_system: "Recalcul des chiffres par une mise à jour de Trustline",
     report_settings_changed: "Modification des objectifs ou de la référence des rapports",
     measures_exported: "Exportation des indicateurs (CSV)",
+    incident_figures_exported: "Exportation des chiffres des incidents (CSV)",
     data_export_requested: "Demande d’exportation complète des données",
     data_export_approved: "Approbation de l’exportation complète des données",
     data_export_refused: "Refus de l’exportation complète des données",

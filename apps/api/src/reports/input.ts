@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { localeSchema, localizedText } from '../i18n/locales.js';
 import { text } from '../i18n/text.js';
+import { BREAKDOWNS, HARM_LEVELS, INCIDENT_TYPES } from './breakdowns.js';
 import { MEASURE_CODES, MEASURE_DEFINITIONS, type MeasureCode } from './measures.js';
 import { MAX_MONTHS } from './reports.service.js';
 
@@ -34,6 +35,19 @@ export const seriesQuery = z.preprocess(blankAsUnset, z.strictObject(series).ref
 export const seriesExportQuery = z.preprocess(
   blankAsUnset,
   z.strictObject({ ...series, locale: localeSchema.optional() }).refine(inRange),
+);
+const breakdown = {
+  from: month,
+  to: month,
+  unitId: z.uuid().optional(),
+  by: z.enum(BREAKDOWNS),
+  type: z.enum(INCIDENT_TYPES).optional(),
+  harmLevel: z.enum(HARM_LEVELS).optional(),
+};
+export const incidentsQuery = z.preprocess(blankAsUnset, z.strictObject(breakdown).refine(inRange));
+export const incidentsExportQuery = z.preprocess(
+  blankAsUnset,
+  z.strictObject({ ...breakdown, locale: localeSchema.optional() }).refine(inRange),
 );
 export const historyQuery = z.preprocess(blankAsUnset, z.strictObject({ month, unitId: z.uuid().optional() }));
 

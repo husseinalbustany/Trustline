@@ -125,7 +125,9 @@ describe('the end of a contract', () => {
       const independent = await bench.createStaff({ ...a, cookie: maker.cookie }, 'independent', { role: 'administrator', orgUnitId: null });
       await bench.owner.db.execute(sql`update users set created_at = now() - interval '8 days', password_changed_at = now() - interval '8 days' where id in (${independent.id}, ${maker.id})`);
       await bench.owner.db.execute(sql`update role_assignments set granted_at = now() - interval '8 days' where user_id in (${independent.id}, ${maker.id})`);
-      const theirs = (await http().post('/exports').set('Cookie', maker.cookie).send({ reason: 'on_request', password }).expect(201)).body;
+      // The other holder (the maker) did not make, nor is made by, the one
+      // who asks.
+      const theirs = (await http().post('/exports').set('Cookie', independent.cookie).send({ reason: 'on_request', password }).expect(201)).body;
       await record(bench.platform, a, theirs.id).expect(201);
       expect((await approve(second, a, theirs.id).expect(409)).body).toEqual({ code: 'not_alone' });
       // Another client's export, named under this one: as if not there.
@@ -230,7 +232,7 @@ describe('the end of a contract', () => {
         lastBackupExpiresOn: shiftDay(today, 35),
         requestedBy: expect.any(String),
         approvedBy: 'Second staff',
-        rowsDeleted: expect.objectContaining({ users: before[0].n, data_exports: 1 }),
+        rowsDeleted: expect.objectContaining({ users: before[0].n, data_exports: 2 }),
         auditChain: expect.objectContaining({ headSeq: expect.any(Number) }),
       });
       expect(certificate).toMatchObject({ archivesRemoved: expect.any(Number), kept: expect.any(Array) });

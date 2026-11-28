@@ -32,10 +32,15 @@ describe('a document version as a PDF', () => {
     http().get(`/policies/documents/${doc.id}/versions/${version}/pdf${query}`).set('Cookie', cookie).buffer(true).parse(binary as never);
   /** The text of each page, as a reader's tool takes it out. */
   const pagesOf = async (body: Buffer) => {
-    const file = join(process.env.PDF_DEBUG_DIR ?? dir, `${randomBytes(4).toString('hex')}.pdf`);
+    const file = join(dir, `${randomBytes(4).toString('hex')}.pdf`);
     await writeFile(file, body);
     const count = Number(/Pages:\s+(\d+)/.exec(execFileSync('pdfinfo', [file], { encoding: 'utf8' }))![1]);
-    return Array.from({ length: count }, (_, i) => execFileSync('pdftotext', ['-f', String(i + 1), '-l', String(i + 1), file, '-'], { encoding: 'utf8' }));
+    // In content order (`-raw`), which keeps the rotated watermark, and so
+    // with Arabic words in visual order; without the direction marks the
+    // extraction adds around them; spaces collapsed.
+    return Array.from({ length: count }, (_, i) =>
+      execFileSync('pdftotext', ['-raw', '-f', String(i + 1), '-l', String(i + 1), file, '-'], { encoding: 'utf8' }).replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '').replace(/\s+/g, ' '),
+    );
   };
   const steps = Array.from({ length: 60 }, (_, i) => `${i + 1}. Mark the area and call the porters, step ${i + 1}.`).join('\n');
   const stepsAr = Array.from({ length: 60 }, (_, i) => `${i + 1}. اغسل يديك قبل كل عمل، الخطوة ${i + 1}.`).join('\n');
@@ -98,11 +103,11 @@ describe('a document version as a PDF', () => {
     pages.forEach((text, i) => {
       expect(`page ${i + 1}: ${text.includes(doc.number)}`).toBe(`page ${i + 1}: true`);
       // "الصفحة x من y", the page's own language.
-      expect(`page ${i + 1}: ${/الصفحة\s*\S*\s*من/.test(text)}`).toBe(`page ${i + 1}: true`);
+      expect(`page ${i + 1}: ${/الصفحة \d+ من \d+|\d+ من \d+ الصفحة/.test(text)}`).toBe(`page ${i + 1}: true`);
     });
     const all = pages.join('\n');
     expect(all).toContain('Mark the area and call the porters, step 60.');
-    expect(all).toContain('قبل كل عمل');
+    for (const word of ['اغسل', 'يديك', 'الخطوة']) expect(all).toContain(word);
     expect(all).toContain('Head of Operations');
     const [made] = await bench.owner.db
       .select({ changes: auditLog.changes, actorId: auditLog.actorId })
@@ -114,7 +119,7 @@ describe('a document version as a PDF', () => {
   it('makes one language in one column, in its own direction', async () => {
     const pages = await pagesOf((await pdf(a.cookie, '?languages=en').expect(200)).body as Buffer);
     expect(pages[0]).toMatch(/Page 1 of \d+/);
-    expect(pages.join('\n')).not.toContain('قبل كل عمل');
+    expect(pages.join('\n')).not.toContain('يديك');
   }, 60_000);
 
   it('carries a version’s standing across every page when it is not in force', async () => {

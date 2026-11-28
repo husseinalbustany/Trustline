@@ -154,6 +154,7 @@ export const en: AuditWording = {
     measures_recomputed_by_system: "Figures recomputed by a Trustline update",
     report_settings_changed: "Report targets or baseline changed",
     measures_exported: "Measures exported (CSV)",
+    incident_figures_exported: "Incident figures exported (CSV)",
     data_export_requested: "Full data export requested",
     data_export_approved: "Full data export approved",
     data_export_refused: "Full data export refused",

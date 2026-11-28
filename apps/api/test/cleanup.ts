@@ -58,6 +58,7 @@ import {
   plans,
   platformAdmins,
   clientDeletions,
+  exportSecondApprovals,
   platformAuditLog,
   platformSessions,
   policyReminders,
@@ -155,6 +156,7 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
         .where(or(eq(platformAdmins.email, adminEmail), eq(platformAdmins.email, `second-${adminEmail}`)));
       // Deletions asked for, of the run's clients.
       await tx.delete(clientDeletions).where(inArray(clientDeletions.targetTenantId, ids));
+      await tx.delete(exportSecondApprovals).where(inArray(exportSecondApprovals.targetTenantId, ids));
       await tx
         .delete(platformAuditLog)
         .where(

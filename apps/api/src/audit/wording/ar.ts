@@ -154,6 +154,7 @@ export const ar: AuditWording = {
     measures_recomputed_by_system: "إعادة حساب الأرقام بتحديث من Trustline",
     report_settings_changed: "تعديل أهداف التقارير أو خط الأساس",
     measures_exported: "تصدير المؤشرات (CSV)",
+    incident_figures_exported: "تصدير أرقام الحوادث (CSV)",
     data_export_requested: "طلب تصدير كامل للبيانات",
     data_export_approved: "اعتماد طلب التصدير الكامل للبيانات",
     data_export_refused: "رفض طلب التصدير الكامل للبيانات",

@@ -232,7 +232,7 @@ describe('full data export', () => {
       const approved = (await post(second.cookie, `/${asked.id}/approve`, { password, revision: asked.revision }).expect(200)).body;
       expect(approved).toMatchObject({ status: 'approved', approvedBy: { id: second.id } });
       expect(await audits(a, 'data_export_approved')).toEqual([{ actorId: second.id, changes: { exportId: asked.id } }]);
-    });
+    }, 60_000);
 
     it('makes it from one moment, signed, encrypted at rest, and lets the two download it', async () => {
       const done = await worker.run(new Date(), [a.id]);

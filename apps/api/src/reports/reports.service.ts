@@ -15,6 +15,7 @@ import type { AuthContext } from '../identity/auth.service.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
 import { reachOf } from '../identity/scope.js';
 import { csv, csvFileName } from '../policies/csv.js';
+import { incidentBreakdown, periodOf, type BreakdownQuery } from './breakdowns.js';
 import {
   documentFigures,
   documentMeasures,
@@ -28,6 +29,7 @@ import {
   type MeasureValue,
 } from './measures.js';
 import { MeasureSnapshots, MODULE_MEASURES, monthLock, monthOf, rowKey, type SnapshotModule } from './snapshots.service.js';
+import type { ReportsWording } from './wording/types.js';
 import { REPORTS_WORDING } from './wording/index.js';
 
 /** The most months a series is asked for at once. */
@@ -297,22 +299,7 @@ export class ReportsService {
       const asked = query.measures ? visible.filter((m) => query.measures!.includes(m)) : visible;
       const rows = (await this.series(tx, unit, asked, query.from, query.to)).slice(0, EXPORT_CAP);
       const w = REPORTS_WORDING[locale];
-      let unitName: string = w.organization;
-      let unitPath = '';
-      if (unit) {
-        const { rows: found } = await tx.execute<{ name: Localized; depth: number }>(sql`
-          with recursive up (id, name, depth) as (
-            select id, name, 0 from org_units where id = ${unit}
-            union all
-            select p.id, p.name, up.depth + 1 from up join org_units u on u.id = up.id join org_units p on p.id = u.parent_id
-          ) select name, depth from up order by depth desc`);
-        // Each unit's name in the file's language, or in the client's own
-        // where it has none (language review 11).
-        const pick = (n: Localized) => pickText(n, locale, auth.tenant.defaultLocale);
-        const own = found.find((r) => r.depth === 0);
-        unitName = own ? pick(own.name) : unit;
-        unitPath = found.map((r) => pick(r.name)).join(' / ');
-      }
+      const { unitName, unitPath } = await this.unitLabel(tx, auth, unit, locale, w);
       const body = csv(
         [w.csv.month, w.csv.unit, w.csv.unitPath, w.csv.measure, w.csv.value, w.csv.numerator, w.csv.denominator, w.csv.target, w.csv.met, w.csv.status, w.csv.method, w.csv.revision, w.csv.asAt.replace('{zone}', zone), w.csv.definitionVersion],
         rows.map((r) => {
@@ -344,6 +331,125 @@ export class ReportsService {
         rows: rows.length,
       });
       return { body, fileName: csvFileName('measures', dayOf(new Date(), zone)) };
+    });
+  }
+
+  /** A unit's name and its place in the structure, in this language, or the organization. */
+  private async unitLabel(tx: Transaction, auth: AuthContext, unit: string | null, locale: Locale, w: ReportsWording) {
+    if (!unit) return { unitName: w.organization, unitPath: '' };
+    const { rows: found } = await tx.execute<{ name: Localized; depth: number }>(sql`
+      with recursive up (id, name, depth) as (
+        select id, name, 0 from org_units where id = ${unit}
+        union all
+        select p.id, p.name, up.depth + 1 from up join org_units u on u.id = up.id join org_units p on p.id = u.parent_id
+      ) select name, depth from up order by depth desc`);
+    // Each unit's name in the file's language, or in the client's own
+    // where it has none (language review 11).
+    const pick = (n: Localized) => pickText(n, locale, auth.tenant.defaultLocale);
+    const own = found.find((r) => r.depth === 0);
+    return { unitName: own ? pick(own.name) : unit, unitPath: found.map((r) => pick(r.name)).join(' / ') };
+  }
+
+  /**
+   * The incident figures' own scope (step 5), on top of the page's: the
+   * module, `incidents.view` or `incidents.triage` over the unit (the
+   * organization: everywhere), and for how reports arrived,
+   * `incidents.see_reporter` over it too.
+   */
+  private async incidentScope(tx: Transaction, auth: AuthContext, query: BreakdownQuery) {
+    const { unit, toldReporters } = await this.scope(tx, auth, query.unitId);
+    if (!(auth.tenant.modules as string[]).includes('incidents')) throw new NotFoundException();
+    if (!reaches(reachOf(auth, ['incidents.view', 'incidents.triage']), unit)) {
+      throw new ForbiddenException({ code: 'missing_permission', permission: 'incidents.view' });
+    }
+    if (query.by === 'channel' && !toldReporters) {
+      throw new ForbiddenException({ code: 'missing_permission', permission: 'incidents.see_reporter' });
+    }
+    return unit;
+  }
+
+  private async breakdownIn(tx: Transaction, auth: AuthContext, query: BreakdownQuery, now: Date) {
+    const unit = await this.incidentScope(tx, auth, query);
+    const zone = auth.tenant.timeZone;
+    const currentMonth = monthOf(dayOf(now, zone)).slice(0, 7);
+    const figures = await incidentBreakdown(tx, { ...query, unit, zone, currentMonth, ...periodOf(query.from, query.to, zone, now) });
+    return { unit, currentMonth, ...figures };
+  }
+
+  /**
+   * The reports sent in a period, by month (with the median of the whole
+   * months, for a run chart), type, harm level, category (most first, with
+   * the running share, for a Pareto chart), unit or channel; from the
+   * records as they are now, the month so far included.
+   */
+  incidents(auth: AuthContext, query: BreakdownQuery) {
+    const now = new Date();
+    return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
+      const { unit, currentMonth, total, rows, median } = await this.breakdownIn(tx, auth, query, now);
+      return {
+        unitId: unit,
+        from: query.from,
+        to: query.to,
+        by: query.by,
+        type: query.type ?? null,
+        harmLevel: query.harmLevel ?? null,
+        total,
+        median,
+        currentMonth,
+        asOf: now,
+        rows,
+      };
+    });
+  }
+
+  /** The same breakdown as a CSV file, in the caller's language. Audited. */
+  exportIncidents(auth: AuthContext, query: BreakdownQuery, locale: Locale) {
+    const now = new Date();
+    const zone = auth.tenant.timeZone;
+    return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
+      const { unit, rows } = await this.breakdownIn(tx, auth, query, now);
+      const w = REPORTS_WORDING[locale];
+      const { unitName, unitPath } = await this.unitLabel(tx, auth, unit, locale, w);
+      const pick = (n: Localized) => pickText(n, locale, auth.tenant.defaultLocale);
+      const label = (r: (typeof rows)[number]) => {
+        switch (query.by) {
+          case 'month':
+            return r.key;
+          case 'type':
+            return w.types[r.key as keyof ReportsWording['types']];
+          case 'harm':
+            return w.harm[r.key as keyof ReportsWording['harm']];
+          case 'channel':
+            return w.channels[r.key as keyof ReportsWording['channels']];
+          case 'category':
+            return r.name ? pick(r.name) : r.key;
+          case 'unit':
+            return r.here ? w.csv.here.replace('{unit}', unitName) : r.name ? pick(r.name) : r.key;
+        }
+      };
+      const kept = rows.slice(0, EXPORT_CAP);
+      const body = csv(
+        [w.csv.unit, w.csv.unitPath, w.csv.from, w.csv.to, w.csv.typeFilter, w.csv.harmFilter, w.by[query.by], w.csv.count, w.csv.share, w.csv.runningShare, w.csv.partial],
+        kept.map((r) => [
+          unitName,
+          unitPath,
+          query.from,
+          query.to,
+          query.type ? w.types[query.type] : w.all,
+          query.harmLevel ? w.harm[query.harmLevel] : w.all,
+          label(r),
+          r.count,
+          r.share,
+          r.runningShare ?? null,
+          r.partial === undefined ? null : r.partial ? w.yes : w.no,
+        ]),
+      );
+      await this.provisioning.audit(tx, auth.tenant.id, auth.user.id, 'incident_figures_exported', 'tenant', auth.tenant.id, {
+        filters: { ...query },
+        locale,
+        rows: kept.length,
+      });
+      return { body, fileName: csvFileName(`incidents-by-${query.by}`, dayOf(now, zone)) };
     });
   }
 

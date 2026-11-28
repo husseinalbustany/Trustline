@@ -291,6 +291,8 @@ export const AUDIT_ACTIONS = {
   measures_recomputed_by_system: migration('reports', 'tenant', ['reason', 'months']),
   report_settings_changed: code('reports', 'tenant', ['targets', 'baseline']),
   measures_exported: code('reports', 'tenant', ['filters', 'locale', 'rows']),
+  // The reports of a period by type, harm level, category, unit or channel.
+  incident_figures_exported: code('reports', 'tenant', ['filters', 'locale', 'rows']),
 
   // Full data export (docs/specs/data-export.md). Of the whole client's
   // data, whatever modules it has now: core.
