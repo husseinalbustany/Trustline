@@ -718,3 +718,117 @@ Every recommendation in this spec is accepted. In particular:
   committee chair when issued.
 - Every other decision in "Decisions needed" follows the recommendation
   written there.
+
+## Built (steps 1 to 3, 28 November 2026)
+
+Steps 1 to 3 of "Order of build", with the decisions above. Not yet
+reviewed: `security-reviewer` is due after steps 2 and 3.
+
+### One definition per measure (step 1)
+
+- `apps/api/src/reports/measures.ts` holds every measure:
+  - its code, module, target, direction, unit and unit basis;
+  - its definition version (1 for all);
+  - the queries that count it: `incidentFigures` and `documentFigures`.
+- `IncidentsService.summary()` and `LibraryService.summary()` call those
+  queries. `MEASURES` is now exported from there.
+- The test checks that the dashboard and the month so far give the same
+  figures.
+- `actions.overdue` is defined but not taken (`taken: false`) until the
+  actions module exists.
+
+### Snapshots (step 2)
+
+- **The tables:**
+  - `measure_snapshots` (migrations 0065 and 0066):
+    - one row per month, measure, unit (null for the organization), unit
+      basis and revision;
+    - each unit row keeps the unit's path as it was when taken;
+    - insert-only: `trustline_app` has SELECT and INSERT only, and a BEFORE
+      UPDATE trigger refuses changes from anyone, the owner included
+      (23514);
+    - each row keeps the target in force when it was taken, with its source:
+      `business`, `client`, `baseline` or `first_months`.
+  - `report_settings` holds one row per client.
+- **The month-end check:** `MeasureSnapshotCheck`
+  (`reports/measure-snapshot.check.ts`), started by `main.ts`.
+  - It runs every 15 minutes, takes clients one at a time, and keeps every
+    statement under 30 seconds. Failures are logged by kind only.
+  - For each module the client may use, it takes every month that has no
+    figures. That runs from the start in `module_starts` (else the client's
+    creation) up to the month just ended, on the client's own calendar.
+  - Each module's month goes in one transaction, under an advisory lock and
+    the unique key, so it is there whole and only once.
+  - A month taken within 6 hours of its end is read as the records stand
+    (`snapshot`). Later, and for the backfill, it is worked out from history
+    (`reconstructed`):
+    - a document is in force if published before the month's end and not
+      retired then;
+    - its next review date is the last one recorded in the audit trail
+      before that moment;
+    - the version in force is the last published before it;
+    - a person counts as active by their recorded changes of status;
+    - an acknowledgement counts if it was given before the month's end.
+  - Each month is audited as `measures_snapshot_taken`.
+- **Provisional and final:**
+  - triage is provisional while any of the month's reports is undecided and
+    still within its deadline;
+  - a later run that finds it settled adds a final revision.
+- **Corrections:**
+  - `POST /reports/measures/corrections` works the month out again from the
+    records as they are now, at the same month-end moment. Nobody can type a
+    value in.
+  - The result is a new `corrected` revision, with the reason and who asked.
+  - It is audited as `measure_correction_requested`, with every value before
+    and after.
+- **Existing clients:** migration 0066 adds `reports.manage` to their
+  built-in Administrator and Quality officer roles, with one
+  `built_in_roles_changed_by_system` entry per client.
+
+### The Reports API (step 3)
+
+- **Routes:** `apps/api/src/reports/reports.controller.ts`, under
+  `/reports`, with `@ForModule('core')`.
+  - Every route checks `reports.view` first.
+  - Routes: series with the month so far, a month's revisions, the CSV,
+    corrections, and reading and changing the settings.
+- **Scope:**
+  - a unit outside the caller's `reports.view` reach, or in another
+    hospital, is answered 404;
+  - the organization row needs `reports.view` for the whole organization;
+  - incident measures need `incidents.view` or `incidents.triage` over the
+    unit, and document measures need `policies.manage` or
+    `policies.view_all`;
+  - the measures of a module the client lacks do not appear at all;
+  - how reports arrived (`details.channel`: public, anonymous or named) is
+    given only to those holding `incidents.see_reporter` over the unit.
+- **`reports.manage` (core):** corrections, targets and the baseline,
+  for the whole organization only.
+  - Built-in roles: Administrator and Quality officer.
+  - Targets start at the business requirements' figures, and each client may
+    set its own.
+  - The reporting-volume target comes from the baseline the client enters,
+    or else from the average of its first three full months.
+- **Audit:** five new actions, in the new `reports` area, with wording in
+  all three languages:
+  - `measures_snapshot_taken`;
+  - `measure_correction_requested`;
+  - `measures_recomputed_by_system`, kept for a later migration that
+    recomputes;
+  - `report_settings_changed`;
+  - `measures_exported`.
+
+### Not done here
+
+- Step 6 (settings and corrections) was mostly brought forward into step 3:
+  the API for targets, the baseline, `reports.manage` and corrections, with
+  their audit entries. Its screens come with step 4.
+- Not built:
+  - `csv.ts` stays in `policies/` and is used from there;
+  - the incident and document breakdown routes (step 5);
+  - weekly figures (decision 5 has no recommendation).
+- `reports.view` was not given to the Approving authority. Decision 6 has
+  no recommendation, so it is still open.
+- **Simplification:** whether a module counted for a past month is judged
+  by whether the client has it now, and the month is on or after the
+  module's start.
