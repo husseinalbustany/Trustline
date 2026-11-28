@@ -10,7 +10,7 @@ import type { AuthContext } from '../identity/auth.service.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
 import { covers } from '../identity/scope.js';
 import { reporterToldTo, visibleTo } from '../incidents/visibility.js';
-import { csv, csvFileName } from '../policies/csv.js';
+import { csv, csvFileName, type Cell } from '../policies/csv.js';
 import { viewerOf, visible as documentVisible } from '../policies/visibility.js';
 import {
   AUDIT_ACTIONS,
@@ -43,6 +43,8 @@ export const TOTAL_CAP = 10_000;
 export const EXPORT_CAP = 50_000;
 /** Entries read per statement, for the chain file. */
 const CHAIN_BATCH = 5_000;
+/** Entries worded per statement, for a full data export's CSV. */
+const WORDED_PAGE = 2_000;
 
 const ACTIONS = Object.keys(AUDIT_ACTIONS) as AuditAction[];
 /** The actions whose actor may be an incident's reporter (spec, "Masking"). */
@@ -370,53 +372,9 @@ export class TrailService {
       const rows = where ? await this.rows(tx, auth, where, { limit: EXPORT_CAP }) : [];
       const { sealedBefore } = await sealedBeforeIn(tx);
       const ctx = { words, locale, defaultLocale: auth.tenant.defaultLocale, names: await this.namesFor(tx, rows) };
-      const name = (value: Localized | string | null | undefined) =>
-        value == null ? null : typeof value === 'string' ? value : pickText(value, locale, auth.tenant.defaultLocale);
-      const who = (actor: Actor) =>
-        actor.kind === 'person'
-          ? actor.name
-            ? actor.external
-              ? words.csv.externalReviewer.replace('{name}', name(actor.name)!)
-              : name(actor.name)
-            : words.csv.formerUser
-          : actor.kind === 'trustline_staff'
-            ? actor.name
-              ? `${words.actors.trustline_staff} (${actor.name})`
-              : words.actors.trustline_staff
-            : words.actors[actor.kind];
       const body = csv(
-        [
-          words.csv.seq,
-          // The organization's time zone, as the times are in it.
-          words.csv.at.replace('{zone}', zone),
-          words.csv.who,
-          words.csv.area,
-          words.csv.action,
-          words.csv.recordType,
-          words.csv.record,
-          words.csv.details,
-          words.csv.address,
-          words.csv.sealedLate,
-        ],
-        rows.map((row) => {
-          const e = this.shown(row, sealedBefore, ctx, auth);
-          return [
-            e.seq,
-            momentIn(new Date(row.occurred_at), zone),
-            who(e.actor),
-            words.areas[e.area],
-            words.actions[e.action],
-            e.entity
-              ? e.entity.type === 'org_unit' && row.unit_type
-                ? words.unitTypes[row.unit_type]
-                : words.entities[e.entity.type]
-              : null,
-            e.entity ? name(e.entity.label) : null,
-            e.detailLines.length > 0 ? e.detailLines.join(words.details.separator) : null,
-            e.ip,
-            e.sealedLate ? words.csv.yes : words.csv.no,
-          ];
-        }),
+        this.csvHeadings(locale, zone),
+        rows.map((row) => this.csvCells(row, this.shown(row, sealedBefore, ctx, auth), locale, auth)),
       );
       await this.provisioning.audit(tx, auth.tenant.id, auth.user.id, 'audit_entries_exported', 'tenant', auth.tenant.id, {
         filters: { ...filters },
@@ -425,6 +383,84 @@ export class TrailService {
       });
       return { body, fileName: csvFileName('audit-trail', dayOf(new Date(), zone)) };
     });
+  }
+
+  /** The CSV file's headings, in one language. */
+  csvHeadings(locale: Locale, zone: string) {
+    const words = AUDIT_WORDING[locale];
+    return [
+      words.csv.seq,
+      // The organization's time zone, as the times are in it.
+      words.csv.at.replace('{zone}', zone),
+      words.csv.who,
+      words.csv.area,
+      words.csv.action,
+      words.csv.recordType,
+      words.csv.record,
+      words.csv.details,
+      words.csv.address,
+      words.csv.sealedLate,
+    ];
+  }
+
+  /** One entry as a line of the CSV file, in one language. */
+  private csvCells(row: Row, e: ReturnType<TrailService['shown']>, locale: Locale, auth: AuthContext): Cell[] {
+    const words = AUDIT_WORDING[locale];
+    const zone = auth.tenant.timeZone;
+    const name = (value: Localized | string | null | undefined) =>
+      value == null ? null : typeof value === 'string' ? value : pickText(value, locale, auth.tenant.defaultLocale);
+    const who = (actor: Actor) =>
+      actor.kind === 'person'
+        ? actor.name
+          ? actor.external
+            ? words.csv.externalReviewer.replace('{name}', name(actor.name)!)
+            : name(actor.name)
+          : words.csv.formerUser
+        : actor.kind === 'trustline_staff'
+          ? actor.name
+            ? `${words.actors.trustline_staff} (${actor.name})`
+            : words.actors.trustline_staff
+          : words.actors[actor.kind];
+    return [
+      e.seq,
+      momentIn(new Date(row.occurred_at), zone),
+      who(e.actor),
+      words.areas[e.area],
+      words.actions[e.action],
+      e.entity
+        ? e.entity.type === 'org_unit' && row.unit_type
+          ? words.unitTypes[row.unit_type]
+          : words.entities[e.entity.type]
+        : null,
+      e.entity ? name(e.entity.label) : null,
+      e.detailLines.length > 0 ? e.detailLines.join(words.details.separator) : null,
+      e.ip,
+      e.sealedLate ? words.csv.yes : words.csv.no,
+    ];
+  }
+
+  /**
+   * The whole trail as CSV lines, newest first, in one language, as `auth`
+   * may see it, in the caller's transaction (a full data export's moment):
+   * by pages, with no cap. Not audited here: the export is.
+   */
+  async writeWordedIn(tx: Transaction, auth: AuthContext, locale: Locale, write: (cells: Cell[]) => Promise<void>) {
+    const where = await this.whereOf(tx, auth, {});
+    if (!where) return 0;
+    const { sealedBefore } = await sealedBeforeIn(tx);
+    let before: { at: string; id: string } | undefined;
+    let count = 0;
+    for (;;) {
+      const rows = await this.rows(tx, auth, where, { before, limit: WORDED_PAGE });
+      if (rows.length === 0) break;
+      const ctx = { words: AUDIT_WORDING[locale], locale, defaultLocale: auth.tenant.defaultLocale, names: await this.namesFor(tx, rows) };
+      for (const row of rows) await write(this.csvCells(row, this.shown(row, sealedBefore, ctx, auth), locale, auth));
+      count += rows.length;
+      if (rows.length < WORDED_PAGE) break;
+      const last = rows.at(-1)!;
+      before = { at: last.at_sort, id: last.id };
+    }
+    return count;
   }
 
   /**
