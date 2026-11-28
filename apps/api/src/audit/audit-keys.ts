@@ -26,14 +26,14 @@ export const RETIRED_KEYS_VARIABLE = 'AUDIT_RETIRED_KEY_IDS';
 export const SIGNED_SINCE_VARIABLE = 'AUDIT_SIGNED_SINCE';
 
 /** A key's id: derived from the public key, so that nothing names it twice. */
-const keyIdOf = (publicKey: KeyObject) =>
+export const keyIdOf = (publicKey: KeyObject) =>
   `ed25519-${createHash('sha256')
     .update(publicKey.export({ type: 'spki', format: 'der' }))
     .digest('hex')
     .slice(0, 16)}`;
 
 /** A key from a variable: a PEM, or the DER in base64 on one line. */
-function readKey(value: string, kind: 'private' | 'public'): KeyObject {
+export function readKey(value: string, kind: 'private' | 'public'): KeyObject {
   const text = value.trim().replaceAll('\\n', '\n');
   const pem = text.includes('-----BEGIN');
   const key =

@@ -55,6 +55,38 @@ export const en: Wording = {
       subject: 'Signing with your PIN is locked',
       body: 'After too many wrong signing PINs, signing with your PIN in Trustline is locked, and the session they were entered in was signed out. Ask your administrator to reset your PIN; if it was not you, say so.',
     },
+    data_export_requested: {
+      subject: "A full export of your organization’s data was requested",
+      body: "A full export of your organization’s data was requested. It needs a second person’s approval before it is made. Open Trustline to see who asked.",
+    },
+    data_export_approved: {
+      subject: "A full export of your organization’s data was approved",
+      body: "A full export of your organization’s data was approved and is being made. Open Trustline to see who approved it.",
+    },
+    data_export_refused: {
+      subject: "A full export of your organization’s data was refused",
+      body: "A request for a full export of your organization’s data was refused. Nothing was made. Open Trustline to see why.",
+    },
+    data_export_cancelled: {
+      subject: "A full export of your organization’s data was cancelled",
+      body: "A request for a full export of your organization’s data was cancelled by the person who asked. Nothing was made.",
+    },
+    data_export_lapsed: {
+      subject: "A request for a full data export lapsed",
+      body: "A request for a full export of your organization’s data was not approved within 7 days, and has lapsed. Nothing was made.",
+    },
+    data_export_ready: {
+      subject: "A full export of your organization’s data is ready",
+      body: "A full export of your organization’s data is ready. The person who asked and the approver can download it in Trustline for 7 days.",
+    },
+    data_export_downloaded: {
+      subject: "A full export of your organization’s data was downloaded",
+      body: "A full export of your organization’s data was downloaded. Open Trustline to see who downloaded it.",
+    },
+    data_export_failed: {
+      subject: "A full export of your organization’s data could not be made",
+      body: "A full export of your organization’s data could not be made. Trustline tried more than once. You can ask for a new one.",
+    },
     audit_chain_head: {
       subject: 'This week’s seal of your audit trail',
       body: 'Your organization’s audit trail was checked on {day} and is unbroken up to entry {count}. The seal of that entry is:',

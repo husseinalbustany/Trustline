@@ -41,6 +41,7 @@ import { EmailPreferencesService } from './email-preferences.service.js';
 import {
   COMPULSORY_FOR_ASSIGNEES,
   COMPULSORY_FOR_EVERYONE,
+  DATA_EXPORT_CHANGES,
   COMPULSORY_FOR_TRIAGERS,
   IMMEDIATE,
   SAFETY_WHILE_SUSPENDED,
@@ -847,6 +848,11 @@ export class EmailWorker implements OnModuleDestroy {
         action,
         href: link('/notifications'),
       };
+    }
+    if (kind === 'data_export_changed') {
+      const change = DATA_EXPORT_CHANGES.find((c) => c === data.change);
+      if (!change) return null;
+      return { category: 'immediate', kind, change, href: link('/admin/data-export') };
     }
     if (kind === 'audit_chain_head') {
       const seq = Number(data.seq);

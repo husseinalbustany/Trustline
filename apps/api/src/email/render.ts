@@ -1,5 +1,5 @@
 import type { Locale } from '../i18n/locales.js';
-import type { ImmediateKind } from './kinds.js';
+import type { DataExportChange, ImmediateKind } from './kinds.js';
 import type { EmailSwitch } from './unsubscribe-token.js';
 import { fill, WORDING, type Wording } from './wording/index.js';
 
@@ -40,6 +40,8 @@ export type MailContent =
       number?: string;
       version?: number;
       step?: 'review' | 'approve';
+      /** What happened to a full data export (data_export_changed). */
+      change?: DataExportChange;
       /** The audit chain's head (audit_chain_head): its number, seal and day. */
       count?: number;
       hash?: string;
@@ -154,7 +156,9 @@ export function renderMail(content: MailContent, envelope: MailEnvelope): Render
           : 'document_step_review'
         : content.kind === 'signing_pin_changed'
           ? (`signing_pin_${content.action ?? 'changed'}` as const)
-          : content.kind;
+          : content.kind === 'data_export_changed'
+            ? (`data_export_${content.change ?? 'requested'}` as const)
+            : content.kind;
     if (content.kind === 'audit_chain_head') {
       // The seal in a paragraph of its own, to be copied whole (language
       // review 10), and the day it was checked, as the digest shows days.

@@ -57,6 +57,38 @@ export const fr: Wording = {
       subject: 'La signature par votre code est bloquée',
       body: 'Après trop de codes de signature erronés, la signature par votre code est bloquée dans Trustline, et la session où ils ont été saisis a été fermée. Demandez à votre administrateur de réinitialiser votre code ; si ce n’était pas vous, dites-le-lui.',
     },
+    data_export_requested: {
+      subject: "Un export complet des données de votre organisation a été demandé",
+      body: "Un export complet des données de votre organisation a été demandé. Il doit être approuvé par une deuxième personne avant d’être préparé. Ouvrez Trustline pour voir qui l’a demandé.",
+    },
+    data_export_approved: {
+      subject: "Un export complet des données de votre organisation a été approuvé",
+      body: "Un export complet des données de votre organisation a été approuvé et est en cours de préparation. Ouvrez Trustline pour voir qui l’a approuvé.",
+    },
+    data_export_refused: {
+      subject: "Un export complet des données de votre organisation a été refusé",
+      body: "Une demande d’export complet des données de votre organisation a été refusée. Rien n’a été préparé. Ouvrez Trustline pour en voir le motif.",
+    },
+    data_export_cancelled: {
+      subject: "Un export complet des données de votre organisation a été annulé",
+      body: "Une demande d’export complet des données de votre organisation a été annulée par la personne qui l’avait faite. Rien n’a été préparé.",
+    },
+    data_export_lapsed: {
+      subject: "Une demande d’export complet des données a expiré",
+      body: "Une demande d’export complet des données de votre organisation n’a pas été approuvée dans les 7 jours et a expiré. Rien n’a été préparé.",
+    },
+    data_export_ready: {
+      subject: "L’export complet des données de votre organisation est prêt",
+      body: "L’export complet des données de votre organisation est prêt. La personne qui l’a demandé et celle qui l’a approuvé peuvent le télécharger dans Trustline pendant 7 jours.",
+    },
+    data_export_downloaded: {
+      subject: "L’export complet des données de votre organisation a été téléchargé",
+      body: "L’export complet des données de votre organisation a été téléchargé. Ouvrez Trustline pour voir qui l’a téléchargé.",
+    },
+    data_export_failed: {
+      subject: "L’export complet des données de votre organisation n’a pas pu être préparé",
+      body: "L’export complet des données de votre organisation n’a pas pu être préparé, malgré plusieurs tentatives. Vous pouvez en demander un nouveau.",
+    },
     audit_chain_head: {
       subject: 'Journal d’audit : le sceau de la semaine',
       body: 'Le journal d’audit de votre établissement a été vérifié le {day} : il est intact jusqu’à l’entrée {count}. Le sceau de cette entrée est :',

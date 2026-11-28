@@ -4,6 +4,10 @@ import type { EmailSwitch } from './unsubscribe-token.js';
 
 export type EmailCategory = 'immediate' | 'daily_digest' | 'weekly_digest';
 
+/** What happened to a full data export, as its notification says (`data.change`). */
+export const DATA_EXPORT_CHANGES = ['requested', 'approved', 'refused', 'cancelled', 'lapsed', 'ready', 'downloaded', 'failed'] as const;
+export type DataExportChange = (typeof DATA_EXPORT_CHANGES)[number];
+
 /**
  * The notifications sent by email at once, and on what condition
  * (docs/specs/email.md, section 1, which says why each cannot wait):
@@ -28,6 +32,9 @@ export const IMMEDIATE: Partial<Record<NotificationKind, 'always' | 'serious'>> 
   // The week's head of the audit chain, to the Administrators (decision 5
   // of the audit trail): a copy of it outside Trustline's hands.
   audit_chain_head: 'always',
+  // A full data export asked for, approved, made or downloaded: something
+  // an administrator must know the same day (docs/specs/data-export.md).
+  data_export_changed: 'always',
 };
 
 export type ImmediateKind =
@@ -40,7 +47,8 @@ export type ImmediateKind =
   | 'review_approval_requested'
   | 'signing_pin_changed'
   | 'signing_pin_locked'
-  | 'audit_chain_head';
+  | 'audit_chain_head'
+  | 'data_export_changed';
 
 export const IMMEDIATE_KINDS = Object.keys(IMMEDIATE) as ImmediateKind[];
 
@@ -80,6 +88,8 @@ export const SAFETY_WHILE_SUSPENDED: NotificationKind[] = [
   'signing_pin_locked',
   // Evidence of the audit trail: never held back.
   'audit_chain_head',
+  // Exporting stays open while suspended (data export, decision 6).
+  'data_export_changed',
 ];
 
 /**
@@ -106,6 +116,9 @@ export const COMPULSORY_FOR_EVERYONE: NotificationKind[] = [
   'signing_pin_changed',
   'signing_pin_locked',
   'audit_chain_head',
+  // To those who may export or manage the settings only: a full export of
+  // everything is not to be missed.
+  'data_export_changed',
 ];
 
 /** What the preferences answer says is always on, and why. */

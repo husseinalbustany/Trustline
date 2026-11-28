@@ -38,6 +38,15 @@ export type Wording = {
     signing_pin_changed: { subject: string; body: string };
     signing_pin_reset: { subject: string; body: string };
     signing_pin_locked: { subject: string; body: string };
+    /** A full data export (docs/specs/data-export.md): names nobody. */
+    data_export_requested: { subject: string; body: string };
+    data_export_approved: { subject: string; body: string };
+    data_export_refused: { subject: string; body: string };
+    data_export_cancelled: { subject: string; body: string };
+    data_export_lapsed: { subject: string; body: string };
+    data_export_ready: { subject: string; body: string };
+    data_export_downloaded: { subject: string; body: string };
+    data_export_failed: { subject: string; body: string };
     /** The week's head of the audit chain: {count} its number, {hash} its seal. */
     audit_chain_head: { subject: string; body: string; keep: string };
   };

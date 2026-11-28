@@ -199,6 +199,20 @@ export const AUDIT_ACTIONS = {
   measures_recomputed_by_system: migration('reports', 'tenant', ['reason', 'months']),
   report_settings_changed: code('reports', 'tenant', ['targets', 'baseline']),
   measures_exported: code('reports', 'tenant', ['filters', 'locale', 'rows']),
+
+  // Full data export (docs/specs/data-export.md). Of the whole client's
+  // data, whatever modules it has now: core.
+  data_export_requested: code('exports', 'tenant', ['exportId', 'reason', 'note', 'locale', 'includePdfs'], { module: 'core' }),
+  data_export_approved: code('exports', 'tenant', ['exportId'], { module: 'core' }),
+  data_export_refused: code('exports', 'tenant', ['exportId', 'reason'], { module: 'core' }),
+  data_export_cancelled: code('exports', 'tenant', ['exportId'], { module: 'core' }),
+  // By the export worker: not approved within 7 days.
+  data_export_lapsed: code('exports', 'tenant', ['exportId'], { module: 'core' }),
+  data_export_ready: code('exports', 'tenant', ['exportId', 'archiveSha256', 'sizeBytes', 'counts'], { module: 'core' }),
+  data_export_failed: code('exports', 'tenant', ['exportId', 'kind', 'attempt', 'final'], { module: 'core' }),
+  data_export_downloaded: code('exports', 'tenant', ['exportId', 'archiveSha256', 'download'], { module: 'core' }),
+  // Its file deleted: past its last day, or downloaded the most times.
+  data_export_expired: code('exports', 'tenant', ['exportId', 'by'], { module: 'core' }),
 } as const satisfies Record<string, ActionInfo>;
 
 /** The module each area belongs to, unless its action says otherwise. */

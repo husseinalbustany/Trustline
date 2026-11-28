@@ -418,6 +418,14 @@ a factory's health and safety committee.
   languages, made from the frozen content, so that it reads the same every
   time it is made. Its footer carries the pack's number, page x of y, the
   content hash, and "figures as at <as_at>".
+- **What a pack never tells (security review 16, decided):** packs go to
+  holders of `reports.view`, who may have no incident rights.
+  - No pack carries how reports arrived (`channel`: public, anonymous or
+    named), in any section, whoever prepares or reads it.
+  - For a unit, any cell of the split by harm level (`byHarm`) or by
+    category (`byCategory`) below 5 is hidden ("fewer than 5") for a reader
+    who lacks `incidents.view` over that unit. A reader with it sees the
+    count.
 
 ## The server-made PDF
 
@@ -818,6 +826,39 @@ reviewed: `security-reviewer` is due after steps 2 and 3.
   - `report_settings_changed`;
   - `measures_exported`.
 
+### Security review 16 (fixed)
+
+- **What a month was taken on is kept:** a correction and the final triage
+  row copy the replaced revision's target, target source, boundaries
+  (`starts_at`, `as_at`) and structure (`unit_path`). Only the value,
+  counted, out of and details are worked out again. A later change of
+  target, time zone or structure never rewrites a past month (M1).
+- **No organization figure through a unit:**
+  - `incidents.reported` has no target on unit rows or unit queries;
+  - the settings give the baseline, `firstMonthsBaseline` and
+    `reportedTarget` only to those with incident reach over the whole
+    organization;
+  - a module the client lacks has no targets there (M2).
+- **One writer at a time:** a correction takes the client's correction lock
+  and the month's lock that the check takes to make a month final. If
+  either is held, the answer is 409 `correction_in_progress`. What is stored
+  is what was written: a revision taken meanwhile gives 409 `stale_measures`
+  (L1, L6).
+- **The database sets `taken_at`** for the application (migration 0071).
+  `requested_by` and `report_settings.updated_by` have composite foreign
+  keys, and a `corrected` row must name who asked for it (0070, L2).
+- **A unit's acknowledgement completion** counts only documents owned within
+  that unit (L3).
+- **A correction's reason** shows on a unit's rows only to those who read
+  reports for the whole organization (L4).
+- **How reports arrived** is not told for a unit row whose unit has gained or
+  lost units since the month was taken (L5, decided).
+- **The check** catches a failure per month, and spends at most 2 minutes on
+  one client per run (L6).
+- **Inputs:** months from the year 2000 on, and two first changes of the
+  settings at once give 409 `stale_settings` (L7).
+- **Packs (step 8):** the rules are under "Committee packs".
+
 ### Not done here
 
 - Step 6 (settings and corrections) was mostly brought forward into step 3:
@@ -825,10 +866,11 @@ reviewed: `security-reviewer` is due after steps 2 and 3.
   their audit entries. Its screens come with step 4.
 - Not built:
   - `csv.ts` stays in `policies/` and is used from there;
-  - the incident and document breakdown routes (step 5);
-  - weekly figures (decision 5 has no recommendation).
-- `reports.view` was not given to the Approving authority. Decision 6 has
-  no recommendation, so it is still open.
+  - the incident and document breakdown routes (step 5).
+- **Decision 6,** answered by the business: the Approving authority has
+  `reports.view` (migration 0067, audited per client). With no incident
+  permission, it sees the document measures only.
+- **Weekly figures** wait (decision 5, answered by the business).
 - **Simplification:** whether a module counted for a past month is judged
   by whether the client has it now, and the month is on or after the
   module's start.
