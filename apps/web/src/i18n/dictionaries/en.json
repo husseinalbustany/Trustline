@@ -583,6 +583,11 @@
         "other": "{reference} was approved before Trustline and is due for re-issue on {date}: start a new version and send it through the approval route."
       },
       "review_overdue_reissue": "{reference} was approved before Trustline and its re-issue was due on {date}: start a new version and send it through the approval route.",
+      "email_turned_off": {
+        "immediate": "A link in one of your emails turned off your immediate emails. You can turn them back on in your email preferences.",
+        "digest": "A link in one of your emails turned off your morning summary emails. You can turn them back on in your email preferences.",
+        "other": "A link in one of your emails turned off some of your emails. You can turn them back on in your email preferences."
+      },
       "other": "There is an update on {reference}."
     },
     "descriptionGeneral": "What has happened that concerns you. A notification names no one.",
@@ -803,7 +808,8 @@
         "client_created": "Client added",
         "client_updated": "Client updated",
         "client_administrator_created": "Administrator created",
-        "subscription_updated": "Subscription changed"
+        "subscription_updated": "Subscription changed",
+        "import_window_set": "Import window changed"
       }
     },
     "inviteLink": {
@@ -991,6 +997,31 @@
         "invalid_dates": "The renewal and the end of the trial cannot come before the start. Check the dates.",
         "invalid": "Check the fields and try again.",
         "generic": "Could not save. Try again."
+      }
+    },
+    "importWindow": {
+      "title": "Import of existing documents",
+      "open": "Open",
+      "closed": "Closed",
+      "what": "From the first day of its Policies and procedures module, this client can import documents approved before Trustline, until the last day below (90 days by default). Only documents approved before that first day can be imported.",
+      "startedOn": "First day of Policies and procedures",
+      "closesOn": "Imports accepted until",
+      "latestApprovedOn": "Latest approval date allowed",
+      "byDefault": "This is the default end: Trustline has not changed it.",
+      "setByTrustline": "Last changed by Trustline on {date}. Reason: {reason}",
+      "change": "Change the end of the window",
+      "newClosesOn": "Last day of imports",
+      "newClosesOnHelp": "The earliest is {earliest}, the day before the first day of Policies and procedures, which closes the window. The latest is a year from today.",
+      "reason": "Reason",
+      "reasonHelp": "Required, on one line. Kept in Trustline's log and in the client's own audit log.",
+      "save": "Save the change",
+      "savedOpen": "Saved. Imports are accepted until {date}.",
+      "savedClosed": "Saved. The window is closed: this client can no longer import documents.",
+      "neverOn": "This client has never had Policies and procedures, so it has no import window.",
+      "errors": {
+        "invalidClosesOn": "Choose a day from {earliest} to {latest}.",
+        "invalid": "Check the date and the reason: the reason is one line of at most 500 characters.",
+        "generic": "The change could not be saved. Try again."
       }
     }
   },
@@ -1859,8 +1890,8 @@
       "authoritative": "Language that applies",
       "authoritativeHelp": "Where the languages of a document differ, its text in this language applies. Required sections and the summary of changes must be written in it before a version is sent for review. Now: {language}.",
       "authoritativeMain": "The main language ({language})",
-      "authoritativeWillChange": "Saving changes the language that applies from {from} to {to}. Versions in progress keep their text and their reviews carry on. Drafts are checked against {to} from then on, and are sent for review only once their required sections and summary of changes are written in it.",
-      "authoritativeChanged": "The language that applies is now {language}. Versions in progress keep their text and their reviews carry on. Drafts: {draft}. In review: {inReview}. Approved, waiting to be published: {approved}. Drafts are sent for review only once their required sections and summary of changes are written in {language}.",
+      "authoritativeWillChange": "Saving changes the language that applies from {from} to {to}. Versions already sent for review or published keep their text and the language they were sent in, and their reviews carry on. From then on, drafts are sent for review only once their required sections and summary of changes are written in {to}.",
+      "authoritativeChanged": "The language that applies is now {language}. Versions already sent for review or published keep the language they were sent in, and their reviews carry on. Drafts: {draft}. In review: {inReview}. Approved, waiting to be published: {approved}. Drafts are sent for review only once their required sections and summary of changes are written in {language}.",
       "authoritativeOnly": "Your organization works in one language, {language}: its text applies."
     },
     "markupProblems": {
@@ -1967,7 +1998,8 @@
       "no_assignee_person": "Not sent for review yet: step {position} of its approval route ({kind}) names {name}, who cannot decide it: their account is not active, no role of theirs allows it, or they prepared this version. Ask whoever manages document settings to change the route, then send the version again.",
       "no_assignee_give_role": "Give the role to someone",
       "no_assignee_open_routes": "Open the approval routes",
-      "approved_after_start_since": "Your organization started managing its documents in Trustline on {date}. Only documents approved before then can be imported: create this one as a new document and send it through the approval route."
+      "approved_after_start_since": "Your organization started managing its documents in Trustline on {date}. Only documents approved before then can be imported: create this one as a new document and send it through the approval route.",
+      "body_too_deep": "This file cannot be sent as it is: its contents are nested too deeply. Lay it out as the layout page shows and try again."
     },
     "importing": {
       "open": "Import documents",

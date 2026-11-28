@@ -23,6 +23,7 @@ import { LocalizedField } from "@/components/ui/localized-field";
 import { limitOf } from "@/lib/api";
 import { numberFormat } from "@/lib/format";
 import type { Plan } from "@/lib/platform-api";
+import { ClientImportWindow } from "./client-import-window";
 import { ClientSubscription } from "./client-subscription";
 import type { ModuleNames } from "./module-words";
 import { StatusPill } from "./status-pill";
@@ -414,6 +415,13 @@ export function ClientForm({
                 </Button>
               </div>
             </Panel>
+
+            <ClientImportWindow
+              lang={lang}
+              t={t}
+              tenantId={client.id}
+              onChanged={reload}
+            />
 
             <Panel title={t.administrator.title}>
               <form

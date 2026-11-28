@@ -26,6 +26,7 @@ import {
 import { pick } from "@/lib/localized";
 import {
   aboutReview,
+  emailTurnedOff,
   overdueDigest,
   sentenceFor,
   type Notification,
@@ -213,7 +214,9 @@ export function NotificationsView({
           ? `/${lang}/policies/${doc.id}`
           : n.kind === overdueDigest
             ? `/${lang}/policies/overdue`
-            : null;
+            : n.kind === emailTurnedOff
+              ? `/${lang}/notifications/preferences`
+              : null;
     const title = doc?.canOpen && doc.title
       ? pick(doc.title, lang, session.tenant.defaultLocale)
       : null;
@@ -294,7 +297,10 @@ export function NotificationsView({
               {doc ? t.documentUnavailable : t.unavailable}
             </p>
           )}
-          {!about && settingsPath && n.kind !== overdueDigest && (
+          {!about &&
+            settingsPath &&
+            n.kind !== overdueDigest &&
+            n.kind !== emailTurnedOff && (
             <p className="mt-1 text-sm">
               <Link
                 href={settingsPath}

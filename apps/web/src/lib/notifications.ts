@@ -69,6 +69,8 @@ export type Notification = {
     decision?: string;
     /** With `status_changed`. */
     change?: string;
+    /** With `email_turned_off`: which emails a link in one switched off. */
+    switch?: string;
   } | null;
 };
 
@@ -86,6 +88,9 @@ export const aboutReview = new Set([
   "document_publish_failed",
 ]);
 
+/** A link in an email switched some emails off: the person's own setting. */
+export const emailTurnedOff = "email_turned_off";
+
 /** About no one document: the overdue acknowledgements of the week. */
 export const overdueDigest = "acknowledgements_overdue_digest";
 
@@ -98,6 +103,7 @@ const detailOf = {
   document_step_assigned: "step",
   document_step_overdue: "step",
   review_due: "days",
+  email_turned_off: "switch",
 } as const;
 
 /** A sentence, or a set of them by what `data` adds, with `other` as a rest. */

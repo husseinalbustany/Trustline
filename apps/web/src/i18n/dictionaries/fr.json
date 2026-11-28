@@ -583,6 +583,11 @@
         "other": "Le document {reference} a été approuvé avant Trustline ; sa réédition est due le {date} : commencez une nouvelle version et soumettez-la au circuit d’approbation."
       },
       "review_overdue_reissue": "Le document {reference} a été approuvé avant Trustline ; sa réédition était due le {date} : commencez une nouvelle version et soumettez-la au circuit d’approbation.",
+      "email_turned_off": {
+        "immediate": "Un lien dans l’un de vos e-⁠mails a désactivé vos e-⁠mails immédiats. Vous pouvez les réactiver dans vos préférences d’e-⁠mail.",
+        "digest": "Un lien dans l’un de vos e-⁠mails a désactivé vos e-⁠mails de récapitulatif du matin. Vous pouvez les réactiver dans vos préférences d’e-⁠mail.",
+        "other": "Un lien dans l’un de vos e-⁠mails a désactivé certains de vos e-⁠mails. Vous pouvez les réactiver dans vos préférences d’e-⁠mail."
+      },
       "other": "Du nouveau concernant l’incident {reference}."
     },
     "descriptionGeneral": "Ce qui s’est passé et vous concerne. Une notification ne nomme personne.",
@@ -681,7 +686,7 @@
       "scope": [
         "Tableaux de bord par rôle et tendances",
         "Rapports standards avec export Excel et PDF",
-        "Rapports programmés par e-mail"
+        "Rapports programmés par e-⁠mail"
       ]
     }
   },
@@ -718,11 +723,11 @@
     "notFound": "Ce client n’existe pas.",
     "login": {
       "title": "Connexion au portail d’administration",
-      "email": "E-mail",
+      "email": "E-⁠mail",
       "password": "Mot de passe",
       "submit": "Se connecter",
-      "failed": "L’e-mail ou le mot de passe est incorrect, ou le compte est verrouillé. Vérifiez-les, ou patientez 15 minutes avant de réessayer.",
-      "invalid": "L’e-mail contient un caractère qui ne peut pas en faire partie, peut-être à cause d’un copier-coller. Saisissez-le de nouveau, puis connectez-vous.",
+      "failed": "L’e-⁠mail ou le mot de passe est incorrect, ou le compte est verrouillé. Vérifiez-les, ou patientez 15 minutes avant de réessayer.",
+      "invalid": "L’e-⁠mail contient un caractère qui ne peut pas en faire partie, peut-être à cause d’un copier-coller. Saisissez-le de nouveau, puis connectez-vous.",
       "error": "Connexion impossible. Réessayez."
     },
     "clients": {
@@ -791,7 +796,7 @@
     },
     "options": {
       "signInMethod": {
-        "password": "E-mail et mot de passe",
+        "password": "E-⁠mail et mot de passe",
         "sso": "Authentification unique (SSO)",
         "both": "Les deux"
       }
@@ -803,7 +808,8 @@
         "client_created": "Client ajouté",
         "client_updated": "Client modifié",
         "client_administrator_created": "Administrateur créé",
-        "subscription_updated": "Abonnement modifié"
+        "subscription_updated": "Abonnement modifié",
+        "import_window_set": "Période d’importation modifiée"
       }
     },
     "inviteLink": {
@@ -816,7 +822,7 @@
       "title": "Administrateur du client",
       "help": "Créez le premier administrateur de ce client. Il ajoutera les autres utilisateurs.",
       "create": "Créer l’administrateur",
-      "emailTaken": "Un utilisateur avec cet e-mail existe déjà chez ce client.",
+      "emailTaken": "Un utilisateur avec cet e-⁠mail existe déjà chez ce client.",
       "exists": "Ce client a déjà un administrateur. Le client ajoute lui-même les suivants.",
       "suspended": "Ce client est suspendu. Réactivez-le d’abord.",
       "ssoOnly": "Ce client utilise uniquement l’authentification unique (SSO) : un lien de mot de passe ne peut pas servir.",
@@ -992,6 +998,31 @@
         "invalid": "Vérifiez les champs puis réessayez.",
         "generic": "Impossible d’enregistrer. Réessayez."
       }
+    },
+    "importWindow": {
+      "title": "Importation de documents existants",
+      "open": "Ouverte",
+      "closed": "Fermée",
+      "what": "À compter du premier jour de son module Politiques et procédures, ce client peut importer des documents approuvés avant Trustline, jusqu’au dernier jour ci-dessous (90 jours par défaut). Seuls les documents approuvés avant ce premier jour peuvent être importés.",
+      "startedOn": "Premier jour du module Politiques et procédures",
+      "closesOn": "Importations acceptées jusqu’au",
+      "latestApprovedOn": "Dernière date d’approbation acceptée",
+      "byDefault": "C’est la fin par défaut : Trustline ne l’a pas modifiée.",
+      "setByTrustline": "Dernière modification par Trustline le {date}. Motif : {reason}",
+      "change": "Modifier la fin de la période d’importation",
+      "newClosesOn": "Dernier jour d’importation",
+      "newClosesOnHelp": "Au plus tôt le {earliest}, la veille du premier jour du module Politiques et procédures : cette date ferme la période. Au plus tard dans un an.",
+      "reason": "Motif",
+      "reasonHelp": "Obligatoire, sur une ligne. Conservé dans le journal de Trustline et dans le journal d’audit du client.",
+      "save": "Enregistrer la modification",
+      "savedOpen": "Enregistré. Les importations sont acceptées jusqu’au {date}.",
+      "savedClosed": "Enregistré. La période est fermée : ce client ne peut plus importer de documents.",
+      "neverOn": "Ce client n’a jamais eu le module Politiques et procédures : il n’a pas de période d’importation.",
+      "errors": {
+        "invalidClosesOn": "Choisissez un jour entre le {earliest} et le {latest}.",
+        "invalid": "Vérifiez la date et le motif : le motif tient sur une ligne de 500 caractères au plus.",
+        "generic": "La modification n’a pas pu être enregistrée. Réessayez."
+      }
     }
   },
   "auth": {
@@ -999,11 +1030,11 @@
       "title": "Connexion",
       "org": "Identifiant de l’établissement",
       "orgHelp": "L’identifiant fourni par votre établissement.",
-      "email": "E-mail",
+      "email": "E-⁠mail",
       "password": "Mot de passe",
       "submit": "Se connecter",
-      "failed": "L’établissement, l’e-mail ou le mot de passe est incorrect, ou le compte est verrouillé. Vérifiez-les, ou patientez 15 minutes avant de réessayer. Si cela persiste, l’accès de votre établissement à Trustline a peut-être pris fin : adressez-vous à votre administrateur.",
-      "invalid": "L’identifiant de l’établissement ou l’e-mail contient un caractère qui ne peut pas en faire partie, peut-être à cause d’un copier-coller. Saisissez-les de nouveau, puis connectez-vous.",
+      "failed": "L’établissement, l’e-⁠mail ou le mot de passe est incorrect, ou le compte est verrouillé. Vérifiez-les, ou patientez 15 minutes avant de réessayer. Si cela persiste, l’accès de votre établissement à Trustline a peut-être pris fin : adressez-vous à votre administrateur.",
+      "invalid": "L’identifiant de l’établissement ou l’e-⁠mail contient un caractère qui ne peut pas en faire partie, peut-être à cause d’un copier-coller. Saisissez-les de nouveau, puis connectez-vous.",
       "error": "Connexion impossible. Réessayez.",
       "forgot": "Mot de passe oublié ? Demandez un lien de réinitialisation à votre administrateur."
     },
@@ -1020,7 +1051,7 @@
       "mismatch": "Les deux mots de passe ne sont pas identiques.",
       "error": "Impossible de définir le mot de passe. Le lien a peut-être expiré. Demandez-en un nouveau à votre administrateur.",
       "doneTitle": "Mot de passe défini",
-      "done": "Vous pouvez maintenant vous connecter avec votre e-mail et votre nouveau mot de passe."
+      "done": "Vous pouvez maintenant vous connecter avec votre e-⁠mail et votre nouveau mot de passe."
     }
   },
   "admin": {
@@ -1055,8 +1086,8 @@
         "newTitle": "Ajouter un utilisateur",
         "newDescription": "Il reçoit un lien à usage unique pour définir lui-même son mot de passe.",
         "created": "Utilisateur ajouté. Envoyez-lui le lien ci-dessous.",
-        "email": "E-mail",
-        "emailFixed": "L’e-mail sert à se connecter et ne peut pas être modifié.",
+        "email": "E-⁠mail",
+        "emailFixed": "L’e-⁠mail sert à se connecter et ne peut pas être modifié.",
         "department": "Service",
         "noDepartment": "Aucun",
         "jobTitle": "Fonction",
@@ -1074,7 +1105,7 @@
         "cancel": "Annuler",
         "back": "Retour aux utilisateurs",
         "addAnother": "Ajouter un autre utilisateur",
-        "emailTaken": "Un autre utilisateur a déjà cet e-mail.",
+        "emailTaken": "Un autre utilisateur a déjà cet e-⁠mail.",
         "invalid": "Vérifiez les champs puis réessayez.",
         "error": "Enregistrement impossible. Réessayez.",
         "signIn": "Connexion",
@@ -1236,7 +1267,7 @@
         "switchedOn": "Activation enregistrée.",
         "switchedOff": "Désactivation enregistrée.",
         "link": "Lien vers le formulaire de déclaration",
-        "linkHelp": "Pour l’intranet, un e-mail ou une affiche. Chaque site, service et unité a aussi son propre lien et son code QR, sur sa page dans « Organisation ».",
+        "linkHelp": "Pour l’intranet, un e-⁠mail ou une affiche. Chaque site, service et unité a aussi son propre lien et son code QR, sur sa page dans « Organisation ».",
         "followUpLink": "Lien vers la page de suivi",
         "followUpHelp": "C’est là qu’une personne ayant déclaré anonymement saisit son code de suivi pour lire vos réponses. Ce lien fonctionne que la déclaration sans authentification soit activée ou non, car le personnel connecté peut aussi déclarer anonymement.",
         "copy": "Copier le lien",
@@ -1859,13 +1890,13 @@
       "authoritative": "Langue qui fait foi",
       "authoritativeHelp": "Quand les langues d’un document diffèrent, son texte dans cette langue fait foi. Les sections obligatoires et le résumé des modifications doivent y être rédigés avant qu’une version soit soumise à vérification. Actuellement : {language}.",
       "authoritativeMain": "La langue principale ({language})",
-      "authoritativeWillChange": "L’enregistrement fait passer la langue qui fait foi de {from} à {to}. Les versions en cours gardent leur texte et leurs vérifications se poursuivent. Les brouillons sont ensuite contrôlés par rapport à {to}, et ne sont soumis à vérification qu’une fois leurs sections obligatoires et leur résumé des modifications rédigés dans cette langue.",
-      "authoritativeChanged": "Langue qui fait foi désormais : {language}. Les versions en cours gardent leur texte et leurs vérifications se poursuivent. Brouillons : {draft}. En vérification : {inReview}. Approuvées, en attente de publication : {approved}. Les brouillons ne sont soumis à vérification qu’une fois leurs sections obligatoires et leur résumé des modifications rédigés en {language}.",
+      "authoritativeWillChange": "L’enregistrement fait passer la langue qui fait foi de {from} à {to}. Les versions déjà soumises à vérification ou publiées gardent leur texte et la langue dans laquelle elles ont été soumises, et leurs vérifications se poursuivent. Désormais, les brouillons ne sont soumis à vérification qu’une fois leurs sections obligatoires et leur résumé des modifications rédigés en {to}.",
+      "authoritativeChanged": "Langue qui fait foi désormais : {language}. Les versions déjà soumises à vérification ou publiées gardent la langue dans laquelle elles ont été soumises, et leurs vérifications se poursuivent. Brouillons : {draft}. En vérification : {inReview}. Approuvées, en attente de publication : {approved}. Les brouillons ne sont soumis à vérification qu’une fois leurs sections obligatoires et leur résumé des modifications rédigés en {language}.",
       "authoritativeOnly": "Votre établissement travaille dans une seule langue, {language} : c’est son texte qui fait foi."
     },
     "markupProblems": {
       "web_address": "une adresse web",
-      "email_address": "une adresse e-mail",
+      "email_address": "une adresse e-⁠mail",
       "html": "des balises HTML",
       "link": "un lien ou une adresse web",
       "image": "une image",
@@ -1967,7 +1998,8 @@
       "no_assignee_person": "Pas encore soumise à vérification : l’étape {position} de son circuit d’approbation ({kind}) désigne {name}, qui ne peut pas en décider : son compte n’est pas actif, aucun de ses rôles ne le permet, ou cette personne a préparé cette version. Demandez à la personne qui gère les paramètres des documents de modifier le circuit, puis soumettez de nouveau la version.",
       "no_assignee_give_role": "Donner le rôle à quelqu’un",
       "no_assignee_open_routes": "Ouvrir les circuits d’approbation",
-      "approved_after_start_since": "Votre établissement a commencé à gérer ses documents dans Trustline le {date}. Seuls les documents approuvés avant cette date peuvent être importés : créez celui-ci comme nouveau document et soumettez-le au circuit d’approbation."
+      "approved_after_start_since": "Votre établissement a commencé à gérer ses documents dans Trustline le {date}. Seuls les documents approuvés avant cette date peuvent être importés : créez celui-ci comme nouveau document et soumettez-le au circuit d’approbation.",
+      "body_too_deep": "Ce fichier ne peut pas être envoyé tel quel : son contenu est imbriqué trop profondément. Préparez-le comme l’indique la page sur la préparation du fichier, puis réessayez."
     },
     "importing": {
       "open": "Importer des documents",
