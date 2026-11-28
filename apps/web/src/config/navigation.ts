@@ -17,6 +17,7 @@ import {
   type LucideIcon,
   ScrollText,
   Archive,
+  ClipboardList,
 } from "lucide-react";
 import type { Dictionary } from "@/i18n/dictionaries";
 import type { ModuleKey as ModuleOrCore } from "./modules";
@@ -40,14 +41,17 @@ export type SubItemKey =
   | "policiesAwaiting"
   | "policiesOverdue"
   | "policiesStepsOverdue"
-  | "policiesSettings";
+  | "policiesSettings"
+  | "risksMine"
+  | "risksReviews"
+  | "risksSettings";
 
 export type NavItemKey = "dashboard" | ModuleKey | SubItemKey;
 
 /** The areas not built yet, which show what they will cover. */
 export type PlaceholderKey = Exclude<
   ModuleKey,
-  "incidents" | "policies" | "organization" | "users" | "audit" | "dataExport" | "settings"
+  "incidents" | "policies" | "risks" | "organization" | "users" | "audit" | "dataExport" | "settings"
 >;
 
 export type NavGroupKey =
@@ -159,8 +163,31 @@ export const navigation: { key: NavGroupKey; items: NavItem[] }[] = [
         key: "risks",
         href: "/risks",
         icon: ShieldAlert,
-        phase: 2,
+        // Owners may hold no permission: the register answers with what
+        // each reader may read, an empty list included.
         module: "risks",
+      },
+      {
+        key: "risksMine",
+        href: "/risks/mine",
+        icon: ClipboardList,
+        module: "risks",
+      },
+      {
+        key: "risksReviews",
+        href: "/risks/reviews",
+        icon: CalendarClock,
+        module: "risks",
+        permissions: ["risks.manage"],
+      },
+      {
+        key: "risksSettings",
+        href: "/risks/settings",
+        icon: FolderCog,
+        module: "risks",
+        // The settings belong to the whole organization; the page says so
+        // to a manager of one unit, who reads them.
+        permissions: ["risks.manage"],
       },
       {
         key: "training",
@@ -237,7 +264,8 @@ export type DashboardTileKey = keyof Dictionary["dashboard"]["tiles"];
 /** The dashboard's figures, in order, each with the module it counts in. */
 export const dashboardTiles: {
   key: DashboardTileKey;
-  module: ModuleOrCore;
+  /** The module it counts in; any one of several. */
+  module: ModuleOrCore | ModuleOrCore[];
 }[] = [
   { key: "openIncidents", module: "incidents" },
   { key: "awaitingTriage", module: "incidents" },
@@ -245,7 +273,8 @@ export const dashboardTiles: {
   { key: "overdueIncidents", module: "incidents" },
   { key: "triagedOnTime", module: "incidents" },
   { key: "timeToReport", module: "incidents" },
-  { key: "overdueActions", module: "actions" },
+  // Actions on risks count too (risk management, decision 1).
+  { key: "overdueActions", module: ["actions", "risks"] },
   { key: "documentsPastReview", module: "policies" },
   { key: "policiesDue", module: "policies" },
   { key: "awaitingMyApproval", module: "policies" },

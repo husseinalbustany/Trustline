@@ -9,6 +9,7 @@ import { auditLog, dataExports, notifications } from '../src/database/schema.js'
 import { ExportWorker } from '../src/exports/export-worker.service.js';
 import { ExportStorage } from '../src/exports/storage.js';
 import { shiftDay, dayOf } from '../src/i18n/time-zones.js';
+import { CERTIFICATE_PREFIX } from '../src/platform/delete-client.js';
 import { testBench, type Hospital, type Staff, type TestBench } from './support/hospital.js';
 
 /**
@@ -303,6 +304,9 @@ describe('full data export', () => {
       expect(await readFile(join(out, 'README.ar.txt'), 'utf8')).toContain('تصدير كامل لبيانات');
       // The README's commands check the signature, as written (L8).
       const readme = await readFile(join(out, 'README.en.txt'), 'utf8');
+      // Where clients learn of the deletion certificate, and how its signature is made.
+      expect(readme).toContain('After the contract ends:');
+      expect(readme).toContain(`"${CERTIFICATE_PREFIX.toString('utf8').trim()}"`);
       const commands = readme.split('\r\n').filter((l) => l.startsWith('  ')).map((l) => l.trim());
       expect(commands[0]).toMatch(/^curl -o keys\.json https?:\/\/.+\/api\/v1\/audit\/keys$/);
       await writeFile(join(out, 'keys.json'), JSON.stringify((await http().get('/audit/keys').expect(200)).body));

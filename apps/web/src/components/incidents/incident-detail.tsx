@@ -19,6 +19,8 @@ import type {
   IncidentCategory,
 } from "@/lib/incidents";
 import { pick, readForm, type Localized } from "@/lib/localized";
+import { IncidentRisks } from "@/components/risks/incident-risks";
+import type { RisksText } from "@/components/risks/types";
 import { IncidentDeadlines } from "./deadlines";
 import {
   IncidentComments,
@@ -36,7 +38,14 @@ import {
 } from "./types";
 
 /** One incident: the report, what has happened to it, and what can be done. */
-export function IncidentDetail({ lang, t }: IncidentsProps) {
+export function IncidentDetail({
+  lang,
+  t,
+  r,
+}: IncidentsProps & {
+  /** The risks' words, for the panel of linked risks. */
+  r?: RisksText;
+}) {
   const session = useSession();
   const reviewer = isReviewer(session);
   const { id } = useParams<{ id: string }>();
@@ -259,6 +268,19 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
         <IncidentComments {...view}>
           {!reviewer && <CommentBox t={t} incident={incident} onAdded={refresh} />}
         </IncidentComments>
+
+        {/* The risks it is linked to, for whoever reads it in full. */}
+        {r && incident.access === "full" && (
+          <div className="min-w-0 lg:col-start-1">
+            <IncidentRisks
+              lang={lang}
+              t={r}
+              title={t.risks.title}
+              raiseLabel={t.risks.raise}
+              incidentId={incident.id}
+            />
+          </div>
+        )}
       </div>
       {back}
     </>

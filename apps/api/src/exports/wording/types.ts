@@ -39,6 +39,9 @@ export type ExportWording = {
     /** {keyId}: the export key that signed the manifest. */
     signedBy: string;
     unsigned: string;
+    /** What happens after the contract ends, and the deletion certificate. {keysUrl}. */
+    deletionTitle: string;
+    deletion: string[];
     personalTitle: string;
     personal: string[];
     notIncludedTitle: string;

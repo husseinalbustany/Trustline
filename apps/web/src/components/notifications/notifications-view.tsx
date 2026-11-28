@@ -31,6 +31,7 @@ import {
   auditChainBroken,
   emailTurnedOff,
   overdueDigest,
+  riskDigest,
   sentenceFor,
   weeklySummaryPath,
   type Notification,
@@ -61,6 +62,7 @@ const queryOf = ({ unread, page }: { unread: boolean; page: number }) => {
 /** About no record, yet not about the organization's settings either. */
 const ownPlace = new Set([
   overdueDigest,
+  riskDigest,
   emailTurnedOff,
   "signing_pin_changed",
   "signing_pin_locked",
@@ -249,16 +251,26 @@ export function NotificationsView({
     const doc = n.document;
     const reference =
       n.data?.reference ??
+      n.action?.reference ??
+      n.risk?.reference ??
       n.incident?.reference ??
       n.data?.number ??
       doc?.number ??
       "";
     // About the organization rather than an incident or a document:
     // nothing to open, except the settings, for whoever may change them.
-    const about = n.incident ?? doc;
+    const about = n.incident ?? doc ?? n.action ?? n.risk ?? null;
     // About a version in review: straight to it.
     const opens = n.incident?.canOpen
       ? `/${lang}/incidents/${n.incident.id}`
+      : n.action?.canOpen
+        ? `/${lang}/risks/actions/${n.action.id}`
+        : n.risk?.canOpen
+          ? `/${lang}/risks/${n.risk.id}`
+          : n.kind === riskDigest
+            ? can(session, "risks.manage")
+              ? `/${lang}/risks/reviews`
+              : `/${lang}/risks/mine`
       : doc?.canOpen && n.data?.versionId && aboutReview.has(n.kind)
         ? `/${lang}/policies/${doc.id}/versions/${n.data.versionId}`
         : doc?.canOpen
@@ -299,7 +311,9 @@ export function NotificationsView({
                               : null;
     const title = doc?.canOpen && doc.title
       ? pick(doc.title, lang, session.tenant.defaultLocale)
-      : null;
+      : n.risk?.canOpen && n.risk.title
+        ? pick(n.risk.title, lang, session.tenant.defaultLocale)
+        : null;
     const serious = n.data?.serious === true;
     // The reference is one piece, left to right and never broken at its
     // hyphens: put in with the words, it would wrap as "INC-2026-" and
@@ -334,6 +348,10 @@ export function NotificationsView({
         t.unknownPerson,
       people: numbers.format(n.data?.people ?? 0),
       stepsOverdue: numbers.format(n.data?.stepsOverdue ?? 0),
+      reviewsOverdue: numbers.format(n.data?.reviewsOverdue ?? 0),
+      actionsOverdue: numbers.format(n.data?.actionsOverdue ?? 0),
+      source: n.data?.sourceReference ?? "",
+      until: day(n.data?.until) ?? "",
     })
       .split("{reference}")
       .flatMap((words, i) =>

@@ -27,6 +27,7 @@ import {
 import { incidentsPath } from "@/lib/incident-filters";
 import type { IncidentList, IncidentSummary } from "@/lib/incidents";
 import { libraryPath, type PolicySummary } from "@/lib/policies";
+import type { RiskSummaryFigures } from "@/lib/risks";
 import { pick } from "@/lib/localized";
 
 type Loaded = { summary: IncidentSummary; recent: IncidentList };
@@ -75,6 +76,25 @@ export function DashboardView({
 
   const incidentsOn = hasModule(session, "incidents");
   const policiesOn = hasModule(session, "policies");
+  const risksOn = hasModule(session, "risks");
+  const [risks, setRisks] = useState<RiskSummaryFigures | null>(null);
+  const [risksProblem, setRisksProblem] = useState(false);
+
+  // Overdue actions are counted over the actions on risks the reader sees.
+  useEffect(() => {
+    if (!risksOn) return;
+    let current = true;
+    api<RiskSummaryFigures>("/risks/summary")
+      .then((next) => {
+        if (!current) return;
+        setRisks(next);
+        setRisksProblem(false);
+      })
+      .catch(() => current && setRisksProblem(true));
+    return () => {
+      current = false;
+    };
+  }, [risksOn]);
   const [policies, setPolicies] = useState<PolicySummary | null>(null);
   const [policiesProblem, setPoliciesProblem] = useState(false);
 
@@ -199,7 +219,34 @@ export function DashboardView({
           },
         ]
       : []),
-    { key: "overdueActions" },
+    risksOn
+      ? {
+          key: "overdueActions" as const,
+          live: true,
+          figure: count(risks?.overdueActions.count),
+          help: risks
+            ? fill(t.overdueActionsHelp, {
+                percent:
+                  risks.overdueActions.percent === null ? "–" : share(risks.overdueActions.percent),
+                of: numbers.format(risks.overdueActions.of),
+              })
+            : undefined,
+          href: `/${lang}/risks/mine`,
+          alert:
+            !!risks &&
+            risks.overdueActions.percent !== null &&
+            risks.overdueActions.percent >= risks.overdueActions.target,
+          measure: risks
+            ? {
+                met:
+                  risks.overdueActions.percent === null
+                    ? null
+                    : risks.overdueActions.percent < risks.overdueActions.target,
+                text: fill(t.pastReviewTarget, { target: share(risks.overdueActions.target) }),
+              }
+            : undefined,
+        }
+      : { key: "overdueActions" as const },
     // Review dates are for those who look after documents; what awaits a
     // person is for everyone.
     ...(looksAfterDocuments
@@ -285,7 +332,9 @@ export function DashboardView({
   ];
   // In the order the configuration gives, for the modules the client has.
   const tiles = dashboardTiles
-    .filter(({ module }) => hasModule(session, module))
+    .filter(({ module }) =>
+      (Array.isArray(module) ? module : [module]).some((m) => hasModule(session, m)),
+    )
     .flatMap(({ key }) => drawn.filter((tile) => tile.key === key));
   const showRecent = hasModule(session, dashboardPanels.recentIncidents);
   const showTasks = hasModule(session, dashboardPanels.myTasks);
@@ -336,7 +385,11 @@ export function DashboardView({
                       {live && figure === undefined
                         ? dashboardTiles.find((x) => x.key === key)?.module === "policies"
                           ? policiesPending
-                          : pending
+                          : key === "overdueActions"
+                            ? risksProblem
+                              ? t.risksLoadError
+                              : i.loading
+                            : pending
                         : t.noData}
                     </span>
                   </>

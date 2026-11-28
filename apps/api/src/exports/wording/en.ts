@@ -37,6 +37,12 @@ export const en: ExportWording = {
     saveKeys: "Save keys.json with this archive now. Once the contract has ended, Trustline’s site may no longer answer for your organization, and the keys are what prove the archive is Trustline’s.",
     signedBy: 'This manifest is signed with Trustline’s export key {keyId}.',
     unsigned: 'This manifest is not signed: the system that made it has no export key. Its files can still be checked against the manifest.',
+    deletionTitle: 'After the contract ends:',
+    deletion: [
+      'Once the contract has ended and the exit period is over, Trustline keeps your organization’s data, read by nobody, until the retention date in the contract, and then deletes all of it. This archive is your copy: keep it, as nothing of the data can be had from Trustline after the deletion.',
+      'The deletion is recorded in a deletion certificate (deletion-certificate-<id>.json), which Trustline gives to your organization. It names your organization’s identifier, the day of the deletion, the number of rows deleted from each table, the audit trail’s last signed checkpoint, the day the last backup holding the data expires, how many archives were removed, and what Trustline keeps: your organization’s identifier, Trustline’s own log of what its staff did about your organization, and the certificate.',
+      'The certificate comes with its signature (deletion-certificate-<id>.json.sig): Trustline’s Ed25519 signature, with the export key it names, of the line "trustline-deletion-certificate-v1" followed by the exact bytes of the certificate. Check it as the manifest is checked above, with the key published at {keysUrl}, putting that line and its line break before the certificate’s bytes.',
+    ],
     personalTitle: 'Personal data:',
     personal: [
       'This archive holds personal data: names, email addresses, phone numbers, job titles and employee numbers of staff; their sign-in times and IP addresses in the audit trail; who reported each named incident; signatures and acknowledgements; and the free text of incidents and comments, which is written by people and may name someone.',

@@ -33,6 +33,23 @@ export type Notification = {
     canOpen: boolean;
   } | null;
   /**
+   * Null for one about anything but a risk. The title is given only while
+   * the reader reads the risk in full.
+   */
+  risk?: {
+    id: string;
+    reference: string;
+    title: Localized | null;
+    canOpen: boolean;
+  } | null;
+  /** Null for one about anything but an action on a risk. */
+  action?: {
+    id: string;
+    reference: string;
+    riskId: string | null;
+    canOpen: boolean;
+  } | null;
+  /**
    * The person one is about (`policies_import_granted`), by their name now;
    * null for any other, or when the name is gone.
    */
@@ -87,6 +104,17 @@ export type Notification = {
     checkedOn?: string;
     /** With `document_step_assigned`: review or approve. */
     step?: string;
+    /** With the risk notices: the reference of the risk an action is on. */
+    sourceReference?: string;
+    /** With the risk weekly summary: what is overdue. */
+    reviewsOverdue?: number;
+    actionsOverdue?: number;
+    /** With `risk_acceptance_decided` and the risk steps. */
+    outcome?: string;
+    subject?: string;
+    until?: string;
+    reason?: string;
+    automatic?: boolean;
     /** With `review_due`: 60, 30 or 7 days before; with `contract_ending`, 90, 30 or 7. */
     days?: number;
     /**
@@ -158,7 +186,15 @@ const detailOf = {
   signing_pin_changed: "action",
   external_access_changed: "change",
   data_export_changed: "change",
+  risk_escalated: "automatic",
+  risk_acceptance_decided: "outcome",
+  risk_step_assigned: "subject",
+  risk_step_overdue: "subject",
+  risk_acceptance_lapsed: "reason",
 } as const;
+
+/** The weekly summary of risk work: to the reviews due, for managers. */
+export const riskDigest = "risks_overdue_digest";
 
 /** A sentence, or a set of them by what `data` adds, with `other` as a rest. */
 type Wording = string | Record<string, string>;

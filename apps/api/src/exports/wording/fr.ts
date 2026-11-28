@@ -37,6 +37,12 @@ export const fr: ExportWording = {
     saveKeys: "Enregistrez dès maintenant keys.json avec cette archive. Une fois le contrat terminé, le site de Trustline peut ne plus répondre pour votre établissement, et ce sont ces clés qui prouvent que l’archive vient de Trustline.",
     signedBy: 'Ce manifeste est signé avec la clé d’exportation de Trustline {keyId}.',
     unsigned: 'Ce manifeste n’est pas signé : le système qui l’a produit n’a pas de clé d’exportation. Ses fichiers peuvent tout de même être vérifiés au regard du manifeste.',
+    deletionTitle: 'Après la fin du contrat :',
+    deletion: [
+      'Une fois le contrat terminé et la période de sortie écoulée, Trustline conserve les données de votre organisation, consultées par personne, jusqu’à la date de conservation prévue au contrat, puis les supprime toutes. Cette archive en est votre copie : conservez-la, car plus rien de ces données ne peut être obtenu de Trustline après la suppression.',
+      'La suppression est consignée dans un certificat de suppression (deletion-certificate-<id>.json), que Trustline remet à votre organisation. Il indique l’identifiant de votre organisation, le jour de la suppression, le nombre de lignes supprimées de chaque table, le dernier point de contrôle signé de la piste d’audit, le jour où expire la dernière sauvegarde contenant les données, le nombre d’archives supprimées, et ce que Trustline conserve : l’identifiant de votre organisation, le journal propre à Trustline de ce que son personnel a fait au sujet de votre organisation, et le certificat.',
+      'Le certificat est accompagné de sa signature (deletion-certificate-<id>.json.sig) : la signature Ed25519 de Trustline, avec la clé d’exportation qu’elle nomme, de la ligne « trustline-deletion-certificate-v1 » suivie des octets exacts du certificat. Vérifiez-la comme le manifeste ci-dessus, avec la clé publiée à {keysUrl}, en plaçant cette ligne et son saut de ligne avant les octets du certificat.',
+    ],
     personalTitle: 'Données personnelles :',
     personal: [
       'Cette archive contient des données personnelles : noms, adresses e-⁠mail, téléphones, fonctions et matricules du personnel ; leurs heures et adresses IP de connexion dans le journal d’audit ; l’auteur de chaque déclaration non anonyme ; les signatures et prises de connaissance ; et le texte libre des incidents et commentaires, écrit par des personnes et pouvant nommer quelqu’un.',

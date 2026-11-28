@@ -866,7 +866,8 @@ reviewed: `security-reviewer` is due after steps 2 and 3.
   their audit entries. Its screens come with step 4.
 - Not built:
   - `csv.ts` stays in `policies/` and is used from there;
-  - the incident and document breakdown routes (step 5).
+  - the document breakdown route (step 5, `GET /documents`); the incident
+    breakdowns are built (below).
 - **Decision 6,** answered by the business: the Approving authority has
   `reports.view` (migration 0067, audited per client). With no incident
   permission, it sees the document measures only.
@@ -874,3 +875,40 @@ reviewed: `security-reviewer` is due after steps 2 and 3.
 - **Simplification:** whether a module counted for a past month is judged
   by whether the client has it now, and the month is on or after the
   module's start.
+
+## Built: the incident breakdowns (step 5, 28 November 2026)
+
+- **Routes:** `GET /reports/incidents` and `GET /reports/exports/incidents`
+  (`reports.controller.ts`; the counting is `reports/breakdowns.ts`).
+  - Query, strict: `from`, `to` (months, at most 120), `unitId?`,
+    `by=month|type|harm|category|unit|channel`, `type?`, `harmLevel?`; the
+    CSV also takes `locale?`. Anything else is 400.
+  - Counted: the reports sent in the period (`reported_at`, the client's
+    months, up to now), where they happened and beneath, from the records as
+    they are now (type, harm level and category as triage left them; the
+    structure as it is today).
+  - Each row: `key`, `count`, `share` (whole percent to one place). By
+    month: every month to the current one, zeros included, `partial` on the
+    month so far, and `median` of the whole months (the run chart). By
+    category: the categories reported, most first, with `runningShare` (the
+    Pareto chart), `code` and `name`. By unit: each unit directly beneath
+    the scope (the top units for the organization), counting what lies
+    under it, then the unit's own (`here: true`). By channel: `public`,
+    `anonymous` (in the app, no name) and `named`, each report in one.
+- **Scope:** as the measures: `reports.view` (a unit out of reach or of
+  another client is 404; the organization needs it everywhere, else 403);
+  the incidents module (404 without it); `incidents.view` or
+  `incidents.triage` over the scope (403 `missing_permission`, so the
+  Approving authority sees none); `by=channel` only with
+  `incidents.see_reporter` over it (403).
+- **CSV:** one row per row above, in the caller's language (types, harm
+  levels and channels as the web words them; unit and category names with
+  `pick()`), with the unit and its path, the period and the filters.
+  Audited as `incident_figures_exported` (filters, locale, rows), with
+  wording in all three languages.
+- **Not as the spec says:** past months are counted from the records, not
+  read from the snapshots: the filters by type and harm level cannot be
+  applied to a snapshot's totals, and counts over a month are exact
+  whenever they are taken. The measures panels still read the snapshots.
+- **Tests:** `test/report-breakdowns.e2e-spec.ts`.
+

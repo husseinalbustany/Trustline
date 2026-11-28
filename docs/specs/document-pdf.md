@@ -121,7 +121,7 @@ page as HTML, and a headless Chromium prints it to PDF.
 
 - The QR encoder, module for module against the generator the web uses.
 - A PDF of a two-language procedure:
-  - the text extracted from it holds the Arabic and the French as written;
+  - the text extracted from it holds the English and the Arabic as written;
   - every page carries the header and the footer, with "Page x of y";
   - a version not in force carries its watermark on every page.
 - The route's refusals: no session, a reader without full sight asking for
@@ -140,3 +140,31 @@ page as HTML, and a headless Chromium prints it to PDF.
 
 The reviews: `security-reviewer` (the renderer's isolation) and
 `bilingual-reviewer` (the page in each direction).
+
+## Built (steps 1 and 2, 28 November 2026)
+
+- **Renderer:** `apps/api/src/policies/pdf/renderer.ts` (`PdfRenderer`):
+  one browser process per PDF, an empty profile in a private directory, no
+  network (proxy to nothing, names to nothing, background networking off),
+  a minimal environment, at most 2 at once with 20 waiting, killed after
+  30 s. Answers 503 `pdf_unavailable`, `pdf_busy`, `pdf_timeout` or
+  `pdf_failed`. The browser is `PDF_BROWSER` or the first installed; the
+  faces (DejaVu Sans) are read once from `PDF_FONT_DIR` and embedded as
+  `data:`. `main.ts` warns at start of what is missing.
+- **Page:** `policies/pdf/template.ts`, with its own content security
+  policy (nothing loaded); `@page` margin boxes carry the head with the QR
+  code, "printed on, valid that day only" and "Page x of y" on every page;
+  the watermark of a version not in force is fixed, so on every page. Its
+  wording is `policies/pdf/wording/`, taken from the web's print view.
+- **QR code:** `policies/pdf/qr.ts`, a port of the generator the web uses,
+  checked module for module against it (`qr.spec.ts`).
+- **Route and audit:** as "Who may have it"
+  (`policies.controller.ts`, `pdf/document-pdf.service.ts`,
+  `DocumentsService.printable`); `document_pdf_made` with wording in all
+  three languages.
+- **Tests:** `test/document-pdf.e2e-spec.ts`, text extracted with
+  `pdftotext -raw` (which keeps the rotated watermark, and gives Arabic
+  words in visual order).
+- **Not built:** steps 3 and 4. Not yet reviewed by `security-reviewer` or
+  `bilingual-reviewer`.
+

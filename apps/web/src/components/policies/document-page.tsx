@@ -46,6 +46,7 @@ import { ControlledDocument, LanguageSwitch } from "./controlled-document";
 import { ConfirmationPill, useConfirmationLine } from "./import-confirmation";
 import { AiMark } from "@/components/ai/ai-mark";
 import { PasswordPrompt } from "./password-prompt";
+import { DocumentRisks } from "@/components/risks/document-risks";
 import {
   DocumentStatusPill,
   ImportedPill,
@@ -846,6 +847,7 @@ function Details({ lang, t, doc }: PoliciesProps & { doc: PolicyDocument }) {
             </dd>
           </div>
         )}
+        <DocumentRisks lang={lang} documentId={doc.id} label={d.risks} />
         {doc.references.length > 0 && (
           <div>
             <dt className="text-xs text-muted">{d.references}</dt>
