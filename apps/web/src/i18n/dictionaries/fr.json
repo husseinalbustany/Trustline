@@ -1866,7 +1866,8 @@
       "youOwn": "Vous en êtes responsable",
       "reviewsToSign": "Révisions « sans modification » à signer",
       "toSign": "À signer",
-      "reviewAsked": "Confirmée par {name} le {date}"
+      "reviewAsked": "Confirmée par {name} le {date}",
+      "reviewAskedOn": "Confirmée par son responsable le {date}"
     },
     "overdue": {
       "title": "Prises de connaissance en retard",

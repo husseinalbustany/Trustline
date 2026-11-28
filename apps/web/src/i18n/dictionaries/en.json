@@ -1866,7 +1866,8 @@
       "youOwn": "You are the owner",
       "reviewsToSign": "“No change” reviews to sign",
       "toSign": "To sign",
-      "reviewAsked": "Confirmed by {name} on {date}"
+      "reviewAsked": "Confirmed by {name} on {date}",
+      "reviewAskedOn": "Confirmed by its owner on {date}"
     },
     "overdue": {
       "title": "Overdue acknowledgements",

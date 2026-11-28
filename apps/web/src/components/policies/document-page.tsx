@@ -168,6 +168,9 @@ function DocumentView({
   const [asked, setAsked] = useState<string | null>(null);
   const confirmationLine = useConfirmationLine(lang, t);
   const moments = dateTimeFormat(lang, session.tenant.timeZone);
+  // Said here, not in the actions: a move that was the last one closes them.
+  const [said, setSaid] = useState<string | null>(null);
+  useLayoutEffect(() => () => setSaid(null), []);
   const inLang = (text: Localized | null | undefined) =>
     pick(text, lang, session.tenant.defaultLocale);
   const name = (person: Named | null | undefined) =>
@@ -325,6 +328,12 @@ function DocumentView({
           </div>
         )}
 
+      {said && (
+        <p role="status" className="mt-4 text-sm font-medium text-accent print:hidden">
+          {said}
+        </p>
+      )}
+
       {doc.inProgress && (
         <InProgress lang={lang} t={t} doc={doc} version={inProgress} />
       )}
@@ -384,6 +393,7 @@ function DocumentView({
               doc={doc}
               original={published?.control.approvedBeforeTrustline ?? null}
               onDone={refresh}
+              onSaid={setSaid}
             />
           )}
           <Details lang={lang} t={t} doc={doc} />
@@ -911,11 +921,14 @@ function DocumentActions({
   doc,
   original,
   onDone,
+  onSaid,
 }: PoliciesProps & {
   doc: PolicyDocument;
   /** For an import: what its original says, shown to the owner who confirms it. */
   original: ApprovedBeforeTrustline | null;
   onDone: () => Promise<void>;
+  /** Says what was done on the page, where it stays after the move is gone. */
+  onSaid: (text: string) => void;
 }) {
   const router = useRouter();
   const session = useSession();
@@ -956,7 +969,7 @@ function DocumentActions({
       });
       el.reset();
       setOpen(null);
-      setMessage({ ok: true, text: t.reviewApproval.returnedDone });
+      onSaid(t.reviewApproval.returnedDone);
       await onDone();
     } catch (err) {
       await fail(err);
@@ -1060,7 +1073,7 @@ function DocumentActions({
                       throw err;
                     }
                     setOpen(null);
-                    setMessage({ ok: true, text: t.confirmation.confirmed });
+                    onSaid(t.confirmation.confirmed);
                     await onDone();
                   }}
                 />
@@ -1109,7 +1122,7 @@ function DocumentActions({
                         throw err;
                       }
                       setOpen(null);
-                      setMessage({ ok: true, text: t.reviewApproval.approved });
+                      onSaid(t.reviewApproval.approved);
                       await onDone();
                     }}
                   />
