@@ -115,6 +115,28 @@ export const COVERAGE: Record<string, Coverage> = {
   measure_snapshots: exported('reports/measure_snapshots'),
   report_settings: exported('reports/settings'),
 
+  // AI (docs/specs/ai-providers-and-allowances.md, ai-policy-drafting.md).
+  // A request is recorded without its text, so its record goes whole.
+  ai_client_settings: exported('ai/settings', {
+    omit: {
+      monthly_spending_limit_micro_usd: 'Trustline’s own limit on what it spends on the client’s AI, which the client is not shown.',
+    },
+  }),
+  ai_client_features: exported('ai/features'),
+  ai_requests: exported('ai/requests', {
+    keep: {
+      input_tokens: 'How much was sent, counted in the provider’s units: not a secret.',
+      output_tokens: 'How much was answered, counted in the provider’s units: not a secret.',
+      unit_key: 'The id of the draft a request belongs to: not a secret.',
+    },
+  }),
+  ai_usage_notices: exported('ai/usage_notices'),
+  organization_profiles: exported('organization/profile'),
+  document_designs: exported('documents/designs'),
+  drafting_sessions: exported('ai/drafting_sessions'),
+  drafting_messages: exported('ai/drafting_messages'),
+  drafting_versions: exported('ai/drafting_versions'),
+
   // The audit trail.
   audit_log: exported('audit/audit_log', {
     keep: { ip_salt: 'With the address, checks it against the commitment the chain holds.' },

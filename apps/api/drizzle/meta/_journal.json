@@ -505,6 +505,20 @@
       "when": 1795862041570,
       "tag": "0071_measure_snapshots_taken_at",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1795862965273,
+      "tag": "0072_ai_foundation_and_drafting",
+      "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1795862966376,
+      "tag": "0073_ai_grants_functions_and_safeguards",
+      "breakpoints": true
     }
   ]
 }
