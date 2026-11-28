@@ -103,6 +103,13 @@ export const SAFETY_WHILE_SUSPENDED: NotificationKind[] = [
 export const OPEN_IN_EXIT_WINDOW: NotificationKind[] = ['data_export_changed'];
 
 /**
+ * Sent even when the organization switched its emails off (security review
+ * 19, L8): a full export of its data, and its contract's last days to make
+ * one.
+ */
+export const ALWAYS_SENT: NotificationKind[] = ['data_export_changed', 'contract_ending'];
+
+/**
  * The immediate emails some people may not switch off (business decision
  * 4): the people others rely on. Serious-incident and sentinel alerts to
  * those who triage, and approval steps (a "no change" review included) to

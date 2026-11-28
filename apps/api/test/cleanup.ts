@@ -50,7 +50,9 @@ import {
   orgUnits,
   plans,
   platformAdmins,
+  clientDeletions,
   platformAuditLog,
+  platformSessions,
   policyReminders,
   referenceCounters,
   reportSettings,
@@ -124,7 +126,9 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
       const admins = tx
         .select({ id: platformAdmins.id })
         .from(platformAdmins)
-        .where(eq(platformAdmins.email, adminEmail));
+        .where(or(eq(platformAdmins.email, adminEmail), eq(platformAdmins.email, `second-${adminEmail}`)));
+      // Deletions asked for, of the run's clients.
+      await tx.delete(clientDeletions).where(inArray(clientDeletions.targetTenantId, ids));
       await tx
         .delete(platformAuditLog)
         .where(
@@ -223,7 +227,10 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
       await tx
         .delete(aiProviderConnections)
         .where(sql`starts_with(${aiProviderConnections.name}, ${slugPrefix})`);
-      await tx.delete(platformAdmins).where(eq(platformAdmins.email, adminEmail));
+      await tx.delete(platformSessions).where(inArray(platformSessions.adminId, admins));
+      await tx
+        .delete(platformAdmins)
+        .where(or(eq(platformAdmins.email, adminEmail), eq(platformAdmins.email, `second-${adminEmail}`)));
     });
   } finally {
     await pool.end();

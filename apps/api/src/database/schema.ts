@@ -2850,7 +2850,7 @@ export const measureSnapshots = pgTable(
     startsAt: timestamp({ withTimezone: true }),
     // The end of the month: the first moment of the next, on its clock.
     asAt: timestamp({ withTimezone: true }).notNull(),
-    // Set by the database for the application (migration 0070).
+    // Set by the database for the application (migration 0071).
     takenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     definitionVersion: integer().notNull(),
   },

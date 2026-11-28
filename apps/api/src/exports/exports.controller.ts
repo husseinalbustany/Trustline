@@ -31,8 +31,11 @@ export class ExportsController {
 
   private allowed(req: AuthedRequest) {
     requirePermission(req, 'data.export');
-    // An export holds everything: only a grant for all of it counts.
+    // An export holds everything: only a grant for all of it counts, and
+    // only with the right to see who reported, for all of it, since the
+    // archive names reporters (security review 19, L1).
     requireEverywhere(req, 'data.export');
+    requireEverywhere(req, 'incidents.see_reporter');
   }
 
   @Get()

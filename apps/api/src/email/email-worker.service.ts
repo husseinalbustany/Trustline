@@ -42,6 +42,7 @@ import {
   COMPULSORY_FOR_ASSIGNEES,
   COMPULSORY_FOR_EVERYONE,
   OPEN_IN_EXIT_WINDOW,
+  ALWAYS_SENT,
   DATA_EXPORT_CHANGES,
   COMPULSORY_FOR_TRIAGERS,
   IMMEDIATE,
@@ -713,7 +714,13 @@ export class EmailWorker implements OnModuleDestroy {
           where ra.user_id = ${row.userId} and 'incidents.triage' = any(r.permissions)) as yes`);
       return { enabled, entitlements, mailbox, switches, notification, triages: !!triage[0]?.yes };
     });
-    if (!found.enabled) return { skip: 'organization_off' };
+    // The organization's switch stops everything but the notices of a full
+    // data export and of the contract's end: an export of everything, or
+    // the last days to make one, are never silent (security review 19, L8).
+    const exportNotice =
+      row.category === 'immediate' &&
+      ALWAYS_SENT.includes(found.notification?.kind as NotificationKind);
+    if (!found.enabled && !exportNotice) return { skip: 'organization_off' };
     const { entitlements, mailbox, switches, notification } = found;
     if (!mailbox || mailbox.status !== 'active') return { skip: 'inactive' };
     if (!this.deliverable(mailbox.email)) return { skip: 'no_address' };

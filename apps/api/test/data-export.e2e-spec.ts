@@ -20,6 +20,7 @@ import { testBench, type Hospital, type Staff, type TestBench } from './support/
 describe('full data export', () => {
   const run = randomBytes(4).toString('hex');
   const password = `hospital-pass-${run}`;
+  const privateNote = `PRIVATE-TRUSTLINE-NOTE-${run}`;
   let bench: TestBench;
   let worker: ExportWorker;
   let storage: ExportStorage;
@@ -46,14 +47,32 @@ describe('full data export', () => {
   /** An error's body, from a download's bytes. */
   const json = (res: { body: Buffer }) => JSON.parse(res.body.toString('utf8')) as Record<string, unknown>;
 
+  /** An Administrator made by Trustline's staff, their account and grant 8 days old. */
+  const independentAdmin = async (h: Hospital, suffix: string): Promise<Staff> => {
+    const email = `admin-${suffix}-dex-${run}@test.invalid`;
+    const created = await http()
+      .post(`/platform/tenants/${h.id}/administrators`)
+      .set('Cookie', bench.platform)
+      .send({ name: { en: `Admin ${suffix}` }, email })
+      .expect(201);
+    await http().post('/auth/invite/accept').send({ org: h.slug, token: created.body.invite.token, password }).expect(204);
+    const id = created.body.user.id as string;
+    await bench.owner.db.execute(sql`update users set created_at = now() - interval '8 days' where id = ${id}`);
+    await bench.owner.db.execute(sql`update role_assignments set granted_at = now() - interval '8 days' where user_id = ${id}`);
+    return { id, email, name: `Admin ${suffix}`, cookie: bench.cookieOf(await bench.login(h.slug, email).expect(200)) };
+  };
+
   beforeAll(async () => {
     bench = await testBench('dex', run);
     worker = bench.app.get(ExportWorker);
     storage = bench.app.get(ExportStorage);
     a = await bench.createHospital('a', { locales: ['en', 'ar'], defaultLocale: 'en' });
     b = await bench.createHospital('b');
-    second = await bench.createStaff(a, 'second', { role: 'administrator', orgUnitId: null });
-    third = await bench.createStaff(a, 'third', { role: 'administrator', orgUnitId: null });
+    // Administrators made by Trustline, more than 7 days ago: a second
+    // person in fact, whom the one who asks did not make (security review
+    // 19, M3).
+    second = await independentAdmin(a, 'second');
+    third = await independentAdmin(a, 'third');
     quality = await bench.createStaff(a, 'quality', { role: 'quality_officer', orgUnitId: null });
     reporter = await bench.createStaff(a, 'reporter', { role: 'reporter', orgUnitId: null });
     const unit = await bench.createUnit(a, 'department', 'D', null);
@@ -99,11 +118,16 @@ describe('full data export', () => {
         content: { en: { purpose: 'To make a **spill** safe.', steps: '1. Mark the area.\n2. Call the porters.' } },
       })
       .expect(201);
+    // Trustline's own words about the client, which no archive may carry
+    // (security review 19, H1).
+    await http().patch(`/platform/tenants/${a.id}/subscription`).set('Cookie', bench.platform).send({ note: privateNote }).expect(200);
+    await http().patch(`/platform/tenants/${a.id}/ai`).set('Cookie', bench.platform).send({ monthlySpendingLimitUsd: 77.25 }).expect(200);
     dir = await mkdtemp(join(tmpdir(), 'dex-'));
   }, 120_000);
 
   afterAll(async () => {
     await rm(dir, { recursive: true, force: true });
+    for (const h of [a, b]) if (h) await storage.removeClient(h.id);
     await bench.close();
   });
 
@@ -157,6 +181,21 @@ describe('full data export', () => {
       await post(second.cookie, '/not-an-id/approve', { password, revision: 1 }).expect(400);
       expect((await post(second.cookie, `/${asked.id}/approve`, { password, revision: asked.revision + 5 }).expect(409)).body).toEqual({ code: 'stale_export' });
       await post(second.cookie, `/${asked.id}/approve`, { password: 'not it', revision: asked.revision }).expect(401);
+      // Not by an account the one who asked made, however it is given the
+      // role (security review 19, M3), nor by one made this week.
+      const made = await bench.createStaff(a, 'madebyrequester', { role: 'administrator', orgUnitId: null });
+      expect((await post(made.cookie, `/${asked.id}/approve`, { password, revision: asked.revision }).expect(403)).body).toEqual({
+        code: 'approver_not_independent',
+        reason: 'account_by_requester',
+      });
+      // Not without the right to see who reported, for the whole
+      // organization: the archive names them (L1).
+      await bench.createRole(a, 'exporternoreporter', ['data.export']);
+      const blind = await bench.createStaff(a, 'blind', { role: 'exporternoreporter', orgUnitId: null });
+      expect((await post(blind.cookie, `/${asked.id}/approve`, { password, revision: asked.revision }).expect(403)).body).toEqual({
+        code: 'missing_permission',
+        permission: 'incidents.see_reporter',
+      });
       const approved = (await post(second.cookie, `/${asked.id}/approve`, { password, revision: asked.revision }).expect(200)).body;
       expect(approved).toMatchObject({ status: 'approved', approvedBy: { id: second.id } });
       expect(await audits(a, 'data_export_approved')).toEqual([{ actorId: second.id, changes: { exportId: asked.id } }]);
@@ -229,6 +268,14 @@ describe('full data export', () => {
       // The README in the language asked for first, then the client's other.
       expect(all.filter((p) => p.startsWith('README'))).toEqual(['README.ar.txt', 'README.en.txt']);
       expect(await readFile(join(out, 'README.ar.txt'), 'utf8')).toContain('تصدير كامل لبيانات');
+      // The README's commands check the signature, as written (L8).
+      const readme = await readFile(join(out, 'README.en.txt'), 'utf8');
+      const commands = readme.split('\r\n').filter((l) => l.startsWith('  ')).map((l) => l.trim());
+      expect(commands[0]).toMatch(/^curl -o keys\.json https?:\/\/.+\/api\/v1\/audit\/keys$/);
+      await writeFile(join(out, 'keys.json'), JSON.stringify((await http().get('/audit/keys').expect(200)).body));
+      expect(execFileSync('bash', ['-c', commands.slice(1).join(' && ')], { cwd: out, encoding: 'utf8' })).toContain('Signature Verified Successfully');
+      await rm(join(out, 'keys.json'));
+      for (const f of ['export-key.der', 'export-key.pem', 'manifest.sig.bin']) await rm(join(out, f), { force: true });
     });
 
     it('holds every table of the coverage registry, its schemas, CSV files in the language asked for, and documents as pages', async () => {
@@ -278,7 +325,22 @@ describe('full data export', () => {
         select id::text from users where tenant_id = ${b.id}
         union all select id::text from org_units where tenant_id = ${b.id}
         union all select id::text from roles where tenant_id = ${b.id}
+        union all select id::text from role_assignments where tenant_id = ${b.id}
+        union all select id::text from incident_categories where tenant_id = ${b.id}
+        union all select id::text from document_types where tenant_id = ${b.id}
+        union all select id::text from document_categories where tenant_id = ${b.id}
+        union all select id::text from approval_routes where tenant_id = ${b.id}
+        union all select id::text from audit_log where tenant_id = ${b.id}
+        union all select id::text from notifications where tenant_id = ${b.id}
         union all select ${b.id}::text`);
+      expect(theirs.length).toBeGreaterThan(20);
+      // Trustline's records of the client, without its own words (H1).
+      const records = (await readFile(join(out, 'organization/trustline_records.jsonl'), 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
+      expect(records.map((r: { action: string }) => r.action)).toEqual(expect.arrayContaining(['client_created', 'subscription_updated', 'ai_client_settings_updated']));
+      for (const r of records) expect(Object.keys(r).sort()).toEqual(['action', 'at', 'details', 'staff']);
+      const subscription = records.find((r: { action: string }) => r.action === 'subscription_updated');
+      expect(subscription.details).toEqual({ changes: {} });
+      const forbidden = [privateNote, '77.25', 'monthlySpendingLimit', 'connectionId', 'cost_micro_usd'];
       const { rows: secrets } = await bench.owner.db.execute<{ s: string }>(sql`
         select password_hash as s from users where tenant_id = ${a.id} and password_hash is not null
         union all select signing_pin_hash from users where tenant_id = ${a.id} and signing_pin_hash is not null
@@ -292,6 +354,7 @@ describe('full data export', () => {
         const body = await readFile(join(f.parentPath, f.name), 'utf8');
         for (const t of theirs) expect(`${f.name}: ${body.includes(t.id)}`).toBe(`${f.name}: false`);
         for (const s of secrets) expect(`${f.name}: ${body.includes(s.s)}`).toBe(`${f.name}: false`);
+        for (const word of forbidden) expect(`${f.name}: ${word}: ${body.includes(word)}`).toBe(`${f.name}: ${word}: false`);
       }
     });
 

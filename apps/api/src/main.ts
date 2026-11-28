@@ -10,7 +10,8 @@ import { PolicyCheck } from './policies/policy-check.service.js';
 import { MeasureSnapshotCheck } from './reports/measure-snapshot.check.js';
 import { EXPORT_SIGNING_KEY_VARIABLE, ExportKeys } from './exports/export-keys.js';
 import { ExportWorker } from './exports/export-worker.service.js';
-import { ExportStorage, STORAGE_KEY_VARIABLE } from './exports/storage.js';
+import { ContractNotices } from './exports/contract-notices.check.js';
+import { ExportStorage, STORAGE_DIR_VARIABLE, STORAGE_KEY_VARIABLE } from './exports/storage.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -27,6 +28,15 @@ async function bootstrap() {
   }
   if (process.env.NODE_ENV === 'production' && app.get(ExportStorage, { strict: false }).problem) {
     throw new Error(`${STORAGE_KEY_VARIABLE} must hold 32 bytes in base64 in production`);
+  }
+  // Where archives wait, named, never the system's temporary directory;
+  // and the export key never the audit key (security review 19, L5).
+  if (process.env.NODE_ENV === 'production' && !process.env[STORAGE_DIR_VARIABLE]?.trim()) {
+    throw new Error(`${STORAGE_DIR_VARIABLE} must be set in production`);
+  }
+  const auditKeyId = app.get(AuditKeys, { strict: false }).signer?.keyId;
+  if (auditKeyId && auditKeyId === app.get(ExportKeys, { strict: false }).signer?.keyId) {
+    throw new Error(`${EXPORT_SIGNING_KEY_VARIABLE} must not be the key of ${SIGNING_KEY_VARIABLE}`);
   }
   // The prefix, so that what is matched by path is matched whole.
   setupApp(app, { prefix: `/${API_PREFIX}` });
@@ -61,5 +71,7 @@ async function bootstrap() {
   // Full data exports (docs/specs/data-export.md): makes the approved ones,
   // lapses and expires the others, every 30 seconds. Safe in every process.
   app.get(ExportWorker, { strict: false }).start();
+  // The notices 90, 30 and 7 days before a contract ends, every hour.
+  app.get(ContractNotices, { strict: false }).start();
 }
 await bootstrap();

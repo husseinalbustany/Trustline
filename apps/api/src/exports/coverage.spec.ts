@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import { createDatabase } from '../database/client.js';
 import { requireEnv } from '../env.js';
+import { EXPORTED_COLUMNS } from './coverage-columns.js';
 import { COVERAGE, CSV_FILES, SECRET_LIKE } from './coverage.js';
 
 /**
@@ -60,6 +61,27 @@ describe('export coverage', () => {
       }
     }
     expect(unexplained, 'columns to omit or keep in src/exports/coverage.ts').toEqual([]);
+  });
+
+  it('decides every column of every exported table: listed to go out, or left out with a reason', () => {
+    const undecided: string[] = [];
+    const both: string[] = [];
+    const gone: string[] = [];
+    for (const [table, c] of Object.entries(COVERAGE)) {
+      if (c.kind === 'exclude') continue;
+      const listed = EXPORTED_COLUMNS[table] ?? [];
+      for (const name of columns.get(table) ?? []) {
+        if (!listed.includes(name) && !Object.hasOwn(c.omit, name)) undecided.push(`${table}.${name}`);
+      }
+      for (const name of listed) {
+        if (Object.hasOwn(c.omit, name)) both.push(`${table}.${name}`);
+        if (!columns.get(table)?.includes(name)) gone.push(`${table}.${name}`);
+      }
+    }
+    expect(undecided, 'columns to list in src/exports/coverage-columns.ts, or to omit in coverage.ts').toEqual([]);
+    expect(both, 'columns both listed and left out').toEqual([]);
+    expect(gone, 'columns listed that are not there').toEqual([]);
+    expect(Object.keys(EXPORTED_COLUMNS).sort()).toEqual(Object.entries(COVERAGE).filter(([, c]) => c.kind === 'export').map(([t]) => t).sort());
   });
 
   it('leaves out or keeps only columns that are there', () => {

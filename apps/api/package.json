@@ -16,7 +16,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/database/migrate.ts",
     "db:seed": "tsx src/database/seed.ts",
-    "platform:create-admin": "tsx src/platform/create-admin.ts"
+    "platform:create-admin": "tsx src/platform/create-admin.ts",
+    "platform:delete-client": "tsx src/platform/delete-client.ts"
   },
   "dependencies": {
     "@anthropic-ai/bedrock-sdk": "^1.1.3",

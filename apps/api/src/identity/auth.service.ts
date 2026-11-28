@@ -183,6 +183,14 @@ export type AuthContext = {
 
 const uuid = z.uuid();
 
+/**
+ * Who may export the client's data: `data.export` with
+ * `incidents.see_reporter`, each for the whole organization (security
+ * review 19, L1). In a cancelled client's exit window, only they sign in.
+ */
+const mayExport = (access: { scope: Scope }) =>
+  covers(access, 'data.export', null) && covers(access, 'incidents.see_reporter', null);
+
 @Injectable()
 export class AuthService {
   // Verified when the organization or email is unknown, so every refusal
@@ -364,7 +372,7 @@ export class AuthService {
       const entitlements = await this.entitlements.of(tx, tenant.id);
       if (entitlements?.status === 'cancelled') {
         const access = await this.accessOf(tx, fresh.id, fresh.kind);
-        if (fresh.kind !== 'staff' || !covers(access, 'data.export', null)) {
+        if (fresh.kind !== 'staff' || !mayExport(access)) {
           await this.provisioning.audit(tx, tenant.id, user.id, 'sign_in_failed', 'user', user.id, {
             locked: false,
             reason: 'subscription_cancelled',
@@ -558,7 +566,7 @@ export class AuthService {
       exit || !entitlements || entitlements.status === 'cancelled' ? (exit ? 'suspended' : 'active') : entitlements.status;
 
     const access = await this.accessOf(tx, user.id, user.kind);
-    if (exit && !covers(access, 'data.export', null)) return null;
+    if (exit && !mayExport(access)) return null;
     const administers = covers(access, 'settings.manage', null);
     // What is commercial (a trial, a payment overdue) only to the
     // client's administrators; to anyone else it is active. A suspension

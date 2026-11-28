@@ -20,16 +20,26 @@ import { csvCell, type Cell } from '../policies/csv.js';
 import { languageStatus } from '../policies/languages.js';
 import { REPORTS_WORDING } from '../reports/wording/index.js';
 import { MODULES } from '../subscriptions/modules.js';
+import { EXPORTED_COLUMNS } from './coverage-columns.js';
 import { COVERAGE, CSV_FILES, CSV_PART_ROWS, type CsvAs, type Exported } from './coverage.js';
 import { ExportKeys } from './export-keys.js';
 import { versionHtml } from './html.js';
 import { EXPORT_WORDING } from './wording/index.js';
+import { trustlineRecordOf } from './trustline-records.js';
 import { ZipWriter } from './zip.js';
 
 /** The archive's format, as its manifest and schemas say. */
 export const EXPORT_FORMAT = { format: 'trustline-export', version: 1 } as const;
 /** Rows read per statement: well within the application role's 15 seconds. */
 const BATCH = 2_000;
+/**
+ * Tables whose rows can be large (a version's text, a draft, an audit
+ * entry's details): read a few at a time, so that a batch is never hundreds
+ * of megabytes held at once (security review 19, L3). Every batch is sized
+ * again by what the last one weighed.
+ */
+const WIDE = new Set(['document_versions', 'document_review_rounds', 'drafting_versions', 'drafting_messages', 'audit_log', 'incidents', 'incident_comments']);
+const BATCH_BYTES = 8 * 1024 * 1024;
 const BOM = '﻿';
 
 export type ArchiveJob = {
@@ -43,6 +53,8 @@ export type ArchiveJob = {
   approvedBy: string | null;
   /** Trustline's approval, on the contract contact's written request. */
   trustline: { at: Date; writtenRequest: WrittenRequest } | null;
+  /** Aborted when the run loses its claim (security review 19, M2). */
+  signal?: AbortSignal;
 };
 
 export type Phase = 'data' | 'documents' | 'archive';
@@ -195,7 +207,8 @@ export class ArchiveBuilder {
 
     await onPhase('documents');
     await this.writeCsvFiles(job, files, data.tenant);
-    await this.writeDocuments(files, data.tenant);
+    job.signal?.throwIfAborted();
+    await this.writeDocuments(files, data.tenant, job.signal);
 
     await onPhase('archive');
     const people = await this.namesOf(files, [job.requestedBy, ...(job.approvedBy ? [job.approvedBy] : [])]);
@@ -280,7 +293,8 @@ export class ArchiveBuilder {
       if (coverage.kind !== 'export') continue;
       const columns = catalog.columns.get(table);
       if (!columns) throw new Error(`table not found: ${table}`);
-      counts[table] = await this.dumpTable(tx, table, coverage, columns, catalog.keys.get(table) ?? [], files);
+      job.signal?.throwIfAborted();
+      counts[table] = await this.dumpTable(tx, table, coverage, columns, catalog.keys.get(table) ?? [], files, job.signal);
     }
     // The organization itself.
     const organization = await Lines.at(join(files, 'organization/organization.jsonl'));
@@ -383,9 +397,14 @@ export class ArchiveBuilder {
     all: Column[],
     key: { name: string; type: string }[],
     files: string,
+    signal?: AbortSignal,
   ) {
     if (key.length === 0) throw new Error(`no primary key: ${table}`);
-    const columns = all.filter((c) => !Object.hasOwn(coverage.omit, c.name));
+    // The columns decided for export (coverage-columns.ts), and nothing a
+    // new column added since: it waits for its decision (security review
+    // 19, L2).
+    const listed = EXPORTED_COLUMNS[table] ?? [];
+    const columns = all.filter((c) => listed.includes(c.name) && !Object.hasOwn(coverage.omit, c.name));
     const valueOf = (c: Column) =>
       c.type.startsWith('timestamp') && !c.type.endsWith('[]')
         ? `to_char(${quote(c.name)} at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`
@@ -406,14 +425,22 @@ export class ArchiveBuilder {
     const keyText = sql.raw(key.map((k, i) => `${quote(k.name)}::text as k${i}`).join(', '));
     const out = await Lines.at(join(files, `${coverage.file}.jsonl`));
     let after = null as string[] | null;
+    let limit = WIDE.has(table) ? 50 : BATCH;
     for (;;) {
+      signal?.throwIfAborted();
       const from: string[] | null = after;
+      const asked = limit;
       const { rows }: { rows: Record<string, string>[] } = await tx.execute<Record<string, string>>(sql`
         select (${object})::text as line, ${keyText} from ${sql.raw(quote(table))}
         ${from ? sql`where (${keyList}) > (${sql.join(from.map((v: string, i: number) => sql`${v}::${sql.raw(key[i].type)}`), sql`, `)})` : sql``}
-        order by ${keyList} limit ${BATCH}`);
-      for (const r of rows) await out.write(r.line);
-      if (rows.length < BATCH) break;
+        order by ${keyList} limit ${asked}`);
+      let bytes = 0;
+      for (const r of rows) {
+        bytes += r.line.length;
+        await out.write(r.line);
+      }
+      if (rows.length < asked) break;
+      limit = bytes > BATCH_BYTES ? Math.max(5, Math.floor(asked / 2)) : bytes < BATCH_BYTES / 8 ? Math.min(BATCH, asked * 2) : asked;
       const last: Record<string, string> = rows.at(-1)!;
       after = key.map((_, i) => last[`k${i}`]);
     }
@@ -440,8 +467,8 @@ export class ArchiveBuilder {
 
   /**
    * What Trustline's staff recorded about the client (decision 7): through
-   * the platform role, the action, its time, the staff member's name and the
-   * details, nothing else. Read after the client's moment, from Trustline's
+   * the platform role, the action, its time, the staff member's name, and of
+   * the details only what the client's own log mirrors (trustline-records.ts). Read after the client's moment, from Trustline's
    * own log.
    */
   private async writeTrustlineRecords(job: ArchiveJob, files: string) {
@@ -456,7 +483,7 @@ export class ArchiveBuilder {
         where l.target_tenant_id = ${job.tenantId}
           ${from ? sql`and (l.created_at, l.id) > (${from.at}::timestamptz, ${from.id}::uuid)` : sql``}
         order by l.created_at, l.id limit ${BATCH}`);
-      for (const r of rows) await out.write(JSON.stringify({ action: r.action, at: r.at, staff: r.staff, details: r.details }));
+      for (const r of rows) await out.write(JSON.stringify(trustlineRecordOf(r)));
       if (rows.length < BATCH) break;
       after = { at: rows.at(-1)!.at, id: rows.at(-1)!.id };
     }
@@ -559,7 +586,7 @@ export class ArchiveBuilder {
    * each language it is written in or shown in (spec, "Documents"). Versions
    * are read one at a time from their file, in order within each document.
    */
-  private async writeDocuments(files: string, tenant: Tenant) {
+  private async writeDocuments(files: string, tenant: Tenant, signal?: AbortSignal) {
     const path = (table: string) => join(files, `${(COVERAGE[table] as Exported).file}.jsonl`);
     const people = new Map<string, Localized>();
     for await (const { row } of readLines(path('users'))) people.set(row.id as string, row.name as Localized);
@@ -595,16 +622,19 @@ export class ArchiveBuilder {
       if (!index.has(doc)) index.set(doc, []);
       index.get(doc)!.push({ at, length, version: row.version as number });
     }
-    const folders = new Map<string, number>();
+    // Every folder name used: a number equal to another's suffixed name
+    // never overwrites it (security review 19, L6).
+    const used = new Set<string>();
     const handle = await open(path('document_versions'), 'r');
     try {
       for (const [docId, versions] of index) {
+        signal?.throwIfAborted();
         const doc = documents.get(docId);
         if (!doc) continue;
         const base = folderOf(String(doc.number));
-        const seen = folders.get(base) ?? 0;
-        folders.set(base, seen + 1);
-        const folder = seen === 0 ? base : `${base}-${docId.slice(0, 8)}`;
+        let folder = used.has(base) ? `${base}-${docId.slice(0, 8)}` : base;
+        for (let n = 2; used.has(folder); n++) folder = `${base}-${docId.slice(0, 8)}-${n}`;
+        used.add(folder);
         let previous: { id: string; version: number; content: Record<string, Record<string, string>> } | null = null;
         for (const v of versions.sort((a, b) => a.version - b.version)) {
           const buffer = Buffer.alloc(v.length);
@@ -745,7 +775,23 @@ export class ArchiveBuilder {
   private readme(locale: Locale, tenant: Tenant, at: Date, keyId: string | null) {
     const w = EXPORT_WORDING[locale].readme;
     const organization = pickText(tenant.name, locale, tenant.default_locale);
-    const fill = (t: string) => t.replace('{organization}', organization).replace('{moment}', momentIn(at, tenant.time_zone)).replace('{keyId}', keyId ?? '');
+    // Where the keys are published: Trustline's site, as its emails link to it.
+    const site = (process.env.WEB_BASE_URL?.trim() || 'http://localhost:3000').replace(/\/+$/, '');
+    const keysUrl = `${site}/api/v1/audit/keys`;
+    const fill = (t: string) =>
+      t
+        .replace('{organization}', organization)
+        .replace('{moment}', momentIn(at, tenant.time_zone))
+        .replace('{keyId}', keyId ?? '')
+        .replaceAll('{keysUrl}', keysUrl);
+    // The first check as commands (security review 19, L8): checked by the tests as written.
+    const commands = [
+      `  curl -o keys.json ${keysUrl}`,
+      `  jq -r '.exportKeys[] | select(.keyId == "${keyId ?? ''}") | .publicKey' keys.json | base64 -d > export-key.der`,
+      '  openssl pkey -pubin -inform DER -in export-key.der -out export-key.pem',
+      '  jq -r .signature manifest.sig | base64 -d > manifest.sig.bin',
+      '  openssl pkeyutl -verify -pubin -inkey export-key.pem -rawin -in manifest.json -sigfile manifest.sig.bin',
+    ];
     return [
       fill(w.title),
       '',
@@ -760,8 +806,11 @@ export class ArchiveBuilder {
       w.pdfs,
       '',
       w.checkTitle,
-      ...w.checks,
+      ...w.checks.map(fill),
       keyId ? fill(w.signedBy) : w.unsigned,
+      ...(keyId ? ['', w.commandsTitle, ...commands] : []),
+      '',
+      w.saveKeys,
       '',
       w.personalTitle,
       ...w.personal,

@@ -8,8 +8,10 @@
  * So a new module's tables, and a new secret column, cannot be forgotten.
  *
  * **Adding a table** (a new module, a branch merging): one line,
- * `my_table: exported('area/my_table')`, or `excluded('why')`; and
- * `omit` / `keep` for any column the test names. A table read by people in
+ * `my_table: exported('area/my_table')`, or `excluded('why')`; `omit` /
+ * `keep` for any column the test names; and its columns exported in
+ * `coverage-columns.ts`. A column not listed there is left out of the
+ * archive and fails the test until it is decided (security review 19, L2). A table read by people in
  * a spreadsheet may also get a CSV file in `CSV_FILES`, with its headings
  * in `wording/<lang>.ts` under `csv`.
  */
@@ -40,6 +42,7 @@ const LOCKS = 'Counters and locks of sign-in and signing, which never leave Trus
 const CHAIN = 'The audit chain’s links and seals, to check it.';
 const SIGNED = 'The fingerprint of what was signed, to check the signature against the text.';
 const CODES = 'An identifying code chosen by the organization, not a secret.';
+const TRUSTLINE_AI = 'Which of Trustline’s own provider connections served it: Trustline’s, which the client is not shown (security review 19, L2).';
 
 export const COVERAGE: Record<string, Coverage> = {
   // Structure, people, settings.
@@ -122,8 +125,14 @@ export const COVERAGE: Record<string, Coverage> = {
       monthly_spending_limit_micro_usd: 'Trustline’s own limit on what it spends on the client’s AI, which the client is not shown.',
     },
   }),
-  ai_client_features: exported('ai/features'),
+  ai_client_features: exported('ai/features', {
+    omit: { connection_id: TRUSTLINE_AI },
+  }),
   ai_requests: exported('ai/requests', {
+    omit: {
+      connection_id: TRUSTLINE_AI,
+      cost_micro_usd: 'What a request cost Trustline: Trustline’s control of its own costs, which the client is not shown (security review 19, L2).',
+    },
     keep: {
       input_tokens: 'How much was sent, counted in the provider’s units: not a secret.',
       output_tokens: 'How much was answered, counted in the provider’s units: not a secret.',

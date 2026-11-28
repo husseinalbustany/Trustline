@@ -1,11 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, open, rm, stat } from 'node:fs/promises';
+import { chmod, mkdir, open, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { pipeline } from 'node:stream/promises';
-import type { Writable } from 'node:stream';
+import { Writable } from 'node:stream';
 
 /** Where archives are kept: a volume of this deployment's own (decision 4). */
 export const STORAGE_DIR_VARIABLE = 'EXPORT_STORAGE_DIR';
@@ -55,19 +55,31 @@ export class ExportStorage {
     }
   }
 
-  /** A working directory for an export being made, emptied first. */
-  async workDir(tenantId: string, exportId: string) {
-    const dir = this.pathOf(`work/${tenantId}/${exportId}`);
+  /** The root, made private to this process's user (security review 19, L5). */
+  private async ensureRoot() {
+    await mkdir(this.root, { recursive: true, mode: 0o700 });
+    await chmod(this.root, 0o700);
+  }
+
+  /**
+   * A working directory for one attempt at an export, emptied first: each
+   * attempt its own, so that a run that lost its claim never touches the
+   * files of the run that took it over (security review 19, M2).
+   */
+  async workDir(tenantId: string, exportId: string, attempt: number) {
+    await this.ensureRoot();
+    const dir = this.pathOf(`work/${tenantId}/${exportId}/${attempt}`);
     await rm(dir, { recursive: true, force: true });
-    await mkdir(dir, { recursive: true });
+    await mkdir(dir, { recursive: true, mode: 0o700 });
     return dir;
   }
 
-  /** Encrypts a finished archive into storage: its storage key and wrapped key. */
-  async put(tenantId: string, exportId: string, file: string) {
-    const storageKey = `${tenantId}/${exportId}.zip.enc`;
+  /** Encrypts a finished archive into storage, under its attempt: its storage key and wrapped key. */
+  async put(tenantId: string, exportId: string, attempt: number, file: string) {
+    await this.ensureRoot();
+    const storageKey = `${tenantId}/${exportId}/${attempt}.zip.enc`;
     const target = this.pathOf(storageKey);
-    await mkdir(dirname(target), { recursive: true });
+    await mkdir(dirname(target), { recursive: true, mode: 0o700 });
     const key = randomBytes(32);
     const iv = randomBytes(IV_BYTES);
     const cipher = createCipheriv('aes-256-gcm', key, iv);
@@ -103,16 +115,43 @@ export class ExportStorage {
     await pipeline(body, decipher, into);
   }
 
-  /** Deletes a stored archive, and its working directory if any is left. */
-  async remove(tenantId: string, exportId: string, storageKey: string | null) {
+  /**
+   * Checks a stored archive whole before a byte of it is sent (security
+   * review 19, L4): its key unwraps, and its tag holds over all of it.
+   */
+  async verify(storageKey: string, wrappedKey: string) {
+    const sink = new Writable({ write: (_chunk, _encoding, done) => done() });
+    await this.open(storageKey, wrappedKey, sink);
+  }
+
+  /** Deletes one attempt's working files. */
+  async removeAttempt(tenantId: string, exportId: string, attempt: number) {
+    await rm(this.pathOf(`work/${tenantId}/${exportId}/${attempt}`), { recursive: true, force: true });
+  }
+
+  /** Deletes a stored archive file. */
+  async removeFile(storageKey: string | null) {
     if (storageKey) await rm(this.pathOf(storageKey), { force: true });
+  }
+
+  /** Deletes everything kept of one export: every attempt's archive and working files. */
+  async removeExport(tenantId: string, exportId: string) {
+    await rm(this.pathOf(`${tenantId}/${exportId}`), { recursive: true, force: true });
     await rm(this.pathOf(`work/${tenantId}/${exportId}`), { recursive: true, force: true });
   }
 
-  /** A path inside the root, from ids only. */
+  /** Deletes everything kept of a client (its deletion; the tests' clean-up). */
+  async removeClient(tenantId: string) {
+    await rm(this.pathOf(tenantId), { recursive: true, force: true });
+    await rm(this.pathOf(`work/${tenantId}`), { recursive: true, force: true });
+  }
+
+  /** A path inside the root, from ids and attempt numbers only. */
   private pathOf(relative: string) {
     const parts = relative.replace(/\.zip\.enc$/, '').split('/');
-    if (!parts.every((p) => p === 'work' || UUID.test(p))) throw new Error('not a storage key');
+    if (!parts.every((p, i) => (p === 'work' && i === 0) || UUID.test(p) || (i > 0 && /^\d{1,4}$/.test(p)))) {
+      throw new Error('not a storage key');
+    }
     const path = resolve(this.root, relative);
     if (!path.startsWith(this.root + sep)) throw new Error('not a storage key');
     return path;

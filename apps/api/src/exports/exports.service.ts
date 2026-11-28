@@ -15,6 +15,7 @@ import type { Locale, Localized } from '../i18n/locales.js';
 import { dayOf } from '../i18n/time-zones.js';
 import { AuthService, type AuthContext } from '../identity/auth.service.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
+import { ExportStorage } from './storage.js';
 
 /** Days a request waits for its approval, then lapses. */
 export const APPROVAL_DAYS = 7;
@@ -24,6 +25,39 @@ export const DOWNLOAD_DAYS = 7;
 export const MAX_DOWNLOADS = 5;
 
 type Row = typeof dataExports.$inferSelect;
+
+/** Days an approver's account and grant must have stood (security review 19, M3). */
+export const INDEPENDENT_DAYS = 7;
+
+/**
+ * Whether an approver is a second person in fact, not one the requester
+ * made (security review 19, M3): their account, and a grant of theirs
+ * that gives `data.export` for the whole organization, each at least 7 days
+ * old and not made by the requester. Why not, or null.
+ */
+export async function dependenceOf(tx: Transaction, approverId: string, requesterId: string) {
+  const { rows: account } = await tx.execute<{ recent: boolean; by_requester: boolean }>(sql`
+    select u.created_at > now() - make_interval(days => ${INDEPENDENT_DAYS}) as recent,
+      exists (select from audit_log a where a.action = 'user_created' and a.entity_id = u.id and a.actor_id = ${requesterId}::uuid) as by_requester
+    from users u where u.id = ${approverId}`);
+  if (!account[0]) return 'account_new';
+  if (account[0].by_requester) return 'account_by_requester';
+  if (account[0].recent) return 'account_new';
+  const grants = await tx
+    .select({ grantedBy: roleAssignments.grantedBy, grantedAt: roleAssignments.grantedAt })
+    .from(roleAssignments)
+    .innerJoin(roles, eq(roles.id, roleAssignments.roleId))
+    .where(
+      and(
+        eq(roleAssignments.userId, approverId),
+        isNull(roleAssignments.orgUnitId),
+        sql`'data.export' = any(${roles.permissions})`,
+      ),
+    );
+  const old = Date.now() - INDEPENDENT_DAYS * 86_400_000;
+  if (grants.some((g) => g.grantedBy !== requesterId && g.grantedAt.getTime() <= old)) return null;
+  return grants.some((g) => g.grantedBy === requesterId) ? 'grant_by_requester' : 'grant_new';
+}
 
 /** The holders of authority over exports, told of each change: `data.export` or `settings.manage`, for the whole organization. */
 export async function authorityOf(tx: Transaction) {
@@ -87,6 +121,7 @@ export class ExportsService {
     private readonly tenantDb: TenantDb,
     private readonly provisioning: ProvisioningService,
     private readonly auth: AuthService,
+    private readonly storage: ExportStorage,
   ) {}
 
   /** An export as its holders see it: never its storage, key or failure's message. */
@@ -206,11 +241,15 @@ export class ExportsService {
       const [row] = await tx.select({ requestedBy: dataExports.requestedBy }).from(dataExports).where(eq(dataExports.id, id));
       if (!row) throw new NotFoundException();
       if (row.requestedBy === auth.user.id) throw new ForbiddenException({ code: 'same_person' });
+      const dependence = await dependenceOf(tx, auth.user.id, row.requestedBy);
+      if (dependence) throw new ForbiddenException({ code: 'approver_not_independent', reason: dependence });
     });
     await this.auth.confirmPassword(auth, input.password, 'data_export', ip);
     return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
       const row = await this.one(tx, id);
       if (row.requestedBy === auth.user.id) throw new ForbiddenException({ code: 'same_person' });
+      const dependence = await dependenceOf(tx, auth.user.id, row.requestedBy);
+      if (dependence) throw new ForbiddenException({ code: 'approver_not_independent', reason: dependence });
       if (row.status === 'lapsed' || (row.status === 'requested' && row.lapsesAt.getTime() <= Date.now())) {
         throw new ConflictException({ code: 'lapsed' });
       }
@@ -283,6 +322,19 @@ export class ExportsService {
       if (row.requestedBy !== auth.user.id && row.approvedBy !== auth.user.id) throw new ForbiddenException({ code: 'not_yours' });
     });
     await this.auth.confirmPassword(auth, input.password, 'data_export', ip);
+    // The archive checked whole before a download is counted: one that
+    // cannot be opened is never recorded as downloaded (security review
+    // 19, L4).
+    const [stored] = await this.tenantDb.withTenant(auth.tenant.id, (tx) =>
+      tx.select({ storageKey: dataExports.storageKey, wrappedKey: dataExports.wrappedKey, status: dataExports.status }).from(dataExports).where(eq(dataExports.id, id)),
+    );
+    if (stored?.status === 'ready' && stored.storageKey && stored.wrappedKey) {
+      try {
+        await this.storage.verify(stored.storageKey, stored.wrappedKey);
+      } catch {
+        throw new ConflictException({ code: 'archive_unavailable' });
+      }
+    }
     return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
       const row = await this.one(tx, id);
       if (row.requestedBy !== auth.user.id && row.approvedBy !== auth.user.id) throw new ForbiddenException({ code: 'not_yours' });

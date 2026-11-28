@@ -30,8 +30,12 @@ export type ExportWording = {
     formatsTitle: string;
     formats: string[];
     checkTitle: string;
-    /** The four checks, in order: signature, files, audit chain, document signatures. */
+    /** The four checks, in order: signature, files, audit chain, document signatures. {keysUrl}: where Trustline publishes its keys. */
     checks: [string, string, string, string];
+    /** Before the commands of the first check, which are not translated. */
+    commandsTitle: string;
+    /** To keep the published keys with the archive. */
+    saveKeys: string;
     /** {keyId}: the export key that signed the manifest. */
     signedBy: string;
     unsigned: string;
