@@ -62,15 +62,24 @@ export class DigestService {
       auth.permissions.includes('policies.approve')
     ) {
       const steps = await this.library.myApprovals(auth);
-      if (steps.total > 0) {
+      // With the "no change" reviews awaiting their signature (business
+      // decision 6).
+      const total = steps.total + steps.reviews.length;
+      if (total > 0) {
         sections.push({
           key: 'approve',
-          count: steps.total,
-          items: steps.items.slice(0, DIGEST_ITEMS).map((s) => ({
-            label: s.document.number,
-            href: link(`/policies/${s.document.id}/versions/${s.version.id}`),
-            overdue: s.overdue,
-          })),
+          count: total,
+          items: [
+            ...steps.items.map((s) => ({
+              label: s.document.number,
+              href: link(`/policies/${s.document.id}/versions/${s.version.id}`),
+              overdue: s.overdue,
+            })),
+            ...steps.reviews.map((r) => ({
+              label: r.number,
+              href: link(`/policies/${r.documentId}`),
+            })),
+          ].slice(0, DIGEST_ITEMS),
         });
       }
     }

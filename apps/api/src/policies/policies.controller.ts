@@ -43,6 +43,8 @@ import {
   importOneSchema,
   listSchema,
   overdueQuery,
+  returnReviewSchema,
+  signedDecisionSchema,
   parse,
   parseId,
   peopleQuery,
@@ -163,7 +165,7 @@ export class PoliciesController {
    */
   @Post('documents/import')
   importOne(@Body() body: unknown, @Req() req: AuthedRequest) {
-    requireEverywhere(req, 'policies.manage');
+    requireEverywhere(req, 'policies.import');
     return this.imports.importOne(
       req.auth,
       parse(importOneSchema, body),
@@ -178,7 +180,7 @@ export class PoliciesController {
    */
   @Post('imports')
   importBatch(@Body() body: unknown, @Req() req: AuthedRequest) {
-    requireEverywhere(req, 'policies.manage');
+    requireEverywhere(req, 'policies.import');
     return this.imports.importBatch(
       req.auth,
       parse(importBatchSchema, body),
@@ -190,7 +192,7 @@ export class PoliciesController {
   @Post('imports/check')
   @HttpCode(200)
   checkImport(@Body() body: unknown, @Req() req: AuthedRequest) {
-    requireEverywhere(req, 'policies.manage');
+    requireEverywhere(req, 'policies.import');
     return this.imports.check(req.auth, parse(importCheckSchema, body).documents);
   }
 
@@ -328,6 +330,46 @@ export class PoliciesController {
       res,
       await this.library.exportPersonAcknowledgements(req.auth, parseId(userId), input),
     );
+  }
+
+  /**
+   * The owner confirms a document imported for them (business decision 1),
+   * with a password signature: only its owner, once.
+   */
+  @Post('documents/:id/confirm-import')
+  @HttpCode(200)
+  confirmImport(@Param('id') id: string, @Body() body: unknown, @Req() req: AuthedRequest) {
+    requireAnyOf(req, ANY_POLICIES);
+    return this.documents.confirmImport(
+      req.auth,
+      parseId(id),
+      parse(signedDecisionSchema, body),
+      req.ip ?? null,
+    );
+  }
+
+  /**
+   * The Approving authority signs a "no change" review sent to them
+   * (business decision 6): only then does the next review date move.
+   */
+  @Post('documents/:id/review/approve')
+  @HttpCode(200)
+  approveReview(@Param('id') id: string, @Body() body: unknown, @Req() req: AuthedRequest) {
+    requirePermission(req, 'policies.approve');
+    return this.documents.approveReview(
+      req.auth,
+      parseId(id),
+      parse(signedDecisionSchema, body),
+      req.ip ?? null,
+    );
+  }
+
+  /** The Approving authority returns a "no change" review to its owner, with why. */
+  @Post('documents/:id/review/return')
+  @HttpCode(200)
+  returnReview(@Param('id') id: string, @Body() body: unknown, @Req() req: AuthedRequest) {
+    requirePermission(req, 'policies.approve');
+    return this.documents.returnReview(req.auth, parseId(id), parse(returnReviewSchema, body));
   }
 
   @Get('documents/:id')

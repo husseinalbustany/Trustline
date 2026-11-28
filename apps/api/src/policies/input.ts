@@ -139,6 +139,9 @@ export const updateSchema = z
     keywords: metadata.keywords.optional(),
     references: metadata.references.optional(),
     reviewMonths: metadata.reviewMonths.optional(),
+    // The language whose text of this document stands (business decision
+    // 5): one of the client's, or null for the organization's setting.
+    authoritativeLocale: localeSchema.nullable().optional(),
     revision,
   })
   .refine((v) => Object.keys(v).length > 1);
@@ -450,3 +453,16 @@ export function parseId(id: string) {
   if (!parsed.success) throw new NotFoundException();
   return parsed.data;
 }
+
+/**
+ * The owner's confirmation of an imported document, and the Approving
+ * authority's signature of a "no change" review: a password signature
+ * (or the signing PIN), on a fresh revision (business decisions 1 and 6).
+ */
+export const signedDecisionSchema = z.strictObject({ password, revision });
+
+/** A "no change" review returned to its owner: why, on a fresh revision. */
+export const returnReviewSchema = z.strictObject({
+  comment: text(1, 2000),
+  revision,
+});

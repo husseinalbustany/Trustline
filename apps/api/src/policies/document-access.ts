@@ -25,6 +25,7 @@ export const documentFields = {
   reviewMonths: documents.reviewMonths,
   nextReviewOn: documents.nextReviewOn,
   lastReviewedOn: documents.lastReviewedOn,
+  authoritativeLocale: documents.authoritativeLocale,
   status: documents.status,
   source: documents.source,
   publishedVersionId: documents.publishedVersionId,

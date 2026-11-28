@@ -57,6 +57,12 @@ import { Publisher } from './publisher.js';
 import { checkedSection } from './section-input.js';
 import { signedImport, type ImportedOriginal } from './signed-content.js';
 
+/**
+ * How long the owner of an imported document has to confirm it (business
+ * decision 1), from the day it is imported, on the client's calendar.
+ */
+export const IMPORT_CONFIRM_DAYS = 30;
+
 /** Why one document of a batch is refused: its code and details, and where it stands. */
 export type ImportProblem = {
   index: number;
@@ -140,12 +146,15 @@ export class ImportsService {
     private readonly documents: DocumentsService,
   ) {}
 
-  /** Only for those who manage documents for the whole organization. */
+  /**
+   * Only for those who may import for the whole organization: the Quality
+   * officer (business decision 1, `policies.import`).
+   */
   private assertImporter(auth: AuthContext) {
-    if (!covers(auth, 'policies.manage', null)) {
+    if (!covers(auth, 'policies.import', null)) {
       throw new ForbiddenException({
         code: 'missing_permission',
-        permission: 'policies.manage',
+        permission: 'policies.import',
       });
     }
   }
@@ -302,6 +311,15 @@ export class ImportsService {
             signatureId: w.signature.id,
             importedBy: user.id,
             importedAt: now,
+            // The owner confirms it within IMPORT_CONFIRM_DAYS (business
+            // decision 1); an importer who is the owner confirms it by
+            // importing it.
+            confirmationDueOn: shiftDay(today, IMPORT_CONFIRM_DAYS),
+            ...(w.planned.input.ownerId === user.id && {
+              confirmedAt: now,
+              confirmedBy: user.id,
+              confirmedByImport: true,
+            }),
           });
           const series = w.planned.series
             ? (counters.get(w.planned.series.series) ?? null)
@@ -774,7 +792,12 @@ export class ImportsService {
       [
         {
           kind: 'document_owner_assigned',
-          data: { version: 1, versionId: version.id },
+          // With the day their confirmation is due (business decision 1).
+          data: {
+            version: 1,
+            versionId: version.id,
+            confirmationDueOn: shiftDay(today, IMPORT_CONFIRM_DAYS),
+          },
           to: [doc.ownerId],
           about: 'published',
         },

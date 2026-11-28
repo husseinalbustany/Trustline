@@ -68,7 +68,7 @@ export function nestsDeeperThan(body: Buffer, max: number): boolean {
 const mayImport = (auth: AuthContext) => {
   const { modules, subscription } = auth.tenant;
   return (
-    covers(auth, 'policies.manage', null) &&
+    covers(auth, 'policies.import', null) &&
     allows({ modules, status: subscription.status }, 'policies') &&
     subscription.status !== 'suspended'
   );
@@ -90,7 +90,7 @@ const answer = (res: Response, status: number, body: Record<string, unknown>) =>
 /**
  * Reads the JSON body of the import routes up to IMPORT_BODY_LIMIT, only
  * for a caller whose session is live and who may import (`policies.manage`
- * for the whole organization, the policies module, a subscription that is
+ * (`policies.import`) for the whole organization, the policies module, a subscription that is
  * not suspended), looked up as the route's guard does before a byte of the
  * body is read (security reviews 7, finding 1, and 9). The guard looks the
  * session up again, so that one revoked during a long upload is refused. Anything

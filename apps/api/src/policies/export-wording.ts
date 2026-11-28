@@ -32,6 +32,7 @@ export const DOCUMENT_LIST_HEADINGS: Words<
   | 'inProgressStatus'
   | 'originalLastReviewedOn'
   | 'differences'
+  | 'ownerConfirmation'
 > = {
   en: {
     number: 'Number',
@@ -54,6 +55,7 @@ export const DOCUMENT_LIST_HEADINGS: Words<
     inProgressStatus: 'Status of the version in progress',
     originalLastReviewedOn: 'Last reviewed on the original',
     differences: 'Differences from the original',
+    ownerConfirmation: 'Owner’s confirmation of the import',
   },
   ar: {
     number: 'الرقم',
@@ -76,6 +78,7 @@ export const DOCUMENT_LIST_HEADINGS: Words<
     inProgressStatus: 'حالة الإصدار قيد الإعداد',
     originalLastReviewedOn: 'آخر مراجعة في الأصل',
     differences: 'الاختلافات عن الأصل',
+    ownerConfirmation: 'تأكيد المسؤول عن الوثيقة للاستيراد',
   },
   fr: {
     number: 'Numéro',
@@ -98,6 +101,7 @@ export const DOCUMENT_LIST_HEADINGS: Words<
     inProgressStatus: 'Statut de la version en cours',
     originalLastReviewedOn: 'Dernière révision sur l’original',
     differences: 'Écarts par rapport à l’original',
+    ownerConfirmation: 'Confirmation de l’import par le responsable',
   },
 };
 
@@ -191,6 +195,9 @@ export const IMPORT_REGISTER_HEADINGS: Words<
   | 'batch'
   | 'batchListHash'
   | 'signatureFingerprint'
+  | 'ownerConfirmation'
+  | 'confirmationDueOn'
+  | 'confirmedAt'
 > = {
   en: {
     number: 'Number',
@@ -207,6 +214,9 @@ export const IMPORT_REGISTER_HEADINGS: Words<
     batch: 'Batch',
     batchListHash: 'Fingerprint of the batch',
     signatureFingerprint: 'Fingerprint of what was signed',
+    ownerConfirmation: 'Owner’s confirmation',
+    confirmationDueOn: 'Confirmation due on',
+    confirmedAt: 'Confirmed at',
   },
   ar: {
     number: 'الرقم',
@@ -223,6 +233,9 @@ export const IMPORT_REGISTER_HEADINGS: Words<
     batch: 'الدفعة',
     batchListHash: 'البصمة الرقمية للدفعة',
     signatureFingerprint: 'البصمة الرقمية للمحتوى الموقَّع',
+    ownerConfirmation: 'تأكيد المسؤول عن الوثيقة',
+    confirmationDueOn: 'موعد التأكيد',
+    confirmedAt: 'تاريخ التأكيد',
   },
   fr: {
     number: 'Numéro',
@@ -239,6 +252,9 @@ export const IMPORT_REGISTER_HEADINGS: Words<
     batch: 'Lot',
     batchListHash: 'Empreinte du lot',
     signatureFingerprint: 'Empreinte du contenu signé',
+    ownerConfirmation: 'Confirmation du responsable',
+    confirmationDueOn: 'Confirmation attendue le',
+    confirmedAt: 'Confirmée le',
   },
 };
 

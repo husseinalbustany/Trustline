@@ -1,10 +1,11 @@
 import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
-import { and, asc, eq, inArray, notInArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, notInArray, sql } from 'drizzle-orm';
 import type { Database, Transaction } from '../database/client.js';
 import { databaseFailure } from '../database/database-error.filter.js';
 import { DATABASE } from '../database/database.constants.js';
 import {
   approvalRuns,
+  documentImports,
   approvalRunSteps,
   documentAcknowledgements,
   documents,
@@ -107,6 +108,12 @@ type Client = { id: string; timeZone: string };
  * Started by `main.ts` only; tests call `run()` with a moment and the
  * clients they made.
  */
+/**
+ * How long before its due day the owner and the importer of an imported
+ * document are reminded of the owner's confirmation (business decision 1).
+ */
+export const IMPORT_REMIND_DAYS = 7;
+
 @Injectable()
 export class PolicyCheck implements OnModuleDestroy {
   private readonly logger = new Logger(PolicyCheck.name);
@@ -257,6 +264,7 @@ export class PolicyCheck implements OnModuleDestroy {
       () => this.remindReviews(client.id, today),
       () => this.remindAcknowledgements(client.id, today, now),
       () => this.reportOverdueSteps(client.id, now),
+      () => this.remindImportConfirmations(client.id, today),
     ];
     for (const step of steps) {
       for (let claimed = BATCH; claimed >= BATCH; ) {
@@ -652,7 +660,12 @@ export class PolicyCheck implements OnModuleDestroy {
   private async claim(
     tx: Transaction,
     tenantId: string,
-    kind: 'step_overdue' | 'publish_failed' | 'acknowledgement_digest',
+    kind:
+      | 'step_overdue'
+      | 'publish_failed'
+      | 'acknowledgement_digest'
+      | 'import_confirmation_due'
+      | 'import_confirmation_overdue',
     subjectId: string,
     period = '',
   ) {
@@ -662,6 +675,66 @@ export class PolicyCheck implements OnModuleDestroy {
       .onConflictDoNothing()
       .returning({ subjectId: policyReminders.subjectId });
     return added.length > 0;
+  }
+
+  /**
+   * Reminds the owner, and the importer, of imported documents awaiting
+   * the owner's confirmation (business decision 1): IMPORT_REMIND_DAYS
+   * before it is due, and once it is overdue, each once. Only while the
+   * document is in force as imported.
+   */
+  private remindImportConfirmations(tenantId: string, today: string) {
+    return this.inClient(tenantId, async (tx) => {
+      const rows = await tx
+        .select({
+          importId: documentImports.id,
+          documentId: documentImports.documentId,
+          importedBy: documentImports.importedBy,
+          dueOn: documentImports.confirmationDueOn,
+          ownerId: documents.ownerId,
+        })
+        .from(documentImports)
+        .innerJoin(
+          documents,
+          and(
+            eq(documents.id, documentImports.documentId),
+            eq(documents.publishedVersionId, documentImports.versionId),
+            eq(documents.status, 'active'),
+          ),
+        )
+        .where(
+          and(
+            isNull(documentImports.confirmedAt),
+            sql`${documentImports.confirmationDueOn} <= ${shiftDay(today, IMPORT_REMIND_DAYS)}`,
+            sql`not exists (select from ${policyReminders} pr
+              where pr.subject_id = ${documentImports.id}
+                and pr.kind = case when ${documentImports.confirmationDueOn} < ${today}::date
+                  then 'import_confirmation_overdue' else 'import_confirmation_due' end)`,
+          ),
+        )
+        .orderBy(asc(documentImports.confirmationDueOn), asc(documentImports.id))
+        .limit(BATCH);
+      const docs = await this.documentsById(tx, [...new Set(rows.map((r) => r.documentId))]);
+      let notified = 0;
+      for (const row of rows) {
+        const overdue = !!row.dueOn && row.dueOn < today;
+        // An overdue one first found overdue is not then reminded as due.
+        if (overdue) await this.claim(tx, tenantId, 'import_confirmation_due', row.importId);
+        const kind = overdue ? 'import_confirmation_overdue' : 'import_confirmation_due';
+        if (!(await this.claim(tx, tenantId, kind, row.importId))) continue;
+        const doc = docs.get(row.documentId);
+        if (!doc) continue;
+        notified += await this.notifier.send(tx, tenantId, doc, null, [
+          {
+            kind: 'import_confirmation_due',
+            data: { dueOn: row.dueOn ?? '', overdue },
+            to: [row.ownerId, row.importedBy],
+            about: 'published',
+          },
+        ]);
+      }
+      return { claimed: rows.length, notified };
+    });
   }
 
   /**

@@ -21,6 +21,21 @@ export function authoritativeLocale(
 }
 
 /**
+ * The language that stands for one document (business decision 5): its
+ * own, if it names one the client still works in; otherwise the
+ * organization's (`organization`, from `authoritativeLocale`).
+ */
+export function documentAuthoritative(
+  doc: { authoritativeLocale: string | null },
+  tenant: { locales: string[] },
+  organization: string,
+) {
+  return doc.authoritativeLocale && tenant.locales.includes(doc.authoritativeLocale)
+    ? doc.authoritativeLocale
+    : organization;
+}
+
+/**
  * The authoritative language of one version (security review 7, finding
  * 3): a draft follows the client's setting (`current`); a version sent for
  * review, approved, published, superseded or withdrawn keeps the one

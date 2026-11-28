@@ -197,6 +197,12 @@ export const users = pgTable(
     // Null until the user sets a password, and for single sign-on only users.
     passwordHash: text(),
     passwordChangedAt: timestamp({ withTimezone: true }),
+    // A signing PIN, for a person with no password (who signs in only
+    // through their organization's single sign-on): hashed as a password
+    // is, and asked wherever a password signature is (business decision 9).
+    // Never shown, and set only by the person.
+    signingPinHash: text(),
+    signingPinSetAt: timestamp({ withTimezone: true }),
     ssoSubject: text(),
     failedAttempts: integer().notNull().default(0),
     lockedUntil: timestamp({ withTimezone: true }),
@@ -291,6 +297,9 @@ export const sessions = pgTable(
     // SHA-256 of the session token. The token itself is only with the client.
     tokenHash: text().notNull().unique(),
     client: text().notNull().default('web'),
+    // How the person signed in for it: `password`, or `sso` once single
+    // sign-on is built. Setting a signing PIN needs a sign-in this recent.
+    method: text().notNull().default('password'),
     expiresAt: timestamp({ withTimezone: true }).notNull(),
     lastSeenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     revokedAt: timestamp({ withTimezone: true }),
@@ -302,6 +311,7 @@ export const sessions = pgTable(
       columns: [t.tenantId, t.userId],
       foreignColumns: [users.tenantId, users.id],
     }).onDelete('cascade'),
+    check('sessions_method', sql`${t.method} in ('password', 'sso')`),
     tenantIsolation(),
   ],
 );
@@ -817,6 +827,17 @@ export const notificationKind = pgEnum('notification_kind', [
   // person sees it in Trustline (security review 8, L2): `data.switch`.
   // About nothing else.
   'email_turned_off',
+  // An imported document awaits its owner's confirmation: 7 days before it
+  // is due, and once it is overdue (`data.overdue`). To the owner and the
+  // importer.
+  'import_confirmation_due',
+  // A "no change" periodic review awaits the Approving authority's
+  // signature: to those who may give it.
+  'review_approval_requested',
+  // The Approving authority returned a "no change" review: to its owner.
+  'review_returned',
+  // The person's signing PIN was set, changed or reset. About nothing else.
+  'signing_pin_changed',
 ]);
 
 // Something a user is told about an incident they can see. Stored so that it
@@ -879,7 +900,7 @@ export const notifications = pgTable(
     // new kind to be committed before it is created.
     check(
       'notifications_about_one_thing',
-      sql`(${t.incidentId} is null or ${t.documentId} is null) and (${t.incidentId} is not null or ${t.documentId} is not null or ${t.kind}::text in ('public_form_paused', 'acknowledgements_overdue_digest', 'email_turned_off'))`,
+      sql`(${t.incidentId} is null or ${t.documentId} is null) and (${t.incidentId} is not null or ${t.documentId} is not null or ${t.kind}::text in ('public_form_paused', 'acknowledgements_overdue_digest', 'email_turned_off', 'signing_pin_changed'))`,
     ),
     tenantIsolation(),
   ],
@@ -989,6 +1010,10 @@ export const documentTypes = pgTable(
     // keeps them, so a later change here does not alter what was written.
     sections: jsonb().$type<DocumentSection[]>().notNull(),
     defaultReviewMonths: integer().notNull(),
+    // Whether a periodic review confirmed as needing no change also needs
+    // the Approving authority's signature before the next review date
+    // moves (business decision 6). On for policies, by default.
+    noChangeNeedsApproval: boolean().notNull().default(false),
     active: boolean().notNull().default(true),
     position: integer().notNull().default(0),
     // Raised by every change, for stale-save protection (409 `stale_type`).
@@ -1081,6 +1106,9 @@ export const documents = pgTable(
     // Days on the client's calendar.
     nextReviewOn: date({ mode: 'string' }),
     lastReviewedOn: date({ mode: 'string' }),
+    // The language whose text of this document stands (business decision
+    // 5): one of the client's, or null for the organization's setting.
+    authoritativeLocale: text(),
     status: documentStatus().notNull().default('draft'),
     // How it came into Trustline: `written`, or `imported` with its first
     // version (approved before Trustline). Stays so after it is re-issued.
@@ -1158,6 +1186,10 @@ export const documents = pgTable(
     index('documents_status_idx').on(t.tenantId, t.status, t.nextReviewOn),
     index('documents_owner_unit_idx').on(t.tenantId, t.ownerUnitId),
     index('documents_owner_idx').on(t.tenantId, t.ownerId),
+    check(
+      'documents_authoritative_locale',
+      sql`${t.authoritativeLocale} is null or ${t.authoritativeLocale} ~ '^[a-z]{2}$'`,
+    ),
     tenantIsolation(),
   ],
 );
@@ -1365,6 +1397,11 @@ export const signatureMeaning = pgEnum('signature_meaning', [
   // The importer's statement that an imported version's text matches the
   // original approved before Trustline, with the details of that approval.
   'imported',
+  // The owner's confirmation of an imported document (business decision 1).
+  'import_confirmed',
+  // The Approving authority's signature of a "no change" periodic review
+  // (business decision 6).
+  'reviewed_no_change_approved',
 ]);
 
 // The ordered steps something must pass before it is approved. Generic
@@ -1631,6 +1668,10 @@ export const documentReviews = pgTable(
     reviewedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
     signatureId: uuid(),
     nextReviewOn: date({ mode: 'string' }),
+    // Where the type asks for it (business decision 6): who approved a
+    // "no change" review, and their signature.
+    approvedBy: uuid(),
+    approvalSignatureId: uuid(),
   },
   (t) => [
     foreignKey({
@@ -1648,7 +1689,89 @@ export const documentReviews = pgTable(
       columns: [t.tenantId, t.signatureId],
       foreignColumns: [signatures.tenantId, signatures.id],
     }),
+    foreignKey({
+      name: 'document_reviews_approved_by_fk',
+      columns: [t.tenantId, t.approvedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'document_reviews_approval_signature_fk',
+      columns: [t.tenantId, t.approvalSignatureId],
+      foreignColumns: [signatures.tenantId, signatures.id],
+    }),
     index('document_reviews_document_idx').on(t.tenantId, t.documentId),
+    tenantIsolation(),
+  ],
+);
+
+export const reviewApprovalStatus = pgEnum('review_approval_status', [
+  'pending',
+  'approved',
+  'returned',
+]);
+
+// A "no change" periodic review awaiting the Approving authority's
+// signature (business decision 6): the owner's confirmation, signed, and
+// how the approver decided. The review is recorded in document_reviews,
+// and the next review date moves, only once it is approved.
+export const documentReviewApprovals = pgTable(
+  'document_review_approvals',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    documentId: uuid().notNull(),
+    // The review date this answers.
+    dueOn: date({ mode: 'string' }),
+    comment: text().notNull(),
+    requestedBy: uuid().notNull(),
+    requestedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    requestSignatureId: uuid().notNull(),
+    status: reviewApprovalStatus().notNull().default('pending'),
+    decidedBy: uuid(),
+    decidedAt: timestamp({ withTimezone: true }),
+    decisionComment: text(),
+    decisionSignatureId: uuid(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'document_review_approvals_document_fk',
+      columns: [t.tenantId, t.documentId],
+      foreignColumns: [documents.tenantId, documents.id],
+    }),
+    foreignKey({
+      name: 'document_review_approvals_requested_by_fk',
+      columns: [t.tenantId, t.requestedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'document_review_approvals_decided_by_fk',
+      columns: [t.tenantId, t.decidedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'document_review_approvals_request_signature_fk',
+      columns: [t.tenantId, t.requestSignatureId],
+      foreignColumns: [signatures.tenantId, signatures.id],
+    }),
+    foreignKey({
+      name: 'document_review_approvals_decision_signature_fk',
+      columns: [t.tenantId, t.decisionSignatureId],
+      foreignColumns: [signatures.tenantId, signatures.id],
+    }),
+    // One awaiting at a time per document.
+    uniqueIndex('document_review_approvals_one_pending')
+      .on(t.tenantId, t.documentId)
+      .where(sql`${t.status} = 'pending'`),
+    check(
+      'document_review_approvals_decided',
+      sql`(${t.status} = 'pending') = (${t.decidedBy} is null and ${t.decidedAt} is null)`,
+    ),
+    check(
+      'document_review_approvals_approved_signed',
+      sql`${t.status} <> 'approved' or ${t.decisionSignatureId} is not null`,
+    ),
     tenantIsolation(),
   ],
 );
@@ -1846,6 +1969,14 @@ export const documentImports = pgTable(
     // written as a list"), per language (quality review 3, M3). Signed with
     // the import: the text matches the original except as noted here.
     differences: jsonb().$type<Localized>(),
+    // The owner's confirmation of the import (business decision 1): due on
+    // this day, given with a signature (`import_confirmed`); or given by the
+    // import itself when the importer is the owner.
+    confirmationDueOn: date({ mode: 'string' }),
+    confirmedAt: timestamp({ withTimezone: true }),
+    confirmedBy: uuid(),
+    confirmationSignatureId: uuid(),
+    confirmedByImport: boolean().notNull().default(false),
     // Sections with no text in the authoritative language when imported.
     sectionsNotWritten: text()
       .array()
@@ -1886,6 +2017,21 @@ export const documentImports = pgTable(
       columns: [t.tenantId, t.importedBy],
       foreignColumns: [users.tenantId, users.id],
     }),
+    foreignKey({
+      name: 'document_imports_confirmed_by_fk',
+      columns: [t.tenantId, t.confirmedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'document_imports_confirmation_signature_fk',
+      columns: [t.tenantId, t.confirmationSignatureId],
+      foreignColumns: [signatures.tenantId, signatures.id],
+    }),
+    // Confirmed with its own signature, or by the import itself.
+    check(
+      'document_imports_confirmation',
+      sql`${t.confirmedAt} is null or (${t.confirmedBy} is not null and (${t.confirmedByImport} or ${t.confirmationSignatureId} is not null))`,
+    ),
     unique('document_imports_document_key').on(t.tenantId, t.documentId),
     unique('document_imports_version_key').on(t.tenantId, t.versionId),
     unique('document_imports_batch_index_key').on(
@@ -1930,7 +2076,7 @@ export const policyReminders = pgTable(
     }),
     check(
       'policy_reminders_kind',
-      sql`${t.kind} in ('step_overdue', 'publish_failed', 'acknowledgement_digest')`,
+      sql`${t.kind} in ('step_overdue', 'publish_failed', 'acknowledgement_digest', 'import_confirmation_due', 'import_confirmation_overdue')`,
     ),
     tenantIsolation(),
   ],

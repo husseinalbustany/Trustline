@@ -8,6 +8,7 @@ import {
 import {
   and,
   asc,
+  count,
   desc,
   eq,
   inArray,
@@ -31,6 +32,7 @@ import {
   documentCategories,
   documentImportBatches,
   documentImports,
+  documentReviewApprovals,
   documentReviewRounds,
   documentReviews,
   documents,
@@ -41,6 +43,7 @@ import {
   users,
   type DocumentContent,
   type DocumentSection,
+  signatures as signatureRows,
 } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
 import { AuthService, type AuthContext } from '../identity/auth.service.js';
@@ -63,7 +66,11 @@ import {
   assertReviewPeriod,
   authoritativeLocaleOf,
 } from './document-settings.js';
-import { languageStatus, versionAuthoritative } from './languages.js';
+import {
+  documentAuthoritative,
+  languageStatus,
+  versionAuthoritative,
+} from './languages.js';
 import type {
   AudienceInput,
   CreateInput,
@@ -287,14 +294,16 @@ export class DocumentsService {
   ) {
     const { access } = doc;
     const today = dayOf(new Date(), auth.tenant.timeZone);
-    const [type] = await tx
+    const [typeRow] = await tx
       .select({
         id: documentTypes.id,
         code: documentTypes.code,
         name: documentTypes.name,
+        noChangeNeedsApproval: documentTypes.noChangeNeedsApproval,
       })
       .from(documentTypes)
       .where(eq(documentTypes.id, doc.typeId));
+    const { noChangeNeedsApproval, ...type } = typeRow;
     const [category] = await tx
       .select({
         id: documentCategories.id,
@@ -336,6 +345,19 @@ export class DocumentsService {
       published && access.reads
         ? await this.acknowledgementOf(tx, viewer, doc, published, today)
         : null;
+    // A "no change" review awaiting the Approving authority, or the last
+    // one decided (business decision 6), and the import's confirmation by
+    // its owner (business decision 1).
+    const reviewApproval = await this.latestReviewApproval(tx, doc);
+    const pendingReview = reviewApproval?.status === 'pending' ? reviewApproval : null;
+    const decidesReview =
+      !!pendingReview &&
+      pendingReview.requestedBy.id !== viewer.userId &&
+      (await reviewApproversOf(tx, doc.ownerUnitId)).includes(viewer.userId);
+    const importConfirmation =
+      published?.source === 'imported'
+        ? await this.importConfirmationOf(tx, published.id, today)
+        : null;
     const moves: string[] = [];
     if (access.manages && doc.status !== 'retired') {
       moves.push('edit');
@@ -346,10 +368,25 @@ export class DocumentsService {
       (access.manages || access.owner) &&
       doc.status === 'active' &&
       !reissueRequired &&
+      !pendingReview &&
       reviewConfirmation(doc.nextReviewOn, today).open
     ) {
       moves.push('confirm_review');
     }
+    if (decidesReview && doc.status === 'active') {
+      moves.push('approve_review', 'return_review');
+    }
+    if (
+      access.owner &&
+      doc.status === 'active' &&
+      importConfirmation &&
+      importConfirmation.state !== 'confirmed'
+    ) {
+      moves.push('confirm_import');
+    }
+    // Who may see the review's comments: its owner, its managers, its
+    // approvers.
+    const seesReview = access.manages || access.owner || decidesReview || access.full;
     return {
       id: doc.id,
       number: doc.number,
@@ -372,6 +409,23 @@ export class DocumentsService {
       lastReviewedOn: doc.lastReviewedOn,
       review: reviewState(doc, today),
       reissueRequired,
+      // Whether its type has a "no change" review signed by the Approving
+      // authority as well (business decision 6), and where the last such
+      // review stands.
+      reviewNeedsApproval: noChangeNeedsApproval,
+      reviewApproval: reviewApproval
+        ? {
+            ...reviewApproval,
+            comment: seesReview ? reviewApproval.comment : null,
+            decisionComment: seesReview ? reviewApproval.decisionComment : null,
+          }
+        : null,
+      // In force as imported: whether its owner has confirmed it (business
+      // decision 1).
+      importConfirmation,
+      // Its own language that applies, or null for the organization's
+      // (business decision 5).
+      authoritativeLocale: doc.authoritativeLocale,
       status: doc.status,
       // How it came into Trustline: `written`, or `imported` as approved
       // before Trustline (its first version).
@@ -901,7 +955,7 @@ export class DocumentsService {
     // the language recorded when it was sent (or imported).
     const authoritative = versionAuthoritative(
       version,
-      await authoritativeLocaleOf(tx, auth.tenant),
+      documentAuthoritative(doc, auth.tenant, await authoritativeLocaleOf(tx, auth.tenant)),
     );
     const languageView = languageStatus(
       version,
@@ -1369,6 +1423,15 @@ export class DocumentsService {
         ...(input.audience?.orgUnitIds ?? []),
       ]);
       if (input.audience) await this.assertRoles(tx, input.audience.roleIds);
+      if (
+        input.authoritativeLocale &&
+        !tenant.locales.includes(input.authoritativeLocale)
+      ) {
+        throw new BadRequestException({
+          code: 'language_mismatch',
+          field: 'authoritativeLocale',
+        });
+      }
 
       const set: Partial<typeof documents.$inferInsert> = {};
       const changes: Record<string, { from: unknown; to: unknown }> = {};
@@ -1381,6 +1444,7 @@ export class DocumentsService {
         'keywords',
         'references',
         'reviewMonths',
+        'authoritativeLocale',
       ] as const;
       for (const field of fields) {
         const to = input[field];
@@ -1414,6 +1478,36 @@ export class DocumentsService {
           to: input.audience,
         };
       }
+      // A language of its own (business decision 5): as the organization's
+      // setting, it changes no version; drafts follow it from now on, and
+      // the answer and the audit entry say how many versions are in
+      // progress, when the language that stands for it changes.
+      let versionsInProgress: Record<string, number> | null = null;
+      if ('authoritativeLocale' in changes) {
+        const organization = await authoritativeLocaleOf(tx, tenant);
+        const from = documentAuthoritative(doc, tenant, organization);
+        const to = documentAuthoritative(
+          { authoritativeLocale: input.authoritativeLocale ?? null },
+          tenant,
+          organization,
+        );
+        if (from !== to) {
+          changes.authoritative = { from, to };
+          const counts = await tx
+            .select({ status: documentVersions.status, count: count() })
+            .from(documentVersions)
+            .where(
+              and(
+                eq(documentVersions.documentId, doc.id),
+                inArray(documentVersions.status, ['draft', 'in_review', 'approved']),
+              ),
+            )
+            .groupBy(documentVersions.status);
+          versionsInProgress = { draft: 0, in_review: 0, approved: 0 };
+          for (const row of counts) versionsInProgress[row.status] = row.count;
+          (changes as Record<string, unknown>).versionsInProgress = versionsInProgress;
+        }
+      }
       // A new review period counts from the last review.
       if (set.reviewMonths && doc.status === 'active' && doc.lastReviewedOn) {
         set.nextReviewOn = addMonths(doc.lastReviewedOn, set.reviewMonths);
@@ -1445,7 +1539,10 @@ export class DocumentsService {
       const fresh = await loadDocument(tx, after, this.engine, doc.id);
       // A manager who moved it out of their own reach no longer sees it.
       if (!fresh) return { id: doc.id, moved: true };
-      return this.detail(tx, auth, after, fresh);
+      return {
+        ...(await this.detail(tx, auth, after, fresh)),
+        ...(versionsInProgress && { versionsInProgress }),
+      };
     });
   }
 
@@ -1800,7 +1897,12 @@ export class DocumentsService {
       if (version.status !== 'draft') {
         throw new ConflictException({ code: 'not_draft' });
       }
-      const authoritative = await authoritativeLocaleOf(tx, tenant);
+      // The document's own language, or the organization's (decision 5).
+      const authoritative = documentAuthoritative(
+        doc,
+        tenant,
+        await authoritativeLocaleOf(tx, tenant),
+      );
       const missing = missingSections(
         version.sections,
         version.content,
@@ -2485,7 +2587,28 @@ export class DocumentsService {
         opensOn: confirmation.opensOn,
       });
     }
-    return { viewer, doc };
+    // One awaiting the Approving authority at a time (business decision 6).
+    const [pending] = await tx
+      .select({ id: documentReviewApprovals.id })
+      .from(documentReviewApprovals)
+      .where(
+        and(
+          eq(documentReviewApprovals.documentId, doc.id),
+          eq(documentReviewApprovals.status, 'pending'),
+        ),
+      );
+    if (pending) throw new ConflictException({ code: 'review_pending' });
+    const [type] = await tx
+      .select({ noChangeNeedsApproval: documentTypes.noChangeNeedsApproval })
+      .from(documentTypes)
+      .where(eq(documentTypes.id, doc.typeId));
+    const approvers = type.noChangeNeedsApproval
+      ? (await reviewApproversOf(tx, doc.ownerUnitId)).filter((u) => u !== viewer.userId)
+      : [];
+    if (type.noChangeNeedsApproval && approvers.length === 0) {
+      throw new ConflictException({ code: 'no_review_approver' });
+    }
+    return { viewer, doc, needsApproval: type.noChangeNeedsApproval, approvers };
   }
 
   /**
@@ -2506,7 +2629,7 @@ export class DocumentsService {
     );
     await this.auth.confirmPassword(auth, input.password, 'review', ip);
     return this.tenantDb.withTenant(tenant.id, async (tx) => {
-      const { viewer, doc } = await this.reviewable(
+      const { viewer, doc, needsApproval, approvers } = await this.reviewable(
         tx,
         auth,
         id,
@@ -2532,10 +2655,45 @@ export class DocumentsService {
           versionHash: contentHash(signedVersion(doc, published)),
           dueOn: doc.nextReviewOn,
           reviewedOn: today,
-          nextReviewOn,
+          // Where the Approving authority signs too, the next review is
+          // set when they do (business decision 6).
+          nextReviewOn: needsApproval ? null : nextReviewOn,
+          ...(needsApproval && { awaitsApproval: true }),
           comment: input.comment,
         },
       });
+      if (needsApproval) {
+        await tx.insert(documentReviewApprovals).values({
+          tenantId: tenant.id,
+          documentId: doc.id,
+          dueOn: doc.nextReviewOn,
+          comment: input.comment,
+          requestedBy: user.id,
+          requestedAt: now,
+          requestSignatureId: signature.id,
+        });
+        await tx
+          .update(documents)
+          .set({ revision: sql`${documents.revision} + 1`, updatedAt: now })
+          .where(eq(documents.id, doc.id));
+        await this.notifier.send(tx, tenant.id, doc, user.id, [
+          {
+            kind: 'review_approval_requested',
+            data: { dueOn: doc.nextReviewOn ?? '' },
+            to: approvers,
+            about: 'published',
+          },
+        ]);
+        await this.provisioning.audit(tx, tenant.id, user.id, 'document_review_requested', 'document', doc.id, {
+          outcome: 'no_change',
+          dueOn: doc.nextReviewOn,
+          approvers,
+          signatureId: signature.id,
+          contentHash: signature.contentHash,
+          comment: input.comment,
+        });
+        return this.detail(tx, auth, viewer, await this.find(tx, viewer, doc.id));
+      }
       await tx.insert(documentReviews).values({
         tenantId: tenant.id,
         documentId: doc.id,
@@ -2576,4 +2734,389 @@ export class DocumentsService {
       return this.detail(tx, auth, viewer, await this.find(tx, viewer, doc.id));
     });
   }
+
+  /** The latest "no change" review sent for approval, with names. */
+  private async latestReviewApproval(tx: Transaction, doc: { id: string }) {
+    const [row] = await tx
+      .select({
+        id: documentReviewApprovals.id,
+        status: documentReviewApprovals.status,
+        dueOn: documentReviewApprovals.dueOn,
+        comment: documentReviewApprovals.comment,
+        requestedBy: documentReviewApprovals.requestedBy,
+        requestedAt: documentReviewApprovals.requestedAt,
+        decidedBy: documentReviewApprovals.decidedBy,
+        decidedAt: documentReviewApprovals.decidedAt,
+        decisionComment: documentReviewApprovals.decisionComment,
+      })
+      .from(documentReviewApprovals)
+      .where(eq(documentReviewApprovals.documentId, doc.id))
+      .orderBy(desc(documentReviewApprovals.requestedAt))
+      .limit(1);
+    if (!row) return null;
+    const people = await this.names(tx, [row.requestedBy, row.decidedBy]);
+    return {
+      ...row,
+      requestedBy: { id: row.requestedBy, name: people.get(row.requestedBy) ?? null },
+      decidedBy: row.decidedBy
+        ? { id: row.decidedBy, name: people.get(row.decidedBy) ?? null }
+        : null,
+    };
+  }
+
+  /**
+   * Where the owner's confirmation of an imported version stands (business
+   * decision 1): `confirmed` (by their signature, or by the import itself
+   * when they imported it), `awaiting` until its day, `overdue` after.
+   */
+  async importConfirmationOf(tx: Transaction, versionId: string, today: string) {
+    const [row] = await tx
+      .select({
+        dueOn: documentImports.confirmationDueOn,
+        confirmedAt: documentImports.confirmedAt,
+        confirmedBy: documentImports.confirmedBy,
+        byImport: documentImports.confirmedByImport,
+        signatureId: documentImports.confirmationSignatureId,
+      })
+      .from(documentImports)
+      .where(eq(documentImports.versionId, versionId));
+    if (!row) return null;
+    const people = row.confirmedBy ? await this.names(tx, [row.confirmedBy]) : new Map();
+    return {
+      state: confirmationState(row, today),
+      dueOn: row.dueOn,
+      confirmedAt: row.confirmedAt,
+      confirmedBy: row.confirmedBy
+        ? { id: row.confirmedBy, name: people.get(row.confirmedBy) ?? null }
+        : null,
+      byImport: row.byImport,
+      signatureId: row.signatureId,
+    };
+  }
+
+  /**
+   * The owner confirms an imported document (business decision 1): a
+   * signature (meaning `import_confirmed`) over the imported version and
+   * the importer's signature of it. Only its owner, only once, only while
+   * it is in force as imported.
+   */
+  async confirmImport(
+    auth: AuthContext,
+    id: string,
+    input: { password: string; revision: number },
+    ip: string | null,
+  ) {
+    const { tenant, user } = auth;
+    await this.tenantDb.withTenant(tenant.id, (tx) =>
+      this.confirmable(tx, auth, id, input.revision, false),
+    );
+    await this.auth.confirmPassword(auth, input.password, 'import_confirmation', ip);
+    return this.tenantDb.withTenant(tenant.id, async (tx) => {
+      const { viewer, doc, imported } = await this.confirmable(
+        tx,
+        auth,
+        id,
+        input.revision,
+        true,
+      );
+      const now = new Date();
+      const [importSignature] = await tx
+        .select({ contentHash: signatureRows.contentHash })
+        .from(signatureRows)
+        .where(eq(signatureRows.id, imported.signatureId));
+      const signature = await this.signatures.sign(tx, tenant.id, {
+        userId: user.id,
+        meaning: 'import_confirmed',
+        subjectType: 'document_version',
+        subjectId: imported.versionId,
+        content: {
+          documentId: doc.id,
+          number: doc.number,
+          versionId: imported.versionId,
+          importSignatureHash: importSignature.contentHash,
+          confirmedOn: dayOf(now, tenant.timeZone),
+        },
+      });
+      await tx
+        .update(documentImports)
+        .set({ confirmedAt: now, confirmedBy: user.id, confirmationSignatureId: signature.id })
+        .where(eq(documentImports.id, imported.id));
+      await tx
+        .update(documents)
+        .set({ revision: sql`${documents.revision} + 1`, updatedAt: now })
+        .where(eq(documents.id, doc.id));
+      await this.provisioning.audit(tx, tenant.id, user.id, 'import_confirmed', 'document', doc.id, {
+        versionId: imported.versionId,
+        dueOn: imported.dueOn,
+        signatureId: signature.id,
+        contentHash: signature.contentHash,
+      });
+      return this.detail(tx, auth, viewer, await this.find(tx, viewer, doc.id));
+    });
+  }
+
+  private async confirmable(
+    tx: Transaction,
+    auth: AuthContext,
+    id: string,
+    revision: number,
+    lock: boolean,
+  ) {
+    const viewer = await viewerOf(tx, auth, this.engine);
+    const doc = await this.find(tx, viewer, id, lock);
+    if (!doc.access.owner) throw new ForbiddenException({ code: 'not_owner' });
+    if (doc.revision !== revision) throw refuse.staleDocument();
+    if (doc.status !== 'active') throw new ConflictException({ code: 'not_active' });
+    const query = tx
+      .select({
+        id: documentImports.id,
+        versionId: documentImports.versionId,
+        signatureId: documentImports.signatureId,
+        dueOn: documentImports.confirmationDueOn,
+        confirmedAt: documentImports.confirmedAt,
+      })
+      .from(documentImports)
+      .where(eq(documentImports.versionId, doc.publishedVersionId ?? sql`null`));
+    const [imported] = lock ? await query.for('update') : await query;
+    if (!imported) throw new ConflictException({ code: 'not_imported' });
+    if (imported.confirmedAt) {
+      throw new ConflictException({ code: 'import_already_confirmed' });
+    }
+    return { viewer, doc, imported };
+  }
+
+  /**
+   * The Approving authority signs a "no change" review its owner sent
+   * (business decision 6, meaning `reviewed_no_change_approved`): only then
+   * is the review recorded and the next review date moved, a review period
+   * from today.
+   */
+  async approveReview(
+    auth: AuthContext,
+    id: string,
+    input: { password: string; revision: number },
+    ip: string | null,
+  ) {
+    const { tenant, user } = auth;
+    await this.tenantDb.withTenant(tenant.id, (tx) =>
+      this.decidableReview(tx, auth, id, input.revision, false),
+    );
+    await this.auth.confirmPassword(auth, input.password, 'review_approval', ip);
+    return this.tenantDb.withTenant(tenant.id, async (tx) => {
+      const { viewer, doc, pending } = await this.decidableReview(
+        tx,
+        auth,
+        id,
+        input.revision,
+        true,
+      );
+      const now = new Date();
+      const today = dayOf(now, tenant.timeZone);
+      const [published] = await tx
+        .select(versionFields)
+        .from(documentVersions)
+        .where(eq(documentVersions.id, doc.publishedVersionId!));
+      const [request] = await tx
+        .select({ contentHash: signatureRows.contentHash })
+        .from(signatureRows)
+        .where(eq(signatureRows.id, pending.requestSignatureId));
+      const nextReviewOn = addMonths(today, doc.reviewMonths);
+      const signature = await this.signatures.sign(tx, tenant.id, {
+        userId: user.id,
+        meaning: 'reviewed_no_change_approved',
+        subjectType: 'document',
+        subjectId: doc.id,
+        content: {
+          documentId: doc.id,
+          number: doc.number,
+          publishedVersionId: published.id,
+          versionHash: contentHash(signedVersion(doc, published)),
+          requestHash: request.contentHash,
+          dueOn: pending.dueOn,
+          approvedOn: today,
+          nextReviewOn,
+        },
+      });
+      await tx
+        .update(documentReviewApprovals)
+        .set({ status: 'approved', decidedBy: user.id, decidedAt: now, decisionSignatureId: signature.id })
+        .where(and(eq(documentReviewApprovals.id, pending.id), eq(documentReviewApprovals.status, 'pending')));
+      await tx.insert(documentReviews).values({
+        tenantId: tenant.id,
+        documentId: doc.id,
+        dueOn: pending.dueOn,
+        outcome: 'no_change',
+        comment: pending.comment,
+        reviewedBy: pending.requestedBy,
+        reviewedAt: pending.requestedAt,
+        signatureId: pending.requestSignatureId,
+        nextReviewOn,
+        approvedBy: user.id,
+        approvalSignatureId: signature.id,
+      });
+      await tx
+        .update(documents)
+        .set({
+          nextReviewOn,
+          lastReviewedOn: today,
+          reviewNoticeRank: null,
+          reviewNoticeFor: null,
+          revision: sql`${documents.revision} + 1`,
+          updatedAt: now,
+        })
+        .where(eq(documents.id, doc.id));
+      await this.provisioning.audit(tx, tenant.id, user.id, 'document_review_approved', 'document', doc.id, {
+        outcome: 'no_change',
+        requestedBy: pending.requestedBy,
+        nextReviewOn: { from: doc.nextReviewOn, to: nextReviewOn },
+        signatureId: signature.id,
+        contentHash: signature.contentHash,
+      });
+      return this.detail(tx, auth, viewer, await this.find(tx, viewer, doc.id));
+    });
+  }
+
+  /**
+   * The Approving authority returns a "no change" review to its owner,
+   * with why (business decision 6): the next review date stays, and the
+   * owner may confirm it again, or start a new version.
+   */
+  returnReview(
+    auth: AuthContext,
+    id: string,
+    input: { comment: string; revision: number },
+  ) {
+    const { tenant, user } = auth;
+    return this.tenantDb.withTenant(tenant.id, async (tx) => {
+      const { viewer, doc, pending } = await this.decidableReview(
+        tx,
+        auth,
+        id,
+        input.revision,
+        true,
+      );
+      const now = new Date();
+      await tx
+        .update(documentReviewApprovals)
+        .set({ status: 'returned', decidedBy: user.id, decidedAt: now, decisionComment: input.comment })
+        .where(and(eq(documentReviewApprovals.id, pending.id), eq(documentReviewApprovals.status, 'pending')));
+      await tx
+        .update(documents)
+        .set({ revision: sql`${documents.revision} + 1`, updatedAt: now })
+        .where(eq(documents.id, doc.id));
+      await this.notifier.send(tx, tenant.id, doc, user.id, [
+        {
+          kind: 'review_returned',
+          data: { dueOn: pending.dueOn ?? '' },
+          to: [pending.requestedBy],
+          about: 'published',
+        },
+      ]);
+      await this.provisioning.audit(tx, tenant.id, user.id, 'document_review_returned', 'document', doc.id, {
+        requestedBy: pending.requestedBy,
+        comment: input.comment,
+      });
+      return this.detail(tx, auth, viewer, await this.find(tx, viewer, doc.id));
+    });
+  }
+
+  /** The pending "no change" review the caller may decide, or why not. */
+  private async decidableReview(
+    tx: Transaction,
+    auth: AuthContext,
+    id: string,
+    revision: number,
+    lock: boolean,
+  ) {
+    const viewer = await viewerOf(tx, auth, this.engine);
+    const doc = await this.find(tx, viewer, id, lock);
+    if (doc.revision !== revision) throw refuse.staleDocument();
+    if (doc.status !== 'active') throw new ConflictException({ code: 'not_active' });
+    const query = tx
+      .select({
+        id: documentReviewApprovals.id,
+        dueOn: documentReviewApprovals.dueOn,
+        comment: documentReviewApprovals.comment,
+        requestedBy: documentReviewApprovals.requestedBy,
+        requestedAt: documentReviewApprovals.requestedAt,
+        requestSignatureId: documentReviewApprovals.requestSignatureId,
+      })
+      .from(documentReviewApprovals)
+      .where(
+        and(
+          eq(documentReviewApprovals.documentId, doc.id),
+          eq(documentReviewApprovals.status, 'pending'),
+        ),
+      );
+    const [pending] = lock ? await query.for('update') : await query;
+    if (!pending) throw new ConflictException({ code: 'no_review_pending' });
+    if (pending.requestedBy === viewer.userId) {
+      throw new ForbiddenException({ code: 'same_person', reason: 'requested' });
+    }
+    if (!(await reviewApproversOf(tx, doc.ownerUnitId)).includes(viewer.userId)) {
+      throw new ForbiddenException({ code: 'not_review_approver' });
+    }
+    return { viewer, doc, pending };
+  }
+}
+
+/**
+ * The "no change" reviews awaiting one person's signature (business
+ * decision 6), for "Awaiting me" and the digest: numbers only.
+ */
+export async function reviewsAwaitingFor(tx: Transaction, userId: string) {
+  const rows = await tx
+    .select({
+      documentId: documents.id,
+      number: documents.number,
+      title: documents.title,
+      ownerUnitId: documents.ownerUnitId,
+      dueOn: documentReviewApprovals.dueOn,
+      requestedBy: documentReviewApprovals.requestedBy,
+      requestedAt: documentReviewApprovals.requestedAt,
+    })
+    .from(documentReviewApprovals)
+    .innerJoin(documents, eq(documents.id, documentReviewApprovals.documentId))
+    .where(and(eq(documentReviewApprovals.status, 'pending'), eq(documents.status, 'active')))
+    .orderBy(asc(documentReviewApprovals.requestedAt));
+  const mine: typeof rows = [];
+  for (const row of rows) {
+    if (row.requestedBy === userId) continue;
+    if ((await reviewApproversOf(tx, row.ownerUnitId)).includes(userId)) mine.push(row);
+  }
+  return mine;
+}
+
+/** Where an import's confirmation stands, on the client's day. */
+export function confirmationState(
+  row: { confirmedAt: Date | null; dueOn: string | null },
+  today: string,
+): 'confirmed' | 'awaiting' | 'overdue' {
+  if (row.confirmedAt) return 'confirmed';
+  return row.dueOn && row.dueOn < today ? 'overdue' : 'awaiting';
+}
+
+/**
+ * Who signs a "no change" review of a document whose type asks for it
+ * (business decision 6): the active holders of the built-in Approving
+ * authority, granted for the whole organization or for the document's unit
+ * or one above it; where there is none, the Administrators so granted, as
+ * the starting route falls back to them.
+ */
+export async function reviewApproversOf(tx: Transaction, ownerUnitId: string) {
+  for (const code of ['approving_authority', 'administrator']) {
+    const { rows } = await tx.execute<{ id: string }>(sql`
+      with recursive up (id, parent_id) as (
+        select o.id, o.parent_id from org_units o where o.id = ${ownerUnitId}
+        union
+        select o.id, o.parent_id from org_units o join up on o.id = up.parent_id
+      )
+      select distinct ra.user_id as id
+      from role_assignments ra
+      join roles r on r.id = ra.role_id and r.is_system and r.code = ${code}
+      join users u on u.id = ra.user_id and u.status = 'active'
+      where ra.org_unit_id is null or ra.org_unit_id in (select id from up)`);
+    if (rows.length > 0) return rows.map((r) => r.id);
+  }
+  return [];
 }

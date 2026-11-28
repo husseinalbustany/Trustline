@@ -56,7 +56,11 @@ import {
 import { inChunks } from '../incidents/notifier.js';
 import { csv, csvFileName } from './csv.js';
 import { loadDocument } from './document-access.js';
-import { REVIEW_DUE_DAYS, reviewState } from './documents.service.js';
+import {
+  REVIEW_DUE_DAYS,
+  reviewsAwaitingFor,
+  reviewState,
+} from './documents.service.js';
 import {
   ACKNOWLEDGEMENT_HEADINGS,
   DOCUMENT_LIST_HEADINGS,
@@ -503,7 +507,9 @@ export class LibraryService {
         })
         .from(documents)
         .where(visible(viewer, this.engine));
-      const awaitingMyApproval = (await this.pendingFor(tx, viewer)).length;
+      const awaitingMyApproval =
+        (await this.pendingFor(tx, viewer)).length +
+        (await reviewsAwaitingFor(tx, viewer.userId)).length;
       // Acknowledgement completion: of the people asked to acknowledge the
       // published version of each active document the caller sees in full
       // (the figures are for those who manage documents or see them all),
@@ -641,12 +647,16 @@ export class LibraryService {
       const viewer = await viewerOf(tx, auth, this.engine);
       const rows = await this.pendingFor(tx, viewer);
       const now = Date.now();
+      // And the "no change" reviews awaiting their signature (business
+      // decision 6).
+      const reviews = await reviewsAwaitingFor(tx, viewer.userId);
       return {
         items: rows.map((r) => ({
           ...r,
           overdue: !!r.dueAt && r.dueAt.getTime() < now,
         })),
         total: rows.length,
+        reviews: reviews.map(({ ownerUnitId: _unit, ...r }) => r),
       };
     });
   }

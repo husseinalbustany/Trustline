@@ -20,6 +20,10 @@ export const PERMISSIONS = [
   // Read every document, restricted ones and drafts included, and see the
   // acknowledgement figures. For the quality team and auditors.
   'policies.view_all',
+  // Import an organization's existing documents as approved before
+  // Trustline, for the whole organization (business decision 1): the
+  // Quality officer's, not the Administrator's.
+  'policies.import',
   'reports.view',
   'organization.manage',
   'users.manage',
@@ -47,6 +51,7 @@ export const PERMISSION_MODULE: Record<Permission, ModuleKey> = {
   'policies.manage': 'policies',
   'policies.approve': 'policies',
   'policies.view_all': 'policies',
+  'policies.import': 'policies',
   // Reports draw on whichever modules are on.
   'reports.view': 'core',
   'organization.manage': 'core',
@@ -91,7 +96,9 @@ export const SYSTEM_ROLES: {
       ar: 'صلاحية كاملة تشمل المستخدمين والأدوار والإعدادات.',
       fr: 'Accès complet, y compris les utilisateurs, les rôles et les paramètres.',
     },
-    permissions: [...PERMISSIONS],
+    // Everything but importing documents, which is the Quality officer's
+    // (business decision 1): the Administrator is often IT.
+    permissions: PERMISSIONS.filter((p) => p !== 'policies.import'),
   },
   {
     code: 'quality_officer',
@@ -116,6 +123,7 @@ export const SYSTEM_ROLES: {
       'policies.manage',
       'policies.approve',
       'policies.view_all',
+      'policies.import',
       'reports.view',
     ],
   },

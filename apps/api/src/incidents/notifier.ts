@@ -48,6 +48,11 @@ export const NOTIFICATION_MODULE: Record<NotificationKind, ModuleKey> = {
   document_owner_assigned: 'policies',
   // About the person's own email (an unsubscribe link was used): core.
   email_turned_off: 'core',
+  import_confirmation_due: 'policies',
+  review_approval_requested: 'policies',
+  review_returned: 'policies',
+  // About the person's own signing PIN: core.
+  signing_pin_changed: 'core',
 };
 
 /** The kinds a client with these modules is shown. */
