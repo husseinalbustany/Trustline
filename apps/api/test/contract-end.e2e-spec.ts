@@ -1,4 +1,4 @@
-import { createPublicKey, randomBytes, verify } from 'node:crypto';
+import { createHash, createPublicKey, randomBytes, verify } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import { auditLog, clientDeletions, dataExports, notifications, platformAuditLog, subscriptions, tenants } from '../src/database/schema.js';
 import { ContractNotices } from '../src/exports/contract-notices.check.js';
@@ -7,7 +7,7 @@ import { ExportWorker } from '../src/exports/export-worker.service.js';
 import { ExportStorage } from '../src/exports/storage.js';
 import { dayOf, shiftDay } from '../src/i18n/time-zones.js';
 import { createPlatformAdmin } from '../src/platform/create-admin.js';
-import { deleteClient } from '../src/platform/delete-client.js';
+import { CERTIFICATE_PREFIX, deleteClient } from '../src/platform/delete-client.js';
 import { testBench, type Hospital, type TestBench } from './support/hospital.js';
 
 /**
@@ -95,42 +95,61 @@ describe('the end of a contract', () => {
 
   describe('Trustline’s second approval', () => {
     let asked: { id: string; revision: number };
+    let requester: { id: string; cookie: string };
 
-    it('approves, on a written request, only for a client whose one holder asked', async () => {
-      asked = (await http().post('/exports').set('Cookie', c.cookie).send({ reason: 'contract_end', password }).expect(201)).body;
-      const url = `/${c.id}/exports/${asked.id}/approve`;
-      await http().post(`/platform/tenants${url}`).send({ writtenRequest }).expect(401);
-      await platform(bench.platform).post(url, {}).expect(400);
-      await platform(bench.platform).post(url, { writtenRequest: { ...writtenRequest, reference: '' } }).expect(400);
-      await platform(bench.platform).post(`/${c.id}/exports/${a.id}/approve`, { writtenRequest }).expect(404);
+    it('records the written request in one hand and approves in another, only for an independent requester alone', async () => {
+      const record = (cookie: string, h: Hospital, id: string, body: object = { writtenRequest }) =>
+        platform(cookie).post(`/${h.id}/exports/${id}/written-request`, body);
+      const approve = (cookie: string, h: Hospital, id: string) => platform(cookie).post(`/${h.id}/exports/${id}/approve`);
+      // The first administrator, whom Trustline made: never its requester
+      // (security review 20, M2).
+      const byPlatformAdmin = (await http().post('/exports').set('Cookie', c.cookie).send({ reason: 'contract_end', password }).expect(201)).body;
+      await http().post(`/platform/tenants/${c.id}/exports/${byPlatformAdmin.id}/written-request`).send({ writtenRequest }).expect(401);
+      await record(bench.platform, c, byPlatformAdmin.id, {}).expect(400);
+      await record(bench.platform, c, byPlatformAdmin.id, { writtenRequest: { ...writtenRequest, reference: '' } }).expect(400);
+      await record(bench.platform, c, a.id).expect(404);
+      await record(bench.platform, c, byPlatformAdmin.id).expect(201);
+      await record(second, c, byPlatformAdmin.id).expect(409);
+      // The one who recorded it does not approve it.
+      expect((await approve(bench.platform, c, byPlatformAdmin.id).expect(403)).body).toEqual({ code: 'same_person' });
+      expect((await approve(second, c, byPlatformAdmin.id).expect(409)).body).toEqual({ code: 'requester_not_independent' });
+      await http().post(`/exports/${byPlatformAdmin.id}/cancel`).set('Cookie', c.cookie).send({ revision: byPlatformAdmin.revision }).expect(200);
+      // A requester the client made, more than 7 days ago.
+      const made = await bench.createStaff(c, 'requester', { role: 'administrator', orgUnitId: null });
+      await bench.owner.db.execute(sql`update users set created_at = now() - interval '8 days', password_changed_at = now() - interval '8 days' where id = ${made.id}`);
+      await bench.owner.db.execute(sql`update role_assignments set granted_at = now() - interval '8 days' where user_id = ${made.id}`);
+      requester = made;
       // A client with a second holder, independent of the one who asked:
       // that holder approves.
       const maker = await bench.createStaff(a, 'maker', { role: 'administrator', orgUnitId: null });
       const independent = await bench.createStaff({ ...a, cookie: maker.cookie }, 'independent', { role: 'administrator', orgUnitId: null });
-      await bench.owner.db.execute(sql`update users set created_at = now() - interval '8 days' where id = ${independent.id}`);
-      await bench.owner.db.execute(sql`update role_assignments set granted_at = now() - interval '8 days' where user_id = ${independent.id}`);
-      const theirs = (await http().post('/exports').set('Cookie', a.cookie).send({ reason: 'on_request', password }).expect(201)).body;
-      expect((await platform(bench.platform).post(`/${a.id}/exports/${theirs.id}/approve`, { writtenRequest }).expect(409)).body).toEqual({ code: 'not_alone' });
+      await bench.owner.db.execute(sql`update users set created_at = now() - interval '8 days', password_changed_at = now() - interval '8 days' where id in (${independent.id}, ${maker.id})`);
+      await bench.owner.db.execute(sql`update role_assignments set granted_at = now() - interval '8 days' where user_id in (${independent.id}, ${maker.id})`);
+      const theirs = (await http().post('/exports').set('Cookie', maker.cookie).send({ reason: 'on_request', password }).expect(201)).body;
+      await record(bench.platform, a, theirs.id).expect(201);
+      expect((await approve(second, a, theirs.id).expect(409)).body).toEqual({ code: 'not_alone' });
       // Another client's export, named under this one: as if not there.
-      await platform(bench.platform).post(`/${c.id}/exports/${theirs.id}/approve`, { writtenRequest }).expect(404);
-      const view = (await platform(bench.platform).post(url, { writtenRequest }).expect(200)).body;
+      await record(bench.platform, c, theirs.id).expect(404);
+      asked = (await http().post('/exports').set('Cookie', requester.cookie).send({ reason: 'contract_end', password }).expect(201)).body;
+      await record(bench.platform, c, asked.id).expect(201);
+      const view = (await approve(second, c, asked.id).expect(200)).body;
       expect(view.exports[0]).toMatchObject({ id: asked.id, status: 'approved', trustlineApprovedAt: expect.any(String) });
       // Trustline sees no names of the client's.
       expect(view.exports[0]).not.toHaveProperty('requestedBy');
-      await platform(bench.platform).post(url, { writtenRequest }).expect(409);
+      await approve(second, c, asked.id).expect(409);
       expect(await clientLog(c, 'data_export_approved_by_trustline')).toEqual([
-        { changes: expect.objectContaining({ exportId: asked.id, writtenRequest, platformAdminName: expect.any(String) }) },
+        { changes: expect.objectContaining({ exportId: asked.id, writtenRequest, platformAdminName: 'Second staff' }) },
       ]);
-      expect(await trustlineLog(c, 'second_approval_recorded')).toEqual([{ details: { exportId: asked.id, writtenRequest } }]);
-      expect((await told(c.adminId, 'data_export_changed')).map((n) => n.data.change)).toContain('approved');
+      expect(await trustlineLog(c, 'second_approval_recorded')).toEqual([{ details: expect.objectContaining({ exportId: asked.id, writtenRequest }) }]);
+      expect((await told(requester.id, 'data_export_changed')).map((n) => n.data.change)).toContain('approved');
       // The client sees it approved by Trustline, and only the one who asked may download.
-      const [mine] = (await http().get('/exports').set('Cookie', c.cookie).expect(200)).body.items;
+      const [mine] = (await http().get('/exports').set('Cookie', requester.cookie).expect(200)).body.items;
       expect(mine).toMatchObject({ status: 'approved', approvedBy: null, approvedByTrustline: { writtenRequest } });
     });
 
     it('is made and downloaded as any other', async () => {
       expect(await bench.app.get(ExportWorker).run(new Date(), [c.id])).toMatchObject({ made: 1 });
-      await http().post(`/exports/${asked.id}/download`).set('Cookie', c.cookie).send({ password }).expect(200);
+      await http().post(`/exports/${asked.id}/download`).set('Cookie', requester.cookie).send({ password }).expect(200);
     }, 60_000);
   });
 
@@ -154,10 +173,31 @@ describe('the end of a contract', () => {
       await http().get('/exports').set('Cookie', cookie).expect(200);
       // The public routes stay closed.
       await http().get(`/public/reporting/${a.slug}`).expect(404);
+      // An open window is never shortened by Trustline (security review 20, L2).
+      expect((await platform(bench.platform).put(`/${a.id}/contract`, { exitUntil: today }).expect(409)).body).toEqual({ code: 'exit_window_open' });
       // Once the window has passed, nobody.
-      await platform(bench.platform).put(`/${a.id}/contract`, { exitUntil: shiftDay(today, -1), retainUntil: shiftDay(today, -1) }).expect(200);
+      await bench.owner.db.execute(sql`update subscriptions set exit_until = ${shiftDay(today, -1)}::date, retain_until = ${shiftDay(today, -1)}::date where tenant_id = ${a.id}`);
       await http().get('/auth/me').set('Cookie', cookie).expect(401);
       await bench.login(a.slug, adminRow.email).expect(401);
+    });
+  });
+
+  describe('cancelling again', () => {
+    it('opens a new window when the last one has passed, and clears the dates when made active again (M4)', async () => {
+      const d = await bench.createHospital('d');
+      const cancel = (status: string) => http().patch(`/platform/tenants/${d.id}/subscription`).set('Cookie', bench.platform).send({ status }).expect(200);
+      const datesOf = async () => (await bench.owner.db.select({ exitUntil: subscriptions.exitUntil, retainUntil: subscriptions.retainUntil }).from(subscriptions).where(eq(subscriptions.tenantId, d.id)))[0];
+      await cancel('cancelled');
+      await bench.owner.db.execute(sql`update subscriptions set exit_until = ${shiftDay(today, -10)}::date, retain_until = ${shiftDay(today, -10)}::date where tenant_id = ${d.id}`);
+      await cancel('active');
+      expect(await datesOf()).toEqual({ exitUntil: null, retainUntil: null });
+      await cancel('cancelled');
+      expect(await datesOf()).toEqual({ exitUntil: shiftDay(today, 90), retainUntil: shiftDay(today, 90) });
+      // Cancelled, a window already passed is opened again.
+      await bench.owner.db.execute(sql`update subscriptions set status = 'active' where tenant_id = ${d.id}`);
+      await bench.owner.db.execute(sql`update subscriptions set exit_until = ${shiftDay(today, -10)}::date where tenant_id = ${d.id}`);
+      await cancel('cancelled');
+      expect((await datesOf()).exitUntil).toBe(shiftDay(today, 90));
     });
   });
 
@@ -167,9 +207,12 @@ describe('the end of a contract', () => {
       expect((await ask({ reason: 'Contract ended.' }).expect(409)).body).toEqual({ code: 'not_cancelled' });
       await http().patch(`/platform/tenants/${c.id}/subscription`).set('Cookie', bench.platform).send({ status: 'cancelled' }).expect(200);
       expect((await ask({ reason: 'Contract ended.' }).expect(409)).body).toEqual({ code: 'before_retention' });
-      await platform(bench.platform).put(`/${c.id}/contract`, { exitUntil: shiftDay(today, -2), retainUntil: shiftDay(today, -1) }).expect(200);
+      await bench.owner.db.execute(sql`update subscriptions set exit_until = ${shiftDay(today, -2)}::date, retain_until = ${shiftDay(today, -1)}::date where tenant_id = ${c.id}`);
       await ask({ reason: '' }).expect(400);
-      const asked = (await ask({ reason: 'Contract ended; the client took its export.' }).expect(201)).body.deletion;
+      // Its export was downloaded before it was cancelled: that does not
+      // count (security review 20, M4).
+      expect((await ask({ reason: 'Contract ended.' }).expect(409)).body).toEqual({ code: 'no_export_downloaded' });
+      const asked = (await ask({ reason: 'Contract ended; the client asked in writing.', writtenInstruction: writtenRequest }).expect(201)).body.deletion;
       expect(asked).toMatchObject({ status: 'requested', requestedBy: { name: expect.any(String) } });
       await ask({ reason: 'Again.' }).expect(409);
       expect((await platform(bench.platform).post(`/${c.id}/deletion/${asked.id}/approve`).expect(403)).body).toEqual({ code: 'same_person' });
@@ -190,9 +233,20 @@ describe('the end of a contract', () => {
         rowsDeleted: expect.objectContaining({ users: before[0].n, data_exports: 1 }),
         auditChain: expect.objectContaining({ headSeq: expect.any(Number) }),
       });
-      const key = keys.published.find((k) => k.keyId === done.signature.keyId)!;
+      expect(certificate).toMatchObject({ archivesRemoved: expect.any(Number), kept: expect.any(Array) });
+      // Read back through the portal, from the stored bytes, and checked
+      // against the published key with the certificate's prefix (security
+      // review 20, M3 and L9).
+      const shown = (await platform(second).get(`/${c.id}/contract`).expect(200)).body;
+      expect(shown).toMatchObject({ clientStatus: 'deleted', deletable: 'already_deleted', deletion: { status: 'done', certificateSha256: done.sha256 } });
+      const stored = Buffer.from(shown.deletion.certificateText, 'utf8');
+      expect(createHash('sha256').update(stored).digest('hex')).toBe(done.sha256);
+      const { exportKeys } = (await http().get('/audit/keys').expect(200)).body;
+      const key = exportKeys.find((k: { keyId: string }) => k.keyId === shown.deletion.signature.keyId);
       const publicKey = createPublicKey({ key: Buffer.from(key.publicKey, 'base64'), format: 'der', type: 'spki' });
-      expect(verify(null, done.certificate, publicKey, Buffer.from(done.signature.signature, 'base64'))).toBe(true);
+      expect(verify(null, Buffer.concat([CERTIFICATE_PREFIX, stored]), publicKey, Buffer.from(shown.deletion.signature.signature, 'base64'))).toBe(true);
+      // A deleted client is changed no more.
+      expect((await http().patch(`/platform/tenants/${c.id}`).set('Cookie', bench.platform).send({ status: 'active' }).expect(409)).body).toEqual({ code: 'client_deleted' });
       // A stub, nothing else of the client's.
       const [stub] = await bench.owner.db.select({ status: tenants.status, name: tenants.name, slug: tenants.slug }).from(tenants).where(eq(tenants.id, c.id));
       expect(stub).toEqual({ status: 'deleted', name: {}, slug: c.slug });
@@ -205,6 +259,7 @@ describe('the end of a contract', () => {
       expect(await trustlineLog(c, 'client_data_deleted')).toEqual([{ details: expect.objectContaining({ certificateSha256: done.sha256 }) }]);
       // Once only.
       await expect(deleteClient(bench.owner.db, { deletionId: asked.id, backupsExpireOn: today }, keys, bench.app.get(ExportStorage))).rejects.toThrow(/done, not approved/);
+      await expect(deleteClient(bench.owner.db, { deletionId: asked.id, backupsExpireOn: '2026-02-31' }, keys, bench.app.get(ExportStorage))).rejects.toThrow(/real day/);
       expect(await bench.owner.db.select().from(dataExports).where(eq(dataExports.tenantId, c.id))).toEqual([]);
     }, 60_000);
 
