@@ -187,11 +187,14 @@ export class RolesController {
           permissions.every((p) => role.permissions.includes(p))
         );
       });
+      const importers = await this.provisioning.importHolders(tx);
       const [updated] = await tx
         .update(roles)
         .set(parsed.data)
         .where(eq(roles.id, role.id))
         .returning();
+      // Its holders given `policies.import` by this: the others are told.
+      await this.provisioning.tellOfImportGrants(tx, tenant.id, actor.id, importers);
       await this.provisioning.audit(
         tx,
         tenant.id,

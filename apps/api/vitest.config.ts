@@ -1,4 +1,11 @@
+import { generateKeyPairSync } from 'node:crypto';
 import { defineConfig } from 'vitest/config';
+
+// A key for the audit chain's checkpoints, made afresh for each run: no
+// key is kept anywhere (docs/specs/audit-trail.md, "Signed checkpoints").
+const auditKey = generateKeyPairSync('ed25519')
+  .privateKey.export({ type: 'pkcs8', format: 'der' })
+  .toString('base64');
 
 export default defineConfig({
   // Resolves the path aliases declared in tsconfig.json, including the ones
@@ -17,6 +24,8 @@ export default defineConfig({
       // A pepper for the tests' signing PINs only: no real PIN is ever made
       // with it (docs/specs/identity-signing-pin.md).
       SIGNING_PIN_PEPPER: 'test-only-pepper-for-signing-pins-0000000000',
+      AUDIT_SIGNING_KEY: auditKey,
+      AUDIT_PREVIOUS_PUBLIC_KEYS: '',
     },
   },
 });

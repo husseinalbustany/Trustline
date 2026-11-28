@@ -287,7 +287,7 @@ describe('policies: the daily check, the module and the subscription', () => {
       const kinds = async (who: Staff) =>
         (await sentAbout(who.id, doc.id))
           .filter((n) => n.kind.startsWith('review_'))
-          .map((n) => `${n.kind}:${n.data.days ?? n.data.dueOn}`);
+          .map((n) => `${n.kind}:${(n.data.days ?? n.data.dueOn) as string | number}`);
       await runCheck(at(shiftDay(due, -61)));
       expect(await kinds(writer)).toEqual([]);
       await runCheck(at(shiftDay(due, -60)));
@@ -318,7 +318,7 @@ describe('policies: the daily check, the module and the subscription', () => {
       ).body;
       expect(after.nextReviewOn).toBe(addMonths(dayOf(new Date(), 'Asia/Riyadh'), 1));
       await runCheck(new Date(Date.now() + DAY));
-      expect((await reviews()).map((n) => `${n.kind}:${n.data.days ?? ''}`)).toEqual([
+      expect((await reviews()).map((n) => `${n.kind}:${(n.data.days ?? '') as string | number}`)).toEqual([
         'review_overdue:',
         // A month away: within 30 days the next morning.
         'review_due:30',

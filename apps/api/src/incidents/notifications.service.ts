@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { and, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { ApprovalEngine } from '../approvals/approval-engine.service.js';
-import { documents, incidents, notifications } from '../database/schema.js';
+import { documents, incidents, notifications, users } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
 import type { AuthContext } from '../identity/auth.service.js';
 import {
@@ -80,10 +80,17 @@ export class NotificationsService {
             string
           > | null>`case when ${documents.id} is not null and ${seesDocument} then ${documents.title} end`,
           data: notifications.data,
+          personId: users.id,
+          personName: users.name,
         })
         .from(notifications)
         .leftJoin(incidents, eq(incidents.id, notifications.incidentId))
         .leftJoin(documents, eq(documents.id, notifications.documentId))
+        // The person one is about (`data.personId`), by their name now.
+        .leftJoin(
+          users,
+          sql`${notifications.data} ? 'personId' and ${users.id} = (${notifications.data} ->> 'personId')::uuid`,
+        )
         .where(where)
         .orderBy(desc(notifications.createdAt), desc(notifications.id))
         .limit(input.pageSize)
@@ -97,6 +104,8 @@ export class NotificationsService {
           number,
           canOpenDocument,
           documentTitle,
+          personId,
+          personName,
           ...notification
         }) => ({
           id: notification.id,
@@ -116,6 +125,7 @@ export class NotificationsService {
                   title: canOpenDocument ? documentTitle : null,
                   canOpen: canOpenDocument,
                 },
+          person: personId === null ? null : { id: personId, name: personName },
           data: notification.data,
         }),
       );

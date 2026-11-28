@@ -407,6 +407,20 @@
       "when": 1795851305081,
       "tag": "0057_audit_chain",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1795851353564,
+      "tag": "0058_audit_chain_seal",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1795851397594,
+      "tag": "0059_audit_view_for_existing_clients",
+      "breakpoints": true
     }
   ]
 }

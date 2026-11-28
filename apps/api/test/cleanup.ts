@@ -5,6 +5,10 @@ import {
   approvalRouteSteps,
   approvalRuns,
   approvalRunSteps,
+  auditChain,
+  auditChainCheckpoints,
+  auditChainHeads,
+  auditChainVerifications,
   auditLog,
   documentAcknowledgements,
   documentReviewApprovals,
@@ -131,6 +135,13 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
       incidents,
       incidentCategories,
       referenceCounters,
+      // A whole test client's audit trail, its chain with it. Never the
+      // entries of a client that is kept: its chain would break
+      // (docs/specs/audit-trail.md, "Tests").
+      auditChainVerifications,
+      auditChainCheckpoints,
+      auditChain,
+      auditChainHeads,
       auditLog,
       userTokens,
       sessions,

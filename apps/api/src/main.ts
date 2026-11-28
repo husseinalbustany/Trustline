@@ -2,6 +2,7 @@ import './env.js';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
 import { API_PREFIX, listen, setupApp } from './app.setup.js';
+import { AuditChainCheck } from './audit/chain-check.service.js';
 import { EmailWorker } from './email/email-worker.service.js';
 import { DeadlineCheck } from './incidents/deadline-check.service.js';
 import { PolicyCheck } from './policies/policy-check.service.js';
@@ -29,5 +30,10 @@ async function bootstrap() {
   // queues each organization's daily digest. Says once how mail is sent, or
   // that it is not configured and kept in the outbox. Safe in every process.
   app.get(EmailWorker, { strict: false }).start();
+  // The daily check of each client's audit chain, from 02:00 on its clock
+  // (docs/specs/audit-trail.md), every fifteen minutes, safe in every
+  // process. Says once if checkpoints cannot be signed, naming the
+  // variable, never its value.
+  app.get(AuditChainCheck, { strict: false }).start();
 }
 await bootstrap();

@@ -29,6 +29,10 @@ export const PERMISSIONS = [
   'users.manage',
   'roles.manage',
   'settings.manage',
+  // Read the audit trail and its seal (docs/specs/audit-trail.md). Only a
+  // grant for the whole organization counts: a trail for one unit would
+  // still name records and people outside it.
+  'audit.view',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -58,6 +62,7 @@ export const PERMISSION_MODULE: Record<Permission, ModuleKey> = {
   'users.manage': 'core',
   'roles.manage': 'core',
   'settings.manage': 'core',
+  'audit.view': 'core',
 };
 
 /** Whether a permission does anything for a client with these modules. */
@@ -125,6 +130,7 @@ export const SYSTEM_ROLES: {
       'policies.view_all',
       'policies.import',
       'reports.view',
+      'audit.view',
     ],
   },
   {

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AuditModule } from './audit/audit.module.js';
 import { DatabaseModule } from './database/database.module.js';
 import { EmailModule } from './email/email.module.js';
 import { MailModule } from './email/mail.module.js';
@@ -21,6 +22,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module.js';
     PoliciesModule,
     EmailModule,
     PlatformModule,
+    AuditModule,
   ],
   controllers: [HealthController],
 })

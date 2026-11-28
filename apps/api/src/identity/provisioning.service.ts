@@ -10,6 +10,7 @@ import {
   documentTypes,
   incidentCategories,
   incidentResponseRules,
+  notifications,
   roleAssignments,
   roles,
   sessions,
@@ -390,17 +391,79 @@ export class ProvisioningService {
     grants: RoleGrant[],
     actorId: string | null,
   ) {
+    const importers = await this.importHolders(tx);
     await tx.delete(roleAssignments).where(eq(roleAssignments.userId, userId));
-    if (grants.length === 0) return;
-    await tx.insert(roleAssignments).values(
-      grants.map((g) => ({
-        tenantId,
-        userId,
-        roleId: g.roleId,
-        orgUnitId: g.orgUnitId,
-        grantedBy: actorId,
-      })),
+    if (grants.length > 0) {
+      await tx.insert(roleAssignments).values(
+        grants.map((g) => ({
+          tenantId,
+          userId,
+          roleId: g.roleId,
+          orgUnitId: g.orgUnitId,
+          grantedBy: actorId,
+        })),
+      );
+    }
+    await this.tellOfImportGrants(tx, tenantId, actorId, importers);
+  }
+
+  /**
+   * Who holds `policies.import`, anywhere: every account not disabled
+   * (an invited one holds what it was given). Asked before a change of
+   * roles or of a role, for `tellOfImportGrants` after it.
+   */
+  async importHolders(tx: Transaction) {
+    const rows = await tx
+      .selectDistinct({ id: users.id })
+      .from(roleAssignments)
+      .innerJoin(roles, eq(roles.id, roleAssignments.roleId))
+      .innerJoin(users, eq(users.id, roleAssignments.userId))
+      .where(and(ne(users.status, 'disabled'), sql`'policies.import' = any(${roles.permissions})`));
+    return new Set(rows.map((r) => r.id));
+  }
+
+  /**
+   * Whoever was given `policies.import` by the change just made (they did
+   * not hold it in `before`): the other Quality officers and
+   * Administrators are told in the app (the business's decision on
+   * security review 11, recorded in docs/specs/audit-trail.md). Never the
+   * one who made the change, nor the person given it. Only for a client
+   * with the policies module, whose notifications these are.
+   */
+  async tellOfImportGrants(
+    tx: Transaction,
+    tenantId: string,
+    actorId: string | null,
+    before: Set<string>,
+  ) {
+    const given = [...(await this.importHolders(tx))].filter((id) => !before.has(id));
+    if (given.length === 0) return;
+    if (!(await this.entitlements.mayUse(tx, tenantId, 'policies'))) return;
+    const told = await tx
+      .selectDistinct({ id: users.id })
+      .from(roleAssignments)
+      .innerJoin(roles, eq(roles.id, roleAssignments.roleId))
+      .innerJoin(users, eq(users.id, roleAssignments.userId))
+      .where(
+        and(
+          eq(users.status, 'active'),
+          eq(roles.isSystem, true),
+          inArray(roles.code, ['quality_officer', 'administrator']),
+        ),
+      );
+    const rows = given.flatMap((personId) =>
+      told
+        .filter((u) => u.id !== personId && u.id !== actorId)
+        .map((u) => ({
+          tenantId,
+          userId: u.id,
+          kind: 'policies_import_granted' as const,
+          data: { personId, serious: false },
+        })),
     );
+    for (let i = 0; i < rows.length; i += 1000) {
+      await tx.insert(notifications).values(rows.slice(i, i + 1000));
+    }
   }
 
   /**
