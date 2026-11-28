@@ -150,7 +150,7 @@ export const ACKNOWLEDGEMENT_HEADINGS: Words<
     dueOn: 'الموعد النهائي',
     state: 'الوضع',
     acknowledgedAt: 'تاريخ الإقرار',
-    signatureFingerprint: 'البصمة الرقمية لما وُقِّع',
+    signatureFingerprint: 'البصمة الرقمية للمحتوى الموقَّع',
     title: 'عنوان الوثيقة',
     late: 'بعد الموعد',
     daysOverdue: 'أيام التأخر',
@@ -222,7 +222,7 @@ export const IMPORT_REGISTER_HEADINGS: Words<
     importedAt: 'تاريخ الاستيراد',
     batch: 'الدفعة',
     batchListHash: 'البصمة الرقمية للدفعة',
-    signatureFingerprint: 'البصمة الرقمية لما وُقِّع',
+    signatureFingerprint: 'البصمة الرقمية للمحتوى الموقَّع',
   },
   fr: {
     number: 'Numéro',
