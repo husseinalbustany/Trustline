@@ -305,7 +305,7 @@ export class AuditChainCheck implements OnModuleDestroy {
           if (previous && dayOf(previous.runAt, zone) === today) return null;
           full ||= weekdayOf(today) === fullCheckDayOf(tenantId);
         }
-        const check = await this.check(tx, tenantId, full, now);
+        const check = await this.check(tx, tenantId, full);
         await this.record(tx, tenantId, check, now, previous ?? null);
         if (zone && check.result === 'passed') await this.tellHead(tx, tenantId, check, now, zone);
         return check;
@@ -348,7 +348,7 @@ export class AuditChainCheck implements OnModuleDestroy {
   }
 
   /** The check itself, in the client's transaction. Records nothing. */
-  private async check(tx: Transaction, tenantId: string, full: boolean, now: Date) {
+  private async check(tx: Transaction, tenantId: string, full: boolean) {
     const [head] = await tx
       .select({ seq: auditChainHeads.seq, hash: auditChainHeads.hash })
       .from(auditChainHeads);

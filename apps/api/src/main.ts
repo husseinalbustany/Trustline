@@ -2,6 +2,7 @@ import './env.js';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
 import { API_PREFIX, listen, setupApp } from './app.setup.js';
+import { AuditKeys, SIGNING_KEY_VARIABLE } from './audit/audit-keys.js';
 import { AuditChainCheck } from './audit/chain-check.service.js';
 import { EmailWorker } from './email/email-worker.service.js';
 import { DeadlineCheck } from './incidents/deadline-check.service.js';
@@ -9,6 +10,12 @@ import { PolicyCheck } from './policies/policy-check.service.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  // In production, the audit trail's checkpoints are signed or the API
+  // does not start (security review 12, L5): the variable's name, never a
+  // value.
+  if (process.env.NODE_ENV === 'production' && !app.get(AuditKeys, { strict: false }).signer) {
+    throw new Error(`${SIGNING_KEY_VARIABLE} must hold a valid Ed25519 private key in production`);
+  }
   // The prefix, so that what is matched by path is matched whole.
   setupApp(app, { prefix: `/${API_PREFIX}` });
   // Versioned so web and mobile clients on an older release keep working.

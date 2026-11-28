@@ -16,7 +16,7 @@ import { SUPPORTED_LOCALES, type Locale } from '../i18n/locales.js';
 import { CSV_CONTENT_TYPE } from '../policies/csv.js';
 import { AuditKeys } from './audit-keys.js';
 import { checkpointsQuery, chainQuery, entriesExportQuery, entriesQuery } from './input.js';
-import { readCursor, TrailService } from './trail.service.js';
+import { readCursor, sealedBeforeIn, TrailService } from './trail.service.js';
 
 /** The query, or 400. */
 function parse<T>(schema: { safeParse(v: unknown): { success: true; data: T } | { success: false } }, query: unknown): T {
@@ -144,13 +144,16 @@ export class AuditController {
     requireEverywhere(req, 'audit.view');
     if (!noQuery.safeParse(query).success) throw new BadRequestException();
     return this.tenantDb.withTenant(req.auth.tenant.id, async (tx) => {
+      // The head's time is its entry's, which is sealed, not the seal's own
+      // (security review 12, L1).
       const [head] = await tx
-        .select({ seq: auditChainHeads.seq, at: auditChain.sealedAt })
+        .select({ seq: auditChainHeads.seq, at: auditLog.occurredAt })
         .from(auditChainHeads)
         .leftJoin(
           auditChain,
           and(eq(auditChain.tenantId, auditChainHeads.tenantId), eq(auditChain.seq, auditChainHeads.seq)),
-        );
+        )
+        .leftJoin(auditLog, eq(auditLog.id, auditChain.entryId));
       const check = {
         at: auditChainVerifications.runAt,
         result: auditChainVerifications.result,
@@ -161,6 +164,10 @@ export class AuditController {
         firstBadSeq: auditChainVerifications.firstBadSeq,
         firstBadEntryId: auditChainVerifications.firstBadEntryId,
         keyId: auditChainCheckpoints.keyId,
+        signature: auditChainCheckpoints.signature,
+        cpSeq: auditChainCheckpoints.seq,
+        cpHash: auditChainCheckpoints.hash,
+        cpAt: auditChainCheckpoints.at,
       };
       const [last] = await tx
         .select(check)
@@ -172,15 +179,10 @@ export class AuditController {
         .select(check)
         .from(auditChainVerifications)
         .leftJoin(auditChainCheckpoints, eq(auditChainCheckpoints.id, auditChainVerifications.checkpointId))
-        .where(eq(auditChainVerifications.result, 'failed'))
+        .where(and(eq(auditChainVerifications.result, 'failed'), eq(auditChainVerifications.confirmed, true)))
         .orderBy(asc(auditChainVerifications.runAt))
         .limit(1);
-      const [started] = await tx
-        .select({ changes: auditLog.changes })
-        .from(auditLog)
-        .where(and(eq(auditLog.action, 'audit_chain_started'), eq(auditLog.entityType, 'tenant')))
-        .limit(1);
-      const sealed = (started?.changes ?? null) as { sealedOn?: string; sealedBefore?: number } | null;
+      const sealed = await sealedBeforeIn(tx);
       const shown = (row: typeof last | undefined) =>
         row
           ? {
@@ -192,7 +194,18 @@ export class AuditController {
               kind: row.kind,
               firstBadSeq: row.firstBadSeq,
               firstBadEntryId: row.firstBadEntryId,
-              signed: row.keyId !== null,
+              // Signed only when the signature holds under a key this API
+              // knows (security review 12, L5).
+              signed:
+                row.cpSeq !== null &&
+                this.keys.check({
+                  tenantId: req.auth.tenant.id,
+                  seq: row.cpSeq,
+                  hash: row.cpHash!,
+                  at: row.cpAt!,
+                  keyId: row.keyId,
+                  signature: row.signature,
+                }) === 'valid',
             }
           : null;
       const lastCheck = shown(last);
@@ -210,8 +223,8 @@ export class AuditController {
         // Entries 1 to `sealedBefore` were recorded before the trail was
         // sealed, on `sealedOn`: the chain shows they have not changed
         // since, not before. A client made since is sealed from its start.
-        sealedOn: sealed?.sealedOn ?? null,
-        sealedBefore: sealed?.sealedBefore ?? 0,
+        sealedOn: sealed.sealedOn,
+        sealedBefore: sealed.sealedBefore,
         // Whether this API signs its checkpoints (it has a key).
         signing: this.keys.signer ? ('signed' as const) : ('unsigned' as const),
       };

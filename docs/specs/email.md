@@ -441,3 +441,16 @@ log) is kept elsewhere.
 Choosing the digest hour per organization.
 Delivery reports (bounces), and other transports beyond SMTP (an HTTP API of
 a mail service can be added as another `MailSender`).
+
+## The audit trail's emails (docs/specs/audit-trail.md)
+
+- **`audit_chain_head`**, once a week, to the built-in Administrators: the
+  number of the head of the organization's audit chain and its hash (decision
+  5 of the audit trail allows a hash in an email). Sent at once. It cannot be
+  switched off, and it is never held back while the subscription is
+  suspended.
+- **The sign-in code** of an external reviewer: six digits, valid ten
+  minutes. It is sent by the sign-in request itself (category
+  `sign_in_code`), never by the worker. It carries no link to preferences
+  or to unsubscribe, and nothing else. In outbox mode it is kept in the
+  outbox, as every other email is.

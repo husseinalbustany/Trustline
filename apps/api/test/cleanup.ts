@@ -50,6 +50,7 @@ import {
   userTokens,
 } from '../src/database/schema.js';
 import { requireEnv } from '../src/env.js';
+import { AUDIT_ACTIONS, isAuditAction } from '../src/audit/actions.js';
 
 /** A tag, a hyphen and a run's random part are longer than this. */
 const MIN_PREFIX = 8;
@@ -76,6 +77,26 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
   }
   const { db, pool } = createDatabase(requireEnv('DATABASE_URL'));
   const ours = sql`starts_with(${tenants.slug}, ${slugPrefix})`;
+  // Every action and detail key the run's clients were written, against
+  // the registry (src/audit/actions.ts): what the code writes through a
+  // variable is checked here, where it was written for real.
+  let unregistered: string[] = [];
+  try {
+    const { rows } = await db.execute<{ action: string; key: string | null }>(sql`
+      select distinct a.action, k as key
+      from audit_log a
+      join ${tenants} on ${tenants.id} = a.tenant_id
+      left join lateral jsonb_object_keys(
+        case when jsonb_typeof(a.changes) = 'object' then a.changes else '{}'::jsonb end) k on true
+      where ${ours}`);
+    unregistered = rows
+      .filter((r) =>
+        !isAuditAction(r.action) ||
+        (r.key !== null && !(AUDIT_ACTIONS[r.action].details as readonly string[]).includes(r.key)))
+      .map((r) => (r.key === null ? r.action : `${r.action}.${r.key}`));
+  } catch {
+    // The check only reads; the clean-up below goes on regardless.
+  }
   try {
     // In one transaction: another test file, which may be reading every
     // client at that moment, never sees one half removed (a client with
@@ -164,5 +185,8 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
     });
   } finally {
     await pool.end();
+  }
+  if (unregistered.length > 0) {
+    throw new Error(`Audit entries not in the registry (src/audit/actions.ts): ${[...new Set(unregistered)].sort().join(', ')}`);
   }
 }

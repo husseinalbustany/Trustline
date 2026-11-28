@@ -518,13 +518,15 @@ describe('hospital users, roles and sign-in', () => {
 
       const owner = createDatabase(requireEnv('DATABASE_URL'));
       const { rows } = await owner.db.execute<{
-        changes: { platformAdminEmail: string };
+        changes: { platformAdminName: string; platformAdminEmail?: string };
       }>(
         sql`select changes from audit_log where tenant_id = ${a.id} and action = 'administrator_created_by_platform'`,
       );
       await owner.pool.end();
       expect(rows).toHaveLength(1);
-      expect(rows[0].changes.platformAdminEmail).toBe(staffEmail);
+      // The staff member by name, never by address (audit trail, step 7).
+      expect(rows[0].changes.platformAdminName).toBe('Staff');
+      expect(rows[0].changes.platformAdminEmail).toBeUndefined();
     });
   });
 

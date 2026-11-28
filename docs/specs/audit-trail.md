@@ -1,7 +1,7 @@
 # Audit trail: viewer, tamper evidence, surveyor access
 
-Status: steps 1 to 3 of "Order of build" built (see "Built" at the end);
-the rest proposed. Read CLAUDE.md, README.md and
+Status: steps 1 to 7 of "Order of build" built, except the web screens and
+the chaining of `platform_audit_log` (see "Built" at the end); step 8 later. Read CLAUDE.md, README.md and
 `modules-and-subscriptions.md` first.
 
 The business document promises that "every action in the system is recorded
@@ -897,17 +897,206 @@ What exists now, and where it differs from the design above.
   `src/database/deadlines.spec.ts` deletes demo clients' entries only
   inside a transaction it rolls back.
 
+### Changed by security review 12
+
+- **H1 (definer functions):** every function that runs as the owner sets
+  `search_path = pg_catalog, public, pg_temp`, and names its tables with
+  their schema. `TEMPORARY` on the database is revoked from PUBLIC, so no
+  role but the owner makes a temporary table (migration 0063).
+- **H2 (snapshots):** the check runs in one REPEATABLE READ transaction
+  (`TenantDb.withTenant(…, { isolationLevel })`). An entry sealed while it
+  runs is left for the next check.
+  - The check itself writes no audit entry. Its housekeeping (ending
+    expired access, clearing addresses) runs in transactions of its own.
+- **M1 (scheduling):**
+  - The full check runs on the client's own weekday, derived from its id
+    (`fullCheckDayOf`), and always when there is no trusted checkpoint.
+  - A trigger sets `run_at` to the database's time.
+  - Checkpoints may not be dated more than five minutes ahead.
+- **M2 (truncation):**
+  - Each pass that succeeds logs the client, the head's number and its hash
+    to the server log.
+  - A checkpoint under an unknown key id is a break (`bad_checkpoint`),
+    unless the key id is listed in `AUDIT_RETIRED_KEY_IDS`.
+  - The head is also emailed weekly (below).
+  - What a checkpoint proves today: that the holder of the key saw that
+    head at that time, and only while a copy of it survives somewhere. It
+    cannot show that new entries forged at the head are false.
+- **M3 (unsealed entries):**
+  - The search for unsealed entries covers every entry, whatever its date.
+  - For the application and platform roles, the database sets
+    `occurred_at` to `now()`. Only migrations choose another time.
+- **L1 (fields outside the hash):** "recorded before the trail was sealed"
+  is `seq <= sealedBefore`, taken from the lowest sealed
+  `audit_chain_started` entry. The head's time is its entry's time. Neither
+  comes from a column outside the hash (`sealed_late`, `sealed_at`).
+- **L2 (forged checkpoints):** a `bad_checkpoint` counts as a break
+  (`confirmed`), and is told and shown, only when the next check finds it
+  again. Every other kind counts at once.
+- **L3 (cross-client keys):** a result's checkpoint is referenced by
+  `(tenant_id, checkpoint_id)`.
+- **L4 (ambiguous bodies):** `action` and `entity_type` must match
+  `^[a-z_]+$`.
+- **L5 (missing key):**
+  - With `NODE_ENV=production`, the API does not start without a valid
+    `AUDIT_SIGNING_KEY`.
+  - The status says `signed` only when the signature holds under a known
+    key.
+- **L6 (re-enabled accounts):** enabling a disabled account again counts
+  as giving `policies.import`, for the notice to the others.
+- **L7 (platform role):** the platform role has the application role's
+  timeouts.
+- **Info (salt):** the salt is the SHA-256 of two random UUIDs, about 244
+  random bits.
+
+### Built for steps 4 to 7
+
+- **The viewer:**
+  - `GET /api/v1/audit/entries` (`src/audit/trail.service.ts`), with
+    filters by record (type and id, or a reference or number), person,
+    actions, area and days;
+  - paging by key (`before` = time and id), and a total capped at 10,000;
+  - the indexes `(tenant, occurred_at desc, id desc)`,
+    `(tenant, actor, occurred_at)` and `(tenant, action, occurred_at)`
+    (migration 0060);
+  - masking as designed: by `reporterToldTo()`, in SQL, so that a person
+    filter never matches a masked entry;
+  - entries of a module the client does not have are not listed
+    (`moduleOfAction`);
+  - labels are the web's (`audit.actions.<key>`), and the API returns keys.
+- **Exports:**
+  - `GET /audit/exports/entries`: a CSV through `csv.ts`, worded from
+    `src/audit/wording`, at most 50,000 rows;
+  - `GET /audit/exports/chain`: the chain file, streamed;
+  - `GET /audit/checkpoints`: the checkpoints file;
+  - each is audited (`audit_entries_exported`, `audit_chain_exported`,
+    `audit_checkpoints_exported`);
+  - `apps/api/scripts/verify-audit-chain.mjs` checks a chain file.
+- **External reviewers:**
+  - `users.kind`, the access columns and `sign_in_codes` (migration 0060),
+    and the built-in role `external_reviewer` (migration 0061, audited per
+    client);
+  - `GET`, `POST` and `PATCH` on `/users/external`
+    (`src/identity/external-access.service.ts`);
+  - a one-time code by email at each sign-in (`POST /auth/login` answers
+    with a challenge, then `POST /auth/login/code`). The code is sent by
+    the request itself and kept in the outbox in outbox mode
+    (`SignInCodes`);
+  - sessions only within their days, refused on every request outside
+    them;
+  - every write refused in `SessionGuard` (403 `read_only_access`), except
+    signing out (`@OpenToReviewers()`);
+  - every read recorded (`ReviewerReads`, `external_reviewer_viewed`);
+  - not counted as named users;
+  - ended by an administrator, or by the daily check once the last day has
+    passed;
+  - every step audited, and the holders of `users.manage` told
+    (`external_access_changed`).
+- **Mirroring:** `client_created_by_platform` and
+  `client_settings_changed_by_platform` (with the fields, the old and new
+  values, and the staff member's name) are written in the client's own
+  log, through the platform role, whose insert policy now allows them.
+  - Every mirrored entry now names Trustline's staff by `platformAdminName`
+    and `platformAdminId`, never by email (`platformAdminEmail` stays in
+    the entries written before).
+  - Chaining `platform_audit_log` is **not built yet**.
+- **The weekly head (decision 5):** the first check that passes each ISO
+  week writes `audit_chain_head` (`data: { seq, hash, checkedOn }`) for
+  the built-in Administrators. It is emailed at once, cannot be switched
+  off (`COMPULSORY_FOR_EVERYONE`; only Administrators receive it), and is
+  never held back while the subscription is suspended.
+- **Addresses (decision 7, two years):**
+  - every run of the check calls `audit_log_forget_addresses(now − 2
+    years)`, a definer function that clears the address and salt of the
+    caller's client only;
+  - the function refuses any time younger than two years;
+  - when anything was cleared, it is audited (`audit_addresses_cleared`);
+  - the chain stays whole, since the body holds only the commitment.
+- **Language review 9:** every label change is applied to
+  `src/audit/wording`, with Arabic `incident_reported` «تقديم بلاغ» and the
+  "by a Trustline update" suffix kept.
+  - The registry's details now match what is written.
+  - `src/audit/details.spec.ts` fails for an unregistered detail key in the
+    code (read with the TypeScript parser), in a migration, or in the
+    database.
+  - `test/cleanup.ts` fails a test file whose clients hold an unregistered
+    action or detail key.
+
+### The chain file format
+
+A JSON Lines file, UTF-8, one JSON object per line, English keys:
+
+1. **The header:**
+   `{ "type": "header", "format": "trustline-audit-chain", "version": 1,
+   "tenant", "organization", "firstSeq", "lastSeq", "previousHash",
+   "madeAt", "publicKeys": [{ "keyId", "algorithm": "Ed25519",
+   "publicKey" (SPKI DER, base64), "current" }] }`.
+   - `previousHash` is the hash of entry `firstSeq − 1` (64 zeros for entry
+     1).
+2. **One line per entry, by number:**
+   `{ "type": "entry", "seq", "entryId", "prevHash", "bodyHash", "hash",
+   "sealedLate", "body"?, "ip"?, "ipSalt"? }`.
+   - `body` is the exact text that was hashed. It is left out for an entry
+     the caller may not see in full: masked, of a module that is off, or
+     gone.
+   - `ip` and `ipSalt` are given while the address is kept.
+3. **One line per checkpoint** in the range, and the one at or before its
+   start:
+   `{ "type": "checkpoint", "tenant", "seq", "hash", "at", "keyId",
+   "signature" }`.
+
+**The body** is eleven lines joined by `\n`, with no final newline. An
+empty value stands for none:
+
+```
+trustline-audit-entry-v1
+id: <uuid>
+tenant: <uuid>
+seq: <n>
+occurredAt: <UTC, microseconds, e.g. 2026-11-28T07:15:08.420807Z>
+actor: <uuid or empty>
+action: <action>
+entityType: <type or empty>
+entityId: <uuid or empty>
+changes: <PostgreSQL's text of the JSON, or empty>
+ip: <SHA-256 hex of salt + address, or empty>
+```
+
+**How to check a file:**
+
+1. `bodyHash = SHA-256(body)`, in hex, for every line with a body.
+2. `hash = SHA-256("trustline-audit-v1\n" + seq + "\n" + prevHash + "\n" + bodyHash)`,
+   and each line's `prevHash` is the hash of the line before it (the
+   header's `previousHash` for the first).
+3. The numbers run with no gap from `firstSeq` to `lastSeq`.
+4. Where `ip` is given, `SHA-256(ipSalt + ip)` is the body's `ip` line.
+5. Each checkpoint's `signature` (base64) verifies with Ed25519, under the
+   key of its `keyId` from `/api/v1/audit/keys`, over
+   `trustline-audit-checkpoint-v1\n<tenant>\n<seq>\n<hash>\n<at>`. A
+   checkpoint inside the range names the same hash as the entry at its
+   number.
+6. A checkpoint kept from earlier (a download, the weekly email) still
+   appears with the same hash. Nothing before it has been rewritten since.
+
+To check one entry by hand: write its `body` to a file with no final
+newline, then run `sha256sum` and compare the result with `bodyHash`.
+
+`node apps/api/scripts/verify-audit-chain.mjs <file> [keys.json]` does steps
+1 to 5, on the reviewer's machine only.
+
 ### Not built yet
 
-- The viewer and its entries API (step 4).
-- The exports, chain file and checkpoints download (step 5).
-- External reviewers (step 6).
-- Mirroring Trustline's actions and chaining `platform_audit_log` (step 7).
-- The weekly email of the head (decision 5).
-- Clearing addresses (decision 7).
-- The viewer's indexes, which come with step 4.
+- The web screens (the viewer, the status notice, the external reviewer
+  screens, and the labels in the dictionaries): Maya, from
+  `audit-api-contract.md`.
+- Chaining `platform_audit_log` (spec step 7, second half).
+- The in-browser verification page, and publishing the format and keys on
+  Trustline's site.
+- Step 8: a timestamping service, operators' database access, and more
+  recorded reading.
 
 The reviews due:
 
-- `security-reviewer` after steps 2 and 3;
-- `bilingual-reviewer` for the wording files.
+- `security-reviewer` after steps 4 and 6 (steps 2 and 3: review 12, fixed);
+- `bilingual-reviewer` for the new labels (steps 4 to 7) and the two new
+  emails (the weekly head, the sign-in code).

@@ -433,14 +433,20 @@ describe('what the database itself enforces for the incident safeguards', () => 
       ).toBe('15s');
     });
 
-    it('leave migrations, the seed and the admin portal as they were', async () => {
-      for (const database of [owner.db, platform.db]) {
-        expect(await setting(database, 'statement_timeout')).toBe('0');
-        expect(await setting(database, 'lock_timeout')).toBe('0');
-        expect(
-          await setting(database, 'idle_in_transaction_session_timeout'),
-        ).toBe('0');
-      }
+    it('leave migrations and the seed as they were', async () => {
+      expect(await setting(owner.db, 'statement_timeout')).toBe('0');
+      expect(await setting(owner.db, 'lock_timeout')).toBe('0');
+      expect(
+        await setting(owner.db, 'idle_in_transaction_session_timeout'),
+      ).toBe('0');
+    });
+
+    it('limit the admin portal as the application (security review 12, L7)', async () => {
+      expect(await setting(platform.db, 'statement_timeout')).toBe('15s');
+      expect(await setting(platform.db, 'lock_timeout')).toBe('5s');
+      expect(
+        await setting(platform.db, 'idle_in_transaction_session_timeout'),
+      ).toBe('1min');
     });
 
     it('do not wait for ever for a row somebody else holds', async () => {
@@ -540,6 +546,8 @@ describe('what the database itself enforces for the incident safeguards', () => 
         department_manager: [],
         // Built in since migration 0045; this one gives it neither.
         approving_authority: [],
+        // Built in since migration 0061; this one gives it neither.
+        external_reviewer: [],
         reporter: [],
         zz_own_role: [],
       });

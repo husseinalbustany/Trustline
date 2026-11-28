@@ -116,10 +116,12 @@ describe('the details of audit entries', () => {
     for (const name of readdirSync(folder).filter((f) => f.endsWith('.sql')).sort()) {
       for (const statement of readFileSync(resolve(folder, name), 'utf8').split('--> statement-breakpoint')) {
         const code = statement.replace(/--.*$/gm, '');
-        if (!/insert\s+into\s+"?audit_log"?\s*\(/i.test(code)) continue;
-        const action = /'([a-z]+(?:_[a-z]+)+)'/.exec(code.slice(code.search(/select|values/i)))?.[1];
+        const insert = code.search(/insert\s+into\s+"?audit_log"?\s*\(/i);
+        if (insert < 0) continue;
+        const after = code.slice(insert);
+        const action = /'([a-z]+(?:_[a-z]+)+)'/.exec(after.slice(after.search(/select|values/i)))?.[1];
         if (!action || !isAuditAction(action)) continue;
-        for (const key of jsonbKeys(code)) {
+        for (const key of jsonbKeys(after)) {
           if (!registered(action).has(key)) unregistered.push(`${action}.${key} (${name})`);
         }
       }

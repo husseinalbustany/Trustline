@@ -214,3 +214,17 @@ export async function testBench(tag: string, run: string) {
 }
 
 export type TestBench = Awaited<ReturnType<typeof testBench>>;
+
+/**
+ * A time zone where it is now between 03:00 and 22:00: for a test of what
+ * runs at the database's own time, after 02:00 on the client's calendar.
+ */
+export function daytimeZone(now = new Date()) {
+  for (const zone of ['UTC', 'Asia/Riyadh', 'Asia/Tokyo', 'Pacific/Auckland', 'America/New_York', 'America/Los_Angeles', 'Pacific/Honolulu']) {
+    const hour = Number(
+      new Intl.DateTimeFormat('en-GB', { timeZone: zone, hour: '2-digit', hourCycle: 'h23' }).format(now),
+    );
+    if (hour >= 3 && hour < 22) return zone;
+  }
+  throw new Error('no time zone in daytime');
+}

@@ -509,8 +509,10 @@ describe('modules and subscriptions', () => {
           on: [],
           off: MODULES.filter((m) => m !== 'policies'),
         },
-        platformAdminEmail: expect.stringContaining('@test.invalid'),
+        // The staff member by name, never by address (audit trail, step 7).
+        platformAdminName: expect.any(String),
       });
+      expect(entries[0].changes).not.toHaveProperty('platformAdminEmail');
       expect(entries[1].changes).toMatchObject({
         modules: { on: ['incidents'], off: [] },
       });

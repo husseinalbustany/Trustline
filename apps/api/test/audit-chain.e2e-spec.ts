@@ -15,8 +15,8 @@ import {
 } from '../src/database/schema.js';
 import { TenantDb } from '../src/database/tenant-db.service.js';
 import { requireEnv } from '../src/env.js';
-import { momentIn, shiftDay, startOfDay } from '../src/i18n/time-zones.js';
-import { testBench, type Hospital, type Staff, type TestBench } from './support/hospital.js';
+import { momentIn, startOfDay } from '../src/i18n/time-zones.js';
+import { daytimeZone, testBench, type Hospital, type Staff, type TestBench } from './support/hospital.js';
 
 /**
  * The audit trail's seal (docs/specs/audit-trail.md, "Tamper evidence"):
@@ -236,18 +236,17 @@ describe('the audit chain', () => {
 
     it('runs once a day per client, from 02:00 on its calendar, the first one in full', async () => {
       const h = await fresh('daily');
-      const [{ timeZone }] = await bench.owner.db.select({ timeZone: tenants.timeZone }).from(tenants).where(eq(tenants.id, h.id));
-      // The last 03:00 there that has passed, and 01:00 that same day: in
-      // the past, so that no later entry is dated before a checkpoint.
-      const today = momentIn(new Date(), timeZone).slice(0, 10);
-      let three = new Date(startOfDay(today, timeZone).getTime() + 3 * 3_600_000);
-      if (three.getTime() > Date.now()) three = new Date(startOfDay(shiftDay(today, -1), timeZone).getTime() + 3 * 3_600_000);
-      const one = new Date(three.getTime() - 2 * 3_600_000);
+      // A time zone where it is now between 03:00 and 22:00: the check runs
+      // at the database's time, which it records (security review 12, M1).
+      const zone = daytimeZone();
+      await http().patch(`/platform/tenants/${h.id}`).set('Cookie', bench.platform).send({ timeZone: zone }).expect(200);
+      const today = momentIn(new Date(), zone).slice(0, 10);
+      const one = new Date(startOfDay(today, zone).getTime() + 3_600_000);
       const runs = () => bench.owner.db.select().from(auditChainVerifications).where(eq(auditChainVerifications.tenantId, h.id));
       expect(await check.run(one, [h.id])).toMatchObject({ checked: 0 });
       expect(await runs()).toEqual([]);
-      expect(await check.run(three, [h.id])).toMatchObject({ checked: 1, broken: 0 });
-      expect(await check.run(new Date(three.getTime() + 3_600_000), [h.id])).toMatchObject({ checked: 0 });
+      expect(await check.run(new Date(), [h.id])).toMatchObject({ checked: 1, broken: 0 });
+      expect(await check.run(new Date(Date.now() + 60_000), [h.id])).toMatchObject({ checked: 0 });
       expect(await runs()).toEqual([expect.objectContaining({ result: 'passed', full: true })]);
     });
 

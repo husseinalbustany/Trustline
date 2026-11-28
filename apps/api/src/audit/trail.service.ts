@@ -79,6 +79,26 @@ type Row = {
   can_open: boolean;
 };
 
+/**
+ * When the client's trail was sealed, and how many entries were there
+ * before: from the first sealed `audit_chain_started` entry, which the
+ * chain itself covers (security review 12, L1), not from a seal's own
+ * column. A client made since was sealed from its start.
+ */
+export async function sealedBeforeIn(tx: Transaction) {
+  const { rows } = await tx.execute<{ changes: { sealedOn?: string; sealedBefore?: number } | null }>(sql`
+    select a.changes from audit_log a
+    join audit_chain c on c.tenant_id = a.tenant_id and c.entry_id = a.id
+    where a.action = 'audit_chain_started'
+    order by c.seq
+    limit 1`);
+  const changes = rows[0]?.changes ?? null;
+  return {
+    sealedOn: typeof changes?.sealedOn === 'string' ? changes.sealedOn : null,
+    sealedBefore: typeof changes?.sealedBefore === 'number' ? changes.sealedBefore : 0,
+  };
+}
+
 /** A cursor: the time and id of the last entry of a page. */
 const cursorOf = (row: { at_sort: string; id: string }) =>
   Buffer.from(`${row.at_sort}|${row.id}`, 'utf8').toString('base64url');
@@ -221,8 +241,8 @@ export class TrailService {
     return rows;
   }
 
-  /** One entry as the viewer shows it. */
-  private shown(row: Row) {
+  /** One entry as the viewer shows it. `sealedBefore`: see `sealedBeforeIn`. */
+  private shown(row: Row, sealedBefore: number) {
     const info = AUDIT_ACTIONS[row.action];
     const details = row.changes ? { ...row.changes } : null;
     if (row.masked && details) {
@@ -260,7 +280,9 @@ export class TrailService {
       details,
       // The address, for sign-in entries only, while it is kept.
       ip: info.area === 'sign_in' && !row.masked ? row.ip_address : null,
-      sealedLate: row.sealed_late === true,
+      // Recorded before the trail was sealed: by its number, which the
+      // chain covers, never by the seal's own column.
+      sealedLate: row.seq !== null && Number(row.seq) <= sealedBefore,
     };
   }
 
@@ -277,10 +299,11 @@ export class TrailService {
           select 1 from audit_log a
           left join ${incidents} on a.entity_type = 'incident' and ${incidents.id} = a.entity_id
           where ${where} limit ${TOTAL_CAP + 1}) t`);
+      const { sealedBefore } = await sealedBeforeIn(tx);
       const page = rows.slice(0, pageSize);
       const more = rows.length > pageSize;
       return {
-        items: page.map((r) => this.shown(r)),
+        items: page.map((r) => this.shown(r, sealedBefore)),
         more,
         next: more ? cursorOf(page.at(-1)!) : null,
         total: Math.min(counted[0].n, TOTAL_CAP),
@@ -299,6 +322,7 @@ export class TrailService {
       const words = AUDIT_WORDING[locale];
       const where = await this.whereOf(tx, auth, filters);
       const rows = where ? await this.rows(tx, auth, where, { limit: EXPORT_CAP }) : [];
+      const { sealedBefore } = await sealedBeforeIn(tx);
       const name = (value: Localized | string | null | undefined) =>
         value == null ? null : typeof value === 'string' ? value : pickText(value, locale, auth.tenant.defaultLocale);
       const who = (actor: Actor) =>
@@ -323,7 +347,7 @@ export class TrailService {
           words.csv.sealedLate,
         ],
         rows.map((row) => {
-          const e = this.shown(row);
+          const e = this.shown(row, sealedBefore);
           return [
             e.seq,
             momentIn(new Date(row.occurred_at), zone),
@@ -386,6 +410,7 @@ export class TrailService {
           publicKeys: this.keys.published,
         }),
       );
+      const { sealedBefore } = await sealedBeforeIn(tx);
       let entries = 0;
       let withheld = 0;
       for (let from = first; from <= last; from += CHAIN_BATCH) {
@@ -416,7 +441,7 @@ export class TrailService {
             prevHash: r.prev_hash,
             bodyHash: r.body_hash,
             hash: r.hash,
-            sealedLate: r.sealed_late,
+            sealedLate: Number(r.seq) <= sealedBefore,
           };
           // In full only what the caller may see in full: not a masked
           // entry, nor one of a module that is off, nor one gone.

@@ -80,9 +80,9 @@ export const AUDIT_ACTIONS = {
   // sealed body, which holds a commitment to it (spec, "Personal data").
   sign_in: code('sign_in', 'user', ['client', 'secondFactor']),
   sign_in_failed: code('sign_in', 'user', ['locked', 'reason']),
-  sign_out: code('sign_in', 'user', []),
+  sign_out: code('sign_in', 'user', ['client']),
   password_set: code('sign_in', 'user', ['purpose']),
-  password_confirmation_failed: code('sign_in', 'user', ['locked', 'purpose', 'byPin', 'pinLocksNow']),
+  password_confirmation_failed: code('sign_in', 'user', ['locked', 'purpose', 'pin', 'pinFailures', 'pinLocked']),
   signing_pin_set: code('sign_in', 'user', ['action']),
   signing_pin_reset: code('sign_in', 'user', []),
   signing_pin_locked: code('sign_in', 'user', ['failures']),
@@ -96,7 +96,7 @@ export const AUDIT_ACTIONS = {
   role_updated: code('accounts', 'role', ['changed', 'before', 'after']),
   role_deleted: code('accounts', 'role', ['code']),
   administrator_created_by_platform: code('accounts', 'user', ['platformAdminId', 'platformAdminName', 'platformAdminEmail'], { by: 'platform' }),
-  built_in_roles_changed_by_system: migration('accounts', 'tenant', ['roles', 'permissionsAdded', 'permissionsRemoved', 'rolesAdded']),
+  built_in_roles_changed_by_system: migration('accounts', 'tenant', ['roles', 'permissions', 'permissionsAdded', 'permissionsRemoved', 'rolesAdded']),
   // External reviewers (docs/specs/audit-trail.md, step 6).
   external_access_granted: code('accounts', 'user', ['organization', 'purpose', 'from', 'until', 'roleId']),
   external_access_extended: code('accounts', 'user', ['from', 'to', 'reason']),
@@ -104,7 +104,7 @@ export const AUDIT_ACTIONS = {
 
   // Organization and settings.
   org_unit_created: code('organization', 'org_unit', ['type', 'parentId']),
-  org_unit_updated: code('organization', 'org_unit', ['changed', 'switched']),
+  org_unit_updated: code('organization', 'org_unit', ['changed', 'active']),
   org_unit_moved: code('organization', 'org_unit', ['from', 'to']),
   public_reporting_changed: code('organization', 'tenant', ['from', 'to']),
   response_rules_changed: code('organization', 'tenant', ['harmLevel', 'triageHours', 'closeDays']),
@@ -113,7 +113,7 @@ export const AUDIT_ACTIONS = {
 
   // Incidents.
   incident_reported: code('incidents', 'incident', ['reference', 'type', 'anonymous', 'channel'], { maskActor: true }),
-  incident_triaged: code('incidents', 'incident', ['from', 'to', 'personChanged']),
+  incident_triaged: code('incidents', 'incident', ['from', 'to', 'harmLevel', 'isSentinel', 'categoryId', 'ownerUnitId', 'assignedTo']),
   incident_status_changed: code('incidents', 'incident', ['from', 'to', 'kind', 'triageDueAt', 'closeDueAt'], { maskActor: true }),
   incident_commented: code('incidents', 'incident', ['commentId', 'visibility', 'byReporter'], { maskActor: true }),
   incident_deadlines_filled: code('incidents', 'incident', ['triageDueAt', 'closeDueAt']),
@@ -125,7 +125,7 @@ export const AUDIT_ACTIONS = {
   document_version_created: code('documents', 'document', ['versionId', 'version', 'copiedFromVersionId', 'contributors']),
   document_version_edited: code('documents', 'document', ['versionId', 'version', 'contentHash']),
   document_submitted: code('documents', 'document', ['versionId', 'version', 'status', 'runId', 'routeId', 'contentHash']),
-  document_step_approved: code('documents', 'document', ['versionId', 'version', 'runId', 'position', 'kind', 'signatureId', 'contentHash', 'comment', 'approved']),
+  document_step_approved: code('documents', 'document', ['versionId', 'version', 'runId', 'position', 'kind', 'signatureId', 'contentHash', 'comment', 'status']),
   document_returned: code('documents', 'document', ['versionId', 'version', 'runId', 'position', 'kind', 'status', 'comment']),
   document_recalled: code('documents', 'document', ['versionId', 'version', 'runId', 'status']),
   document_version_withdrawn: code('documents', 'document', ['versionId', 'version', 'status', 'runId', 'reason']),
@@ -148,8 +148,8 @@ export const AUDIT_ACTIONS = {
   approval_route_updated: code('documents', 'approval_route', ['name', 'steps', 'active']),
   document_settings_updated: code('documents', 'tenant', ['maxReviewMonths', 'acknowledgeWithinDays', 'authoritativeLocale']),
   document_type_changed_by_system: migration('documents', 'document_type', ['noChangeNeedsApproval']),
-  approval_routes_changed_by_system: migration('documents', 'tenant', ['routes']),
-  policy_defaults_reworded_by_system: migration('documents', 'tenant', ['types']),
+  approval_routes_changed_by_system: migration('documents', 'tenant', ['routes', 'step']),
+  policy_defaults_reworded_by_system: migration('documents', 'tenant', ['types', 'categories']),
   import_confirmations_corrected_by_system: migration('documents', 'tenant', ['reason', 'imports', 'confirmationDueIn']),
   import_confirmations_backfilled_by_system: migration('documents', 'tenant', ['recordedBy', 'imports', 'confirmedByImport']),
 
