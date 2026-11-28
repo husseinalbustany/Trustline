@@ -80,6 +80,7 @@ import type {
 } from './input.js';
 import { nextDocumentNumber } from './numbering.js';
 import { Publisher } from './publisher.js';
+import { LinkedDocuments } from './linked-documents.js';
 import { signedVersion } from './signed-content.js';
 import {
   APPROVE_PERMISSION,
@@ -245,6 +246,7 @@ export class DocumentsService {
     private readonly notifier: DocumentNotifier,
     private readonly publisher: Publisher,
     private readonly orgUnits: OrgUnitsService,
+    private readonly linked: LinkedDocuments,
   ) {}
 
   // Reading.
@@ -1752,6 +1754,9 @@ export class DocumentsService {
           withdrawnVersionId: open?.id ?? null,
         },
       );
+      // The modules that link to it are told, in this transaction (a risk's
+      // control: its owner is told the procedure behind it is retired).
+      await this.linked.retired(tx, tenant, doc.id, user.id);
       return this.detail(tx, auth, viewer, await this.find(tx, viewer, doc.id));
     });
   }

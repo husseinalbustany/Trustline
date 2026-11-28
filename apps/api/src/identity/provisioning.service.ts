@@ -11,6 +11,13 @@ import {
   incidentCategories,
   incidentResponseRules,
   notifications,
+  riskBands,
+  riskCategories,
+  riskCommittees,
+  riskImpactDomains,
+  riskMatrices,
+  riskMatrixCells,
+  riskMatrixLevels,
   roleAssignments,
   roles,
   sessions,
@@ -31,6 +38,20 @@ import {
   DEFAULT_ROUTE_STEPS,
   FALLBACK_APPROVER,
 } from '../policies/defaults.js';
+import {
+  DEFAULT_APPETITE,
+  DEFAULT_BANDS,
+  DEFAULT_CATEGORIES,
+  DEFAULT_COMMITTEES,
+  DEFAULT_DOMAINS,
+  DEFAULT_IMPACT,
+  DEFAULT_IMPACT_LEVELS,
+  DEFAULT_LIKELIHOOD,
+  DEFAULT_LIKELIHOOD_LEVELS,
+  DEFAULT_RISK_ROUTES,
+  DEFAULT_TOLERANCE,
+  defaultBandOf,
+} from '../risks/defaults.js';
 import { EntitlementsService } from '../subscriptions/entitlements.service.js';
 import { SYSTEM_ROLES } from './permissions.js';
 
@@ -314,6 +335,179 @@ export class ProvisioningService {
         );
       }
     }
+  }
+
+  /**
+   * Adds what the risks module starts with (risks/defaults.ts) where the
+   * client does not have it yet: the two committees and the categories by
+   * code, and, for a client with no matrix at all, the 5×5 matrix with its
+   * levels, impact domains, bands and cells, put in use by the system. What
+   * the client has already, changed, switched off or made itself is left
+   * alone. Safe to repeat. The rows are named by tenant, not left to
+   * row-level security: the seed runs this as the owner role.
+   */
+  async ensureRiskDefaults(tx: Transaction, tenantId: string) {
+    await this.ensureRiskMatrix(tx, tenantId);
+    await this.ensureRiskRoutes(tx, tenantId);
+  }
+
+  /**
+   * The starting acceptance and closure routes (risks/defaults.ts), each
+   * where the client has no route of that subject and band, active or
+   * not, and has every built-in role it names. Safe to repeat. Needs the
+   * built-in roles: call it after `ensureSystemRoles`.
+   */
+  async ensureRiskRoutes(tx: Transaction, tenantId: string) {
+    const builtIn = await tx
+      .select({ id: roles.id, code: roles.code })
+      .from(roles)
+      .where(and(eq(roles.tenantId, tenantId), eq(roles.isSystem, true)));
+    const roleOf = new Map(builtIn.map((r) => [r.code, r.id]));
+    for (const route of DEFAULT_RISK_ROUTES) {
+      if (!route.steps.every((s) => roleOf.has(s.roleCode))) continue;
+      const [existing] = await tx
+        .select({ id: approvalRoutes.id })
+        .from(approvalRoutes)
+        .where(
+          and(
+            eq(approvalRoutes.tenantId, tenantId),
+            eq(approvalRoutes.subject, route.subject),
+            route.variant === null ? isNull(approvalRoutes.variant) : eq(approvalRoutes.variant, route.variant),
+          ),
+        )
+        .limit(1);
+      if (existing) continue;
+      const [made] = await tx
+        .insert(approvalRoutes)
+        .values({ tenantId, name: route.name, subject: route.subject, variant: route.variant })
+        .returning({ id: approvalRoutes.id });
+      await tx.insert(approvalRouteSteps).values(
+        route.steps.map((s, i) => ({
+          tenantId,
+          routeId: made.id,
+          position: i + 1,
+          kind: s.kind,
+          assigneeRoleId: roleOf.get(s.roleCode)!,
+          dueInDays: s.dueInDays,
+        })),
+      );
+    }
+  }
+
+  /** The committees, categories and the starting matrix: see ensureRiskDefaults. */
+  private async ensureRiskMatrix(tx: Transaction, tenantId: string) {
+    await tx
+      .insert(riskCommittees)
+      .values(DEFAULT_COMMITTEES.map((c) => ({ ...c, tenantId })))
+      .onConflictDoNothing({
+        target: [riskCommittees.tenantId, riskCommittees.code],
+      });
+    await tx
+      .insert(riskCategories)
+      .values(
+        DEFAULT_CATEGORIES.map((c) => ({
+          ...c,
+          tenantId,
+          appetite: DEFAULT_APPETITE,
+          toleranceBand: DEFAULT_TOLERANCE,
+        })),
+      )
+      .onConflictDoNothing({
+        target: [riskCategories.tenantId, riskCategories.code],
+      });
+    const [existing] = await tx
+      .select({ id: riskMatrices.id })
+      .from(riskMatrices)
+      .where(eq(riskMatrices.tenantId, tenantId))
+      .limit(1);
+    if (existing) return;
+    // Made as a draft, filled, then put in use: the database lets a matrix
+    // that has left draft keep its cells and bands, never take new ones.
+    const [matrix] = await tx
+      .insert(riskMatrices)
+      .values({
+        tenantId,
+        version: 1,
+        likelihoodLevels: DEFAULT_LIKELIHOOD_LEVELS,
+        impactLevels: DEFAULT_IMPACT_LEVELS,
+      })
+      .onConflictDoNothing()
+      .returning({ id: riskMatrices.id });
+    // Another transaction made it first.
+    if (!matrix) return;
+    await tx.insert(riskMatrixLevels).values([
+      ...DEFAULT_LIKELIHOOD.map((l) => ({
+        tenantId,
+        matrixId: matrix.id,
+        axis: 'likelihood' as const,
+        level: l.level,
+        label: l.label,
+        descriptor: l.descriptor,
+        frequency: l.frequency ?? null,
+      })),
+      ...DEFAULT_IMPACT.map((l) => ({
+        tenantId,
+        matrixId: matrix.id,
+        axis: 'impact' as const,
+        level: l.level,
+        label: l.label,
+        descriptor: l.descriptor,
+      })),
+    ]);
+    await tx.insert(riskImpactDomains).values(
+      DEFAULT_DOMAINS.map((d) => ({
+        tenantId,
+        matrixId: matrix.id,
+        name: d.name,
+        position: d.position,
+        descriptors: Object.fromEntries(
+          d.descriptors.map((text, i) => [String(i + 1), text]),
+        ),
+      })),
+    );
+    const committees = await tx
+      .select({ id: riskCommittees.id, code: riskCommittees.code })
+      .from(riskCommittees)
+      .where(
+        and(
+          eq(riskCommittees.tenantId, tenantId),
+          inArray(
+            riskCommittees.code,
+            DEFAULT_COMMITTEES.map((c) => c.code),
+          ),
+        ),
+      );
+    const committeeOf = new Map(committees.map((c) => [c.code, c.id]));
+    await tx.insert(riskBands).values(
+      DEFAULT_BANDS.map((b) => ({
+        tenantId,
+        matrixId: matrix.id,
+        code: b.code,
+        name: b.name,
+        reviewIntervalDays: b.reviewIntervalDays,
+        escalateToCommitteeId: b.escalateTo
+          ? (committeeOf.get(b.escalateTo) ?? null)
+          : null,
+        acceptanceNeedsSignature: b.acceptanceNeedsSignature,
+      })),
+    );
+    const cells = [];
+    for (let likelihood = 1; likelihood <= DEFAULT_LIKELIHOOD_LEVELS; likelihood++) {
+      for (let impact = 1; impact <= DEFAULT_IMPACT_LEVELS; impact++) {
+        cells.push({
+          tenantId,
+          matrixId: matrix.id,
+          likelihood,
+          impact,
+          bandCode: defaultBandOf(likelihood, impact),
+        });
+      }
+    }
+    await tx.insert(riskMatrixCells).values(cells);
+    await tx
+      .update(riskMatrices)
+      .set({ status: 'in_use', putInUseAt: new Date() })
+      .where(eq(riskMatrices.id, matrix.id));
   }
 
   async createUser(

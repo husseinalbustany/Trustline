@@ -381,6 +381,9 @@ export class PolicySettingsService {
           revision: approvalRoutes.revision,
         })
         .from(approvalRoutes)
+        // Documents' routes only: the risks module keeps its own in the same
+        // table (approvals/), under its own settings and permissions.
+        .where(eq(approvalRoutes.subject, 'document'))
         .orderBy(asc(approvalRoutes.createdAt), asc(approvalRoutes.id));
       return this.withSteps(tx, list);
     });
@@ -568,7 +571,7 @@ export class PolicySettingsService {
         revision: approvalRoutes.revision,
       })
       .from(approvalRoutes)
-      .where(eq(approvalRoutes.id, id));
+      .where(and(eq(approvalRoutes.id, id), eq(approvalRoutes.subject, 'document')));
     return (await this.withSteps(tx, list))[0];
   }
 
@@ -598,7 +601,8 @@ export class PolicySettingsService {
             revision: approvalRoutes.revision,
           })
           .from(approvalRoutes)
-          .where(eq(approvalRoutes.id, id))
+          // A route of another subject is not one of these.
+          .where(and(eq(approvalRoutes.id, id), eq(approvalRoutes.subject, 'document')))
           .for('update');
         if (!before) throw new NotFoundException();
         if (before.revision !== input.revision) {

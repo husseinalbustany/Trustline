@@ -1,13 +1,18 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { and, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { ApprovalEngine } from '../approvals/approval-engine.service.js';
-import { documents, incidents, notifications, users } from '../database/schema.js';
+import { actions, documents, incidents, notifications, risks, users } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
 import type { AuthContext } from '../identity/auth.service.js';
 import {
   viewerOf,
   visible as documentVisible,
 } from '../policies/visibility.js';
+import {
+  readsAsActionOwner,
+  riskViewerOf,
+  visible as riskVisible,
+} from '../risks/visibility.js';
 import { kindsInUse } from './notifier.js';
 import { visibleTo } from './visibility.js';
 
@@ -63,6 +68,14 @@ export class NotificationsService {
       const seesDocument = auth.tenant.modules.includes('policies')
         ? documentVisible(await viewerOf(tx, auth, this.engine), this.engine)
         : sql`false`;
+      // And risks and their actions (risks/visibility.ts): a risk in full,
+      // or its summary for an owner of one of its actions.
+      const riskViewer = auth.tenant.modules.includes('risks') ? await riskViewerOf(tx, auth) : null;
+      const seesRisk = riskViewer ? riskVisible(riskViewer) : sql`false`;
+      const opensRisk = riskViewer ? sql`(${riskVisible(riskViewer)} or ${readsAsActionOwner(riskViewer)})` : sql`false`;
+      const seesAction = riskViewer
+        ? sql`(${actions.ownerId} = ${auth.user.id} or exists (select from ${risks} where ${risks.id} = ${actions.riskId} and ${riskVisible(riskViewer)}))`
+        : sql`false`;
       const rows = await tx
         .select({
           id: notifications.id,
@@ -79,6 +92,14 @@ export class NotificationsService {
             string,
             string
           > | null>`case when ${documents.id} is not null and ${seesDocument} then ${documents.title} end`,
+          riskId: risks.id,
+          riskReference: risks.reference,
+          canOpenRisk: sql<boolean>`(${risks.id} is not null and ${opensRisk})`,
+          riskTitle: sql<Record<string, string> | null>`case when ${risks.id} is not null and ${seesRisk} then ${risks.title} end`,
+          actionId: actions.id,
+          actionReference: actions.reference,
+          actionRiskId: actions.riskId,
+          canOpenAction: sql<boolean>`(${actions.id} is not null and ${seesAction})`,
           data: notifications.data,
           personId: users.id,
           personName: users.name,
@@ -86,6 +107,8 @@ export class NotificationsService {
         .from(notifications)
         .leftJoin(incidents, eq(incidents.id, notifications.incidentId))
         .leftJoin(documents, eq(documents.id, notifications.documentId))
+        .leftJoin(risks, eq(risks.id, notifications.riskId))
+        .leftJoin(actions, eq(actions.id, notifications.actionId))
         // The person one is about (`data.personId`), by their name now.
         .leftJoin(
           users,
@@ -104,6 +127,14 @@ export class NotificationsService {
           number,
           canOpenDocument,
           documentTitle,
+          riskId,
+          riskReference,
+          canOpenRisk,
+          riskTitle,
+          actionId,
+          actionReference,
+          actionRiskId,
+          canOpenAction,
           personId,
           personName,
           ...notification
@@ -125,6 +156,15 @@ export class NotificationsService {
                   title: canOpenDocument ? documentTitle : null,
                   canOpen: canOpenDocument,
                 },
+          // A risk's title only while the caller reads it in full.
+          risk:
+            riskId === null || riskReference === null
+              ? null
+              : { id: riskId, reference: riskReference, title: riskTitle, canOpen: canOpenRisk },
+          action:
+            actionId === null || actionReference === null
+              ? null
+              : { id: actionId, reference: actionReference, riskId: actionRiskId, canOpen: canOpenAction },
           person: personId === null ? null : { id: personId, name: personName },
           data: notification.data,
         }),

@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
 import { API_PREFIX, listen, setupApp } from './app.setup.js';
 import { AuditKeys, SIGNING_KEY_VARIABLE } from './audit/audit-keys.js';
+import { ActionCheck } from './actions/action-check.service.js';
 import { AuditChainCheck } from './audit/chain-check.service.js';
 import { EmailWorker } from './email/email-worker.service.js';
 import { DeadlineCheck } from './incidents/deadline-check.service.js';
@@ -11,6 +12,7 @@ import { MeasureSnapshotCheck } from './reports/measure-snapshot.check.js';
 import { EXPORT_SIGNING_KEY_VARIABLE, ExportKeys } from './exports/export-keys.js';
 import { ExportWorker } from './exports/export-worker.service.js';
 import { ExportStorage, STORAGE_KEY_VARIABLE } from './exports/storage.js';
+import { RiskCheck } from './risks/risk-check.service.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -45,6 +47,11 @@ async function bootstrap() {
   // and acknowledgement reminders), every fifteen minutes, with the same
   // safety for several processes.
   app.get(PolicyCheck, { strict: false }).start();
+  // The risk check (review reminders, the weekly email to managers) and the
+  // shared actions engine's reminders, every fifteen minutes each, with the
+  // same safety for several processes.
+  app.get(RiskCheck, { strict: false }).start();
+  app.get(ActionCheck, { strict: false }).start();
   // Email (docs/specs/email.md): sends the queue every 30 seconds, and
   // queues each organization's daily digest. Says once how mail is sent, or
   // that it is not configured and kept in the outbox. Safe in every process.

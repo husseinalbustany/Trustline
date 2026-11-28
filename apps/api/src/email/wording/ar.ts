@@ -92,6 +92,14 @@ export const ar: Wording = {
       body: 'فُحص سجل التدقيق في منشأتك في {day} ووُجد سليمًا حتى القيد رقم {count}. ختم هذا القيد:',
       keep: 'احتفظ بهذه الرسالة: لو عُدِّلت يومًا القيود حتى هذا القيد، أو حُذف منها قيد أو أُضيف إليها، فلن يطابقها هذا الختم.',
     },
+    risk_escalated: {
+      subject: 'تصعيد خطر بالغ الخطورة: {reference}',
+      body: 'صُعِّد الخطر {reference}، المقيّم بالغ الخطورة، إلى لجنة أنت عضو فيها، أو هو خطر تملكه.',
+    },
+    risk_step_assigned: {
+      subject: 'خطوة خطر بانتظار قرارك: {reference}',
+      body: 'خطوة من قبول الخطر {reference} أو إغلاقه بانتظار قرارك.',
+    },
   },
   signInCode: {
     subject: 'رمز تسجيل الدخول إلى Trustline',
@@ -111,6 +119,14 @@ export const ar: Wording = {
     stepsBody: 'في الوثائق التي تديرها خطوات اعتماد تجاوزت موعدها.',
     stepsOverdue: 'خطوات اعتماد تجاوزت موعدها: {count}',
   },
+  weeklyRisks: {
+    subject: 'مراجعات مخاطر وإجراءات متأخرة هذا الأسبوع',
+    body: 'لبعض المخاطر التي تديرها مراجعات أو إجراءات تجاوزت موعد استحقاقها.',
+    reviewsOverdue: 'مراجعات المخاطر المتأخرة: {count}',
+    actionsOverdue: 'الإجراءات المتأخرة: {count}',
+    stepsOverdue: 'خطوات قبول وإغلاق تجاوزت موعدها: {count}',
+    open: 'عرض المراجعات المستحقة في Trustline',
+  },
   daily: {
     subject: 'ما ينتظرك في Trustline: {day}',
     intro: 'هذا ما ينتظرك اليوم.',
@@ -120,6 +136,10 @@ export const ar: Wording = {
     reviews: 'مراجعات دورية مستحقة: {count}',
     incidents: 'حوادث أنت المكلَّف بها: {count}',
     incidentsOverdue: 'منها متأخرة: {count}',
+    riskReviews: 'مخاطر للمراجعة: {count}',
+    actionsDue: 'إجراءات مستحقة: {count}',
+    riskProposals: 'مخاطر مقترحة للإدراج في السجل: {count}',
+    riskSteps: 'خطوات مخاطر بانتظار قرارك: {count}',
     more: 'و{count} أخرى في Trustline.',
     open: 'فتح Trustline',
   },

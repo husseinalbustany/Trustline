@@ -7,6 +7,10 @@ import {
   aiProviderConnections,
   aiRequests,
   aiUsageNotices,
+  actionEvents,
+  actionNotes,
+  actionReminders,
+  actions,
   approvalRoutes,
   approvalRouteSteps,
   approvalRuns,
@@ -54,6 +58,23 @@ import {
   policyReminders,
   referenceCounters,
   reportSettings,
+  riskAcceptances,
+  riskBands,
+  riskIncidentLinks,
+  riskNotes,
+  riskReminders,
+  riskReviews,
+  riskCategories,
+  riskCommittees,
+  riskControls,
+  riskEvents,
+  riskImpactDomains,
+  riskMatrices,
+  riskMatrixCells,
+  riskMatrixLevels,
+  riskRatings,
+  risks,
+  riskSettings,
   roleAssignments,
   roles,
   sessions,
@@ -138,6 +159,8 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
         .update(documents)
         .set({ publishedVersionId: null, status: 'draft' })
         .where(inArray(documents.tenantId, ids));
+      // A risk and its acceptance in force point at each other too.
+      await tx.update(risks).set({ acceptanceId: null }).where(inArray(risks.tenantId, ids));
       // Children before what they point to: the email outbox before its
       // queue, the queue and preferences before notifications and users;
       // notifications, the timeline and
@@ -172,6 +195,32 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
         policyImportWindows,
         notifications,
         policyReminders,
+        // The risks module and the actions engine, after the notifications
+        // that point at them: what points at an action or a risk before
+        // it, ratings before reviews, risks before their categories,
+        // committees and matrix cells, cells before bands, bands before
+        // committees; all before documents, users, roles and units.
+        actionReminders,
+        actionEvents,
+        actionNotes,
+        actions,
+        riskReminders,
+        riskNotes,
+        riskIncidentLinks,
+        riskAcceptances,
+        riskEvents,
+        riskControls,
+        riskRatings,
+        riskReviews,
+        risks,
+        riskSettings,
+        riskMatrixCells,
+        riskBands,
+        riskImpactDomains,
+        riskMatrixLevels,
+        riskMatrices,
+        riskCategories,
+        riskCommittees,
         documentSettings,
         documentAcknowledgements,
         documentReviewApprovals,

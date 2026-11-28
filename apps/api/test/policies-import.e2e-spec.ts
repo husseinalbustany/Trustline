@@ -191,9 +191,17 @@ describe('policies: importing documents, the approving authority, the authoritat
           ['approve', a.roles.approving_authority],
         ]);
       }
-      // It reads every document and approves; it manages none.
+      // It reads every document and approves; it manages none. It reads
+      // risks and signs their acceptance (docs/specs/risk-management.md).
       const me = (await http().get('/auth/me').set('Cookie', authority.cookie).expect(200)).body;
-      expect([...(me.permissions as string[])].sort((x, y) => x.localeCompare(y))).toEqual(['policies.approve', 'policies.view', 'policies.view_all', 'reports.view']);
+      expect([...(me.permissions as string[])].sort((x, y) => x.localeCompare(y))).toEqual([
+        'policies.approve',
+        'policies.view',
+        'policies.view_all',
+        'reports.view',
+        'risks.approve',
+        'risks.view',
+      ]);
       await post(authority.cookie, '/documents/import', { password, ...document() }).expect(403);
     });
   });

@@ -37,6 +37,8 @@ export function screenOf(route: string): keyof AuditWording['details']['screens'
   if (/\/audit\/(exports|checkpoints)(\/|$)/.test(route)) return 'auditDownload';
   if (/\/audit(\/|$)/.test(route)) return 'audit';
   if (/\/reports(\/|$)/.test(route)) return 'reports';
+  if (/\/risks\/:id(\/|$)/.test(route)) return 'risk';
+  if (/\/risks(\/|$)/.test(route)) return 'risks';
   if (/\/users(\/|$)/.test(route)) return 'users';
   if (/\/dashboard(\/|$)/.test(route)) return 'dashboard';
   return 'other';

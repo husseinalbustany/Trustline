@@ -7,6 +7,7 @@ import { DocumentNotifier } from './document-notifier.js';
 import { DocumentsService } from './documents.service.js';
 import { ImportsService } from './imports.service.js';
 import { LibraryService } from './library.service.js';
+import { LinkedDocuments } from './linked-documents.js';
 import {
   PoliciesController,
   PolicySettingsController,
@@ -29,11 +30,13 @@ import { PolicySettingsService } from './settings.service.js';
     DocumentsService,
     ImportsService,
     LibraryService,
+    LinkedDocuments,
     PolicyCheck,
     PolicySettingsService,
     Publisher,
   ],
-  // For the email digest: what waits for a person, as their screens show it.
-  exports: [LibraryService, DocumentsService],
+  // For the email digest: what waits for a person, as their screens show
+  // it; for other modules, what they may show of a document they link to.
+  exports: [LibraryService, DocumentsService, LinkedDocuments],
 })
 export class PoliciesModule {}

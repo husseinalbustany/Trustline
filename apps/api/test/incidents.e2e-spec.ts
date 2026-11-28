@@ -377,6 +377,8 @@ describe('incident reporting', () => {
         'policies.view',
         'policies.view_all',
         'reports.view',
+        'risks.manage',
+        'risks.view',
       ]);
       // The department and the unit beneath it, not its sibling or parent.
       expect(scoped.body.scope['incidents.view']).toEqual(

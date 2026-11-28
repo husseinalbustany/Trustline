@@ -1133,6 +1133,44 @@ export const notificationKind = pgEnum('notification_kind', [
   // (`data.personId`): to the other Administrators, as for
   // `policies.import`.
   'data_export_granted',
+  // Risk management (docs/specs/risk-management.md): about a risk
+  // (`risk_id`). Someone was made its owner.
+  'risk_owner_assigned',
+  // Its next review is near (14 days, or a quarter of the interval if
+  // shorter), or has passed.
+  'risk_review_due',
+  'risk_review_overdue',
+  // A current rating put it above its tolerance with nothing addressing it.
+  'risk_above_tolerance',
+  // Put before a committee, by hand or automatically (`data.automatic`),
+  // and taken off its list. Emailed at once when Extreme (`data.band`).
+  'risk_escalated',
+  'risk_de_escalated',
+  // Once a week, to those who manage risks: how many reviews and actions
+  // are overdue in their reach. About no one risk.
+  'risks_overdue_digest',
+  // The shared actions engine (docs/specs/actions.md): about an action
+  // (`action_id`). Of the module of its source.
+  'action_assigned',
+  'action_due_soon',
+  'action_overdue',
+  'action_escalated',
+  'action_completed',
+  // Approvals of risks (step 6): a step is now the recipient's to decide
+  // (emailed at once, not to be switched off); one has passed its due
+  // time; an acceptance decided, ending in 30 days, lapsed; a risk closed.
+  'risk_step_assigned',
+  'risk_step_overdue',
+  'risk_acceptance_decided',
+  'risk_acceptance_ending',
+  'risk_acceptance_lapsed',
+  'risk_closed',
+  // Links (step 7): a risk raised from an incident, for the managers of its
+  // unit; an incident linked to a risk, for its owner; a document that is a
+  // control retired, for the risk's owner.
+  'risk_proposed',
+  'risk_incident_linked',
+  'risk_control_document_retired',
 ]);
 
 // Something a user is told about an incident they can see. Stored so that it
@@ -1156,6 +1194,9 @@ export const notifications = pgTable(
     // The controlled document a notification of the policies module is
     // about. Whoever reads the list is told whether they can still open it.
     documentId: uuid(),
+    // The risk or the action a notification of the risks module is about.
+    riskId: uuid(),
+    actionId: uuid(),
     // The incident's reference, whether it is serious and, for some kinds,
     // which deadline or which outcome. Never a name, a description or the
     // text of a comment: nothing a patient, a reporter or a member of staff
@@ -1180,6 +1221,16 @@ export const notifications = pgTable(
       columns: [t.tenantId, t.documentId],
       foreignColumns: [documents.tenantId, documents.id],
     }),
+    foreignKey({
+      name: 'notifications_risk_fk',
+      columns: [t.tenantId, t.riskId],
+      foreignColumns: [risks.tenantId, risks.id],
+    }),
+    foreignKey({
+      name: 'notifications_action_fk',
+      columns: [t.tenantId, t.actionId],
+      foreignColumns: [actions.tenantId, actions.id],
+    }),
     // A user's own, newest first; and the count of those not yet read.
     index('notifications_user_idx').on(t.tenantId, t.userId, t.createdAt),
     // For the composite keys that point here (email_queue): a notification
@@ -1195,7 +1246,7 @@ export const notifications = pgTable(
     // new kind to be committed before it is created.
     check(
       'notifications_about_one_thing',
-      sql`(${t.incidentId} is null or ${t.documentId} is null) and (${t.incidentId} is not null or ${t.documentId} is not null or ${t.kind}::text in ('public_form_paused', 'acknowledgements_overdue_digest', 'email_turned_off', 'signing_pin_changed', 'signing_pin_locked', 'review_approval_turned_off', 'audit_chain_broken', 'policies_import_granted', 'external_access_changed', 'audit_chain_head', 'data_export_changed', 'ai_provider_changed', 'ai_allowance_warning', 'ai_allowance_reached', 'contract_ending', 'data_export_granted'))`,
+      sql`num_nonnulls(${t.incidentId}, ${t.documentId}, ${t.riskId}, ${t.actionId}) <= 1 and (num_nonnulls(${t.incidentId}, ${t.documentId}, ${t.riskId}, ${t.actionId}) = 1 or ${t.kind}::text in ('public_form_paused', 'acknowledgements_overdue_digest', 'email_turned_off', 'signing_pin_changed', 'signing_pin_locked', 'review_approval_turned_off', 'audit_chain_broken', 'policies_import_granted', 'external_access_changed', 'audit_chain_head', 'data_export_changed', 'ai_provider_changed', 'ai_allowance_warning', 'ai_allowance_reached', 'contract_ending', 'data_export_granted', 'risks_overdue_digest'))`,
     ),
     tenantIsolation(),
   ],
@@ -1703,6 +1754,10 @@ export const signatureMeaning = pgEnum('signature_meaning', [
   // The Approving authority's signature of a "no change" periodic review
   // (business decision 6).
   'reviewed_no_change_approved',
+  // Risk management: a risk accepted above its tolerance, and the second
+  // signature of a risk's closure (docs/specs/risk-management.md).
+  'risk_accepted',
+  'risk_closure_approved',
 ]);
 
 // The ordered steps something must pass before it is approved. Generic
@@ -1719,6 +1774,9 @@ export const approvalRoutes = pgTable(
     subject: text().notNull(),
     // The route for documents of that type; null: for any type without one.
     documentTypeId: uuid(),
+    // For a risk's acceptance, the band it is for (medium, high, extreme);
+    // null for every other subject.
+    variant: text(),
     active: boolean().notNull().default(true),
     revision: integer().notNull().default(1),
     createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
@@ -1731,14 +1789,26 @@ export const approvalRoutes = pgTable(
       columns: [t.tenantId, t.documentTypeId],
       foreignColumns: [documentTypes.tenantId, documentTypes.id],
     }),
-    check('approval_routes_subject', sql`${t.subject} in ('document')`),
-    // One active route per subject and type, so which applies is never in
-    // doubt.
+    check(
+      'approval_routes_subject',
+      sql`${t.subject} in ('document', 'risk_acceptance', 'risk_closure')`,
+    ),
+    // A document type only for documents; a band for an acceptance, and
+    // only then.
+    check(
+      'approval_routes_subject_fields',
+      sql`(${t.subject} = 'document' or ${t.documentTypeId} is null)
+        and ((${t.subject} = 'risk_acceptance') = (${t.variant} is not null))
+        and (${t.variant} is null or ${t.variant} in ('medium', 'high', 'extreme'))`,
+    ),
+    // One active route per subject, type and variant, so which applies is
+    // never in doubt.
     uniqueIndex('approval_routes_one_active')
       .on(
         t.tenantId,
         t.subject,
         sql`coalesce(${t.documentTypeId}, '00000000-0000-0000-0000-000000000000'::uuid)`,
+        sql`coalesce(${t.variant}, '')`,
       )
       .where(sql`${t.active}`),
     tenantIsolation(),
@@ -1831,7 +1901,7 @@ export const approvalRuns = pgTable(
     }),
     check(
       'approval_runs_subject_type',
-      sql`${t.subjectType} in ('document_version')`,
+      sql`${t.subjectType} in ('document_version', 'risk_acceptance', 'risk')`,
     ),
     index('approval_runs_subject_idx').on(
       t.tenantId,
@@ -1943,7 +2013,7 @@ export const signatures = pgTable(
     }),
     check(
       'signatures_subject_type',
-      sql`${t.subjectType} in ('document_version', 'document')`,
+      sql`${t.subjectType} in ('document_version', 'document', 'risk_acceptance', 'risk')`,
     ),
     check('signatures_method', sql`${t.method} in ('password')`),
     check('signatures_hash_shape', sql`${t.contentHash} ~ '^[0-9a-f]{64}$'`),
@@ -3608,5 +3678,1304 @@ export const clientDeletions = pgTable(
       .where(sql`${t.status} in ('requested', 'approved')`),
     check('client_deletions_two_people', sql`${t.approvedBy} is null or ${t.approvedBy} <> ${t.requestedBy}`),
     check('client_deletions_reason', sql`length(${t.reason}) between 1 and 1000`),
+  ],
+);
+
+
+// Risk management (docs/specs/risk-management.md), steps 1 and 2: the
+// organization's risk criteria (the matrix, its bands, impact domains,
+// categories with appetite and tolerance, committees) and the register
+// (risks, their ratings, controls and timeline). Every table is tenant data
+// under row-level security, every pointer to another row is a composite
+// foreign key with the tenant, and nothing a client writes is deleted: a
+// category, a committee or a control is switched off, a matrix retired.
+// The grants, and the rules the schema cannot say (what a matrix keeps
+// fixed once it leaves draft, what only rises), are in the custom
+// migration that follows the generated one.
+
+/** The four bands, in rising order: Postgres compares enums so too. */
+export const riskBand = pgEnum('risk_band', ['low', 'medium', 'high', 'extreme']);
+export const riskAxis = pgEnum('risk_axis', ['likelihood', 'impact']);
+export const riskMatrixStatus = pgEnum('risk_matrix_status', [
+  'draft',
+  'in_use',
+  'retired',
+]);
+export const riskAppetite = pgEnum('risk_appetite', [
+  'averse',
+  'minimal',
+  'cautious',
+  'open',
+  'eager',
+]);
+export const riskStatus = pgEnum('risk_status', [
+  // Raised, waiting for a manager to take it onto the register.
+  'proposed',
+  'open',
+  'closed',
+  // A proposal not taken onto the register, with a reason.
+  'rejected',
+]);
+export const riskSource = pgEnum('risk_source', [
+  'manual',
+  'incident',
+  'assessment',
+  'investigation',
+  'ai_suggestion',
+]);
+export const riskTreatment = pgEnum('risk_treatment', [
+  'reduce',
+  'avoid',
+  'share',
+  'accept',
+]);
+export const riskRatingKind = pgEnum('risk_rating_kind', [
+  'inherent',
+  'current',
+  'target',
+]);
+export const riskControlKind = pgEnum('risk_control_kind', [
+  'preventive',
+  'detective',
+  'mitigating',
+]);
+export const riskControlHierarchy = pgEnum('risk_control_hierarchy', [
+  'elimination',
+  'substitution',
+  'engineering',
+  'administrative',
+  'protective_equipment',
+]);
+export const riskControlEffectiveness = pgEnum('risk_control_effectiveness', [
+  'not_assessed',
+  'effective',
+  'partly_effective',
+  'ineffective',
+]);
+export const riskEventKind = pgEnum('risk_event_kind', [
+  'created',
+  'updated',
+  'rated',
+  'control_added',
+  'control_updated',
+  'proposal_accepted',
+  'proposal_rejected',
+  // A new matrix version put in use moved the risk's ratings to another
+  // band, or left them on the old version because they no longer fit it.
+  'rebanded',
+  'reviewed',
+  // Put before a committee, by hand or automatically, and taken off it.
+  'escalated',
+  'de_escalated',
+  // Text written once (a rationale, a comment, a reason) corrected by a
+  // manager: says what and by whom, never the text.
+  'text_corrected',
+  // Approvals (step 6).
+  'acceptance_requested',
+  'acceptance_step_approved',
+  'acceptance_returned',
+  'acceptance_withdrawn',
+  'accepted',
+  'acceptance_lapsed',
+  'closure_requested',
+  'closure_step_approved',
+  'closure_returned',
+  'closed',
+  'reopened',
+  // Links (step 7).
+  'incident_linked',
+  'incident_unlinked',
+]);
+
+export const riskAcceptanceStatus = pgEnum('risk_acceptance_status', [
+  'in_approval',
+  'accepted',
+  'returned',
+  'withdrawn',
+  'lapsed',
+]);
+
+export const riskIncidentLinkKind = pgEnum('risk_incident_link_kind', [
+  // The incident led to the risk.
+  'raised',
+  // The incident is evidence for an existing risk.
+  'supports',
+]);
+
+export const riskReviewOutcome = pgEnum('risk_review_outcome', [
+  'no_change',
+  're_rated',
+  'treatment_changed',
+  'closure_proposed',
+]);
+
+/** A descriptor per impact level of one domain: `{ "1": { en, ar } }`. */
+export type RiskDomainDescriptors = Partial<Record<string, Localized>>;
+
+// The groups that oversee risks above a unit, by role (business decision
+// 11): the active holders of `member_role_id` granted for the whole
+// organization are its members. Higher `position`, higher level.
+export const riskCommittees = pgTable(
+  'risk_committees',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    // Lowercase, fixed once created.
+    code: text().notNull(),
+    name: jsonb().$type<Localized>().notNull(),
+    position: integer().notNull().default(0),
+    memberRoleId: uuid(),
+    chairRoleId: uuid(),
+    active: boolean().notNull().default(true),
+    // Raised by every change (409 `stale_committee`).
+    revision: integer().notNull().default(1),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('risk_committees_tenant_id_id_key').on(t.tenantId, t.id),
+    unique('risk_committees_tenant_id_code_key').on(t.tenantId, t.code),
+    foreignKey({
+      name: 'risk_committees_member_role_fk',
+      columns: [t.tenantId, t.memberRoleId],
+      foreignColumns: [roles.tenantId, roles.id],
+    }),
+    foreignKey({
+      name: 'risk_committees_chair_role_fk',
+      columns: [t.tenantId, t.chairRoleId],
+      foreignColumns: [roles.tenantId, roles.id],
+    }),
+    check('risk_committees_code_shape', sql`${t.code} ~ '^[a-z][a-z0-9_]{1,39}$'`),
+    tenantIsolation(),
+  ],
+);
+
+// The organization's risk criteria, versioned. One in use at a time, at
+// most one draft. Its size is fixed when it is made; what decides a band
+// (the cells, the bands' intervals, escalation and signature) is fixed
+// once it leaves draft. Only its wording changes after that.
+export const riskMatrices = pgTable(
+  'risk_matrices',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    version: integer().notNull(),
+    likelihoodLevels: integer().notNull(),
+    impactLevels: integer().notNull(),
+    status: riskMatrixStatus().notNull().default('draft'),
+    putInUseAt: timestamp({ withTimezone: true }),
+    // Null for the starting matrix, put in use by the system.
+    putInUseBy: uuid(),
+    retiredAt: timestamp({ withTimezone: true }),
+    // Null for the starting matrix.
+    createdBy: uuid(),
+    // Raised by every change (409 `stale_matrix`).
+    revision: integer().notNull().default(1),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('risk_matrices_tenant_id_id_key').on(t.tenantId, t.id),
+    unique('risk_matrices_tenant_id_version_key').on(t.tenantId, t.version),
+    uniqueIndex('risk_matrices_one_in_use')
+      .on(t.tenantId)
+      .where(sql`${t.status} = 'in_use'`),
+    uniqueIndex('risk_matrices_one_draft')
+      .on(t.tenantId)
+      .where(sql`${t.status} = 'draft'`),
+    foreignKey({
+      name: 'risk_matrices_put_in_use_by_fk',
+      columns: [t.tenantId, t.putInUseBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'risk_matrices_created_by_fk',
+      columns: [t.tenantId, t.createdBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    check(
+      'risk_matrices_size',
+      sql`${t.likelihoodLevels} between 3 and 6 and ${t.impactLevels} between 3 and 6`,
+    ),
+    check('risk_matrices_version', sql`${t.version} >= 1`),
+    check(
+      'risk_matrices_in_use_when',
+      sql`${t.status} <> 'in_use' or ${t.putInUseAt} is not null`,
+    ),
+    tenantIsolation(),
+  ],
+);
+
+// One level of one axis: its label, what it means, and for likelihood how
+// often.
+export const riskMatrixLevels = pgTable(
+  'risk_matrix_levels',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    matrixId: uuid().notNull(),
+    axis: riskAxis().notNull(),
+    level: integer().notNull(),
+    label: jsonb().$type<Localized>().notNull(),
+    descriptor: jsonb().$type<Localized>(),
+    frequency: jsonb().$type<Localized>(),
+  },
+  (t) => [
+    unique('risk_matrix_levels_once_key').on(
+      t.tenantId,
+      t.matrixId,
+      t.axis,
+      t.level,
+    ),
+    foreignKey({
+      name: 'risk_matrix_levels_matrix_fk',
+      columns: [t.tenantId, t.matrixId],
+      foreignColumns: [riskMatrices.tenantId, riskMatrices.id],
+    }),
+    check('risk_matrix_levels_level', sql`${t.level} between 1 and 6`),
+    check(
+      'risk_matrix_levels_frequency_of_likelihood',
+      sql`${t.axis} = 'likelihood' or ${t.frequency} is null`,
+    ),
+    tenantIsolation(),
+  ],
+);
+
+// What each impact level means in one domain (safety, money…). The
+// assessor reads the domains that apply and takes the highest level.
+// Wording: added, changed and switched off at any time.
+export const riskImpactDomains = pgTable(
+  'risk_impact_domains',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    matrixId: uuid().notNull(),
+    name: jsonb().$type<Localized>().notNull(),
+    descriptors: jsonb().$type<RiskDomainDescriptors>().notNull(),
+    position: integer().notNull().default(0),
+    active: boolean().notNull().default(true),
+  },
+  (t) => [
+    unique('risk_impact_domains_tenant_id_id_key').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'risk_impact_domains_matrix_fk',
+      columns: [t.tenantId, t.matrixId],
+      foreignColumns: [riskMatrices.tenantId, riskMatrices.id],
+    }),
+    tenantIsolation(),
+  ],
+);
+
+// The four bands of a matrix, always all four (business decision 4). The
+// colour follows the code and cannot be changed, so it is not a column.
+export const riskBands = pgTable(
+  'risk_bands',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    matrixId: uuid().notNull(),
+    code: riskBand().notNull(),
+    name: jsonb().$type<Localized>().notNull(),
+    reviewIntervalDays: integer().notNull(),
+    escalateToCommitteeId: uuid(),
+    // Whether accepting a risk in this band above its tolerance needs a
+    // signed approval: always for High and Extreme.
+    acceptanceNeedsSignature: boolean().notNull().default(true),
+  },
+  (t) => [
+    unique('risk_bands_code_key').on(t.tenantId, t.matrixId, t.code),
+    foreignKey({
+      name: 'risk_bands_matrix_fk',
+      columns: [t.tenantId, t.matrixId],
+      foreignColumns: [riskMatrices.tenantId, riskMatrices.id],
+    }),
+    foreignKey({
+      name: 'risk_bands_committee_fk',
+      columns: [t.tenantId, t.escalateToCommitteeId],
+      foreignColumns: [riskCommittees.tenantId, riskCommittees.id],
+    }),
+    check(
+      'risk_bands_review_interval',
+      sql`${t.reviewIntervalDays} between 1 and 730`,
+    ),
+    check(
+      'risk_bands_signature_when_serious',
+      sql`${t.acceptanceNeedsSignature} or ${t.code} in ('low', 'medium')`,
+    ),
+    tenantIsolation(),
+  ],
+);
+
+// The band of each cell of a matrix. Every cell has one.
+export const riskMatrixCells = pgTable(
+  'risk_matrix_cells',
+  {
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    matrixId: uuid().notNull(),
+    likelihood: integer().notNull(),
+    impact: integer().notNull(),
+    bandCode: riskBand().notNull(),
+  },
+  (t) => [
+    primaryKey({
+      name: 'risk_matrix_cells_pkey',
+      columns: [t.tenantId, t.matrixId, t.likelihood, t.impact],
+    }),
+    // What a rating points at: the cell with the band it gave, which the
+    // database keeps fixed once the matrix has left draft.
+    unique('risk_matrix_cells_with_band_key').on(
+      t.tenantId,
+      t.matrixId,
+      t.likelihood,
+      t.impact,
+      t.bandCode,
+    ),
+    foreignKey({
+      name: 'risk_matrix_cells_matrix_fk',
+      columns: [t.tenantId, t.matrixId],
+      foreignColumns: [riskMatrices.tenantId, riskMatrices.id],
+    }),
+    foreignKey({
+      name: 'risk_matrix_cells_band_fk',
+      columns: [t.tenantId, t.matrixId, t.bandCode],
+      foreignColumns: [riskBands.tenantId, riskBands.matrixId, riskBands.code],
+    }),
+    check(
+      'risk_matrix_cells_levels',
+      sql`${t.likelihood} between 1 and 6 and ${t.impact} between 1 and 6`,
+    ),
+    tenantIsolation(),
+  ],
+);
+
+// The client's own kinds of risk, each with its appetite and tolerance.
+export const riskCategories = pgTable(
+  'risk_categories',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    // Lowercase, fixed once created.
+    code: text().notNull(),
+    name: jsonb().$type<Localized>().notNull(),
+    position: integer().notNull().default(0),
+    active: boolean().notNull().default(true),
+    appetite: riskAppetite().notNull().default('cautious'),
+    appetiteStatement: jsonb().$type<Localized>(),
+    // The highest band of current rating accepted without a decision.
+    toleranceBand: riskBand().notNull().default('medium'),
+    // Raised by every change (409 `stale_category`).
+    revision: integer().notNull().default(1),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('risk_categories_tenant_id_id_key').on(t.tenantId, t.id),
+    unique('risk_categories_tenant_id_code_key').on(t.tenantId, t.code),
+    check(
+      'risk_categories_code_shape',
+      sql`${t.code} ~ '^[a-z][a-z0-9_]{1,39}$'`,
+    ),
+    tenantIsolation(),
+  ],
+);
+
+// The module's settings. No row: the starting values.
+export const riskSettings = pgTable(
+  'risk_settings',
+  {
+    tenantId: uuid()
+      .primaryKey()
+      .references(() => tenants.id),
+    // Business decision 5: optional per client, required by default.
+    inherentRequired: boolean().notNull().default(true),
+    // The client's risk management policy or framework, in the policies
+    // module's library.
+    frameworkDocumentId: uuid(),
+    // For assessments (step 10): rows at or above it must reach the
+    // register.
+    assessmentThresholdBand: riskBand().notNull().default('high'),
+    // Business decision 8: an acceptance lasts 12 months at most.
+    acceptanceMaxMonths: integer().notNull().default(12),
+    // Raised by every change (409 `stale_settings`).
+    revision: integer().notNull().default(1),
+    updatedBy: uuid(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'risk_settings_framework_document_fk',
+      columns: [t.tenantId, t.frameworkDocumentId],
+      foreignColumns: [documents.tenantId, documents.id],
+    }),
+    foreignKey({
+      name: 'risk_settings_updated_by_fk',
+      columns: [t.tenantId, t.updatedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    check(
+      'risk_settings_acceptance_months',
+      sql`${t.acceptanceMaxMonths} between 1 and 12`,
+    ),
+    tenantIsolation(),
+  ],
+);
+
+// One risk of the register: of a unit, or of the whole organization
+// (`org_unit_id` null). Never deleted. It keeps a copy of its latest rating
+// of each kind, for lists, each pointing at the matrix cell it stands on
+// with the band that cell gives.
+export const risks = pgTable(
+  'risks',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    // RSK-2026-00012, from reference_counters. Never reused.
+    reference: text().notNull(),
+    orgUnitId: uuid(),
+    categoryId: uuid().notNull(),
+    title: jsonb().$type<Localized>().notNull(),
+    cause: jsonb().$type<Localized>().notNull(),
+    event: jsonb().$type<Localized>().notNull(),
+    consequence: jsonb().$type<Localized>().notNull(),
+    ownerId: uuid().notNull(),
+    status: riskStatus().notNull(),
+    source: riskSource().notNull().default('manual'),
+    treatment: riskTreatment(),
+    // Days on the client's calendar.
+    targetOn: date({ mode: 'string' }),
+    inherentLikelihood: integer(),
+    inherentImpact: integer(),
+    inherentScore: integer(),
+    inherentBand: riskBand(),
+    inherentMatrixId: uuid(),
+    currentLikelihood: integer(),
+    currentImpact: integer(),
+    currentScore: integer(),
+    currentBand: riskBand(),
+    currentMatrixId: uuid(),
+    targetLikelihood: integer(),
+    targetImpact: integer(),
+    targetScore: integer(),
+    targetBand: riskBand(),
+    targetMatrixId: uuid(),
+    nextReviewOn: date({ mode: 'string' }),
+    lastReviewedOn: date({ mode: 'string' }),
+    escalatedToCommitteeId: uuid(),
+    escalatedAt: timestamp({ withTimezone: true }),
+    // Only ever raised (the migration's rules): the highest current band it
+    // has had, and whether its closure takes a second signature for it.
+    highestBand: riskBand(),
+    closureSignOffNeeded: boolean().notNull().default(false),
+    references: text()
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    keywords: text()
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    rejectedBy: uuid(),
+    rejectedAt: timestamp({ withTimezone: true }),
+    rejectReason: text(),
+    // The acceptance above tolerance in force (step 6), if any.
+    acceptanceId: uuid(),
+    // Closure: asked for (with its reason and the risk it is merged into),
+    // then, once signed where needed, closed.
+    closeReason: text(),
+    mergedIntoId: uuid(),
+    closureRequestedBy: uuid(),
+    closureRequestedAt: timestamp({ withTimezone: true }),
+    closedBy: uuid(),
+    closedAt: timestamp({ withTimezone: true }),
+    createdBy: uuid().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    // Raised by every change to the risk or to what belongs to it; a save
+    // says which it read (409 `stale_risk`).
+    revision: integer().notNull().default(1),
+  },
+  (t) => [
+    unique('risks_tenant_id_id_key').on(t.tenantId, t.id),
+    unique('risks_tenant_id_reference_key').on(t.tenantId, t.reference),
+    foreignKey({
+      name: 'risks_org_unit_fk',
+      columns: [t.tenantId, t.orgUnitId],
+      foreignColumns: [orgUnits.tenantId, orgUnits.id],
+    }),
+    foreignKey({
+      name: 'risks_category_fk',
+      columns: [t.tenantId, t.categoryId],
+      foreignColumns: [riskCategories.tenantId, riskCategories.id],
+    }),
+    foreignKey({
+      name: 'risks_owner_fk',
+      columns: [t.tenantId, t.ownerId],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'risks_created_by_fk',
+      columns: [t.tenantId, t.createdBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'risks_rejected_by_fk',
+      columns: [t.tenantId, t.rejectedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'risks_committee_fk',
+      columns: [t.tenantId, t.escalatedToCommitteeId],
+      foreignColumns: [riskCommittees.tenantId, riskCommittees.id],
+    }),
+    foreignKey({
+      name: 'risks_merged_into_fk',
+      columns: [t.tenantId, t.mergedIntoId],
+      foreignColumns: [t.tenantId, t.id],
+    }),
+    foreignKey({
+      name: 'risks_closure_requested_by_fk',
+      columns: [t.tenantId, t.closureRequestedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'risks_closed_by_fk',
+      columns: [t.tenantId, t.closedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    check(
+      'risks_closed_when',
+      sql`${t.status} <> 'closed' or (${t.closedAt} is not null and ${t.closeReason} is not null)`,
+    ),
+    check('risks_not_merged_into_itself', sql`${t.mergedIntoId} is distinct from ${t.id}`),
+    foreignKey({
+      name: 'risks_inherent_cell_fk',
+      columns: [
+        t.tenantId,
+        t.inherentMatrixId,
+        t.inherentLikelihood,
+        t.inherentImpact,
+        t.inherentBand,
+      ],
+      foreignColumns: [
+        riskMatrixCells.tenantId,
+        riskMatrixCells.matrixId,
+        riskMatrixCells.likelihood,
+        riskMatrixCells.impact,
+        riskMatrixCells.bandCode,
+      ],
+    }),
+    foreignKey({
+      name: 'risks_current_cell_fk',
+      columns: [
+        t.tenantId,
+        t.currentMatrixId,
+        t.currentLikelihood,
+        t.currentImpact,
+        t.currentBand,
+      ],
+      foreignColumns: [
+        riskMatrixCells.tenantId,
+        riskMatrixCells.matrixId,
+        riskMatrixCells.likelihood,
+        riskMatrixCells.impact,
+        riskMatrixCells.bandCode,
+      ],
+    }),
+    foreignKey({
+      name: 'risks_target_cell_fk',
+      columns: [
+        t.tenantId,
+        t.targetMatrixId,
+        t.targetLikelihood,
+        t.targetImpact,
+        t.targetBand,
+      ],
+      foreignColumns: [
+        riskMatrixCells.tenantId,
+        riskMatrixCells.matrixId,
+        riskMatrixCells.likelihood,
+        riskMatrixCells.impact,
+        riskMatrixCells.bandCode,
+      ],
+    }),
+    // Each copy whole or absent, and its score the product of its levels.
+    check(
+      'risks_ratings_whole',
+      sql`num_nulls(${t.inherentLikelihood}, ${t.inherentImpact}, ${t.inherentScore}, ${t.inherentBand}, ${t.inherentMatrixId}) in (0, 5) and num_nulls(${t.currentLikelihood}, ${t.currentImpact}, ${t.currentScore}, ${t.currentBand}, ${t.currentMatrixId}) in (0, 5) and num_nulls(${t.targetLikelihood}, ${t.targetImpact}, ${t.targetScore}, ${t.targetBand}, ${t.targetMatrixId}) in (0, 5)`,
+    ),
+    check(
+      'risks_scores',
+      sql`(${t.inherentScore} is null or ${t.inherentScore} = ${t.inherentLikelihood} * ${t.inherentImpact}) and (${t.currentScore} is null or ${t.currentScore} = ${t.currentLikelihood} * ${t.currentImpact}) and (${t.targetScore} is null or ${t.targetScore} = ${t.targetLikelihood} * ${t.targetImpact})`,
+    ),
+    // On the register only with a current rating.
+    check(
+      'risks_open_is_rated',
+      sql`${t.status} <> 'open' or ${t.currentScore} is not null`,
+    ),
+    check(
+      'risks_rejected_with_reason',
+      sql`${t.status} <> 'rejected' or (${t.rejectReason} is not null and ${t.rejectedAt} is not null)`,
+    ),
+    check(
+      'risks_reference_shape',
+      sql`${t.reference} ~ '^RSK-[0-9]{4}-[0-9]{5,}$'`,
+    ),
+    index('risks_status_idx').on(t.tenantId, t.status, t.currentScore),
+    index('risks_org_unit_idx').on(t.tenantId, t.orgUnitId),
+    index('risks_owner_idx').on(t.tenantId, t.ownerId),
+    tenantIsolation(),
+  ],
+);
+
+// Every rating ever made of a risk, never changed: the history, the trend
+// and the month-end figures come from here.
+export const riskRatings = pgTable(
+  'risk_ratings',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    riskId: uuid().notNull(),
+    kind: riskRatingKind().notNull(),
+    likelihood: integer().notNull(),
+    impact: integer().notNull(),
+    score: integer().notNull(),
+    bandCode: riskBand().notNull(),
+    matrixId: uuid().notNull(),
+    rationale: jsonb().$type<Localized>(),
+    ratedBy: uuid().notNull(),
+    ratedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    // The review it was made at, if any.
+    reviewId: uuid(),
+  },
+  (t) => [
+    // For an acceptance to name the rating it accepted (step 6).
+    unique('risk_ratings_tenant_id_id_key').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'risk_ratings_review_fk',
+      columns: [t.tenantId, t.reviewId],
+      foreignColumns: [riskReviews.tenantId, riskReviews.id],
+    }),
+    foreignKey({
+      name: 'risk_ratings_risk_fk',
+      columns: [t.tenantId, t.riskId],
+      foreignColumns: [risks.tenantId, risks.id],
+    }),
+    foreignKey({
+      name: 'risk_ratings_cell_fk',
+      columns: [t.tenantId, t.matrixId, t.likelihood, t.impact, t.bandCode],
+      foreignColumns: [
+        riskMatrixCells.tenantId,
+        riskMatrixCells.matrixId,
+        riskMatrixCells.likelihood,
+        riskMatrixCells.impact,
+        riskMatrixCells.bandCode,
+      ],
+    }),
+    foreignKey({
+      name: 'risk_ratings_rated_by_fk',
+      columns: [t.tenantId, t.ratedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    check('risk_ratings_score', sql`${t.score} = ${t.likelihood} * ${t.impact}`),
+    index('risk_ratings_risk_idx').on(t.tenantId, t.riskId, t.ratedAt),
+    tenantIsolation(),
+  ],
+);
+
+// A measure that keeps a risk down. Belongs to one risk; switched off with
+// a reason, never deleted.
+export const riskControls = pgTable(
+  'risk_controls',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    riskId: uuid().notNull(),
+    description: jsonb().$type<Localized>().notNull(),
+    kind: riskControlKind().notNull(),
+    hierarchy: riskControlHierarchy(),
+    ownerId: uuid().notNull(),
+    effectiveness: riskControlEffectiveness().notNull().default('not_assessed'),
+    // The day it was last assessed, on the client's calendar.
+    assessedOn: date({ mode: 'string' }),
+    // A controlled document of the policies module.
+    documentId: uuid(),
+    active: boolean().notNull().default(true),
+    inactiveReason: text(),
+    createdBy: uuid().notNull(),
+    // Raised by every change (409 `stale_control`).
+    revision: integer().notNull().default(1),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('risk_controls_tenant_id_id_key').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'risk_controls_risk_fk',
+      columns: [t.tenantId, t.riskId],
+      foreignColumns: [risks.tenantId, risks.id],
+    }),
+    foreignKey({
+      name: 'risk_controls_owner_fk',
+      columns: [t.tenantId, t.ownerId],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'risk_controls_created_by_fk',
+      columns: [t.tenantId, t.createdBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'risk_controls_document_fk',
+      columns: [t.tenantId, t.documentId],
+      foreignColumns: [documents.tenantId, documents.id],
+    }),
+    check(
+      'risk_controls_assessed_when',
+      sql`${t.effectiveness} = 'not_assessed' or ${t.assessedOn} is not null`,
+    ),
+    check(
+      'risk_controls_off_with_reason',
+      sql`${t.active} or ${t.inactiveReason} is not null`,
+    ),
+    index('risk_controls_risk_idx').on(t.tenantId, t.riskId),
+    tenantIsolation(),
+  ],
+);
+
+// The risk's timeline, written by the system, never changed.
+export const riskEvents = pgTable(
+  'risk_events',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    riskId: uuid().notNull(),
+    // The moment it was written, not the transaction's start: entries
+    // written together keep their order (an escalation after its rating).
+    occurredAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`clock_timestamp()`),
+    kind: riskEventKind().notNull(),
+    // Null for the system.
+    actorId: uuid(),
+    details: jsonb().$type<Record<string, unknown>>(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'risk_events_risk_fk',
+      columns: [t.tenantId, t.riskId],
+      foreignColumns: [risks.tenantId, risks.id],
+    }),
+    foreignKey({
+      name: 'risk_events_actor_fk',
+      columns: [t.tenantId, t.actorId],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    index('risk_events_risk_idx').on(t.tenantId, t.riskId, t.occurredAt),
+    tenantIsolation(),
+  ],
+);
+
+// A dated check that a risk's ratings, controls and treatment are still
+// right (spec, "Reviews"). Kept for ever, never changed. Not a signature
+// (decision 15): it names who and when.
+export const riskReviews = pgTable(
+  'risk_reviews',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    riskId: uuid().notNull(),
+    // The next review day it answered, and the day it was made, on the
+    // client's calendar.
+    dueOn: date({ mode: 'string' }),
+    reviewedOn: date({ mode: 'string' }).notNull(),
+    reviewedBy: uuid().notNull(),
+    // Set for a committee's review, made by one of its members.
+    committeeId: uuid(),
+    outcome: riskReviewOutcome().notNull(),
+    comment: text().notNull(),
+    nextReviewOn: date({ mode: 'string' }).notNull(),
+    late: boolean().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('risk_reviews_tenant_id_id_key').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'risk_reviews_risk_fk',
+      columns: [t.tenantId, t.riskId],
+      foreignColumns: [risks.tenantId, risks.id],
+    }),
+    foreignKey({
+      name: 'risk_reviews_reviewed_by_fk',
+      columns: [t.tenantId, t.reviewedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'risk_reviews_committee_fk',
+      columns: [t.tenantId, t.committeeId],
+      foreignColumns: [riskCommittees.tenantId, riskCommittees.id],
+    }),
+    check('risk_reviews_comment', sql`length(${t.comment}) between 1 and 4000`),
+    check('risk_reviews_next_after', sql`${t.nextReviewOn} > ${t.reviewedOn}`),
+    index('risk_reviews_risk_idx').on(t.tenantId, t.riskId, t.reviewedOn),
+    tenantIsolation(),
+  ],
+);
+
+// What the risk check has sent, claimed once each, as policy_reminders:
+// by kind, subject (a risk or a person) and period (the review day it is
+// about, or the ISO week).
+export const riskReminders = pgTable(
+  'risk_reminders',
+  {
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    kind: text().notNull(),
+    subjectId: uuid().notNull(),
+    period: text().notNull().default(''),
+    sentAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({
+      name: 'risk_reminders_pkey',
+      columns: [t.tenantId, t.kind, t.subjectId, t.period],
+    }),
+    check(
+      'risk_reminders_kind',
+      sql`${t.kind} in ('review_due', 'review_overdue', 'weekly_digest', 'step_overdue', 'acceptance_ending')`,
+    ),
+    tenantIsolation(),
+  ],
+);
+
+// The shared actions engine (docs/specs/actions.md): one table for every
+// corrective and preventive action, whatever called for it. Each source has
+// a column of its own, a composite key with the tenant, so that an action
+// never points at another client's record. Nothing is deleted.
+
+export const actionSource = pgEnum('action_source', ['risk']);
+export const actionStrength = pgEnum('action_strength', [
+  'stronger',
+  'intermediate',
+  'weaker',
+]);
+export const actionHierarchy = pgEnum('action_hierarchy', [
+  'elimination',
+  'substitution',
+  'engineering',
+  'administrative',
+  'protective_equipment',
+]);
+export const actionStatus = pgEnum('action_status', [
+  'open',
+  'in_progress',
+  'completed',
+  'verified',
+  'cancelled',
+]);
+export const actionEffectiveness = pgEnum('action_effectiveness', [
+  'effective',
+  'not_effective',
+]);
+export const actionEventKind = pgEnum('action_event_kind', [
+  'created',
+  'updated',
+  'due_changed',
+  'completed',
+  'verified',
+  'cancelled',
+  'reopened',
+  // A note corrected by a manager: never the text.
+  'text_corrected',
+]);
+
+export const actions = pgTable(
+  'actions',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    // ACT-2026-00031, from reference_counters. Never reused.
+    reference: text().notNull(),
+    sourceType: actionSource().notNull(),
+    riskId: uuid(),
+    title: jsonb().$type<Localized>().notNull(),
+    description: jsonb().$type<Localized>(),
+    ownerId: uuid().notNull(),
+    // The unit responsible; null: the whole organization.
+    orgUnitId: uuid(),
+    // Days on the client's calendar. The first due day never changes.
+    dueOn: date({ mode: 'string' }).notNull(),
+    originalDueOn: date({ mode: 'string' }).notNull(),
+    strength: actionStrength().notNull(),
+    hierarchy: actionHierarchy(),
+    status: actionStatus().notNull().default('open'),
+    completedAt: timestamp({ withTimezone: true }),
+    completedBy: uuid(),
+    completionNote: text(),
+    effectiveness: actionEffectiveness(),
+    verifiedBy: uuid(),
+    verifiedAt: timestamp({ withTimezone: true }),
+    verificationNote: text(),
+    cancelReason: text(),
+    createdBy: uuid().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    // Raised by every change (409 `stale_action`).
+    revision: integer().notNull().default(1),
+  },
+  (t) => [
+    unique('actions_tenant_id_id_key').on(t.tenantId, t.id),
+    unique('actions_tenant_id_reference_key').on(t.tenantId, t.reference),
+    foreignKey({
+      name: 'actions_risk_fk',
+      columns: [t.tenantId, t.riskId],
+      foreignColumns: [risks.tenantId, risks.id],
+    }),
+    foreignKey({
+      name: 'actions_owner_fk',
+      columns: [t.tenantId, t.ownerId],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'actions_org_unit_fk',
+      columns: [t.tenantId, t.orgUnitId],
+      foreignColumns: [orgUnits.tenantId, orgUnits.id],
+    }),
+    foreignKey({
+      name: 'actions_completed_by_fk',
+      columns: [t.tenantId, t.completedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'actions_verified_by_fk',
+      columns: [t.tenantId, t.verifiedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'actions_created_by_fk',
+      columns: [t.tenantId, t.createdBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    // Exactly the column of its source.
+    check('actions_source_column', sql`(${t.sourceType} = 'risk') = (${t.riskId} is not null)`),
+    check(
+      'actions_completed_with_note',
+      sql`${t.status} not in ('completed', 'verified') or (${t.completedAt} is not null and ${t.completedBy} is not null and ${t.completionNote} is not null)`,
+    ),
+    check(
+      'actions_verified_with_outcome',
+      sql`${t.status} <> 'verified' or (${t.effectiveness} is not null and ${t.verifiedBy} is not null and ${t.verifiedAt} is not null)`,
+    ),
+    check('actions_cancelled_with_reason', sql`${t.status} <> 'cancelled' or ${t.cancelReason} is not null`),
+    check('actions_reference_shape', sql`${t.reference} ~ '^ACT-[0-9]{4}-[0-9]{5,}$'`),
+    index('actions_risk_idx').on(t.tenantId, t.riskId),
+    index('actions_owner_idx').on(t.tenantId, t.ownerId, t.status),
+    index('actions_due_idx').on(t.tenantId, t.status, t.dueOn),
+    tenantIsolation(),
+  ],
+);
+
+// An action's timeline, written by the engine, never changed.
+export const actionEvents = pgTable(
+  'action_events',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    actionId: uuid().notNull(),
+    // As `risk_events`: entries written together keep their order.
+    occurredAt: timestamp({ withTimezone: true })
+      .notNull()
+      .default(sql`clock_timestamp()`),
+    kind: actionEventKind().notNull(),
+    actorId: uuid(),
+    details: jsonb().$type<Record<string, unknown>>(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'action_events_action_fk',
+      columns: [t.tenantId, t.actionId],
+      foreignColumns: [actions.tenantId, actions.id],
+    }),
+    foreignKey({
+      name: 'action_events_actor_fk',
+      columns: [t.tenantId, t.actorId],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    index('action_events_action_idx').on(t.tenantId, t.actionId, t.occurredAt),
+    tenantIsolation(),
+  ],
+);
+
+// What the action check has sent, claimed once each: by kind, action and
+// the due day it was about, so that a new due day gives new reminders.
+export const actionReminders = pgTable(
+  'action_reminders',
+  {
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    kind: text().notNull(),
+    actionId: uuid().notNull(),
+    period: text().notNull().default(''),
+    sentAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({
+      name: 'action_reminders_pkey',
+      columns: [t.tenantId, t.kind, t.actionId, t.period],
+    }),
+    foreignKey({
+      name: 'action_reminders_action_fk',
+      columns: [t.tenantId, t.actionId],
+      foreignColumns: [actions.tenantId, actions.id],
+    }),
+    check('action_reminders_kind', sql`${t.kind} in ('due_soon', 'overdue', 'escalated')`),
+    tenantIsolation(),
+  ],
+);
+
+// An acceptance of a risk above its tolerance (spec, "Acceptance above
+// tolerance"): asked for with a rationale, conditions and a last day,
+// signed through the approval engine where its band asks for it. What is
+// signed is fixed by the database while it is in approval and after; a
+// lapse or a withdrawal changes only its status.
+export const riskAcceptances = pgTable(
+  'risk_acceptances',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    riskId: uuid().notNull(),
+    requestedBy: uuid().notNull(),
+    requestedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    rationale: jsonb().$type<Localized>().notNull(),
+    conditions: jsonb().$type<Localized>(),
+    // The last day, on the client's calendar.
+    untilOn: date({ mode: 'string' }).notNull(),
+    // The current rating accepted, as it stood, and the tolerance it is above.
+    ratingId: uuid().notNull(),
+    score: integer().notNull(),
+    bandCode: riskBand().notNull(),
+    toleranceBand: riskBand().notNull(),
+    categoryId: uuid().notNull(),
+    status: riskAcceptanceStatus().notNull(),
+    // None for a band whose acceptance needs no signature.
+    approvalRunId: uuid(),
+    decidedAt: timestamp({ withTimezone: true }),
+    // last_day, score_risen, category_changed.
+    lapsedReason: text(),
+    lapsedAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [
+    unique('risk_acceptances_tenant_id_id_key').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'risk_acceptances_risk_fk',
+      columns: [t.tenantId, t.riskId],
+      foreignColumns: [risks.tenantId, risks.id],
+    }),
+    foreignKey({
+      name: 'risk_acceptances_requested_by_fk',
+      columns: [t.tenantId, t.requestedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'risk_acceptances_rating_fk',
+      columns: [t.tenantId, t.ratingId],
+      foreignColumns: [riskRatings.tenantId, riskRatings.id],
+    }),
+    foreignKey({
+      name: 'risk_acceptances_category_fk',
+      columns: [t.tenantId, t.categoryId],
+      foreignColumns: [riskCategories.tenantId, riskCategories.id],
+    }),
+    foreignKey({
+      name: 'risk_acceptances_run_fk',
+      columns: [t.tenantId, t.approvalRunId],
+      foreignColumns: [approvalRuns.tenantId, approvalRuns.id],
+    }),
+    // One in approval, and one in force, per risk at most.
+    uniqueIndex('risk_acceptances_one_open')
+      .on(t.tenantId, t.riskId)
+      .where(sql`${t.status} in ('in_approval', 'accepted')`),
+    check(
+      'risk_acceptances_lapsed_why',
+      sql`${t.status} <> 'lapsed' or (${t.lapsedReason} in ('last_day', 'score_risen', 'category_changed') and ${t.lapsedAt} is not null)`,
+    ),
+    tenantIsolation(),
+  ],
+);
+
+// A link between a risk and an incident (spec, "Links to other modules"):
+// the incident raised the risk, or supports it. Taken off with a reason,
+// never deleted; at most one live link per pair.
+export const riskIncidentLinks = pgTable(
+  'risk_incident_links',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    riskId: uuid().notNull(),
+    incidentId: uuid().notNull(),
+    kind: riskIncidentLinkKind().notNull(),
+    note: text(),
+    linkedBy: uuid().notNull(),
+    linkedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    removedBy: uuid(),
+    removedAt: timestamp({ withTimezone: true }),
+    removeReason: text(),
+  },
+  (t) => [
+    unique('risk_incident_links_tenant_id_id_key').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'risk_incident_links_risk_fk',
+      columns: [t.tenantId, t.riskId],
+      foreignColumns: [risks.tenantId, risks.id],
+    }),
+    foreignKey({
+      name: 'risk_incident_links_incident_fk',
+      columns: [t.tenantId, t.incidentId],
+      foreignColumns: [incidents.tenantId, incidents.id],
+    }),
+    foreignKey({
+      name: 'risk_incident_links_linked_by_fk',
+      columns: [t.tenantId, t.linkedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'risk_incident_links_removed_by_fk',
+      columns: [t.tenantId, t.removedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    uniqueIndex('risk_incident_links_one_live')
+      .on(t.tenantId, t.riskId, t.incidentId)
+      .where(sql`${t.removedAt} is null`),
+    check(
+      'risk_incident_links_removed_with_reason',
+      sql`${t.removedAt} is null or (${t.removedBy} is not null and ${t.removeReason} is not null)`,
+    ),
+    index('risk_incident_links_incident_idx').on(t.tenantId, t.incidentId),
+    tenantIsolation(),
+  ],
+);
+
+// The reasons people give (to change a risk's owner, unit or category, to
+// escalate it or take it off a list, to reopen it or withdraw an
+// acceptance), kept on the record where a manager can correct them
+// (security review 17, L5): never in the audit trail or the timeline, which
+// name the note by its id.
+export const riskNoteKind = pgEnum('risk_note_kind', [
+  'change_reason',
+  'escalation_reason',
+  'de_escalation_reason',
+  'reopen_reason',
+  'withdraw_reason',
+]);
+
+export const riskNotes = pgTable(
+  'risk_notes',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    riskId: uuid().notNull(),
+    kind: riskNoteKind().notNull(),
+    text: text().notNull(),
+    writtenBy: uuid().notNull(),
+    writtenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    correctedBy: uuid(),
+    correctedAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [
+    unique('risk_notes_tenant_id_id_key').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'risk_notes_risk_fk',
+      columns: [t.tenantId, t.riskId],
+      foreignColumns: [risks.tenantId, risks.id],
+    }),
+    foreignKey({
+      name: 'risk_notes_written_by_fk',
+      columns: [t.tenantId, t.writtenBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'risk_notes_corrected_by_fk',
+      columns: [t.tenantId, t.correctedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    check('risk_notes_text', sql`length(${t.text}) between 1 and 4000`),
+    index('risk_notes_risk_idx').on(t.tenantId, t.riskId),
+    tenantIsolation(),
+  ],
+);
+
+// The same for an action: why its due day moved, why it was reopened.
+export const actionNoteKind = pgEnum('action_note_kind', ['due_change_reason', 'reopen_reason']);
+
+export const actionNotes = pgTable(
+  'action_notes',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    actionId: uuid().notNull(),
+    kind: actionNoteKind().notNull(),
+    text: text().notNull(),
+    writtenBy: uuid().notNull(),
+    writtenAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    correctedBy: uuid(),
+    correctedAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [
+    unique('action_notes_tenant_id_id_key').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'action_notes_action_fk',
+      columns: [t.tenantId, t.actionId],
+      foreignColumns: [actions.tenantId, actions.id],
+    }),
+    foreignKey({
+      name: 'action_notes_written_by_fk',
+      columns: [t.tenantId, t.writtenBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'action_notes_corrected_by_fk',
+      columns: [t.tenantId, t.correctedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    check('action_notes_text', sql`length(${t.text}) between 1 and 4000`),
+    index('action_notes_action_idx').on(t.tenantId, t.actionId),
+    tenantIsolation(),
   ],
 );

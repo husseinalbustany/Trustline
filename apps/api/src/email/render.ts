@@ -11,12 +11,16 @@ export type DigestSectionKey =
   | 'approve'
   | 'stepsOverdue'
   | 'reviews'
-  | 'incidents';
+  | 'incidents'
+  | 'riskReviews'
+  | 'actionsDue'
+  | 'riskProposals'
+  | 'riskSteps';
 
 export type DigestSection = {
   key: DigestSectionKey;
   count: number;
-  /** For incidents: how many of them are overdue. */
+  /** For incidents and actions: how many of them are overdue. */
   overdueCount?: number;
   /** The first few, in the order the screen shows them. */
   items: DigestItem[];
@@ -56,6 +60,17 @@ export type MailContent =
     }
   | {
       category: 'weekly_digest';
+      topic: 'risks';
+      /** Reviews and actions overdue in the reach of the manager. */
+      reviewsOverdue: number;
+      actionsOverdue: number;
+      /** Acceptance and closure steps overdue: for whole-organization managers. */
+      stepsOverdue: number;
+      href: string;
+    }
+  | {
+      category: 'weekly_digest';
+      topic?: 'acknowledgements';
       overdue: number;
       people: number;
       /** Approval steps overdue on documents they manage (quality review 3, S2). */
@@ -199,6 +214,19 @@ export function renderMail(content: MailContent, envelope: MailEnvelope): Render
     return finish(subject, body, [
       { kind: 'text', text: say(w.signInCode.footer, { organization: oneLine(envelope.organization) }) },
     ]);
+  } else if (content.category === 'weekly_digest' && content.topic === 'risks') {
+    subject = w.weeklyRisks.subject;
+    body.push({ kind: 'text', text: w.weeklyRisks.body });
+    if (content.reviewsOverdue > 0) {
+      body.push({ kind: 'text', text: say(w.weeklyRisks.reviewsOverdue, { count: content.reviewsOverdue }) });
+    }
+    if (content.actionsOverdue > 0) {
+      body.push({ kind: 'text', text: say(w.weeklyRisks.actionsOverdue, { count: content.actionsOverdue }) });
+    }
+    if (content.stepsOverdue > 0) {
+      body.push({ kind: 'text', text: say(w.weeklyRisks.stepsOverdue, { count: content.stepsOverdue }) });
+    }
+    body.push({ kind: 'link', text: w.weeklyRisks.open, href: content.href });
   } else if (content.category === 'weekly_digest') {
     // Acknowledgements first, as before; the approval steps as a line of
     // their own, or alone when no acknowledgement is overdue. The subject

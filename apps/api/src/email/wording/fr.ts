@@ -94,6 +94,14 @@ export const fr: Wording = {
       body: 'Le journal d’audit de votre établissement a été vérifié le {day} : il est intact jusqu’à l’entrée {count}. Le sceau de cette entrée est :',
       keep: 'Conservez ce message : si une entrée jusqu’à celle-ci était un jour modifiée, supprimée ou ajoutée après coup, ce sceau ne correspondrait plus.',
     },
+    risk_escalated: {
+      subject: 'Risque extrême remonté : {reference}',
+      body: 'Le risque {reference}, évalué Extrême, a été remonté à un comité dont vous êtes membre, ou c’est un risque dont vous êtes propriétaire.',
+    },
+    risk_step_assigned: {
+      subject: 'Une étape de risque à décider : {reference}',
+      body: 'Une étape de l’acceptation ou de la clôture du risque {reference} attend votre décision.',
+    },
   },
   signInCode: {
     subject: 'Votre code de connexion à Trustline',
@@ -113,6 +121,14 @@ export const fr: Wording = {
     stepsBody: 'Certaines étapes d’approbation des documents que vous gérez ont dépassé leur échéance.',
     stepsOverdue: 'Étapes d’approbation en retard : {count}',
   },
+  weeklyRisks: {
+    subject: 'Revues de risques et actions en retard cette semaine',
+    body: 'Des risques que vous gérez ont des revues ou des actions dont l’échéance est passée.',
+    reviewsOverdue: 'Revues de risques en retard : {count}',
+    actionsOverdue: 'Actions en retard : {count}',
+    stepsOverdue: 'Étapes d’acceptation et de clôture en retard : {count}',
+    open: 'Voir les revues à faire dans Trustline',
+  },
   daily: {
     subject: 'Ce qui vous attend dans Trustline : {day}',
     intro: 'Voici ce qui vous attend aujourd’hui.',
@@ -122,6 +138,10 @@ export const fr: Wording = {
     reviews: 'Révisions périodiques à faire : {count}',
     incidents: 'Incidents qui vous sont attribués : {count}',
     incidentsOverdue: 'Dont en retard : {count}',
+    riskReviews: 'Risques à revoir : {count}',
+    actionsDue: 'Actions à échéance : {count}',
+    riskProposals: 'Risques proposés au registre : {count}',
+    riskSteps: 'Étapes de risques à décider : {count}',
     more: 'Et {count} de plus dans Trustline.',
     open: 'Ouvrir Trustline',
   },

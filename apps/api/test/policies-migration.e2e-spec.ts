@@ -376,7 +376,10 @@ describe('the policies migration, for clients that existed before it', () => {
       }),
     ).rejects.toBe(rollback);
     const code = SYSTEM_ROLES.find((r) => r.code === 'approving_authority')!;
-    expect(found.keptRole).toEqual({ name: code.name, isSystem: true, permissions: code.permissions });
+    // As 0045 and 0067 made it: the risks module's permissions came later
+    // (risks-migration.e2e-spec.ts).
+    const policies = code.permissions.filter((p) => !p.startsWith('risks.'));
+    expect(found.keptRole).toEqual({ name: code.name, isSystem: true, permissions: policies });
     // reports.view (0067): applied twice, audited once, and only for the built-in role.
     expect(found.reportAudits).toEqual([
       {
@@ -391,7 +394,8 @@ describe('the policies migration, for clients that existed before it', () => {
     ]);
     // In three languages, worded for any organization.
     expect(Object.keys(code.name).sort()).toEqual(['ar', 'en', 'fr']);
-    expect(code.permissions).toEqual(['policies.view', 'policies.view_all', 'policies.approve', 'reports.view']);
+    expect(policies).toEqual(['policies.view', 'policies.view_all', 'policies.approve', 'reports.view']);
+    expect(code.permissions).toEqual([...policies, 'risks.view', 'risks.approve']);
     const authorityRoute = 'review:quality_officer:7 approve:approving_authority:7';
     const earlier = 'review:quality_officer:7 approve:administrator:7';
     expect(found.kept).toEqual({ policy: authorityRoute, procedure: authorityRoute, work_instruction: authorityRoute });

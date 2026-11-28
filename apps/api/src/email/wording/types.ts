@@ -49,6 +49,17 @@ export type Wording = {
     data_export_failed: { subject: string; body: string };
     /** The week's head of the audit chain: {count} its number, {hash} its seal. */
     audit_chain_head: { subject: string; body: string; keep: string };
+    risk_escalated: { subject: string; body: string };
+    risk_step_assigned: { subject: string; body: string };
+  };
+  /** The weekly email to those who manage risks. */
+  weeklyRisks: {
+    subject: string;
+    body: string;
+    reviewsOverdue: string;
+    actionsOverdue: string;
+    stepsOverdue: string;
+    open: string;
   };
   /** An external reviewer's one-time code: {code}, valid {count} minutes. */
   signInCode: { subject: string; body: string; expires: string; footer: string };
@@ -76,6 +87,10 @@ export type Wording = {
     reviews: string;
     incidents: string;
     incidentsOverdue: string;
+    riskReviews: string;
+    actionsDue: string;
+    riskProposals: string;
+    riskSteps: string;
     more: string;
     open: string;
   };

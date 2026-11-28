@@ -40,6 +40,7 @@ const LOCKS = 'Counters and locks of sign-in and signing, which never leave Trus
 const CHAIN = 'The audit chain’s links and seals, to check it.';
 const SIGNED = 'The fingerprint of what was signed, to check the signature against the text.';
 const CODES = 'An identifying code chosen by the organization, not a secret.';
+const RISK_BAND = 'The code of a band of the risk matrix (low, medium, high, extreme), not a secret.';
 
 export const COVERAGE: Record<string, Coverage> = {
   // Structure, people, settings.
@@ -109,6 +110,30 @@ export const COVERAGE: Record<string, Coverage> = {
   approval_runs: exported('documents/approval_runs'),
   approval_run_steps: exported('documents/approval_run_steps'),
   signatures: exported('documents/signatures', { keep: { content_hash: SIGNED } }),
+
+  // Risk management (docs/specs/risk-management.md) and the shared actions
+  // engine (docs/specs/actions.md).
+  risk_settings: exported('risks/settings'),
+  risk_matrices: exported('risks/matrices'),
+  risk_matrix_levels: exported('risks/matrix_levels'),
+  risk_impact_domains: exported('risks/impact_domains'),
+  risk_bands: exported('risks/bands', { keep: { code: RISK_BAND } }),
+  risk_matrix_cells: exported('risks/matrix_cells', { keep: { band_code: RISK_BAND } }),
+  risk_categories: exported('risks/categories', { keep: { code: CODES } }),
+  risk_committees: exported('risks/committees', { keep: { code: CODES } }),
+  risks: exported('risks/risks', { keep: { keywords: 'Words the organization files a risk under.' } }),
+  risk_ratings: exported('risks/ratings', { keep: { band_code: RISK_BAND } }),
+  risk_controls: exported('risks/controls'),
+  risk_reviews: exported('risks/reviews'),
+  risk_events: exported('risks/events'),
+  risk_notes: exported('risks/notes'),
+  risk_reminders: exported('risks/reminders'),
+  risk_acceptances: exported('risks/acceptances', { keep: { band_code: RISK_BAND } }),
+  risk_incident_links: exported('risks/incident_links'),
+  actions: exported('actions/actions'),
+  action_events: exported('actions/events'),
+  action_notes: exported('actions/notes'),
+  action_reminders: exported('actions/reminders'),
 
   // Notifications and reports.
   notifications: exported('notifications/notifications'),

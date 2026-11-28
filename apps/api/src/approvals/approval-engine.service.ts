@@ -28,23 +28,26 @@ import { addDays } from '../i18n/time-zones.js';
 /**
  * The approval engine: ordered routes of review and approval steps, runs of
  * a subject through a route, and the decision of each step in turn. Generic:
- * a document version goes through it today, an investigation later. It
- * knows nothing of documents; the code of each subject calls it, never the
- * reverse, and tells it what it needs to know:
+ * a document version goes through it, a risk's acceptance above tolerance
+ * and a risk's closure too (docs/specs/risk-management.md, step 6), an
+ * investigation later. It knows nothing of documents or risks; the code of
+ * each subject calls it, never the reverse, and tells it what it needs to
+ * know:
  *
  * - the subject's owning unit, over which a role named in a step must be
- *   held for its holder to be an assignee;
+ *   held for its holder to be an assignee; null for the whole organization,
+ *   where only a grant for the whole organization counts;
  * - the permission that makes someone eligible at all (`policies.approve`
- *   for documents): a role named in a step must include it, and a person
- *   named in a step must hold it.
+ *   for documents, `risks.approve` for risks): a role named in a step must
+ *   include it, and a person named in a step must hold it.
  *
  * Every method takes a transaction already scoped to the client by
  * `TenantDb.withTenant()`. Auditing, signatures and notifications are the
  * caller's, in the same transaction.
  */
 
-export type RouteSubject = 'document';
-export type RunSubject = 'document_version';
+export type RouteSubject = 'document' | 'risk_acceptance' | 'risk_closure';
+export type RunSubject = 'document_version' | 'risk_acceptance' | 'risk';
 export type StepKind = (typeof approvalRunSteps.kind.enumValues)[number];
 export type RunStatus = (typeof approvalRuns.status.enumValues)[number];
 export type RunStepStatus = (typeof approvalRunSteps.status.enumValues)[number];
@@ -57,8 +60,11 @@ export type StepAssignee = {
 
 /** What the subject tells the engine about itself. */
 export type SubjectContext = {
-  /** The unit a role named in a step must be held over. */
-  unitId: string;
+  /**
+   * The unit a role named in a step must be held over. Null: the whole
+   * organization, where only a grant for the whole organization counts.
+   */
+  unitId: string | null;
   /** What an assignee must hold: `policies.approve` for documents. */
   permission: Permission;
 };
@@ -171,9 +177,31 @@ const unitAndAbove = (unitId: string | SQLWrapper) => sql`(
 export class ApprovalEngine {
   /**
    * The active route for a subject of this type: the one for the type, or
-   * else the one for any type. Null when there is neither.
+   * else the one for any type. Null when there is neither. For a subject
+   * other than a document, the route of its variant (a risk's acceptance:
+   * the band), and no other.
    */
-  async routeFor(tx: Transaction, subject: RouteSubject, typeId: string) {
+  async routeFor(
+    tx: Transaction,
+    subject: RouteSubject,
+    typeId: string | null,
+    variant: string | null = null,
+  ) {
+    if (subject !== 'document') {
+      const [route] = await tx
+        .select({ id: approvalRoutes.id })
+        .from(approvalRoutes)
+        .where(
+          and(
+            eq(approvalRoutes.subject, subject),
+            eq(approvalRoutes.active, true),
+            variant === null
+              ? isNull(approvalRoutes.variant)
+              : eq(approvalRoutes.variant, variant),
+          ),
+        );
+      return route ? { id: route.id, typeId: null } : null;
+    }
     const found = await tx
       .select({ id: approvalRoutes.id, typeId: approvalRoutes.documentTypeId })
       .from(approvalRoutes)
@@ -182,7 +210,7 @@ export class ApprovalEngine {
           eq(approvalRoutes.subject, subject),
           eq(approvalRoutes.active, true),
           or(
-            eq(approvalRoutes.documentTypeId, typeId),
+            typeId === null ? sql`false` : eq(approvalRoutes.documentTypeId, typeId),
             isNull(approvalRoutes.documentTypeId),
           ),
         ),
@@ -233,7 +261,9 @@ export class ApprovalEngine {
       join users u on u.id = ra.user_id and u.status = 'active'
       where ra.role_id = ${step.assigneeRoleId}
         and ${ctx.permission} = any(r.permissions)
-        and (ra.org_unit_id is null or ra.org_unit_id in ${unitAndAbove(ctx.unitId)})
+        and (ra.org_unit_id is null${
+          ctx.unitId === null ? sql`` : sql` or ra.org_unit_id in ${unitAndAbove(ctx.unitId)}`
+        })
       order by 1`);
     return rows.map((r) => r.id);
   }
@@ -272,12 +302,15 @@ export class ApprovalEngine {
     };
   }
 
-  /** Whether this person is an assignee of this step, for this unit. */
-  isAssignee(a: Assignment, step: StepAssignee, unitId: string) {
+  /**
+   * Whether this person is an assignee of this step, for this unit (null:
+   * the whole organization, which only a grant for it covers).
+   */
+  isAssignee(a: Assignment, step: StepAssignee, unitId: string | null) {
     if (step.assigneeUserId) return a.named && step.assigneeUserId === a.userId;
     if (!step.assigneeRoleId) return false;
     const reach = a.roles.get(step.assigneeRoleId);
-    return reach === 'all' || (!!reach && reach.includes(unitId));
+    return reach === 'all' || (!!reach && unitId !== null && reach.includes(unitId));
   }
 
   /**

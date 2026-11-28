@@ -64,7 +64,7 @@ describe('what is emailed at once', () => {
 
   it('still sends what is about incidents while the subscription is suspended, and not approvals', () => {
     // Approvals wait: a step, and a "no change" review (business decision 6).
-    const approvals = ['document_step_assigned', 'review_approval_requested'];
+    const approvals = ['document_step_assigned', 'review_approval_requested', 'risk_step_assigned'];
     for (const kind of IMMEDIATE_KINDS.filter((k) => !approvals.includes(k))) {
       expect(SAFETY_WHILE_SUSPENDED).toContain(kind);
     }

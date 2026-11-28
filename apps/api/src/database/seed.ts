@@ -403,6 +403,8 @@ export async function seed() {
         // client gets them, and a few example documents in different
         // states. Both leave alone what is there already.
         await provisioning.ensurePolicyDefaults(tx, tenantId);
+        // The risks module's matrix, categories and committees.
+        await provisioning.ensureRiskDefaults(tx, tenantId);
         const [{ timeZone }] = await tx
           .select({ timeZone: tenants.timeZone })
           .from(tenants)

@@ -55,7 +55,18 @@ export type AuditWording = {
     values: Record<string, string>;
     templates: Record<string, string>;
     screens: Record<
-      'incident' | 'incidents' | 'document' | 'documents' | 'audit' | 'auditDownload' | 'reports' | 'users' | 'dashboard' | 'other',
+      | 'incident'
+      | 'incidents'
+      | 'document'
+      | 'documents'
+      | 'audit'
+      | 'auditDownload'
+      | 'reports'
+      | 'risk'
+      | 'risks'
+      | 'users'
+      | 'dashboard'
+      | 'other',
       string
     >;
   };
