@@ -29,6 +29,7 @@ export const en: AuditWording = {
     email_setting_changed: 'Email switched on or off for the organization',
     notification_preferences_changed: 'Email preferences changed',
     audit_chain_started: 'Audit trail sealing started',
+    ai_use_changed: 'AI switched on or off',
 
     incident_reported: 'Incident reported',
     incident_triaged: 'Incident triaged',
@@ -78,6 +79,7 @@ export const en: AuditWording = {
 
     subscription_changed: 'Subscription changed',
     import_window_changed: 'Import window changed',
+    ai_settings_changed: 'AI settings changed by Trustline',
     external_access_granted: 'External reviewer access granted',
     external_access_extended: 'External reviewer access extended',
     external_access_ended: 'External reviewer access ended',

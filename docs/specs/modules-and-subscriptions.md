@@ -456,6 +456,10 @@ silent. Each choice is marked **Chosen**.
 3. Limits and the notices at each limit. Built in the API for users and
    sites; the screens are not.
 4. AI metering and allowance, built together with the AI assistant.
+   Allowances per feature on each plan, request records and spending
+   limits are built in the API with the AI foundation
+   (`ai-providers-and-allowances.md`, "Built: steps 1 and 2"); credits are
+   not used.
 5. Self-service changes and online payment.
 
 Step 1 is worth doing before more modules are built: each new module is then

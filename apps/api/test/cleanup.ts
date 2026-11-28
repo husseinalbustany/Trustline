@@ -1,6 +1,12 @@
 import { eq, inArray, or, sql } from 'drizzle-orm';
 import { createDatabase } from '../src/database/client.js';
 import {
+  aiClientFeatures,
+  aiClientSettings,
+  aiPlatformSettings,
+  aiProviderConnections,
+  aiRequests,
+  aiUsageNotices,
   approvalRoutes,
   approvalRouteSteps,
   approvalRuns,
@@ -66,6 +72,7 @@ const MIN_PREFIX = 8;
  * - clients whose identifier starts with `slugPrefix`, letter for letter
  *   (never a pattern: an `_` or `%` in it stands for itself);
  * - plans whose code starts with it, the same way;
+ * - AI provider connections whose name starts with it, the same way;
  * - the one platform admin with exactly this email.
  *
  * A prefix too short to be a run's own is refused: an empty one would name
@@ -132,7 +139,17 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
       // units; acknowledgements, reviews and run steps before signatures,
       // runs before routes, versions before documents before their types;
       // imports before their batches, signatures and versions.
+      // Trustline's own AI setting keeps no trace of the run's member of
+      // staff, who is removed below.
+      await tx
+        .update(aiPlatformSettings)
+        .set({ updatedBy: null })
+        .where(inArray(aiPlatformSettings.updatedBy, admins));
       for (const table of [
+        aiRequests,
+        aiUsageNotices,
+        aiClientFeatures,
+        aiClientSettings,
         subscriptions,
         emailOutbox,
         emailQueue,
@@ -189,6 +206,9 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
       await tx
         .delete(plans)
         .where(sql`starts_with(${plans.code}, ${slugPrefix})`);
+      await tx
+        .delete(aiProviderConnections)
+        .where(sql`starts_with(${aiProviderConnections.name}, ${slugPrefix})`);
       await tx.delete(platformAdmins).where(eq(platformAdmins.email, adminEmail));
     });
   } finally {

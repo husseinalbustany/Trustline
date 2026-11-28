@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
 import { OrganizationModule } from '../organization/organization.module.js';
+import { PlatformAiController } from './platform-ai.controller.js';
 import { PlatformAuthController } from './platform-auth.controller.js';
 import { PlatformAuthGuard } from './platform-auth.guard.js';
 import { PlatformAuthService } from './platform-auth.service.js';
 import { PlatformImportWindowController } from './platform-import-window.controller.js';
 import { PlatformPlansController } from './platform-plans.controller.js';
 import { PlatformSubscriptionsController } from './platform-subscriptions.controller.js';
+import { PlatformTenantAiController } from './platform-tenant-ai.controller.js';
 import { PlatformTenantsController } from './platform-tenants.controller.js';
 
 /** The admin portal's API: Trustline staff managing client hospitals. */
@@ -18,6 +20,8 @@ import { PlatformTenantsController } from './platform-tenants.controller.js';
     PlatformPlansController,
     PlatformSubscriptionsController,
     PlatformImportWindowController,
+    PlatformAiController,
+    PlatformTenantAiController,
   ],
   providers: [PlatformAuthService, PlatformAuthGuard],
 })

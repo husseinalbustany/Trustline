@@ -29,6 +29,7 @@ export const fr: AuditWording = {
     email_setting_changed: 'Activation ou désactivation de l’e-⁠mail pour l’établissement',
     notification_preferences_changed: 'Modification des préférences d’e-⁠mail',
     audit_chain_started: 'Début du scellement du journal d’audit',
+    ai_use_changed: 'Activation ou désactivation de l’IA',
 
     incident_reported: 'Déclaration d’un incident',
     incident_triaged: 'Tri d’un incident',
@@ -78,6 +79,7 @@ export const fr: AuditWording = {
 
     subscription_changed: 'Modification de l’abonnement',
     import_window_changed: 'Modification de la période d’importation',
+    ai_settings_changed: 'Modification des réglages d’IA par Trustline',
     external_access_granted: 'Ouverture d’un accès d’évaluateur externe',
     external_access_extended: 'Prolongation d’un accès d’évaluateur externe',
     external_access_ended: 'Fin d’un accès d’évaluateur externe',

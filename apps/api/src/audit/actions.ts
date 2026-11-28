@@ -117,6 +117,8 @@ export const AUDIT_ACTIONS = {
   response_rules_changed: code('organization', 'tenant', ['none', 'mild', 'moderate', 'severe', 'death']),
   email_setting_changed: code('organization', 'tenant', ['enabled']),
   notification_preferences_changed: code('organization', 'user', ['immediate', 'digest', 'weekly', 'language', 'via']),
+  // The organization switched AI on or off (docs/specs/ai-providers-and-allowances.md).
+  ai_use_changed: code('organization', 'tenant', ['from', 'to']),
 
   // Incidents.
   incident_reported: code('incidents', 'incident', ['reference', 'type', 'anonymous', 'channel'], { maskActor: true }),
@@ -171,13 +173,16 @@ export const AUDIT_ACTIONS = {
   // Written by Trustline's staff, from the admin portal.
   // `platformAdminName` names the staff member (`platformAdminEmail` in
   // entries written before the audit trail's step 7).
-  subscription_changed: code('trustline', 'subscription', ['plan', 'status', 'modules', 'limits', 'planUpdated', 'platformAdminId', 'platformAdminName'], { by: 'platform', legacy: ['platformAdminEmail'] }),
+  subscription_changed: code('trustline', 'subscription', ['plan', 'status', 'modules', 'limits', 'aiAllowances', 'planUpdated', 'platformAdminId', 'platformAdminName'], { by: 'platform', legacy: ['platformAdminEmail'] }),
   import_window_changed: code('trustline', 'tenant', ['closesOn', 'reason', 'platformAdminId', 'platformAdminName'], { by: 'platform', module: 'policies', legacy: ['platformAdminEmail'] }),
   // Mirrored from Trustline's own log (spec, item 3): the client was made,
   // and what of it was changed (suspended or made active again, its time
   // zone, its languages, its standard), with the old and new values.
   client_created_by_platform: code('trustline', 'tenant', ['slug', 'plan', 'platformAdminId', 'platformAdminName'], { by: 'platform' }),
   client_settings_changed_by_platform: code('trustline', 'tenant', ['changes', 'platformAdminId', 'platformAdminName'], { by: 'platform' }),
+  // How Trustline offers the client AI: on or off, each feature's provider
+  // (where it processes) and model, the allowances, the medical option.
+  ai_settings_changed: code('trustline', 'tenant', ['offered', 'features', 'allowances', 'medicalOptionAllowed', 'platformAdminId', 'platformAdminName'], { by: 'platform' }),
 
   // The audit trail itself.
   // The first entry the chain seals itself (migration 0058): how many were

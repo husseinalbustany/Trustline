@@ -4,10 +4,11 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { asc, eq, sql } from 'drizzle-orm';
+import { asc, eq, inArray, sql } from 'drizzle-orm';
 import type { Database, Transaction } from '../database/client.js';
 import { PLATFORM_DATABASE } from '../database/database.constants.js';
-import { plans, subscriptions } from '../database/schema.js';
+import { aiClientSettings, plans, subscriptions } from '../database/schema.js';
+import { effectiveAllowances } from '../ai/features.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
 import {
   effectiveEntitlements,
@@ -29,6 +30,7 @@ const planFields = {
   modules: plans.modules,
   limits: plans.limits,
   extras: plans.extras,
+  aiAllowances: plans.aiAllowances,
   prices: plans.prices,
   active: plans.active,
   position: plans.position,
@@ -48,6 +50,7 @@ export const PLAN_FIELDS = [
   'modules',
   'limits',
   'extras',
+  'aiAllowances',
   'prices',
   'active',
   'position',
@@ -148,18 +151,32 @@ export class PlansService {
       .set({ ...input, updatedAt: new Date() })
       .where(eq(plans.id, id));
     const after = await this.get(id, tx);
+    // The clients' own AI allowances, which a plan's do not reach.
+    const overrides = new Map(
+      onIt.length === 0
+        ? []
+        : (
+            await tx
+              .select({ tenantId: aiClientSettings.tenantId, overrides: aiClientSettings.allowanceOverrides })
+              .from(aiClientSettings)
+              .where(inArray(aiClientSettings.tenantId, onIt.map((s) => s.tenantId)))
+          ).map((r) => [r.tenantId, r.overrides]),
+    );
 
     for (const subscription of onIt) {
+      const own = overrides.get(subscription.tenantId);
       const seen = visibleChanges(
         {
           planCode: before.code,
           status: subscription.status,
           ...effectiveEntitlements(before, subscription),
+          aiAllowances: effectiveAllowances(before.aiAllowances, own),
         },
         {
           planCode: after.code,
           status: subscription.status,
           ...effectiveEntitlements(after, subscription),
+          aiAllowances: effectiveAllowances(after.aiAllowances, own),
         },
       );
       if (!seen) continue;

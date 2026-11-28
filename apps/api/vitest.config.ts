@@ -26,6 +26,10 @@ export default defineConfig({
       SIGNING_PIN_PEPPER: 'test-only-pepper-for-signing-pins-0000000000',
       AUDIT_SIGNING_KEY: auditKey,
       AUDIT_PREVIOUS_PUBLIC_KEYS: '',
+      // No test ever calls a real AI provider: every request is answered by
+      // the fake one (ai/providers.ts), which is also what a test run gets
+      // whatever is set, and a real adapter built under test throws.
+      AI_PROVIDERS: 'fake',
     },
   },
 });

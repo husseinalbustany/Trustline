@@ -265,8 +265,46 @@ has. Incidents and policies are built. The list is a constant in
 
 The rules and what was decided are in `docs/specs/modules-and-subscriptions.md`.
 
-Not built yet: the portal's and the client's screens for this, AI metering,
-and self-service or online payment.
+Not built yet: the portal's and the client's screens for this, and
+self-service or online payment. AI allowances are in the next section.
+
+## AI foundation
+
+Every AI feature calls one entry point, `AiService.run()`
+(`apps/api/src/ai/`). It checks:
+
+- the module;
+- that Trustline offers the feature to the client;
+- the client's own switch;
+- the month's allowance;
+- the client's and the platform's spending limits.
+
+It then removes names and identifiers, calls the provider with a timeout
+and one retry, puts the names back, and records the request (never its
+text). A provider's failure gives the feature `ai_unavailable`; it never
+throws.
+
+- **Provider connections** (Anthropic API, Amazon Bedrock) are data that
+  Trustline staff manage in the portal (`/api/v1/platform/ai/connections`).
+  A connection holds where it processes requests, its models and their
+  prices, and the name of the `AI_CREDENTIAL_…` environment variable that
+  holds its credential. The credential itself is never stored or shown.
+- **Per client**, staff set (`/api/v1/platform/tenants/:id/ai`):
+  - whether AI is offered;
+  - each feature's connection and model;
+  - allowance overrides;
+  - the medical option;
+  - a spending limit.
+- **The client** sees what is offered, by whom and where, and switches AI
+  on or off (`/api/v1/ai/settings`).
+- **Plans** hold monthly allowances per feature (`aiAllowances`).
+- **No test or development run calls a real provider.** Unless
+  `AI_PROVIDERS=real` and `NODE_ENV=production`, every request is answered
+  by a deterministic fake provider, and tests fail if a real adapter is
+  built.
+
+The rules and what was decided are in
+`docs/specs/ai-providers-and-allowances.md`.
 
 ## Policies and procedures
 

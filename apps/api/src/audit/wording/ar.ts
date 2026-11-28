@@ -29,6 +29,7 @@ export const ar: AuditWording = {
     email_setting_changed: 'تفعيل البريد الإلكتروني للمنشأة أو إيقافه',
     notification_preferences_changed: 'تغيير تفضيلات البريد الإلكتروني',
     audit_chain_started: 'بدء ختم سجل التدقيق',
+    ai_use_changed: 'تفعيل الذكاء الاصطناعي أو إيقافه',
 
     incident_reported: 'تقديم بلاغ',
     incident_triaged: 'فرز حادث',
@@ -78,6 +79,7 @@ export const ar: AuditWording = {
 
     subscription_changed: 'تعديل الاشتراك',
     import_window_changed: 'تغيير فترة الاستيراد',
+    ai_settings_changed: 'تعديل إعدادات الذكاء الاصطناعي من قِبل Trustline',
     external_access_granted: "منح صلاحية وصول لمقيّم خارجي",
     external_access_extended: "تمديد صلاحية وصول مقيّم خارجي",
     external_access_ended: "إنهاء صلاحية وصول مقيّم خارجي",

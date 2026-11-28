@@ -7,7 +7,8 @@ import {
 import { eq, sql } from 'drizzle-orm';
 import type { Database, Transaction } from '../database/client.js';
 import { PLATFORM_DATABASE } from '../database/database.constants.js';
-import { plans, subscriptions } from '../database/schema.js';
+import { aiClientSettings, plans, subscriptions } from '../database/schema.js';
+import { effectiveAllowances } from '../ai/features.js';
 import { dayOf } from '../i18n/time-zones.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
 import {
@@ -75,6 +76,7 @@ export class SubscriptionsService {
           modules: plans.modules,
           limits: plans.limits,
           extras: plans.extras,
+          aiAllowances: plans.aiAllowances,
         },
       })
       .from(subscriptions)
@@ -86,6 +88,12 @@ export class SubscriptionsService {
       plan,
       subscription,
     );
+    // The client's own AI allowances, where Trustline set any.
+    const [own] = await db
+      .select({ overrides: aiClientSettings.allowanceOverrides })
+      .from(aiClientSettings)
+      .where(eq(aiClientSettings.tenantId, tenantId));
+    const aiAllowances = effectiveAllowances(plan.aiAllowances, own?.overrides);
     return {
       tenantId: subscription.tenantId,
       plan: {
@@ -103,7 +111,7 @@ export class SubscriptionsService {
       note: subscription.note,
       createdAt: subscription.createdAt,
       updatedAt: subscription.updatedAt,
-      effective: { modules, limits, extras },
+      effective: { modules, limits, extras, aiAllowances },
     };
   }
 

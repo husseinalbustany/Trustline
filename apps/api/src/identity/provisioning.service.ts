@@ -590,6 +590,24 @@ export class ProvisioningService {
   }
 
   /**
+   * The entry the admin portal writes in a client's own audit log when it
+   * changes how the client is offered AI (`ai_settings_changed`): whether
+   * it is offered, each feature's provider and model, the allowances, and
+   * whether the medical option may be offered. As
+   * `auditSubscriptionChange`, for a transaction of the platform role.
+   */
+  async auditAiSettingsChange(
+    tx: Transaction,
+    tenantId: string,
+    changes: Record<string, unknown>,
+  ) {
+    await tx.execute(sql`
+      insert into ${auditLog} (tenant_id, action, entity_type, entity_id, changes)
+      values (${tenantId}, 'ai_settings_changed', 'tenant', ${tenantId}, ${JSON.stringify(changes)}::jsonb)
+    `);
+  }
+
+  /**
    * An entry the admin portal writes in a client's own audit log: what
    * it changed of the client's subscription (`subscription_changed`), by
    * nobody of the client's. Only for a transaction of the platform role,

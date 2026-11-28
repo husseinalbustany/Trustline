@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { aiAllowancesSchema } from '../ai/ai-input.js';
+import { NO_AI_ALLOWANCES } from '../ai/features.js';
 import {
   localizedText,
   optionalLocalizedText,
@@ -47,6 +49,9 @@ const planFields = {
   modules: moduleList,
   limits: limitsSchema,
   extras: extrasSchema,
+  // The monthly AI allowance per feature: drafts, suggestions, assistant
+  // messages (docs/specs/ai-providers-and-allowances.md, decision 7).
+  aiAllowances: aiAllowancesSchema,
   prices: z.array(priceSchema).max(20),
   active: z.boolean(),
   position: z.number().int().min(0).max(100_000),
@@ -58,6 +63,8 @@ export const createPlanSchema = z.strictObject({
   ...planFields,
   description: planFields.description.optional(),
   prices: planFields.prices.default([]),
+  // Left out: no AI included, until Trustline's staff set it.
+  aiAllowances: planFields.aiAllowances.default({ ...NO_AI_ALLOWANCES }),
   active: planFields.active.default(true),
   position: planFields.position.default(0),
 });

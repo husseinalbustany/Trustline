@@ -1,4 +1,5 @@
 import { and, eq, sql } from 'drizzle-orm';
+import { SPEC_ALLOWANCES, type AiAllowances } from '../ai/features.js';
 import { requireEnv } from '../env.js';
 import { createDatabase } from './client.js';
 import type { Locale, Localized } from '../i18n/locales.js';
@@ -13,6 +14,9 @@ import {
 } from '../incidents/response-rules.js';
 import { MODULES, type Extras, type Limits } from '../subscriptions/modules.js';
 import {
+  aiClientFeatures,
+  aiClientSettings,
+  aiProviderConnections,
   incidentCategories,
   incidentResponseRules,
   orgUnits,
@@ -164,6 +168,7 @@ const demoPlans: {
   modules: string[];
   limits: Limits;
   extras: Extras;
+  aiAllowances: AiAllowances;
   position: number;
 }[] = [
   {
@@ -177,6 +182,7 @@ const demoPlans: {
     modules: ['policies'],
     limits: { users: 100, sites: 1, storageMb: 5_000, aiCreditsPerMonth: 0 },
     extras: NO_EXTRAS,
+    aiAllowances: SPEC_ALLOWANCES.essentials,
     position: 10,
   },
   {
@@ -190,6 +196,7 @@ const demoPlans: {
     modules: ['training'],
     limits: { users: 200, sites: 1, storageMb: 10_000, aiCreditsPerMonth: 0 },
     extras: NO_EXTRAS,
+    aiAllowances: SPEC_ALLOWANCES.essentials,
     position: 20,
   },
   {
@@ -203,6 +210,7 @@ const demoPlans: {
     modules: ['incidents', 'actions'],
     limits: { users: 250, sites: 3, storageMb: 10_000, aiCreditsPerMonth: 0 },
     extras: { ...NO_EXTRAS, publicReporting: true },
+    aiAllowances: SPEC_ALLOWANCES.essentials,
     position: 30,
   },
   {
@@ -221,7 +229,42 @@ const demoPlans: {
       aiCreditsPerMonth: 500,
     },
     extras: { ...NO_EXTRAS, sso: true, publicReporting: true },
+    aiAllowances: SPEC_ALLOWANCES.professional,
     position: 40,
+  },
+];
+
+/**
+ * Two demo provider connections, for development, where every request is
+ * answered by the fake provider (ai/providers.ts) and neither credential
+ * needs to be set. The models are the current Claude models; their prices,
+ * in dollars per million tokens, are starting figures for estimating cost,
+ * to be checked against the providers' price lists.
+ */
+const demoConnections = [
+  {
+    name: 'Anthropic API (demo)',
+    kind: 'anthropic' as const,
+    region: 'global',
+    inferenceType: 'global' as const,
+    credentialEnv: 'AI_CREDENTIAL_ANTHROPIC_DEMO',
+    models: [
+      { id: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5', inputUsdPerMTok: 3, outputUsdPerMTok: 15 },
+      { id: 'claude-haiku-5-5', label: 'Claude Haiku 5.5', inputUsdPerMTok: 1, outputUsdPerMTok: 5 },
+    ],
+  },
+  {
+    // The UAE region offers the current Claude models through global
+    // inference only (the spec, "What was checked").
+    name: 'Amazon Bedrock, UAE, global inference (demo)',
+    kind: 'bedrock' as const,
+    region: 'me-central-1',
+    inferenceType: 'global' as const,
+    credentialEnv: 'AI_CREDENTIAL_BEDROCK_DEMO',
+    models: [
+      { id: 'global.anthropic.claude-sonnet-5-5', label: 'Claude Sonnet 5.5', inputUsdPerMTok: 3, outputUsdPerMTok: 15 },
+      { id: 'global.anthropic.claude-haiku-5-5', label: 'Claude Haiku 5.5', inputUsdPerMTok: 1, outputUsdPerMTok: 5 },
+    ],
   },
 ];
 
@@ -245,6 +288,7 @@ export async function seed() {
             modules: sql`excluded.modules`,
             limits: sql`excluded.limits`,
             extras: sql`excluded.extras`,
+            aiAllowances: sql`excluded.ai_allowances`,
             position: sql`excluded.position`,
           },
         });
@@ -253,6 +297,13 @@ export async function seed() {
       .select({ id: plans.id })
       .from(plans)
       .where(eq(plans.code, 'complete'));
+    for (const connection of demoConnections) {
+      await db.insert(aiProviderConnections).values(connection).onConflictDoNothing({ target: aiProviderConnections.name });
+    }
+    const [anthropic] = await db
+      .select({ id: aiProviderConnections.id })
+      .from(aiProviderConnections)
+      .where(eq(aiProviderConnections.name, demoConnections[0].name));
 
     // Only what needs no entitlements: the module's starting data.
     const provisioning = new ProvisioningService({} as EntitlementsService);
@@ -363,6 +414,25 @@ export async function seed() {
           timeZone,
           qualityUnitCode: `${structure.code}-QM`,
         });
+
+        // One demo hospital is offered AI, through the demo Anthropic
+        // connection, and has not switched it on: as a client is once
+        // Trustline has configured it. Kept as it is once changed.
+        if (tenant.slug === 'demo-jci') {
+          await tx.insert(aiClientSettings).values({ tenantId, offered: true }).onConflictDoNothing();
+          for (const feature of ['drafting', 'insights', 'assistant'] as const) {
+            await tx
+              .insert(aiClientFeatures)
+              .values({
+                tenantId,
+                feature,
+                connectionId: anthropic.id,
+                model: 'claude-sonnet-5-5',
+                quickModel: 'claude-haiku-5-5',
+              })
+              .onConflictDoNothing();
+          }
+        }
       });
     }
   } finally {
