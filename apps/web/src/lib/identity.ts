@@ -34,6 +34,13 @@ export type Session = {
     email: string;
     /** The unit the user works in, when one was set on their account. */
     orgUnitId: string | null;
+    /**
+     * Staff, or an external reviewer: someone from outside (a surveyor)
+     * who may only read, for a few days. Missing from an older API: staff.
+     */
+    kind?: "staff" | "external_reviewer";
+    /** An external reviewer's first and last day; null for staff. */
+    access?: { from: string; until: string } | null;
   };
   permissions: string[];
   /**
@@ -114,3 +121,7 @@ export const publicReportUrl = (slug: string, unitId?: string) =>
 
 export const followUpUrl = (slug: string) =>
   `${window.location.origin}/follow-up/${encodeURIComponent(slug)}`;
+
+/** Whether the person is an external reviewer, who may only read. */
+export const isReviewer = (session: Session) =>
+  session.user.kind === "external_reviewer";

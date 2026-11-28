@@ -38,6 +38,7 @@ import {
   users,
 } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
+import { documentFigures, MEASURES, ORGANIZATION_KEY } from '../reports/measures.js';
 import type { AuthContext } from '../identity/auth.service.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
 import { covers } from '../identity/scope.js';
@@ -90,13 +91,8 @@ export function auditedFilters({ q, ...rest }: LibraryFilters) {
   return { ...rest, search: q ? { used: true, length: q.length } : { used: false } };
 }
 
-/** The business's measures (docs/specs/policies-and-procedures.md). */
-export const MEASURES = {
-  /** Documents past their review date: under this share, in percent. */
-  pastReviewBelow: 5,
-  /** Acknowledgement completion: at least this share, in percent. */
-  acknowledgedAtLeast: 90,
-};
+/** The business's document measures: defined in reports/measures.ts. */
+export { MEASURES } from '../reports/measures.js';
 
 /**
  * How far ahead of its review an imported document counts as due for its
@@ -504,12 +500,12 @@ export class LibraryService {
       const number = (condition: SQL) =>
         sql<number>`count(*) filter (where ${condition})`.mapWith(Number);
       const isActive = sql`${documents.status} = 'active'`;
+      // The two measures, as every report works them out
+      // (reports/measures.ts): past review over what the caller sees,
+      // acknowledgement completion over what they see in full.
+      const measured = (await documentFigures(tx, { units: null, day: today, asAt: null, where: visible(viewer, this.engine) })).get(ORGANIZATION_KEY)!;
       const [counts] = await tx
         .select({
-          active: number(isActive),
-          pastReview: number(
-            sql`${isActive} and ${documents.nextReviewOn} < ${today}`,
-          ),
           dueWithin30Days: number(
             sql`${isActive} and ${documents.nextReviewOn} between ${today} and ${shiftDay(today, REVIEW_DUE_DAYS)}`,
           ),
@@ -530,28 +526,13 @@ export class LibraryService {
       const figures = viewer.fullReach === 'all' || viewer.fullReach.length > 0;
       let acknowledgement = null;
       if (figures) {
-        const due = sql`${documentAcknowledgements.dueOn} < ${today}`;
-        const given = sql`${documentAcknowledgements.acknowledgedAt} is not null`;
-        const [row] = await tx
-          .select({
-            targeted: number(due),
-            acknowledged: number(sql`${due} and ${given}`),
-            liveTargeted: count(),
-            liveAcknowledged: number(given),
-          })
-          .from(documentAcknowledgements)
-          .innerJoin(
-            documents,
-            eq(documents.publishedVersionId, documentAcknowledgements.versionId),
-          )
-          .innerJoin(
-            users,
-            and(
-              eq(users.id, documentAcknowledgements.userId),
-              eq(users.status, 'active'),
-            ),
-          )
-          .where(and(eq(documents.status, 'active'), fullSight(viewer)));
+        const f = (await documentFigures(tx, { units: null, day: today, asAt: null, acknowledgedWhere: fullSight(viewer) })).get(ORGANIZATION_KEY)!;
+        const row = {
+          targeted: f.acknowledgementsDue,
+          acknowledged: f.acknowledgementsGiven,
+          liveTargeted: f.acknowledgementsAsked,
+          liveAcknowledged: f.acknowledgementsAskedGiven,
+        };
         acknowledgement = {
           basis: 'due_date_passed' as const,
           targeted: row.targeted,
@@ -572,16 +553,16 @@ export class LibraryService {
       }
       return {
         today,
-        active: counts.active,
+        active: measured.active,
         pastReview: {
-          count: counts.pastReview,
-          of: counts.active,
-          percent: percent(counts.pastReview, counts.active),
+          count: measured.pastReview,
+          of: measured.active,
+          percent: percent(measured.pastReview, measured.active),
           target: MEASURES.pastReviewBelow,
           met:
-            counts.active === 0
+            measured.active === 0
               ? null
-              : (100 * counts.pastReview) / counts.active <
+              : (100 * measured.pastReview) / measured.active <
                 MEASURES.pastReviewBelow,
         },
         dueWithin30Days: counts.dueWithin30Days,

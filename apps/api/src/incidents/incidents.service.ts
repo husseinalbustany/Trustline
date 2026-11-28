@@ -33,6 +33,7 @@ import {
   orgUnits,
   users,
 } from '../database/schema.js';
+import { incidentFigures, incidentMeasures, ORGANIZATION_KEY } from '../reports/measures.js';
 import { TenantDb } from '../database/tenant-db.service.js';
 import { AccessService } from '../identity/access.service.js';
 import type { AuthContext } from '../identity/auth.service.js';
@@ -887,25 +888,11 @@ export class IncidentsService {
     // "The last 30 days" are days on the hospital's own calendar: today
     // there and the 29 days before it.
     const { from, to, since } = lastDays(30, auth.tenant.timeZone, now);
-    const recent = gte(incidents.reportedAt, since);
-    // How long reporting took, from opening the form to sending it.
-    const seconds = sql`greatest(extract(epoch from ${incidents.reportedAt} - ${incidents.reportStartedAt}), 0)`;
     // Deadlines are counted only over what the caller sees in full, as the
     // list shows them: someone's own reports say nothing here.
     const inFull = seenInFull(auth);
-    // Measured against its deadline: triaged, or set aside, for the first
-    // time; or still waiting for that past its deadline, which is late
-    // already whenever it comes. A report set aside and reopened is
-    // measured by that first decision, against the deadline it was made
-    // under: reopening it can neither excuse a late one nor spoil a timely
-    // one.
-    const firstDue = sql`coalesce(${incidents.firstTriageDueAt}, ${incidents.triageDueAt})`;
-    const measured = and(
-      inFull,
-      recent,
-      sql`${incidents.triageDueAt} is not null`,
-      sql`(${incidents.firstTriagedAt} is not null or (${incidents.status} = 'new' and ${lt(incidents.triageDueAt, now)}))`,
-    )!;
+    // The two measures, as every report works them out (reports/measures.ts).
+    const period = { units: null, from: since, until: new Date(now.getTime() + 60_000), at: now };
     return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
       const [counts] = await tx
         .select({
@@ -920,23 +907,23 @@ export class IncidentsService {
           serious: number(and(isOpen, isSeriousOne)!),
           // What the list gives for `overdue=true`.
           overdue: number(sql`${inFull} and ${overdueAt(now)} is not null`),
-          // Of the reports of the last 30 days that have been triaged or set
-          // aside, or are still untriaged past their deadline, the share
-          // whose first triage came no later than its deadline, as a whole
-          // percentage. Null when there is none of either.
-          triagedOnTime: sql<
-            number | null
-          >`round(100.0 * count(*) filter (where ${measured} and ${incidents.firstTriagedAt} <= ${firstDue}) / nullif(count(*) filter (where ${measured}), 0))::int`,
-          // The middle value, in whole seconds, over the reports of the last
-          // 30 days that carry a start time. Null when there are none.
-          medianSecondsToReport: sql<
-            number | null
-          >`round(percentile_cont(0.5) within group (order by ${seconds}) filter (where ${incidents.reportStartedAt} is not null and ${recent}))::int`,
         })
         .from(incidents)
         .where(visibleTo(auth));
-      // The days those 30 are, as the list's `from` and `to` take them.
-      return { ...counts, last30Days: { from, to } };
+      // Triaged on time: of the reports of the last 30 days the caller sees
+      // in full that have had their first decision, or are still undecided
+      // past their deadline, the share decided by it. How long reporting
+      // took: the median, over the reports of the last 30 days the caller
+      // sees that carry a start time.
+      const triage = (await incidentFigures(tx, { ...period, where: inFull })).get(ORGANIZATION_KEY)!;
+      const timing = (await incidentFigures(tx, { ...period, where: visibleTo(auth) })).get(ORGANIZATION_KEY)!;
+      return {
+        ...counts,
+        triagedOnTime: incidentMeasures(triage)['incidents.triaged_on_time'].value,
+        medianSecondsToReport: incidentMeasures(timing)['incidents.time_to_report'].value,
+        // The days those 30 are, as the list's `from` and `to` take them.
+        last30Days: { from, to },
+      };
     });
   }
 
