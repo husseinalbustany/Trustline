@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { AuditController, AuditKeysController } from './audit.controller.js';
 import { AuditKeys } from './audit-keys.js';
+import { ApprovalsModule } from '../approvals/approvals.module.js';
 import { AuditChainCheck } from './chain-check.service.js';
+import { TrailService } from './trail.service.js';
 
 /**
  * The audit trail (docs/specs/audit-trail.md): its seal's state, the daily
@@ -9,8 +11,9 @@ import { AuditChainCheck } from './chain-check.service.js';
  * The chain itself is written by the database (migration 0058).
  */
 @Module({
+  imports: [ApprovalsModule],
   controllers: [AuditController, AuditKeysController],
-  providers: [AuditKeys, AuditChainCheck],
+  providers: [AuditKeys, AuditChainCheck, TrailService],
   exports: [AuditChainCheck],
 })
 export class AuditModule {}

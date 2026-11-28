@@ -1,4 +1,5 @@
-import { BadRequestException, Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Query, Req, Res, UseGuards } from '@nestjs/common';
+import type { Response } from 'express';
 import { and, asc, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import {
@@ -11,7 +12,38 @@ import {
 import { TenantDb } from '../database/tenant-db.service.js';
 import { requireEverywhere, SessionGuard, type AuthedRequest } from '../identity/session.guard.js';
 import { ForModule } from '../subscriptions/module.decorator.js';
+import { SUPPORTED_LOCALES, type Locale } from '../i18n/locales.js';
+import { CSV_CONTENT_TYPE } from '../policies/csv.js';
 import { AuditKeys } from './audit-keys.js';
+import { checkpointsQuery, chainQuery, entriesExportQuery, entriesQuery } from './input.js';
+import { readCursor, TrailService } from './trail.service.js';
+
+/** The query, or 400. */
+function parse<T>(schema: { safeParse(v: unknown): { success: true; data: T } | { success: false } }, query: unknown): T {
+  const parsed = schema.safeParse(query);
+  if (!parsed.success) throw new BadRequestException();
+  return parsed.data;
+}
+
+/**
+ * The language a file is written in: the one asked for, if the client
+ * works in it (400 \`language_mismatch\` otherwise); else the client's own.
+ */
+function fileLocale(req: AuthedRequest, asked: Locale | undefined): Locale {
+  const ours = (l: string | undefined): l is Locale =>
+    !!l && req.auth.tenant.locales.includes(l) && (SUPPORTED_LOCALES as readonly string[]).includes(l);
+  if (asked) {
+    if (!ours(asked)) throw new BadRequestException({ code: 'language_mismatch' });
+    return asked;
+  }
+  return ours(req.auth.tenant.defaultLocale) ? req.auth.tenant.defaultLocale : 'en';
+}
+
+const download = (res: Response, type: string, fileName: string) => {
+  res.setHeader('Content-Type', type);
+  res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+  res.setHeader('Cache-Control', 'no-store');
+};
 
 const noQuery = z.strictObject({});
 
@@ -28,7 +60,84 @@ export class AuditController {
   constructor(
     private readonly tenantDb: TenantDb,
     private readonly keys: AuditKeys,
+    private readonly trail: TrailService,
   ) {}
+
+  /**
+   * The trail, newest first, 50 a page (at most 200), by key: \`before\` is
+   * the \`next\` of the page before. Filtered by record (its type and id,
+   * or an incident's reference or a document's number), person, actions,
+   * area and days on the organization's calendar. Not audited, except for
+   * an external reviewer, whose every read is.
+   */
+  @Get('entries')
+  entries(@Query() query: unknown, @Req() req: AuthedRequest) {
+    requireEverywhere(req, 'audit.view');
+    const input = parse(entriesQuery, query);
+    if (input.before && !readCursor(input.before)) throw new BadRequestException();
+    return this.trail.entries(req.auth, input);
+  }
+
+  /** The filtered trail as a CSV file, worded in the client's language. */
+  @Get('exports/entries')
+  async exportEntries(@Query() query: unknown, @Req() req: AuthedRequest, @Res({ passthrough: true }) res: Response) {
+    requireEverywhere(req, 'audit.view');
+    const { locale, ...filters } = parse(entriesExportQuery, query);
+    const file = await this.trail.exportEntries(req.auth, filters, fileLocale(req, locale));
+    download(res, CSV_CONTENT_TYPE, file.fileName);
+    return file.body;
+  }
+
+  /**
+   * The chain file of a range of entries, JSON Lines, streamed by number
+   * (docs/specs/audit-trail.md, "The chain file format").
+   */
+  @Get('exports/chain')
+  async exportChain(@Query() query: unknown, @Req() req: AuthedRequest, @Res() res: Response) {
+    requireEverywhere(req, 'audit.view');
+    const range = parse(chainQuery, query);
+    const lines: string[] = [];
+    let started = false;
+    const flush = () => {
+      if (!started) {
+        res.status(200);
+        download(res, 'application/jsonl; charset=utf-8', 'audit-chain.jsonl');
+        started = true;
+      }
+      if (lines.length > 0) res.write(`${lines.splice(0).join('\n')}\n`);
+    };
+    try {
+      const { fileName } = await this.trail.chainFile(req.auth, range, (line) => {
+        lines.push(line);
+        if (lines.length >= 1_000) flush();
+      });
+      if (!started) {
+        res.status(200);
+        download(res, 'application/jsonl; charset=utf-8', fileName);
+        started = true;
+      }
+      flush();
+      res.end();
+    } catch (error) {
+      // Once begun, a file cut short is not a file: the connection is
+      // closed, so that nobody takes it for a whole one.
+      if (started) {
+        res.destroy();
+        return;
+      }
+      throw error;
+    }
+  }
+
+  /** The signed checkpoints, between two days, as a JSON file. */
+  @Get('checkpoints')
+  async checkpoints(@Query() query: unknown, @Req() req: AuthedRequest, @Res({ passthrough: true }) res: Response) {
+    requireEverywhere(req, 'audit.view');
+    const range = parse(checkpointsQuery, query);
+    const { file, fileName } = await this.trail.checkpoints(req.auth, range);
+    download(res, 'application/json; charset=utf-8', fileName);
+    return file;
+  }
 
   @Get('status')
   status(@Query() query: unknown, @Req() req: AuthedRequest) {
