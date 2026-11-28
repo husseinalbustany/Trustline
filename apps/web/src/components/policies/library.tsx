@@ -79,7 +79,10 @@ export function Library({ lang, t }: PoliciesProps) {
   const [units, setUnits] = useState<OrgUnit[]>([]);
   const [moreOpen, setMoreOpen] = useState<boolean | null>(null);
   // Importing is offered only while the organization's window is open.
-  const importer = session.scope?.["policies.manage"] === "all";
+  // The register is for those who manage documents for all of it; importing,
+  // for those who hold the import permission for all of it.
+  const registerer = session.scope?.["policies.manage"] === "all";
+  const importer = session.scope?.["policies.import"] === "all";
   const [importOpen, setImportOpen] = useState(false);
   useEffect(() => {
     if (!importer) return;
@@ -226,15 +229,14 @@ export function Library({ lang, t }: PoliciesProps) {
         actions={
           can(session, "policies.manage") && (
             <div className="flex flex-wrap gap-2">
-              {/* Importing is for those who manage documents for all of it. */}
               {/* The register stays, whatever the import window. */}
-              {importer && (
+              {registerer && (
                 <ButtonLink variant="secondary" href={importPath(lang, "register")}>
                   <ListChecks className="size-4 rtl:-scale-x-100" aria-hidden />
                   {t.importing.register.open}
                 </ButtonLink>
               )}
-              {session.scope?.["policies.manage"] === "all" && importOpen && (
+              {importer && importOpen && (
                 <ButtonLink variant="secondary" href={importPath(lang)}>
                   <FileUp className="size-4" aria-hidden />
                   {t.importing.open}

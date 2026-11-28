@@ -7,6 +7,9 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { useSession } from "@/components/shell/session";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
 import { codeOf } from "@/lib/api";
@@ -45,8 +48,13 @@ export function PasswordPrompt({
   children?: ReactNode;
 }) {
   const form = useRef<HTMLFormElement>(null);
+  const session = useSession();
+  const { lang } = useParams<{ lang: string }>();
+  // Someone with no password signs with a PIN, once they have set one.
+  const pin = session.signingMethod === "pin" || session.signingMethod === "none";
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsPin, setNeedsPin] = useState(session.signingMethod === "none");
 
   // Hidden pages stay mounted: nothing typed, and no refusal, waits there.
   useLayoutEffect(() => {
@@ -70,6 +78,7 @@ export function PasswordPrompt({
       await submit(password, note);
     } catch (err) {
       const code = codeOf(err);
+      if (code === "signing_pin_required") setNeedsPin(true);
       said =
         code === "wrong_password"
           ? t.errors.wrong_password
@@ -106,12 +115,28 @@ export function PasswordPrompt({
           />
         </Field>
       )}
-      <Field label={t.signature.password} help={t.signature.passwordHelp}>
+      {/* No signing PIN yet: say where to set it. */}
+      {needsPin && (
+        <p className="rounded-md border border-warn bg-warn-soft px-3 py-2 text-sm">
+          {t.signature.pinNeeded}{" "}
+          <Link
+            href={`/${lang}/notifications/preferences#signing-pin`}
+            className="font-medium text-accent hover:underline"
+          >
+            {t.signature.setPin}
+          </Link>
+        </p>
+      )}
+      <Field
+        label={pin ? t.signature.pin : t.signature.password}
+        help={pin ? t.signature.pinHelp : t.signature.passwordHelp}
+      >
         <input
           name="password"
           type="password"
           required
-          autoComplete="current-password"
+          autoComplete={pin ? "off" : "current-password"}
+          inputMode={pin ? "numeric" : undefined}
           maxLength={1024}
           dir="ltr"
           className={inputClass}

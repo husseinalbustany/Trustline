@@ -320,14 +320,12 @@ function OptOutsPanel({ lang, t }: Props) {
                     {person.reliedOn.approves && <Pill tone="warn">{o.approves}</Pill>}
                     {person.reliedOn.triages && <Pill tone="warn">{o.triages}</Pill>}
                   </div>
-                  {/* What they miss, said of the summary only while it is on. */}
+                  {/* What others rely on them for stays on, whatever they chose. */}
                   {!person.immediate && person.reliedOn.approves && (
-                    <p className="text-xs text-warn">
-                      {person.digest ? o.reliedHelpApproves : o.reliedHelpApprovesNoDigest}
-                    </p>
+                    <p className="text-xs text-muted">{o.stillApproves}</p>
                   )}
                   {!person.immediate && person.reliedOn.triages && (
-                    <p className="text-xs text-warn">{o.reliedHelpTriages}</p>
+                    <p className="text-xs text-muted">{o.stillTriages}</p>
                   )}
                 </li>
               );

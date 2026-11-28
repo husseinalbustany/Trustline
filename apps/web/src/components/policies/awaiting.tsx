@@ -14,17 +14,30 @@ import {
   versionPath,
   type ApprovalItem,
   type DocumentList,
+  type Named,
   type ReviewItem,
 } from "@/lib/policies";
 import type { PoliciesProps } from "./types";
 
 type Part<T> = T | "failed" | null;
 
+/** A "no change" review waiting for the reader's signature. */
+type ReviewToSign = {
+  documentId: string;
+  number: string;
+  title: Localized;
+  dueOn: string;
+  requestedBy: Named | null;
+  requestedAt: string;
+};
+
 /** What waits for this person: steps to decide, documents to acknowledge, reviews due. */
 export function Awaiting({ lang, t }: PoliciesProps) {
   const session = useSession();
   const approves = can(session, "policies.approve");
   const [approvals, setApprovals] = useState<Part<ApprovalItem[]>>(null);
+  // "No change" reviews waiting for the Approving authority's signature.
+  const [reviewsToSign, setReviewsToSign] = useState<Part<ReviewToSign[]>>(null);
   const [acks, setAcks] = useState<Part<DocumentList>>(null);
   const [reviews, setReviews] = useState<Part<ReviewItem[]>>(null);
   const inLang = (text: Localized | null | undefined) =>
@@ -37,9 +50,17 @@ export function Awaiting({ lang, t }: PoliciesProps) {
   useEffect(() => {
     let current = true;
     if (approves) {
-      api<{ items: ApprovalItem[] }>("/policies/approvals")
-        .then((r) => current && setApprovals(r.items))
-        .catch(() => current && setApprovals("failed"));
+      api<{ items: ApprovalItem[]; reviews?: ReviewToSign[] }>("/policies/approvals")
+        .then((r) => {
+          if (!current) return;
+          setApprovals(r.items);
+          setReviewsToSign(r.reviews ?? []);
+        })
+        .catch(() => {
+          if (!current) return;
+          setApprovals("failed");
+          setReviewsToSign("failed");
+        });
     }
     api<DocumentList>(
       "/policies/documents?awaitingMyAcknowledgement=true&pageSize=100",
@@ -116,6 +137,39 @@ export function Awaiting({ lang, t }: PoliciesProps) {
                 ))}
               </ul>
             )}
+          </Panel>
+        )}
+
+        {/* Shown only when there is one: few people sign these. */}
+        {approves && Array.isArray(reviewsToSign) && reviewsToSign.length > 0 && (
+          <Panel title={a.reviewsToSign}>
+            <ul>
+              {reviewsToSign.map((item) => (
+                <li
+                  key={item.documentId}
+                  className="border-b border-line px-4 py-3 last:border-b-0"
+                >
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <Link
+                      href={documentPath(lang, item.documentId)}
+                      className="font-medium text-accent hover:underline"
+                    >
+                      {number(item.number)}
+                    </Link>
+                    <Pill tone="warn">{a.toSign}</Pill>
+                  </div>
+                  <p className="mt-1 text-sm">
+                    <bdi>{inLang(item.title)}</bdi>
+                  </p>
+                  <p className="mt-1 text-xs text-muted">
+                    {fill(a.reviewAsked, {
+                      name: inLang(item.requestedBy?.name) || t.document.unknownPerson,
+                      date: moments.format(new Date(item.requestedAt)),
+                    })}
+                  </p>
+                </li>
+              ))}
+            </ul>
           </Panel>
         )}
 

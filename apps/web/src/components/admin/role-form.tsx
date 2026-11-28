@@ -218,7 +218,15 @@ export function RoleForm({
                         )
                       }
                     />
-                    {labels[permission] ?? permission}
+                    <span className="flex flex-col">
+                      {labels[permission] ?? permission}
+                      {/* Who holds it, and who can give it, where it is not obvious. */}
+                      {Object.hasOwn(t.permissionHints, permission) && (
+                        <span className="text-xs text-muted">
+                          {t.permissionHints[permission as keyof typeof t.permissionHints]}
+                        </span>
+                      )}
+                    </span>
                   </label>
                 ))}
             </div>

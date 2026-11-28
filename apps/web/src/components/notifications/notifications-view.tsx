@@ -217,7 +217,9 @@ export function NotificationsView({
             ? weeklySummaryPath(lang, n.data)
             : n.kind === emailTurnedOff
               ? `/${lang}/notifications/preferences`
-              : null;
+              : n.kind === "signing_pin_changed"
+                ? `/${lang}/notifications/preferences#signing-pin`
+                : null;
     const title = doc?.canOpen && doc.title
       ? pick(doc.title, lang, session.tenant.defaultLocale)
       : null;
@@ -230,7 +232,8 @@ export function NotificationsView({
       version: numbers.format(n.data?.version ?? 0),
       date: day(n.data?.dueOn ?? n.data?.effectiveOn) ?? "",
       position: numbers.format(n.data?.position ?? 0),
-      overdue: numbers.format(n.data?.overdue ?? 0),
+      overdue: numbers.format(Number(n.data?.overdue ?? 0)),
+      confirmBy: day(n.data?.confirmationDueOn) ?? "",
       people: numbers.format(n.data?.people ?? 0),
       stepsOverdue: numbers.format(n.data?.stepsOverdue ?? 0),
     })
@@ -302,7 +305,8 @@ export function NotificationsView({
           {!about &&
             settingsPath &&
             n.kind !== overdueDigest &&
-            n.kind !== emailTurnedOff && (
+            n.kind !== emailTurnedOff &&
+            n.kind !== "signing_pin_changed" && (
             <p className="mt-1 text-sm">
               <Link
                 href={settingsPath}

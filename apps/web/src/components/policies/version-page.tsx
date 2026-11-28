@@ -42,6 +42,7 @@ import {
   type SectionComparison,
 } from "@/lib/policies";
 import { ControlledDocument, LanguageSwitch } from "./controlled-document";
+import { ConfirmationPill, useConfirmationLine } from "./import-confirmation";
 import { Markup } from "./markup";
 import { PasswordPrompt } from "./password-prompt";
 import { ImportedPill, VersionStatusPill } from "./pills";
@@ -165,6 +166,7 @@ function VersionView({
   decided: string | null;
 }) {
   const session = useSession();
+  const confirmationLine = useConfirmationLine(lang, t);
   const { doc, version } = loaded;
   const inLang = (text: Localized | null | undefined) =>
     pick(text, lang, session.tenant.defaultLocale);
@@ -420,6 +422,15 @@ function VersionView({
                       </span>
                     </dd>
                   </div>
+                  {version.imported.confirmation && (
+                    <div>
+                      <dt className="text-xs text-muted">{t.confirmation.label}</dt>
+                      <dd className="flex flex-col items-start gap-1">
+                        <ConfirmationPill t={t} c={version.imported.confirmation} />
+                        <span>{confirmationLine(version.imported.confirmation)}</span>
+                      </dd>
+                    </div>
+                  )}
                   {version.imported.sectionsNotWritten.length > 0 && (
                     <div>
                       <dt className="text-xs text-muted">{t.imported.notWrittenLabel}</dt>

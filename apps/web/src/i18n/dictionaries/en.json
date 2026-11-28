@@ -594,6 +594,20 @@
         "other": "Some of your emails were turned off from the link in one of your emails. If that was not you, or to get them again, turn them back on in your email preferences."
       },
       "document_owner_assigned": "You are now the owner of {reference}: its periodic review and its re-issue are yours.",
+      "import_confirmation_due": {
+        "true": "The owner's confirmation that {reference} matches its approved original was due on {date}.",
+        "false": "The owner of {reference} is to confirm by {date} that what was imported matches the approved original.",
+        "other": "The owner of {reference} is to confirm by {date} that what was imported matches the approved original."
+      },
+      "review_approval_requested": "{reference}: a “no change” review is waiting for your signature (review due on {date}).",
+      "review_returned": "{reference}: your “no change” review was returned with a comment. See it on the document.",
+      "signing_pin_changed": {
+        "set": "Your signing PIN was set. If you did not do this, tell your administrator at once.",
+        "changed": "Your signing PIN was changed. If you did not do this, tell your administrator at once.",
+        "reset": "An administrator reset your signing PIN. Set a new one after signing in again.",
+        "other": "Your signing PIN was changed. If you did not do this, tell your administrator at once."
+      },
+      "document_owner_assigned_confirm": "You are now the owner of {reference}: confirm by {confirmBy} that what was imported matches the approved original. Its periodic review and its re-issue are yours.",
       "other": "There is an update on {reference}."
     },
     "descriptionGeneral": "What has happened that concerns you. A notification names no one.",
@@ -642,9 +656,32 @@
       "saving": "Saving…",
       "saved": "Saved.",
       "saveError": "Could not save. Try again.",
-      "reliedOnApproves": "You decide approval steps: without immediate emails, a step waiting for your decision reaches you only in Trustline and in the morning summary, and the steps after it wait.",
-      "reliedOnTriages": "You triage incidents: without immediate emails, a serious incident reported in your area reaches you only in Trustline. The morning summary lists only incidents assigned to you.",
-      "reliedOnApprovesNoDigest": "You decide approval steps: without immediate emails, a step waiting for your decision reaches you only in Trustline, and the steps after it wait."
+      "alwaysOnTitle": "Always on",
+      "alwaysOnItem": "{emails}: {reason}",
+      "alwaysOnHelp": "Switching immediate emails off does not stop these.",
+      "alwaysOn": {
+        "serious_incident_alerts": "Serious-incident and sentinel-event alerts",
+        "approval_steps": "Approval steps waiting for your decision"
+      },
+      "alwaysOnReason": {
+        "triages": "you triage incidents, and others rely on you to act on them at once",
+        "decides_approval_steps": "you decide approval steps, and the documents wait for you"
+      },
+      "pinTitle": "Signing PIN",
+      "pinHelpNone": "You sign in through your organization's single sign-on, so you sign approvals, acknowledgements and reviews with a signing PIN. You have not set one yet.",
+      "pinHelpSet": "You sign approvals, acknowledgements and reviews with your signing PIN. You can change it here.",
+      "pinWhen": "It can be set or changed only within 10 minutes of signing in. After that, sign out and sign in again first.",
+      "pin": "Signing PIN",
+      "pinNew": "New signing PIN",
+      "pinAgain": "Type it again",
+      "pinRules": "6 to 12 digits, not all the same and not a run such as 123456.",
+      "pinSet": "Set the PIN",
+      "pinChange": "Change the PIN",
+      "pinSaved": "Your signing PIN is set. Use it wherever you are asked to sign.",
+      "pinMismatch": "The two entries are not the same. Type the PIN again.",
+      "pinTooSimple": "This PIN is too simple: not all the same digit, and not a run such as 123456 or 987654.",
+      "pinFresh": "More than 10 minutes have passed since you signed in. Sign out, sign in again, then do this at once.",
+      "pinNotYours": "You sign with your password, so you have no signing PIN."
     },
     "preferencesLink": "Email preferences"
   },
@@ -1139,7 +1176,16 @@
         "outsideScope": "Your role does not cover this user, or the department chosen for them. Choose a department your role covers, or ask your administrator.",
         "rolesReadOnly": "Changes are paused for your organization's account: roles can be taken away, but not given.",
         "enableReadOnly": "Changes are paused for your organization's account, so this account cannot be enabled again.",
-        "acknowledgementRecord": "Acknowledgement record"
+        "acknowledgementRecord": "Acknowledgement record",
+        "pinTitle": "Signing PIN",
+        "pinHelp": "For someone who signs in through single sign-on and signs with a PIN. After a reset, they set a new one after signing in again, and cannot sign until they do.",
+        "pinReset": "Reset the signing PIN",
+        "pinResetConfirm": "Reset this person's signing PIN? They cannot sign until they set a new one.",
+        "pinResetYes": "Yes, reset it",
+        "pinResetCancel": "Cancel",
+        "pinResetDone": "The signing PIN is reset. The person is told in Trustline.",
+        "pinNone": "This person has no signing PIN.",
+        "pinResetFailed": "The PIN could not be reset. Try again."
       }
     },
     "roles": {
@@ -1357,9 +1403,8 @@
         "digestOff": "Morning summary off",
         "approves": "Decides approval steps",
         "triages": "Triages incidents",
-        "reliedHelpApproves": "Without immediate emails, a step waiting for their decision reaches them only in Trustline and in the morning summary.",
-        "reliedHelpApprovesNoDigest": "Without immediate emails or the morning summary, a step waiting for their decision reaches them only in Trustline.",
-        "reliedHelpTriages": "Without immediate emails, a serious incident reported in their area reaches them only in Trustline: the morning summary lists only incidents assigned to them."
+        "stillApproves": "Emails about approval steps waiting for their decision stay on: they cannot be switched off.",
+        "stillTriages": "Serious-incident and sentinel-event alerts stay on for them: they cannot be switched off."
       }
     },
     "permissions": {
@@ -1377,7 +1422,11 @@
       "roles.manage": "Manage roles",
       "settings.manage": "Change settings",
       "policies.approve": "Review and approve documents when named in a step of an approval route",
-      "policies.view_all": "Read every document, including restricted ones and drafts, and see acknowledgement figures"
+      "policies.view_all": "Read every document, including restricted ones and drafts, and see acknowledgement figures",
+      "policies.import": "Import existing documents"
+    },
+    "permissionHints": {
+      "policies.import": "Held by the Quality officer. An administrator can give it to someone without holding it."
     }
   },
   "policies": {
@@ -1562,7 +1611,8 @@
       "otherDetail": "Another detail",
       "printHeaderOriginal": "{number} · Version {version} ({revision} on the original) · {title}",
       "reviewOpens": "Confirming that it needs no change is possible from {opensOn}, as its review date ({dueOn}) approaches. To change it now, start a new version.",
-      "reviewOpensOwner": "Confirming that it needs no change is possible from {opensOn}, as its review date ({dueOn}) approaches."
+      "reviewOpensOwner": "Confirming that it needs no change is possible from {opensOn}, as its review date ({dueOn}) approaches.",
+      "authoritativeOwn": "{language} (set for this document)"
     },
     "acknowledge": {
       "title": "Acknowledge this document",
@@ -1576,7 +1626,11 @@
     "signature": {
       "password": "Your password",
       "passwordHelp": "Typed again to sign. It is checked once and not kept.",
-      "signing": "Signing…"
+      "signing": "Signing…",
+      "pin": "Your signing PIN",
+      "pinHelp": "Typed again to sign. It is checked once and not kept.",
+      "pinNeeded": "You sign with a signing PIN, and have not set one yet.",
+      "setPin": "Set your signing PIN"
     },
     "actions": {
       "title": "What you can do",
@@ -1621,7 +1675,8 @@
       "withdrawReason": "Why is it withdrawn?",
       "withdrawConfirm": "Withdraw version {version}? It will not be published. It stays in the history.",
       "withdrawYes": "Yes, withdraw it",
-      "withdrawn": "The version is withdrawn."
+      "withdrawn": "The version is withdrawn.",
+      "confirmReviewIntroApproval": "You are confirming, with your signature, that {number} has been reviewed and needs no change. The Approving authority then signs it too, and the next review date moves once they have."
     },
     "review": {
       "returnedTitle": "Returned with comments",
@@ -1792,7 +1847,11 @@
       "referencesHelp": "One per line, for example a standard and its clause.",
       "create": "Create and write the first version",
       "save": "Save the details",
-      "noAccess": "Creating documents is for those who manage documents. Ask whoever manages them in your area."
+      "noAccess": "Creating documents is for those who manage documents. Ask whoever manages them in your area.",
+      "authoritative": "Language that applies",
+      "authoritativeHelp": "Where the languages of this document differ, its text in this language applies. Its required sections must be written in it before a version is sent for review.",
+      "authoritativeFollow": "Follow the organization's setting ({language})",
+      "authoritativeFollowPlain": "Follow the organization's setting"
     },
     "awaiting": {
       "title": "Awaiting me",
@@ -1804,7 +1863,10 @@
       "reviews": "Periodic reviews",
       "reviewsHelp": "Documents you own or manage whose review is due within 60 days, or past.",
       "noReviews": "No periodic review is coming up.",
-      "youOwn": "You are the owner"
+      "youOwn": "You are the owner",
+      "reviewsToSign": "“No change” reviews to sign",
+      "toSign": "To sign",
+      "reviewAsked": "Confirmed by {name} on {date}"
     },
     "overdue": {
       "title": "Overdue acknowledgements",
@@ -1926,7 +1988,10 @@
       "authoritativeMain": "The main language ({language})",
       "authoritativeWillChange": "Saving changes the language that applies from {from} to {to}. Versions already sent for review or published keep their text and the language they were sent in, and their reviews carry on. From then on, drafts are sent for review only once their required sections and summary of changes are written in {to}.",
       "authoritativeChanged": "The language that applies is now {language}. Versions already sent for review or published keep the language they were sent in, and their reviews carry on. Drafts: {draft}. In review: {inReview}. Approved, waiting to be published: {approved}. Drafts are sent for review only once their required sections and summary of changes are written in {language}.",
-      "authoritativeOnly": "Your organization works in one language, {language}: its text applies."
+      "authoritativeOnly": "Your organization works in one language, {language}: its text applies.",
+      "noChangeNeedsApproval": "A “no change” review needs the Approving authority's signature",
+      "noChangeNeedsApprovalHelp": "When on, the owner's “no change” confirmation waits for the Approving authority's signature before the next review date moves.",
+      "noChangeNeedsApprovalPill": "“No change” also signed by the Approving authority"
     },
     "markupProblems": {
       "web_address": "a web address",
@@ -2041,13 +2106,25 @@
       "language_mismatch_differences": "Write the differences from the original only in your organization's languages.",
       "reviewed_before_approval": "The last review on the original cannot be before its approval date.",
       "reviewed_in_future": "The last review on the original cannot be after today.",
-      "review_before_last_review": "The next review must be after the last review on the original."
+      "review_before_last_review": "The next review must be after the last review on the original.",
+      "not_owner": "Only this document's owner can do this.",
+      "import_already_confirmed": "This import is already confirmed.",
+      "not_imported": "This document was not imported, so there is nothing to confirm.",
+      "review_pending": "A “no change” review of this document is already waiting for the Approving authority's signature.",
+      "no_review_approver": "Nobody can sign this review: nobody holds the Approving authority for this document's area, and no administrator can sign it instead. Ask whoever manages users to give the role to someone.",
+      "no_review_pending": "No “no change” review is waiting for a signature. The page shows the latest state.",
+      "not_review_approver": "You cannot sign this review: the Approving authority for this document's area signs it, or an administrator where there is none.",
+      "signs_with_password": "You sign with your password, so you have no signing PIN.",
+      "pin_too_simple": "This PIN is too simple: not all the same digit, and not a run such as 123456 or 987654.",
+      "fresh_sign_in_required": "More than 10 minutes have passed since you signed in. Sign out, sign in again, then do this at once.",
+      "signing_pin_required": "You sign with a signing PIN, and have not set one yet. Set it on your preferences page, then sign again.",
+      "no_signing_pin": "This person has no signing PIN."
     },
     "importing": {
       "open": "Import documents",
       "title": "Import an existing document",
       "description": "A document approved before Trustline, entered as its original gives it. It is published at once as version 1, marked “Approved before Trustline”, and re-issued through the approval route at its next review.",
-      "noAccess": "Importing documents is for those who manage documents for the whole organization.",
+      "noAccess": "Importing documents is for those who hold the import permission for the whole organization, such as the Quality officer.",
       "batchOpen": "Import a batch from a file",
       "layoutOpen": "How to lay out the file",
       "windowCloses": "Existing documents can be imported until {date}.",
@@ -2266,7 +2343,8 @@
         "importedBy": "Imported by",
         "batch": "Batch",
         "batchPlace": "Document {index} of {size}; fingerprint of the batch:",
-        "signed": "Fingerprint of what was signed"
+        "signed": "Fingerprint of what was signed",
+        "noAccess": "The import register is for those who manage documents for the whole organization."
       },
       "languageText": "{language}: {text}"
     },
@@ -2330,6 +2408,41 @@
       "late": "Due {date} · {days} late",
       "step": "Step {position}: {kind}",
       "nobody": "Nobody can decide it"
+    },
+    "confirmation": {
+      "pill": {
+        "awaiting": "Awaiting the owner's confirmation",
+        "overdue": "Owner's confirmation overdue",
+        "confirmed": "Confirmed by the owner",
+        "byImport": "Confirmed by the import"
+      },
+      "line": {
+        "awaiting": "Its owner is to confirm, by {date}, that what was imported matches the approved original.",
+        "overdue": "Its owner's confirmation that what was imported matches the approved original was due on {date}.",
+        "confirmed": "Confirmed by its owner, {name}, on {date}.",
+        "byImport": "Confirmed by the import: the owner imported it."
+      },
+      "label": "Owner's confirmation",
+      "confirmTitle": "Confirm this import",
+      "confirmHelp": "As its owner, confirm by {date} that what was imported matches the approved original.",
+      "confirmIntro": "By signing, you confirm, as the owner of {number}, that the text in force matches its approved original, except as noted below, and that the details of its approval are as the original gives them.",
+      "confirmButton": "Confirm the import",
+      "confirmed": "The import is confirmed."
+    },
+    "reviewApproval": {
+      "pending": "Waiting for the Approving authority: {name} confirmed on {date} that it needs no change. The next review date moves once it is signed.",
+      "returned": "The “no change” review was returned by {name} on {date}:",
+      "returnedHelp": "Deal with the comment, then confirm the review again, or start a new version.",
+      "approveTitle": "“No change” review to sign",
+      "approveIntro": "{name} confirmed on {date} that it still needs no change.",
+      "signIntro": "By signing, you approve that {number} still needs no change. Its next review date then moves a review period from today.",
+      "approve": "Approve the review",
+      "approved": "The review is approved.",
+      "returnLabel": "Return with a comment",
+      "returnHelp": "Required. Say what must be dealt with; the owner sees it.",
+      "returnButton": "Return the review",
+      "returnedDone": "The review is returned to its owner.",
+      "sent": "Confirmed. It now waits for the Approving authority's signature; the next review date moves once it is signed."
     }
   }
 }

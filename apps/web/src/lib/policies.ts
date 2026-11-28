@@ -41,6 +41,8 @@ export type DocumentType = {
   numberPrefix: string;
   sections: Section[];
   defaultReviewMonths: number;
+  /** A "no change" review of its documents needs the Approving authority's signature. */
+  noChangeNeedsApproval?: boolean;
   active: boolean;
   position: number;
   revision: number;
@@ -102,6 +104,16 @@ export type PolicyDocument = {
    * API's rule; null with no review date.
    */
   reviewOpensOn?: string | null;
+  /** Imported: where its owner's confirmation stands; null otherwise. */
+  importConfirmation?: ImportConfirmation | null;
+  /** Its type asks the Approving authority to sign a "no change" review. */
+  reviewNeedsApproval?: boolean;
+  /** The latest "no change" review awaiting, given or refused that signature. */
+  reviewApproval?: ReviewApproval | null;
+  /** The language that applies, as set on the document; null follows the organization. */
+  authoritativeLocale?: string | null;
+  /** In the answer to a change of the language that applies. */
+  versionsInProgress?: { draft: number; in_review: number; approved: number };
   /**
    * In force as approved before Trustline: its next review is a re-issue
    * through the route, not a confirmation that nothing changed.
@@ -238,6 +250,34 @@ export type Approval = {
   contentHash: string | null;
 };
 
+/**
+ * The owner's confirmation that an imported document matches its approved
+ * original: awaiting, overdue, or confirmed (by the owner, or by the
+ * import when the owner imported it).
+ */
+export type ImportConfirmation = {
+  state: "awaiting" | "overdue" | "confirmed" | (string & {});
+  dueOn: string;
+  confirmedAt: string | null;
+  confirmedBy: Named | null;
+  byImport: boolean;
+  signatureId?: string | null;
+};
+
+/** A "no change" review that the Approving authority signs too. */
+export type ReviewApproval = {
+  id: string;
+  status: "pending" | "approved" | "returned" | (string & {});
+  dueOn: string;
+  /** The owner's comment; given only to those who may read it. */
+  comment: string | null;
+  requestedBy: Named;
+  requestedAt: string;
+  decidedBy: Named | null;
+  decidedAt: string | null;
+  decisionComment: string | null;
+};
+
 /** What the original of an imported version says of its approval. */
 export type ApprovedBeforeTrustline = {
   /** The number as the original gives it; null when Trustline numbered it. */
@@ -257,6 +297,10 @@ export type ApprovedBeforeTrustline = {
   differences?: Localized | null;
   /** Sections of the type the original came without, in the version's order. */
   sectionsNotInOriginal?: { key: string; required: boolean }[];
+  /** Where the owner's confirmation stands, for print. */
+  ownerConfirmation?: Omit<ImportConfirmation, "signatureId"> | null;
+  /** The same, on the version's `imported`. */
+  confirmation?: ImportConfirmation | null;
 };
 
 export type ImportedVersion = Omit<
@@ -836,6 +880,7 @@ export type ImportRecord = {
   batch: { id: string; index: number; size: number; listHash: string };
   signatureId: string;
   contentHash: string;
+  confirmation?: Omit<ImportConfirmation, "signatureId"> | null;
 };
 
 /** One person's acknowledgements, as a manager reads them. */

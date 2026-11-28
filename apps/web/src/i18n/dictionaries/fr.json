@@ -594,6 +594,20 @@
         "other": "Certains de vos e-⁠mails ont été désactivés depuis le lien d’un de vos e-⁠mails. Si ce n’était pas vous, ou pour les recevoir de nouveau, réactivez-les dans vos préférences d’e-⁠mail."
       },
       "document_owner_assigned": "Vous êtes désormais responsable du document {reference} : sa révision périodique et sa réédition vous reviennent.",
+      "import_confirmation_due": {
+        "true": "La confirmation par le responsable que {reference} correspond à son original approuvé était due le {date}.",
+        "false": "Le responsable du document {reference} doit confirmer au plus tard le {date} que ce qui a été importé correspond à l’original approuvé.",
+        "other": "Le responsable du document {reference} doit confirmer au plus tard le {date} que ce qui a été importé correspond à l’original approuvé."
+      },
+      "review_approval_requested": "{reference} : une révision « sans modification » attend votre signature (révision due le {date}).",
+      "review_returned": "{reference} : votre révision « sans modification » a été renvoyée avec une remarque. Consultez-la sur le document.",
+      "signing_pin_changed": {
+        "set": "Votre code de signature a été défini. Si ce n’était pas vous, prévenez aussitôt votre administrateur.",
+        "changed": "Votre code de signature a été modifié. Si ce n’était pas vous, prévenez aussitôt votre administrateur.",
+        "reset": "Un administrateur a réinitialisé votre code de signature. Définissez-en un nouveau après une nouvelle connexion.",
+        "other": "Votre code de signature a été modifié. Si ce n’était pas vous, prévenez aussitôt votre administrateur."
+      },
+      "document_owner_assigned_confirm": "Vous êtes désormais responsable du document {reference} : confirmez au plus tard le {confirmBy} que ce qui a été importé correspond à l’original approuvé. Sa révision périodique et sa réédition vous reviennent.",
       "other": "Du nouveau concernant l’incident {reference}."
     },
     "descriptionGeneral": "Ce qui s’est passé et vous concerne. Une notification ne nomme personne.",
@@ -642,9 +656,32 @@
       "saving": "Enregistrement…",
       "saved": "Enregistré.",
       "saveError": "Impossible d’enregistrer. Réessayez.",
-      "reliedOnApproves": "Vous décidez des étapes d’approbation : sans e-⁠mails immédiats, une étape qui attend votre décision ne vous parvient que dans Trustline et dans le récapitulatif du matin, et les étapes suivantes attendent.",
-      "reliedOnTriages": "Vous triez les incidents : sans e-⁠mails immédiats, un incident grave déclaré dans votre périmètre ne vous parvient que dans Trustline ; le récapitulatif du matin ne liste que les incidents qui vous sont attribués.",
-      "reliedOnApprovesNoDigest": "Vous décidez des étapes d’approbation : sans e-⁠mails immédiats, une étape qui attend votre décision ne vous parvient que dans Trustline, et les étapes suivantes attendent."
+      "alwaysOnTitle": "Toujours activés",
+      "alwaysOnItem": "{emails} : {reason}",
+      "alwaysOnHelp": "Désactiver les e-⁠mails immédiats n’arrête pas ceux-ci.",
+      "alwaysOn": {
+        "serious_incident_alerts": "Alertes d’incident grave et d’événement sentinelle",
+        "approval_steps": "Étapes d’approbation qui attendent votre décision"
+      },
+      "alwaysOnReason": {
+        "triages": "vous triez les incidents, et d’autres comptent sur vous pour agir aussitôt",
+        "decides_approval_steps": "vous décidez des étapes d’approbation, et les documents vous attendent"
+      },
+      "pinTitle": "Code de signature",
+      "pinHelpNone": "Vous vous connectez par l’authentification unique de votre établissement : vous signez les approbations, prises de connaissance et révisions avec un code de signature. Vous ne l’avez pas encore défini.",
+      "pinHelpSet": "Vous signez les approbations, prises de connaissance et révisions avec votre code de signature. Vous pouvez le modifier ici.",
+      "pinWhen": "Il ne peut être défini ou modifié que dans les 10 minutes qui suivent la connexion. Passé ce délai, déconnectez-vous et reconnectez-vous d’abord.",
+      "pin": "Code de signature",
+      "pinNew": "Nouveau code de signature",
+      "pinAgain": "Saisissez-le de nouveau",
+      "pinRules": "6 à 12 chiffres, pas tous identiques ni en suite comme 123456.",
+      "pinSet": "Définir le code",
+      "pinChange": "Modifier le code",
+      "pinSaved": "Votre code de signature est défini. Utilisez-le partout où une signature vous est demandée.",
+      "pinMismatch": "Les deux saisies diffèrent. Saisissez de nouveau le code.",
+      "pinTooSimple": "Ce code est trop simple : pas un seul chiffre répété, ni une suite comme 123456 ou 987654.",
+      "pinFresh": "Plus de 10 minutes se sont écoulées depuis votre connexion. Déconnectez-vous, reconnectez-vous, puis recommencez aussitôt.",
+      "pinNotYours": "Vous signez avec votre mot de passe : vous n’avez pas de code de signature."
     },
     "preferencesLink": "Préférences d’e-⁠mail"
   },
@@ -1139,7 +1176,16 @@
         "outsideScope": "Votre rôle ne couvre pas cet utilisateur, ou le service choisi pour lui. Choisissez un service couvert par votre rôle, ou adressez-vous à votre administrateur.",
         "rolesReadOnly": "Les modifications sont suspendues pour le compte de votre établissement : des rôles peuvent être retirés, mais pas attribués.",
         "enableReadOnly": "Les modifications sont suspendues pour le compte de votre établissement : ce compte ne peut donc pas être réactivé.",
-        "acknowledgementRecord": "Relevé des prises de connaissance"
+        "acknowledgementRecord": "Relevé des prises de connaissance",
+        "pinTitle": "Code de signature",
+        "pinHelp": "Pour une personne qui se connecte par l’authentification unique et signe avec un code. Après une réinitialisation, elle en définit un nouveau après une nouvelle connexion, et ne peut pas signer d’ici là.",
+        "pinReset": "Réinitialiser le code de signature",
+        "pinResetConfirm": "Réinitialiser le code de signature de cette personne ? Elle ne pourra pas signer avant d’en définir un nouveau.",
+        "pinResetYes": "Oui, le réinitialiser",
+        "pinResetCancel": "Annuler",
+        "pinResetDone": "Le code de signature est réinitialisé. La personne en est informée dans Trustline.",
+        "pinNone": "Cette personne n’a pas de code de signature.",
+        "pinResetFailed": "Impossible de réinitialiser le code. Réessayez."
       }
     },
     "roles": {
@@ -1357,9 +1403,8 @@
         "digestOff": "Récapitulatif du matin désactivé",
         "approves": "Décide des étapes d’approbation",
         "triages": "Trie les incidents",
-        "reliedHelpApproves": "Sans e-⁠mails immédiats, une étape qui attend sa décision ne lui parvient que dans Trustline et dans le récapitulatif du matin.",
-        "reliedHelpApprovesNoDigest": "Sans e-⁠mails immédiats ni récapitulatif du matin, une étape qui attend sa décision ne lui parvient que dans Trustline.",
-        "reliedHelpTriages": "Sans e-⁠mails immédiats, un incident grave déclaré dans son périmètre ne lui parvient que dans Trustline ; le récapitulatif du matin ne liste que les incidents qui lui sont attribués."
+        "stillApproves": "Les e-⁠mails sur les étapes d’approbation qui attendent sa décision restent activés : ils ne peuvent pas être désactivés.",
+        "stillTriages": "Les alertes d’incident grave et d’événement sentinelle restent activées pour cette personne : elles ne peuvent pas être désactivées."
       }
     },
     "permissions": {
@@ -1377,7 +1422,11 @@
       "roles.manage": "Gérer les rôles",
       "settings.manage": "Modifier les paramètres",
       "policies.approve": "Vérifier et approuver des documents lorsqu’on est désigné dans une étape d’un circuit d’approbation",
-      "policies.view_all": "Lire tous les documents, y compris restreints et brouillons, et voir les chiffres de prise de connaissance"
+      "policies.view_all": "Lire tous les documents, y compris restreints et brouillons, et voir les chiffres de prise de connaissance",
+      "policies.import": "Importer les documents existants"
+    },
+    "permissionHints": {
+      "policies.import": "Détenue par le Responsable qualité. Un administrateur peut la donner sans la détenir."
     }
   },
   "policies": {
@@ -1562,7 +1611,8 @@
       "otherDetail": "Autre information",
       "printHeaderOriginal": "{number} · Version {version} ({revision} sur l’original) · {title}",
       "reviewOpens": "La confirmation sans modification est possible à partir du {opensOn}, à l’approche de son échéance du {dueOn}. Pour modifier le document dès maintenant, commencez une nouvelle version.",
-      "reviewOpensOwner": "La confirmation sans modification est possible à partir du {opensOn}, à l’approche de son échéance du {dueOn}."
+      "reviewOpensOwner": "La confirmation sans modification est possible à partir du {opensOn}, à l’approche de son échéance du {dueOn}.",
+      "authoritativeOwn": "{language} (définie pour ce document)"
     },
     "acknowledge": {
       "title": "Confirmer la prise de connaissance",
@@ -1576,7 +1626,11 @@
     "signature": {
       "password": "Votre mot de passe",
       "passwordHelp": "Saisi de nouveau pour signer. Il est vérifié une fois et n’est pas conservé.",
-      "signing": "Signature…"
+      "signing": "Signature…",
+      "pin": "Votre code de signature",
+      "pinHelp": "Saisi de nouveau pour signer. Il est vérifié une fois et n’est pas conservé.",
+      "pinNeeded": "Vous signez avec un code de signature, que vous n’avez pas encore défini.",
+      "setPin": "Définir votre code de signature"
     },
     "actions": {
       "title": "Ce que vous pouvez faire",
@@ -1621,7 +1675,8 @@
       "withdrawReason": "Pourquoi est-elle abandonnée ?",
       "withdrawConfirm": "Abandonner la version {version} ? Elle ne sera pas publiée. Elle reste dans l’historique.",
       "withdrawYes": "Oui, l’abandonner",
-      "withdrawn": "La version est abandonnée."
+      "withdrawn": "La version est abandonnée.",
+      "confirmReviewIntroApproval": "Vous confirmez, par votre signature, que le document {number} a été révisé et ne nécessite aucune modification. L’Autorité d’approbation signe ensuite à son tour, et la prochaine date de révision ne change qu’après sa signature."
     },
     "review": {
       "returnedTitle": "Renvoyée avec des remarques",
@@ -1792,7 +1847,11 @@
       "referencesHelp": "Une par ligne, par exemple une norme et son article.",
       "create": "Créer et rédiger la première version",
       "save": "Enregistrer les informations",
-      "noAccess": "La création de documents est réservée aux personnes qui gèrent les documents. Adressez-vous à la personne qui les gère dans votre entité."
+      "noAccess": "La création de documents est réservée aux personnes qui gèrent les documents. Adressez-vous à la personne qui les gère dans votre entité.",
+      "authoritative": "Langue qui fait foi",
+      "authoritativeHelp": "Quand les langues de ce document diffèrent, son texte dans cette langue fait foi. Ses sections obligatoires doivent y être rédigées avant qu’une version soit soumise à vérification.",
+      "authoritativeFollow": "Suivre le réglage de l’établissement ({language})",
+      "authoritativeFollowPlain": "Suivre le réglage de l’établissement"
     },
     "awaiting": {
       "title": "À traiter",
@@ -1804,7 +1863,10 @@
       "reviews": "Révisions périodiques",
       "reviewsHelp": "Les documents dont vous êtes responsable ou que vous gérez, et dont la révision tombe dans les 60 jours ou est dépassée.",
       "noReviews": "Aucune révision périodique à venir.",
-      "youOwn": "Vous en êtes responsable"
+      "youOwn": "Vous en êtes responsable",
+      "reviewsToSign": "Révisions « sans modification » à signer",
+      "toSign": "À signer",
+      "reviewAsked": "Confirmée par {name} le {date}"
     },
     "overdue": {
       "title": "Prises de connaissance en retard",
@@ -1926,7 +1988,10 @@
       "authoritativeMain": "La langue principale ({language})",
       "authoritativeWillChange": "L’enregistrement fait passer la langue qui fait foi de {from} à {to}. Les versions déjà soumises à vérification ou publiées gardent leur texte et la langue dans laquelle elles ont été soumises, et leurs vérifications se poursuivent. Désormais, les brouillons ne sont soumis à vérification qu’une fois leurs sections obligatoires et leur résumé des modifications rédigés en {to}.",
       "authoritativeChanged": "Langue qui fait foi désormais : {language}. Les versions déjà soumises à vérification ou publiées gardent la langue dans laquelle elles ont été soumises, et leurs vérifications se poursuivent. Brouillons : {draft}. En vérification : {inReview}. Approuvées, en attente de publication : {approved}. Les brouillons ne sont soumis à vérification qu’une fois leurs sections obligatoires et leur résumé des modifications rédigés en {language}.",
-      "authoritativeOnly": "Votre établissement travaille dans une seule langue, {language} : c’est son texte qui fait foi."
+      "authoritativeOnly": "Votre établissement travaille dans une seule langue, {language} : c’est son texte qui fait foi.",
+      "noChangeNeedsApproval": "Une révision « sans modification » nécessite la signature de l’Autorité d’approbation",
+      "noChangeNeedsApprovalHelp": "Si l’option est activée, la confirmation « sans modification » du responsable attend la signature de l’Autorité d’approbation avant que la prochaine date de révision change.",
+      "noChangeNeedsApprovalPill": "« Sans modification » signé aussi par l’Autorité d’approbation"
     },
     "markupProblems": {
       "web_address": "une adresse web",
@@ -2041,13 +2106,25 @@
       "language_mismatch_differences": "Rédigez les écarts par rapport à l’original seulement dans les langues de votre établissement.",
       "reviewed_before_approval": "La dernière révision sur l’original ne peut pas être antérieure à sa date d’approbation.",
       "reviewed_in_future": "La dernière révision sur l’original ne peut pas être postérieure à aujourd’hui.",
-      "review_before_last_review": "La prochaine révision doit être postérieure à la dernière révision sur l’original."
+      "review_before_last_review": "La prochaine révision doit être postérieure à la dernière révision sur l’original.",
+      "not_owner": "Seul le responsable de ce document peut le faire.",
+      "import_already_confirmed": "Cette importation est déjà confirmée.",
+      "not_imported": "Ce document n’a pas été importé : il n’y a rien à confirmer.",
+      "review_pending": "Une révision « sans modification » de ce document attend déjà la signature de l’Autorité d’approbation.",
+      "no_review_approver": "Personne ne peut signer cette révision : personne n’a le rôle d’Autorité d’approbation pour l’entité de ce document, et aucun administrateur ne peut la signer à sa place. Demandez à la personne qui gère les utilisateurs de donner ce rôle à quelqu’un.",
+      "no_review_pending": "Aucune révision « sans modification » n’attend de signature. La page affiche son dernier état.",
+      "not_review_approver": "Vous ne pouvez pas signer cette révision : l’Autorité d’approbation de l’entité de ce document la signe, ou un administrateur s’il n’y en a pas.",
+      "signs_with_password": "Vous signez avec votre mot de passe : vous n’avez pas de code de signature.",
+      "pin_too_simple": "Ce code est trop simple : pas un seul chiffre répété, ni une suite comme 123456 ou 987654.",
+      "fresh_sign_in_required": "Plus de 10 minutes se sont écoulées depuis votre connexion. Déconnectez-vous, reconnectez-vous, puis recommencez aussitôt.",
+      "signing_pin_required": "Vous signez avec un code de signature, que vous n’avez pas encore défini. Définissez-le sur votre page de préférences, puis signez de nouveau.",
+      "no_signing_pin": "Cette personne n’a pas de code de signature."
     },
     "importing": {
       "open": "Importer des documents",
       "title": "Importer un document existant",
       "description": "Un document approuvé avant Trustline, saisi tel que le donne son original. Il est publié aussitôt comme version 1, marqué « Approuvé avant Trustline », et réédité par le circuit d’approbation lors de sa prochaine révision.",
-      "noAccess": "L’importation de documents est réservée aux personnes qui gèrent les documents de tout l’établissement.",
+      "noAccess": "L’importation de documents est réservée aux personnes qui ont l’autorisation d’importer pour tout l’établissement, comme le Responsable qualité.",
       "batchOpen": "Importer un lot depuis un fichier",
       "layoutOpen": "Comment préparer le fichier",
       "windowCloses": "Les documents existants peuvent être importés jusqu’au {date}.",
@@ -2266,7 +2343,8 @@
         "importedBy": "Importé par",
         "batch": "Lot",
         "batchPlace": "Document {index} sur {size} ; empreinte du lot :",
-        "signed": "Empreinte du contenu signé"
+        "signed": "Empreinte du contenu signé",
+        "noAccess": "Le registre des importations est réservé aux personnes qui gèrent les documents de tout l’établissement."
       },
       "languageText": "{language} : {text}"
     },
@@ -2330,6 +2408,41 @@
       "late": "Échéance {date} · {days} de retard",
       "step": "Étape {position} : {kind}",
       "nobody": "Personne ne peut en décider"
+    },
+    "confirmation": {
+      "pill": {
+        "awaiting": "En attente de la confirmation du responsable",
+        "overdue": "Confirmation du responsable en retard",
+        "confirmed": "Confirmé par le responsable",
+        "byImport": "Confirmé par l’importation"
+      },
+      "line": {
+        "awaiting": "Son responsable doit confirmer, au plus tard le {date}, que ce qui a été importé correspond à l’original approuvé.",
+        "overdue": "La confirmation par son responsable que ce qui a été importé correspond à l’original approuvé était due le {date}.",
+        "confirmed": "Confirmé par son responsable, {name}, le {date}.",
+        "byImport": "Confirmé par l’importation : le responsable l’a importé lui-même."
+      },
+      "label": "Confirmation du responsable",
+      "confirmTitle": "Confirmer cette importation",
+      "confirmHelp": "En tant que responsable, confirmez au plus tard le {date} que ce qui a été importé correspond à l’original approuvé.",
+      "confirmIntro": "En signant, vous attestez, en tant que responsable du document {number}, que le texte en vigueur correspond à son original approuvé, sauf ce qui est indiqué ci-dessous, et que les informations sur son approbation sont celles que donne l’original.",
+      "confirmButton": "Confirmer l’importation",
+      "confirmed": "L’importation est confirmée."
+    },
+    "reviewApproval": {
+      "pending": "En attente de l’Autorité d’approbation : {name} a confirmé le {date} qu’aucune modification n’est nécessaire. La prochaine date de révision change une fois la signature donnée.",
+      "returned": "La révision « sans modification » a été renvoyée par {name} le {date} :",
+      "returnedHelp": "Traitez la remarque, puis confirmez de nouveau la révision, ou commencez une nouvelle version.",
+      "approveTitle": "Révision « sans modification » à signer",
+      "approveIntro": "{name} a confirmé le {date} qu’aucune modification n’est nécessaire.",
+      "signIntro": "En signant, vous approuvez que le document {number} ne nécessite toujours aucune modification. Sa prochaine révision se compte alors à partir d’aujourd’hui.",
+      "approve": "Approuver la révision",
+      "approved": "La révision est approuvée.",
+      "returnLabel": "Renvoyer avec une remarque",
+      "returnHelp": "Obligatoire. Indiquez ce qui doit être traité ; le responsable le verra.",
+      "returnButton": "Renvoyer la révision",
+      "returnedDone": "La révision est renvoyée à son responsable.",
+      "sent": "Confirmé. La révision attend maintenant la signature de l’Autorité d’approbation ; la prochaine date de révision change une fois la signature donnée."
     }
   }
 }

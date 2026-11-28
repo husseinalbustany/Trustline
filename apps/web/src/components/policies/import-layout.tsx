@@ -40,7 +40,8 @@ export function ImportLayout({
   examples: Record<string, ExampleWords>;
 }) {
   const session = useSession();
-  const everywhere = session.scope?.["policies.manage"] === "all";
+  // Importing is for those who hold the import permission for all of it.
+  const everywhere = session.scope?.["policies.import"] === "all";
   const [lists, setLists] = useState<Lists | null>(null);
   const [problem, setProblem] = useState(false);
   const m = t.importing;

@@ -37,6 +37,11 @@ export type Session = {
   };
   permissions: string[];
   /**
+   * How the person signs: with their password, with a signing PIN (no
+   * password: single sign-on), or not yet (no password and no PIN).
+   */
+  signingMethod?: "password" | "pin" | "none";
+  /**
    * Where each permission applies: "all" for the whole organization, or the
    * org units it covers (the granted units and everything beneath them).
    */

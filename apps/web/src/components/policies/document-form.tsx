@@ -19,7 +19,8 @@ import { LocalizedField } from "@/components/ui/localized-field";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Panel } from "@/components/ui/panel";
 import { api, codeOf, statusOf } from "@/lib/api";
-import { durationFormat, fill } from "@/lib/format";
+import { durationFormat, fill, languageNameIn } from "@/lib/format";
+import { hasLocale, localeNames } from "@/i18n/config";
 import type { OrgUnit } from "@/lib/identity";
 import { pick, readForm, type Localized } from "@/lib/localized";
 import { unitOptions } from "@/lib/org-units";
@@ -47,6 +48,8 @@ export type Lists = {
   roles: PolicyRole[] | null;
   /** The organization's longest review period; null if it could not be read. */
   maxReviewMonths: number | null;
+  /** The language that applies by the organization's setting; null if unread. */
+  authoritative: string | null;
 };
 
 export async function loadLists(): Promise<Lists> {
@@ -66,6 +69,7 @@ export async function loadLists(): Promise<Lists> {
     people,
     roles,
     maxReviewMonths: settings?.maxReviewMonths ?? null,
+    authoritative: settings?.authoritative ?? null,
   };
 }
 
@@ -313,6 +317,10 @@ export function readDocumentBody(
     references: list("references", /\n/),
   };
   if (months) body.reviewMonths = Number(months);
+  // Only where the form asks it (editing a document): "" follows the organization.
+  if (data.has("authoritativeLocale")) {
+    body.authoritativeLocale = String(data.get("authoritativeLocale")) || null;
+  }
   return body;
 }
 
@@ -355,6 +363,11 @@ export function DocumentFields({
   const inLang = (text: Localized | null | undefined) =>
     pick(text, lang, defaultLocale);
   const ackRequired = acknowledgement?.required ?? false;
+  const named = languageNameIn(lang);
+  // "" follows the organization's setting.
+  const [language, setLanguage] = useState(doc?.authoritativeLocale ?? "");
+  const languageFrom = doc?.authoritativeLocale ?? lists.authoritative;
+  const languageTo = language || lists.authoritative;
   const maxMonths = Math.max(
     lists.maxReviewMonths ?? 120,
     // A period set longer before the maximum stays until it changes.
@@ -454,6 +467,46 @@ export function DocumentFields({
               value={doc?.title}
               maxLength={300}
             />
+            {/* The language that applies, on this document: the organization's
+                setting unless it names its own. */}
+            {doc && locales.length > 1 && (
+              <div className="flex max-w-xl flex-col gap-2">
+                <div className="max-w-xs">
+                  <Field label={f.authoritative} help={f.authoritativeHelp}>
+                    <select
+                      name="authoritativeLocale"
+                      value={language}
+                      onChange={(e) => setLanguage(e.target.value)}
+                      className={inputClass}
+                    >
+                      <option value="">
+                        {lists.authoritative
+                          ? fill(f.authoritativeFollow, {
+                              language: named(lists.authoritative),
+                            })
+                          : f.authoritativeFollowPlain}
+                      </option>
+                      {locales.map((l) => (
+                        <option key={l} value={l} lang={l}>
+                          {hasLocale(l) ? localeNames[l] : l}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+                {languageFrom && languageTo && languageFrom !== languageTo && (
+                  <p
+                    role="note"
+                    className="rounded-md border border-warn bg-warn-soft px-3 py-2 text-sm"
+                  >
+                    {fill(t.settings.authoritativeWillChange, {
+                      from: named(languageFrom),
+                      to: named(languageTo),
+                    })}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </Panel>
 

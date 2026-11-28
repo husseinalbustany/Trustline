@@ -107,7 +107,8 @@ function signatureOf(bodies: ImportDocument[]) {
  */
 export function ImportBatchPage({ lang, t }: PoliciesProps) {
   const session = useSession();
-  const everywhere = session.scope?.["policies.manage"] === "all";
+  // Importing is for those who hold the import permission for all of it.
+  const everywhere = session.scope?.["policies.import"] === "all";
   const [ready, setReady] = useState<Ready | null>(null);
   const [problem, setProblem] = useState(false);
   const m = t.importing;

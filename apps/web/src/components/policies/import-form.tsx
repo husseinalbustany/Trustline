@@ -471,7 +471,8 @@ export function ImportDocumentPage({ lang, t }: PoliciesProps) {
   const session = useSession();
   const [ready, setReady] = useState<Ready | null>(null);
   const [problem, setProblem] = useState(false);
-  const everywhere = session.scope?.["policies.manage"] === "all";
+  // Importing is for those who hold the import permission for all of it.
+  const everywhere = session.scope?.["policies.import"] === "all";
   const m = t.importing;
   useEffect(() => {
     if (!everywhere) return;

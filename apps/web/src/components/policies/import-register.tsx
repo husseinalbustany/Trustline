@@ -11,6 +11,7 @@ import { api, download, statusOf } from "@/lib/api";
 import { dateTimeFormat, dayFormat, fill, numberFormat } from "@/lib/format";
 import { pick, type Localized } from "@/lib/localized";
 import { documentPath, type ImportRecord } from "@/lib/policies";
+import { ConfirmationPill, useConfirmationLine } from "./import-confirmation";
 import type { PoliciesProps } from "./types";
 import { useExplain } from "./use-explain";
 
@@ -37,6 +38,7 @@ export function ImportRegister({ lang, t }: PoliciesProps) {
   const [exported, setExported] = useState<{ ok: boolean; text: string } | null>(null);
   useLayoutEffect(() => () => setExported(null), []);
   const explainError = useExplain(t, lang);
+  const confirmationLine = useConfirmationLine(lang, t);
   const numbers = numberFormat(lang);
   const day = dayFormat(lang);
   const moment = dateTimeFormat(lang, session.tenant.timeZone);
@@ -60,7 +62,7 @@ export function ImportRegister({ lang, t }: PoliciesProps) {
           current &&
           setProblem({
             page,
-            text: statusOf(err) === 403 ? t.importing.noAccess : t.loadError,
+            text: statusOf(err) === 403 ? t.importing.register.noAccess : t.loadError,
           }),
       );
     return () => {
@@ -114,7 +116,7 @@ export function ImportRegister({ lang, t }: PoliciesProps) {
       )}
       <div className="mt-6">
         {!everywhere ? (
-          <EmptyState>{t.importing.noAccess}</EmptyState>
+          <EmptyState>{t.importing.register.noAccess}</EmptyState>
         ) : failed ? (
           <Panel>
             <EmptyState>{failed}</EmptyState>
@@ -171,6 +173,15 @@ export function ImportRegister({ lang, t }: PoliciesProps) {
                         t.imported.differences,
                         <span key="d" dir="auto" className="whitespace-pre-wrap">
                           {inLang(item.differences)}
+                        </span>,
+                      ] as [string, ReactNode]]
+                    : []),
+                  ...(item.confirmation
+                    ? [[
+                        t.confirmation.label,
+                        <span key="c" className="flex flex-col items-start gap-1">
+                          <ConfirmationPill t={t} c={item.confirmation} />
+                          <span>{confirmationLine(item.confirmation)}</span>
                         </span>,
                       ] as [string, ReactNode]]
                     : []),

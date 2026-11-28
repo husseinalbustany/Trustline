@@ -9,7 +9,7 @@ import {
   type FormEvent,
   type ReactNode,
 } from "react";
-import { useSession } from "@/components/shell/session";
+import { useRefreshSession, useSession } from "@/components/shell/session";
 import { hasModule } from "@/components/shell/subscription";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
@@ -17,7 +17,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Panel } from "@/components/ui/panel";
 import { hasLocale, localeNames, type Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/dictionaries";
-import { api, codeOf } from "@/lib/api";
+import { api, codeOf, statusOf } from "@/lib/api";
 import { fill, languageNameIn } from "@/lib/format";
 import { Words } from "@/components/policies/sentence";
 
@@ -31,6 +31,8 @@ type Preferences = {
   organizationEnabled: boolean;
   /** Whether others count on this person's emails: approval steps, triage. */
   reliedOn?: { approves: boolean; triages: boolean };
+  /** Emails others rely on this person for: sent whatever the switch says. */
+  alwaysOn?: { emails: string; reason: string }[];
 };
 
 type Text = Dictionary["notifications"]["preferences"];
@@ -118,6 +120,10 @@ export function NotificationPreferences({
               onSaved={setSaved}
             />
           </>
+        )}
+        {/* For those who sign with a PIN: their own, set after signing in. */}
+        {session.signingMethod && session.signingMethod !== "password" && (
+          <SigningPin t={t} />
         )}
         <p className="text-sm">
           <Link
@@ -224,17 +230,28 @@ function PreferencesForm({
           >
             <p>{t.immediateHelp}</p>
             <Items items={immediateItems} />
-            {/* Before an approver or a triager goes without them. */}
-            {!immediate && (saved.reliedOn?.approves || saved.reliedOn?.triages) && (
+            {/* What others rely on this person for: always sent. */}
+            {(saved.alwaysOn?.length ?? 0) > 0 && (
               <div
                 role="note"
-                className="mt-1 flex flex-col gap-1 rounded-md border border-warn bg-warn-soft px-3 py-2 text-sm text-foreground"
+                className="mt-1 flex flex-col gap-1 rounded-md border border-line bg-surface px-3 py-2 text-sm text-foreground"
               >
-                {/* Said of the morning summary only while it is on. */}
-                {saved.reliedOn?.approves && (
-                  <p>{digest ? t.reliedOnApproves : t.reliedOnApprovesNoDigest}</p>
-                )}
-                {saved.reliedOn?.triages && <p>{t.reliedOnTriages}</p>}
+                <p className="font-medium">{t.alwaysOnTitle}</p>
+                <ul className="flex list-disc flex-col gap-0.5 ps-5">
+                  {saved.alwaysOn!.map((x) => (
+                    <li key={x.emails}>
+                      {fill(t.alwaysOnItem, {
+                        emails: Object.hasOwn(t.alwaysOn, x.emails)
+                          ? t.alwaysOn[x.emails as keyof typeof t.alwaysOn]
+                          : x.emails,
+                        reason: Object.hasOwn(t.alwaysOnReason, x.reason)
+                          ? t.alwaysOnReason[x.reason as keyof typeof t.alwaysOnReason]
+                          : x.reason,
+                      })}
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-muted">{t.alwaysOnHelp}</p>
               </div>
             )}
           </Switch>
@@ -346,5 +363,107 @@ function Items({ items }: { items: string[] }) {
         <li key={item}>{item}</li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * The signing PIN of someone with no password (single sign-on): set or
+ * changed within a few minutes of signing in, as the API requires. The
+ * PIN lives only in the inputs, which are emptied whatever the answer.
+ */
+function SigningPin({ t }: { t: Text }) {
+  const session = useSession();
+  const refreshSession = useRefreshSession();
+  const has = session.signingMethod === "pin";
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  // Visited pages stay mounted: nothing typed, and no message, waits there.
+  useLayoutEffect(() => () => setMessage(null), []);
+
+  async function save(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const data = new FormData(form);
+    const pin = String(data.get("pin") ?? "");
+    const again = String(data.get("pinAgain") ?? "");
+    form.reset();
+    if (pin !== again) return setMessage({ ok: false, text: t.pinMismatch });
+    setBusy(true);
+    setMessage(null);
+    try {
+      await api("/me/signing-pin", { method: "PUT", body: { pin } });
+      setMessage({ ok: true, text: t.pinSaved });
+      await refreshSession();
+    } catch (err) {
+      const code = codeOf(err);
+      setMessage({
+        ok: false,
+        text:
+          code === "pin_too_simple"
+            ? t.pinTooSimple
+            : code === "fresh_sign_in_required"
+              ? t.pinFresh
+              : code === "signs_with_password"
+                ? t.pinNotYours
+                : statusOf(err) === 400
+                  ? t.pinRules
+                  : t.saveError,
+      });
+    }
+    setBusy(false);
+  }
+
+  return (
+    <section id="signing-pin" className="scroll-mt-20">
+      <Panel title={t.pinTitle}>
+        <form onSubmit={save} className="flex flex-col gap-4 p-4">
+          <p className="text-sm text-muted">{has ? t.pinHelpSet : t.pinHelpNone}</p>
+          <p className="text-sm text-muted">{t.pinWhen}</p>
+          <div className="grid max-w-md gap-4 sm:grid-cols-2">
+            <Field label={has ? t.pinNew : t.pin} help={t.pinRules}>
+              <input
+                name="pin"
+                type="password"
+                required
+                inputMode="numeric"
+                pattern="[0-9]{6,12}"
+                minLength={6}
+                maxLength={12}
+                autoComplete="new-password"
+                dir="ltr"
+                className={inputClass}
+              />
+            </Field>
+            <Field label={t.pinAgain}>
+              <input
+                name="pinAgain"
+                type="password"
+                required
+                inputMode="numeric"
+                pattern="[0-9]{6,12}"
+                minLength={6}
+                maxLength={12}
+                autoComplete="new-password"
+                dir="ltr"
+                className={inputClass}
+              />
+            </Field>
+          </div>
+          {message && (
+            <p
+              role={message.ok ? "status" : "alert"}
+              className={`text-sm ${message.ok ? "text-accent" : "text-danger"}`}
+            >
+              {message.text}
+            </p>
+          )}
+          <div>
+            <Button type="submit" disabled={busy}>
+              {has ? t.pinChange : t.pinSet}
+            </Button>
+          </div>
+        </form>
+      </Panel>
+    </section>
   );
 }

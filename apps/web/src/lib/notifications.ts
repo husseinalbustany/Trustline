@@ -47,8 +47,16 @@ export type Notification = {
     /** With `acknowledgements_overdue_digest`: approval steps overdue. */
     stepsOverdue?: number;
     /** With `acknowledgements_overdue_digest`: how many, and for how many people. */
-    overdue?: number;
+    /**
+     * A count with the weekly summary; with `import_confirmation_due`,
+     * whether the owner's confirmation is overdue.
+     */
+    overdue?: number | boolean;
     people?: number;
+    /** With `document_owner_assigned`: the day the owner's confirmation is due. */
+    confirmationDueOn?: string;
+    /** With `signing_pin_changed`: set, changed or reset. */
+    action?: string;
     /** With `document_step_assigned`: review or approve. */
     step?: string;
     /** With `review_due`: 60, 30 or 7 days before. */
@@ -98,7 +106,7 @@ export const emailTurnedOff = "email_turned_off";
  * approval steps when it counts only those.
  */
 export const weeklySummaryPath = (lang: string, data: Notification["data"]) =>
-  (data?.overdue ?? 0) === 0 && (data?.stepsOverdue ?? 0) > 0
+  Number(data?.overdue ?? 0) === 0 && (data?.stepsOverdue ?? 0) > 0
     ? `/${lang}/policies/steps/overdue`
     : `/${lang}/policies/overdue`;
 
@@ -115,6 +123,8 @@ const detailOf = {
   document_step_overdue: "step",
   review_due: "days",
   email_turned_off: "switch",
+  import_confirmation_due: "overdue",
+  signing_pin_changed: "action",
 } as const;
 
 /** A sentence, or a set of them by what `data` adds, with `other` as a rest. */
@@ -135,7 +145,7 @@ export function sentenceFor(
   if (kind === overdueDigest) {
     const wording = kinds[kind];
     if (typeof wording === "string") return wording;
-    const acks = (data?.overdue ?? 0) > 0;
+    const acks = Number(data?.overdue ?? 0) > 0;
     const steps = (data?.stepsOverdue ?? 0) > 0;
     return (
       wording[acks && steps ? "both" : steps ? "steps" : "acknowledgements"] ??
@@ -143,9 +153,11 @@ export function sentenceFor(
     );
   }
   // A review that is a re-issue has its own words, when there are any.
-  const own = `${kind}_reissue`;
+  // A review that is a re-issue, or an owner who must confirm an import,
+  // has its own words, when there are any.
+  const own = data?.confirmationDueOn ? `${kind}_confirm` : `${kind}_reissue`;
   const wording =
-    data?.reissue === true && Object.hasOwn(kinds, own)
+    (data?.reissue === true || data?.confirmationDueOn) && Object.hasOwn(kinds, own)
       ? kinds[own]
       : Object.hasOwn(kinds, kind)
         ? kinds[kind]

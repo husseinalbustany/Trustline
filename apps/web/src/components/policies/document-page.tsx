@@ -32,6 +32,7 @@ import {
   headingTitle,
   shownLanguage,
   versionPath,
+  type ApprovedBeforeTrustline,
   type DocumentChange,
   type DocumentVersion,
   type History,
@@ -39,6 +40,7 @@ import {
   type PolicyDocument,
 } from "@/lib/policies";
 import { ControlledDocument, LanguageSwitch } from "./controlled-document";
+import { ConfirmationPill, useConfirmationLine } from "./import-confirmation";
 import { PasswordPrompt } from "./password-prompt";
 import {
   DocumentStatusPill,
@@ -164,6 +166,8 @@ function DocumentView({
   const session = useSession();
   const { doc, history, published, inProgress } = loaded;
   const [asked, setAsked] = useState<string | null>(null);
+  const confirmationLine = useConfirmationLine(lang, t);
+  const moments = dateTimeFormat(lang, session.tenant.timeZone);
   const inLang = (text: Localized | null | undefined) =>
     pick(text, lang, session.tenant.defaultLocale);
   const name = (person: Named | null | undefined) =>
@@ -267,6 +271,60 @@ function DocumentView({
         </div>
       )}
 
+      {/* Imported: where its owner's confirmation stands, for everyone. */}
+      {doc.importConfirmation && (
+        <div
+          role="note"
+          className={`mt-4 flex flex-wrap items-center gap-2 rounded-lg border px-4 py-3 text-sm print:hidden ${
+            doc.importConfirmation.state === "overdue"
+              ? "border-danger bg-danger-soft"
+              : doc.importConfirmation.state === "awaiting"
+                ? "border-warn bg-warn-soft"
+                : "border-line bg-surface"
+          }`}
+        >
+          <ConfirmationPill t={t} c={doc.importConfirmation} />
+          <span>{confirmationLine(doc.importConfirmation)}</span>
+        </div>
+      )}
+
+      {/* A "no change" review the Approving authority signs too. */}
+      {doc.reviewApproval &&
+        (doc.reviewApproval.status === "pending" ||
+          doc.reviewApproval.status === "returned") && (
+          <div
+            role="note"
+            className={`mt-4 flex flex-col gap-1 rounded-lg border px-4 py-3 text-sm print:hidden ${
+              doc.reviewApproval.status === "returned"
+                ? "border-warn bg-warn-soft"
+                : "border-line bg-surface"
+            }`}
+          >
+            <p className="font-medium">
+              {doc.reviewApproval.status === "pending"
+                ? fill(t.reviewApproval.pending, {
+                    name: name(doc.reviewApproval.requestedBy),
+                    date: moments.format(new Date(doc.reviewApproval.requestedAt)),
+                  })
+                : fill(t.reviewApproval.returned, {
+                    name: name(doc.reviewApproval.decidedBy),
+                    date: doc.reviewApproval.decidedAt
+                      ? moments.format(new Date(doc.reviewApproval.decidedAt))
+                      : "",
+                  })}
+            </p>
+            {doc.reviewApproval.status === "returned" &&
+              doc.reviewApproval.decisionComment && (
+                <p dir="auto" className="whitespace-pre-wrap">
+                  {doc.reviewApproval.decisionComment}
+                </p>
+              )}
+            {doc.reviewApproval.status === "returned" && (
+              <p className="text-muted">{t.reviewApproval.returnedHelp}</p>
+            )}
+          </div>
+        )}
+
       {doc.inProgress && (
         <InProgress lang={lang} t={t} doc={doc} version={inProgress} />
       )}
@@ -320,7 +378,13 @@ function DocumentView({
 
         <div className="flex min-w-0 flex-col gap-6 print:hidden">
           {doc.moves.length > 0 && (
-            <DocumentActions lang={lang} t={t} doc={doc} onDone={refresh} />
+            <DocumentActions
+              lang={lang}
+              t={t}
+              doc={doc}
+              original={published?.control.approvedBeforeTrustline ?? null}
+              onDone={refresh}
+            />
           )}
           <Details lang={lang} t={t} doc={doc} />
           {doc.access === "full" && published?.acknowledgementRequired && (
@@ -845,12 +909,20 @@ function DocumentActions({
   lang,
   t,
   doc,
+  original,
   onDone,
-}: PoliciesProps & { doc: PolicyDocument; onDone: () => Promise<void> }) {
+}: PoliciesProps & {
+  doc: PolicyDocument;
+  /** For an import: what its original says, shown to the owner who confirms it. */
+  original: ApprovedBeforeTrustline | null;
+  onDone: () => Promise<void>;
+}) {
   const router = useRouter();
   const session = useSession();
   const explainError = useExplain(t, lang);
-  const [open, setOpen] = useState<"review" | "retire" | null>(null);
+  const [open, setOpen] = useState<
+    "review" | "retire" | "confirmImport" | "approveReview" | "returnReview" | null
+  >(null);
   const [confirmRetire, setConfirmRetire] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(
@@ -870,6 +942,27 @@ function DocumentActions({
     setMessage({ ok: false, text: explainError(err) });
     if (isStale(err)) await onDone();
   };
+
+  async function returnReview(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const el = e.currentTarget;
+    const comment = String(new FormData(el).get("comment") ?? "").trim();
+    setBusy(true);
+    setMessage(null);
+    try {
+      await api(`/policies/documents/${doc.id}/review/return`, {
+        method: "POST",
+        body: { comment, revision: doc.revision },
+      });
+      el.reset();
+      setOpen(null);
+      setMessage({ ok: true, text: t.reviewApproval.returnedDone });
+      await onDone();
+    } catch (err) {
+      await fail(err);
+    }
+    setBusy(false);
+  }
 
   async function newVersion() {
     setBusy(true);
@@ -934,6 +1027,130 @@ function DocumentActions({
             </div>
           )}
 
+          {doc.moves.includes("confirm_import") && doc.importConfirmation && (
+            <div className="flex flex-col gap-2">
+              <p className="text-sm font-medium">{t.confirmation.confirmTitle}</p>
+              <p className="text-sm text-muted">
+                {fill(t.confirmation.confirmHelp, {
+                  date: dayFormat(lang)(doc.importConfirmation.dueOn) ?? "",
+                })}
+              </p>
+              {open === "confirmImport" ? (
+                <PasswordPrompt
+                  t={t}
+                  intro={
+                    <>
+                      <p>
+                        <Sentence text={t.confirmation.confirmIntro} number={doc.number} />
+                      </p>
+                      {original && <OriginalSummary lang={lang} t={t} original={original} />}
+                    </>
+                  }
+                  confirm={t.confirmation.confirmButton}
+                  explainError={explainError}
+                  onCancel={() => setOpen(null)}
+                  submit={async (password) => {
+                    try {
+                      await api(`/policies/documents/${doc.id}/confirm-import`, {
+                        method: "POST",
+                        body: { password, revision: doc.revision },
+                      });
+                    } catch (err) {
+                      if (isStale(err)) void onDone();
+                      throw err;
+                    }
+                    setOpen(null);
+                    setMessage({ ok: true, text: t.confirmation.confirmed });
+                    await onDone();
+                  }}
+                />
+              ) : (
+                <div>
+                  <Button onClick={() => setOpen("confirmImport")}>
+                    {t.confirmation.confirmButton}
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {(doc.moves.includes("approve_review") || doc.moves.includes("return_review")) &&
+            doc.reviewApproval && (
+              <div className="flex flex-col gap-2">
+                <p className="text-sm font-medium">{t.reviewApproval.approveTitle}</p>
+                <p className="text-sm text-muted">
+                  {fill(t.reviewApproval.approveIntro, {
+                    name:
+                      pick(doc.reviewApproval.requestedBy.name, lang, session.tenant.defaultLocale) ||
+                      t.document.unknownPerson,
+                    date: dayFormat(lang)(doc.reviewApproval.requestedAt.slice(0, 10)) ?? "",
+                  })}
+                </p>
+                {doc.reviewApproval.comment && (
+                  <p dir="auto" className="rounded-md bg-surface px-3 py-2 text-sm whitespace-pre-wrap">
+                    {doc.reviewApproval.comment}
+                  </p>
+                )}
+                {open === "approveReview" ? (
+                  <PasswordPrompt
+                    t={t}
+                    intro={<Sentence text={t.reviewApproval.signIntro} number={doc.number} />}
+                    confirm={t.reviewApproval.approve}
+                    explainError={explainError}
+                    onCancel={() => setOpen(null)}
+                    submit={async (password) => {
+                      try {
+                        await api(`/policies/documents/${doc.id}/review/approve`, {
+                          method: "POST",
+                          body: { password, revision: doc.revision },
+                        });
+                      } catch (err) {
+                        if (isStale(err)) void onDone();
+                        throw err;
+                      }
+                      setOpen(null);
+                      setMessage({ ok: true, text: t.reviewApproval.approved });
+                      await onDone();
+                    }}
+                  />
+                ) : open === "returnReview" ? (
+                  <form onSubmit={returnReview} className="flex flex-col gap-3">
+                    <Field label={t.reviewApproval.returnLabel} help={t.reviewApproval.returnHelp}>
+                      <textarea
+                        name="comment"
+                        required
+                        rows={3}
+                        maxLength={2000}
+                        dir="auto"
+                        className={textareaClass}
+                      />
+                    </Field>
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="submit" disabled={busy}>
+                        {t.reviewApproval.returnButton}
+                      </Button>
+                      <Button variant="secondary" onClick={() => setOpen(null)}>
+                        {x.cancel}
+                      </Button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {doc.moves.includes("approve_review") && (
+                      <Button onClick={() => setOpen("approveReview")}>
+                        {t.reviewApproval.approve}
+                      </Button>
+                    )}
+                    {doc.moves.includes("return_review") && (
+                      <Button variant="secondary" onClick={() => setOpen("returnReview")}>
+                        {t.reviewApproval.returnLabel}
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
           {/* Before it can be confirmed: say when it can, by the API's day. */}
           {!doc.moves.includes("confirm_review") &&
             !doc.reissueRequired &&
@@ -969,7 +1186,14 @@ function DocumentActions({
                 <PasswordPrompt
                   t={t}
                   intro={
-                    <Sentence text={x.confirmReviewIntro} number={doc.number} />
+                    <Sentence
+                      text={
+                        doc.reviewNeedsApproval
+                          ? x.confirmReviewIntroApproval
+                          : x.confirmReviewIntro
+                      }
+                      number={doc.number}
+                    />
                   }
                   confirm={x.confirmReview}
                   comment={{
@@ -994,7 +1218,12 @@ function DocumentActions({
                       throw err;
                     }
                     setOpen(null);
-                    setMessage({ ok: true, text: x.reviewConfirmed });
+                    setMessage({
+                      ok: true,
+                      text: doc.reviewNeedsApproval
+                        ? t.reviewApproval.sent
+                        : x.reviewConfirmed,
+                    });
                     await onDone();
                   }}
                 />
@@ -1084,5 +1313,38 @@ function DocumentActions({
         </div>
       </>
     </Panel>
+  );
+}
+
+/** What the original of an import says, for its owner to confirm it against. */
+function OriginalSummary({
+  lang,
+  t,
+  original,
+}: PoliciesProps & { original: ApprovedBeforeTrustline }) {
+  const session = useSession();
+  const day = dayFormat(lang);
+  const m = t.imported;
+  const rows: [string, string][] = [
+    ...(original.numberAsGiven ? [[m.numberAsGiven, original.numberAsGiven] as [string, string]] : []),
+    ...(original.revisionLabel ? [[m.revisionLabel, original.revisionLabel] as [string, string]] : []),
+    [m.approvedOn, day(original.approvedOn) ?? ""],
+    [m.approvedBy, original.approvedBy],
+    [m.originalKeptAt, pick(original.originalKeptAt, lang, session.tenant.defaultLocale)],
+    ...(original.differences && Object.values(original.differences).some((v) => v?.trim())
+      ? [[m.differences, pick(original.differences, lang, session.tenant.defaultLocale)] as [string, string]]
+      : [[m.differences, t.importing.noDifferences] as [string, string]]),
+  ];
+  return (
+    <dl className="mt-2 flex flex-col gap-1 rounded-md border border-line bg-background px-3 py-2 text-sm">
+      {rows.map(([label, value]) => (
+        <div key={label} className="flex flex-wrap gap-x-2">
+          <dt className="text-muted">{label}</dt>
+          <dd dir="auto" className="font-medium break-words whitespace-pre-wrap">
+            {value}
+          </dd>
+        </div>
+      ))}
+    </dl>
   );
 }

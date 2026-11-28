@@ -430,6 +430,9 @@ function Types({ lang, t, lists, reload }: PartProps) {
                     {type.numberPrefix}
                   </bdi>
                   {!type.active && <Pill tone="neutral">{s.inactive}</Pill>}
+                  {type.noChangeNeedsApproval && (
+                    <Pill tone="neutral">{s.noChangeNeedsApprovalPill}</Pill>
+                  )}
                 </div>
                 {editing !== type.id && (
                   <Button variant="secondary" onClick={() => setEditing(type.id)}>
@@ -514,6 +517,9 @@ function TypeForm({
   const [prefix, setPrefix] = useState(type?.numberPrefix ?? "");
   const [months, setMonths] = useState(String(type?.defaultReviewMonths ?? 24));
   const [active, setActive] = useState(type?.active ?? true);
+  // A "no change" review of its documents is signed by the Approving
+  // authority too. A new type starts without it, as the API makes it.
+  const [needsApproval, setNeedsApproval] = useState(type?.noChangeNeedsApproval ?? false);
   const [sections, setSections] = useState<SectionDraft[]>(
     type?.sections.map((x) => ({ ...x, isNew: false })) ?? [
       { key: "purpose", name: {}, required: true, isNew: true },
@@ -541,6 +547,7 @@ function TypeForm({
       name: kept(name, locales),
       numberPrefix: prefix.trim().toUpperCase(),
       defaultReviewMonths: Number(months),
+      noChangeNeedsApproval: needsApproval,
       sections: sections.map((x) => ({
         key: x.key.trim(),
         name: kept(x.name, locales),
@@ -612,6 +619,18 @@ function TypeForm({
             />
           </Field>
         </div>
+        <label className="flex items-start gap-2 text-sm">
+          <input
+            type="checkbox"
+            checked={needsApproval}
+            onChange={(e) => setNeedsApproval(e.target.checked)}
+            className="mt-0.5 size-4 accent-accent"
+          />
+          <span className="flex flex-col">
+            {s.noChangeNeedsApproval}
+            <span className="text-xs text-muted">{s.noChangeNeedsApprovalHelp}</span>
+          </span>
+        </label>
         {type && (
           <label className="flex min-h-9 items-center gap-2 text-sm">
             <input

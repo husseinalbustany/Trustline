@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useLayoutEffect, useState, type FormEvent } from "react";
 import { canIn, useSession } from "@/components/shell/session";
 import {
   hasModule,
@@ -492,6 +492,7 @@ export function UserForm({
                 )}
               </div>
             </Panel>
+            <SigningPinReset t={t} userId={user.id} />
             <Panel title={f.access}>
               <div className="flex flex-col items-start gap-3 p-4">
                 <p className="text-sm text-muted">
@@ -526,5 +527,82 @@ export function UserForm({
         )}
       </div>
     </>
+  );
+}
+
+/**
+ * Resetting the signing PIN of someone who signs with one (single
+ * sign-on): they then set a new one after signing in again. Asked twice,
+ * since they cannot sign until they do.
+ */
+function SigningPinReset({ t, userId }: { t: AdminProps["t"]; userId: string }) {
+  const refusal = useSubscriptionRefusal();
+  const f = t.users.form;
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  // Visited pages stay mounted: a half-made confirmation does not wait there.
+  useLayoutEffect(
+    () => () => {
+      setConfirming(false);
+      setMessage(null);
+    },
+    [],
+  );
+
+  async function reset() {
+    if (!confirming) return setConfirming(true);
+    setBusy(true);
+    setMessage(null);
+    try {
+      await api(`/users/${userId}/signing-pin`, { method: "DELETE" });
+      setMessage({ ok: true, text: f.pinResetDone });
+    } catch (err) {
+      setMessage({
+        ok: false,
+        text:
+          codeOf(err) === "no_signing_pin"
+            ? f.pinNone
+            : (refusal(err) ?? f.pinResetFailed),
+      });
+    }
+    setConfirming(false);
+    setBusy(false);
+  }
+
+  return (
+    <Panel title={f.pinTitle}>
+      <div className="flex flex-col items-start gap-3 p-4">
+        <p className="text-sm text-muted">{f.pinHelp}</p>
+        {confirming && (
+          <p role="alert" className="text-sm font-medium text-danger">
+            {f.pinResetConfirm}
+          </p>
+        )}
+        {message && (
+          <p
+            role={message.ok ? "status" : "alert"}
+            className={`text-sm ${message.ok ? "text-accent" : "text-danger"}`}
+          >
+            {message.text}
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="secondary"
+            disabled={busy}
+            className={confirming ? "border-danger text-danger" : ""}
+            onClick={reset}
+          >
+            {confirming ? f.pinResetYes : f.pinReset}
+          </Button>
+          {confirming && (
+            <Button variant="secondary" onClick={() => setConfirming(false)}>
+              {f.pinResetCancel}
+            </Button>
+          )}
+        </div>
+      </div>
+    </Panel>
   );
 }

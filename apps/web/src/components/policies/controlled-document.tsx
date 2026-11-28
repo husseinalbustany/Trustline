@@ -21,6 +21,7 @@ import {
   type Named,
   type PolicyDocument,
 } from "@/lib/policies";
+import { useConfirmationLine } from "./import-confirmation";
 import { Markup } from "./markup";
 import { Words } from "./sentence";
 import type { PoliciesText } from "./types";
@@ -157,7 +158,13 @@ export function ControlledDocument({
     [d.effectiveOn, day(c.effectiveOn) ?? d.notYet],
   ];
   if (version.languages.length > 1) {
-    rows.push([d.authoritative, languageName(authoritative)]);
+    // Named on the document itself rather than by the organization: said so.
+    rows.push([
+      d.authoritative,
+      document.authoritativeLocale && document.authoritativeLocale === authoritative
+        ? fill(d.authoritativeOwn, { language: languageName(authoritative) })
+        : languageName(authoritative),
+    ]);
   }
   if (ended) {
     rows.push([d.notInForceSince, dayOf.format(new Date(ended))]);
@@ -429,6 +436,7 @@ function ApprovedBefore({
   const day = dayFormat(lang);
   const moment = dateTimeFormat(lang, session.tenant.timeZone);
   const m = t.imported;
+  const confirmationLine = useConfirmationLine(lang, t);
   // Whether the importer noted differences: the signature says "except as
   // noted above" only then.
   const noted =
@@ -446,6 +454,10 @@ function ApprovedBefore({
         [m.approvedBy, <bdi key="b" dir="auto">{before.approvedBy}</bdi>],
         ...(before.lastReviewedOn
           ? [[m.lastReviewedOn, day(before.lastReviewedOn) ?? ""] as [string, ReactNode]]
+          : []),
+        // The owner's confirmation, on screen and on paper.
+        ...(before.ownerConfirmation
+          ? [[t.confirmation.label, confirmationLine(before.ownerConfirmation)] as [string, ReactNode]]
           : []),
         [
           m.originalKeptAt,
