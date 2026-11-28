@@ -1,3 +1,4 @@
+import { removeOldDrafts } from '../drafting/retention.js';
 import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { and, asc, eq, inArray, isNull, notInArray, sql } from 'drizzle-orm';
 import type { Database, Transaction } from '../database/client.js';
@@ -265,6 +266,12 @@ export class PolicyCheck implements OnModuleDestroy {
       () => this.remindAcknowledgements(client.id, today, now),
       () => this.reportOverdueSteps(client.id, now),
       () => this.remindImportConfirmations(client.id, today),
+      // Drafting conversations no longer kept (drafting/retention.ts).
+      () =>
+        this.inClient(client.id, async (tx) => ({
+          claimed: await removeOldDrafts(tx, client.id, now, BATCH),
+          notified: 0,
+        })),
     ];
     for (const step of steps) {
       for (let claimed = BATCH; claimed >= BATCH; ) {

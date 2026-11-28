@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AiModule } from './ai/ai.module.js';
 import { AuditModule } from './audit/audit.module.js';
 import { DatabaseModule } from './database/database.module.js';
+import { DraftingModule } from './drafting/drafting.module.js';
 import { EmailModule } from './email/email.module.js';
 import { MailModule } from './email/mail.module.js';
 import { HealthController } from './health/health.controller.js';
@@ -27,6 +28,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module.js';
     AuditModule,
     ReportsModule,
     AiModule,
+    DraftingModule,
   ],
   controllers: [HealthController],
 })

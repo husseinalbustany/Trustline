@@ -1396,6 +1396,12 @@ export const documents = pgTable(
     // How it came into Trustline: `written`, or `imported` with its first
     // version (approved before Trustline). Stays so after it is re-issued.
     source: documentVersionSource().notNull().default('written'),
+    // An AI draft (docs/specs/ai-policy-drafting.md): the conversation it
+    // came from, and the person who took ownership of it. Until someone
+    // does, it is marked "AI draft" and cannot be sent for review.
+    aiDraftSessionId: uuid(),
+    aiDraftOwnedBy: uuid(),
+    aiDraftOwnedAt: timestamp({ withTimezone: true }),
     // Its foreign keys to document_versions are added by migrations, as the
     // two tables point at each other, which this file cannot type:
     // documents_published_version_fk (with the tenant, 0039) and
@@ -3269,6 +3275,249 @@ export const aiUsageNotices = pgTable(
       name: 'ai_usage_notices_pkey',
       columns: [t.tenantId, t.month, t.feature, t.level],
     }),
+    tenantIsolation(),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// AI drafting of policies and procedures (docs/specs/ai-policy-drafting.md).
+// The client profile and the document design are the standing context of
+// every draft, and useful without AI. A drafting session is the
+// conversation behind one draft: the person's request, the assistant's
+// questions and the answers, and every version of the draft. All tenant
+// data under row-level security.
+// ---------------------------------------------------------------------------
+
+/**
+ * The client's profile: facts about the organization, never about a
+ * person. Every value a client writes is per language (`Localized`); the
+ * shape is ProfileInput in drafting/profile-input.ts. Its structure is the
+ * organization tree already in Trustline; its languages and numbering are
+ * the client's settings and document types.
+ */
+export type OrganizationProfile = Record<string, unknown>;
+
+export const organizationProfiles = pgTable(
+  'organization_profiles',
+  {
+    tenantId: uuid()
+      .primaryKey()
+      .references(() => tenants.id),
+    profile: jsonb().$type<OrganizationProfile>().notNull(),
+    // Bumped by every change: a change made on an out-of-date screen is
+    // refused.
+    revision: integer().notNull().default(1),
+    updatedBy: uuid().notNull(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      name: 'organization_profiles_updated_by_fk',
+      columns: [t.tenantId, t.updatedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    tenantIsolation(),
+  ],
+);
+
+/**
+ * A client's document design: the template rules, the writing rules and
+ * guidance per section. One for the whole organization (no document type),
+ * and optionally one per document type. Versioned: every change is a new
+ * row and none is changed, so that a draft keeps the design it was written
+ * in.
+ */
+export const documentDesigns = pgTable(
+  'document_designs',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    // Null: the organization's design, for every type without its own.
+    documentTypeId: uuid(),
+    version: integer().notNull(),
+    template: jsonb().$type<Record<string, unknown>>().notNull(),
+    writing: jsonb().$type<Record<string, unknown>>().notNull(),
+    sectionGuidance: jsonb().$type<Record<string, Localized>>().notNull(),
+    createdBy: uuid().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('document_designs_tenant_id_id_key').on(t.tenantId, t.id),
+    uniqueIndex('document_designs_version_key')
+      .on(t.tenantId, sql`coalesce(${t.documentTypeId}, '00000000-0000-0000-0000-000000000000'::uuid)`, t.version),
+    foreignKey({
+      name: 'document_designs_type_fk',
+      columns: [t.tenantId, t.documentTypeId],
+      foreignColumns: [documentTypes.tenantId, documentTypes.id],
+    }),
+    foreignKey({
+      name: 'document_designs_created_by_fk',
+      columns: [t.tenantId, t.createdBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    check('document_designs_version', sql`${t.version} >= 1`),
+    tenantIsolation(),
+  ],
+);
+
+export const draftingStatus = pgEnum('drafting_status', [
+  // The assistant has asked questions, or is about to.
+  'asking',
+  // It has what it needs: the draft can be written.
+  'ready',
+  // A draft exists; it can be revised, edited or handed over.
+  'drafted',
+  // It became a document of the policies module. Kept with it.
+  'handed_over',
+  // Given up by the person. Removed by the next daily check.
+  'discarded',
+]);
+
+export const draftingMessageKind = pgEnum('drafting_message_kind', [
+  'questions',
+  'answers',
+  'revision_request',
+]);
+
+export const draftingAuthor = pgEnum('drafting_author', ['assistant', 'person']);
+
+/**
+ * One drafting conversation: whose it is, for which type of document, in
+ * which language, and what was asked in the person's own words. Kept with
+ * the document once handed over; otherwise removed 90 days after its last
+ * activity, or at the next daily check once discarded
+ * (drafting/retention.ts).
+ */
+export const draftingSessions = pgTable(
+  'drafting_sessions',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    createdBy: uuid().notNull(),
+    documentTypeId: uuid().notNull(),
+    locale: text().notNull(),
+    request: text().notNull(),
+    status: draftingStatus().notNull().default('asking'),
+    // Rounds of questions asked so far.
+    rounds: integer().notNull().default(0),
+    // The design the draft is written in.
+    designId: uuid(),
+    documentId: uuid(),
+    handedOverVersion: integer(),
+    revision: integer().notNull().default(1),
+    lastActivityAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('drafting_sessions_tenant_id_id_key').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'drafting_sessions_created_by_fk',
+      columns: [t.tenantId, t.createdBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'drafting_sessions_type_fk',
+      columns: [t.tenantId, t.documentTypeId],
+      foreignColumns: [documentTypes.tenantId, documentTypes.id],
+    }),
+    foreignKey({
+      name: 'drafting_sessions_design_fk',
+      columns: [t.tenantId, t.designId],
+      foreignColumns: [documentDesigns.tenantId, documentDesigns.id],
+    }),
+    foreignKey({
+      name: 'drafting_sessions_document_fk',
+      columns: [t.tenantId, t.documentId],
+      foreignColumns: [documents.tenantId, documents.id],
+    }),
+    index('drafting_sessions_owner_idx').on(t.tenantId, t.createdBy, t.status),
+    index('drafting_sessions_activity_idx').on(t.lastActivityAt),
+    check('drafting_sessions_request', sql`length(${t.request}) between 1 and 4000`),
+    check(
+      'drafting_sessions_handed_over',
+      sql`(${t.status} = 'handed_over') = (${t.documentId} is not null)`,
+    ),
+    tenantIsolation(),
+    // A conversation behind a document is part of its history: never
+    // removed, whatever the application asks.
+    pgPolicy('drafting_sessions_keep_handed_over', {
+      as: 'restrictive',
+      for: 'delete',
+      to: appRole,
+      using: sql`${t.status} <> 'handed_over'`,
+    }),
+  ],
+);
+
+/** A turn of a conversation: questions asked, answers given, a change asked for. */
+export const draftingMessages = pgTable(
+  'drafting_messages',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    sessionId: uuid().notNull(),
+    seq: integer().notNull(),
+    kind: draftingMessageKind().notNull(),
+    body: jsonb().$type<Record<string, unknown>>().notNull(),
+    // The AI request that produced it (ai_requests), for an assistant's turn.
+    aiRequestId: uuid(),
+    // Who wrote it, for a person's turn.
+    createdBy: uuid(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('drafting_messages_seq_key').on(t.tenantId, t.sessionId, t.seq),
+    foreignKey({
+      name: 'drafting_messages_session_fk',
+      columns: [t.tenantId, t.sessionId],
+      foreignColumns: [draftingSessions.tenantId, draftingSessions.id],
+    }).onDelete('cascade'),
+    tenantIsolation(),
+  ],
+);
+
+/**
+ * A version of the draft. Every request for a change, and every edit by
+ * hand, is a new version: none is ever overwritten.
+ */
+export const draftingVersions = pgTable(
+  'drafting_versions',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    sessionId: uuid().notNull(),
+    number: integer().notNull(),
+    author: draftingAuthor().notNull(),
+    // As a document version's: per language, per section key.
+    content: jsonb().$type<DocumentContent>().notNull(),
+    // The title the assistant proposes, in the draft's language.
+    title: jsonb().$type<Localized>().notNull(),
+    // Marked in the text too; listed here for the screens.
+    gaps: jsonb().$type<{ section: string; text: string }[]>().notNull(),
+    assumptions: jsonb().$type<{ section: string; text: string }[]>().notNull(),
+    // The existing documents it drew on.
+    sources: jsonb().$type<{ documentId: string; number: string; title: Localized }[]>().notNull(),
+    model: text(),
+    aiRequestId: uuid(),
+    createdBy: uuid().notNull(),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('drafting_versions_number_key').on(t.tenantId, t.sessionId, t.number),
+    foreignKey({
+      name: 'drafting_versions_session_fk',
+      columns: [t.tenantId, t.sessionId],
+      foreignColumns: [draftingSessions.tenantId, draftingSessions.id],
+    }).onDelete('cascade'),
+    check('drafting_versions_number', sql`${t.number} >= 1`),
     tenantIsolation(),
   ],
 );

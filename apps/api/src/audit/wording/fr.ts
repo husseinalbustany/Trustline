@@ -30,6 +30,7 @@ export const fr: AuditWording = {
     notification_preferences_changed: 'Modification des préférences d’e-⁠mail',
     audit_chain_started: 'Début du scellement du journal d’audit',
     ai_use_changed: 'Activation ou désactivation de l’IA',
+    organization_profile_updated: 'Modification du profil de l’organisation',
 
     incident_reported: 'Déclaration d’un incident',
     incident_triaged: 'Tri d’un incident',
@@ -70,6 +71,15 @@ export const fr: AuditWording = {
     policy_defaults_reworded_by_system: 'Reformulation des noms des types et catégories par défaut par une mise à jour de Trustline',
     import_confirmations_corrected_by_system: 'Correction des confirmations d’importation par une mise à jour de Trustline',
     import_confirmations_backfilled_by_system: 'Enregistrement des confirmations d’importation par une mise à jour de Trustline',
+    document_design_updated: 'Modification de la présentation des documents',
+    ai_draft_started: 'Début d’une rédaction avec l’assistant',
+    ai_draft_questions_asked: 'Questions posées par l’assistant',
+    ai_draft_answered: 'Réponses aux questions de l’assistant',
+    ai_draft_version_created: 'Rédaction d’une version du brouillon',
+    ai_draft_discarded: 'Abandon d’un brouillon de l’assistant',
+    ai_draft_handed_over: 'Transformation d’un brouillon de l’assistant en document',
+    ai_draft_ownership_taken: 'Prise en charge d’un brouillon rédigé par l’IA',
+    ai_drafts_removed_by_system: 'Suppression d’anciens brouillons de l’assistant',
 
     documents_exported: 'Exportation de la liste des documents',
     acknowledgements_exported: 'Exportation des prises de connaissance d’une version',

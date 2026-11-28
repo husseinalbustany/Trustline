@@ -1,5 +1,7 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { ApprovalsModule } from '../approvals/approvals.module.js';
+import { AiDraftController, DesignController } from '../drafting/drafting.controller.js';
+import { DraftingModule } from '../drafting/drafting.module.js';
 import { OrganizationModule } from '../organization/organization.module.js';
 import { DocumentNotifier } from './document-notifier.js';
 import { DocumentsService } from './documents.service.js';
@@ -20,8 +22,8 @@ import { PolicySettingsService } from './settings.service.js';
  * review and the daily check. All of it is the `policies` module.
  */
 @Module({
-  imports: [ApprovalsModule, OrganizationModule],
-  controllers: [PoliciesController, PolicySettingsController],
+  imports: [ApprovalsModule, OrganizationModule, forwardRef(() => DraftingModule)],
+  controllers: [PoliciesController, PolicySettingsController, DesignController, AiDraftController],
   providers: [
     DocumentNotifier,
     DocumentsService,
@@ -32,6 +34,6 @@ import { PolicySettingsService } from './settings.service.js';
     Publisher,
   ],
   // For the email digest: what waits for a person, as their screens show it.
-  exports: [LibraryService],
+  exports: [LibraryService, DocumentsService],
 })
 export class PoliciesModule {}

@@ -135,7 +135,8 @@ A change of provider for a client tells its administrators in the app.
    Bedrock), connection settings and the per-client configuration in the
    portal; request records, allowances and spending limits.
 2. Name removal and restoration, with tests.
-3. Policy drafting (`ai-policy-drafting.md`).
+3. Policy drafting (`ai-policy-drafting.md`). Built in the API: see its
+   "Built" section.
 4. Insights on incidents.
 5. The assistant.
 

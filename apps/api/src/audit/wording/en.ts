@@ -30,6 +30,7 @@ export const en: AuditWording = {
     notification_preferences_changed: 'Email preferences changed',
     audit_chain_started: 'Audit trail sealing started',
     ai_use_changed: 'AI switched on or off',
+    organization_profile_updated: 'Organization profile changed',
 
     incident_reported: 'Incident reported',
     incident_triaged: 'Incident triaged',
@@ -70,6 +71,15 @@ export const en: AuditWording = {
     policy_defaults_reworded_by_system: 'Default type and category names reworded by a Trustline update',
     import_confirmations_corrected_by_system: 'Import confirmations corrected by a Trustline update',
     import_confirmations_backfilled_by_system: 'Import confirmations recorded by a Trustline update',
+    document_design_updated: 'Document design changed',
+    ai_draft_started: 'Drafting with the assistant started',
+    ai_draft_questions_asked: 'Questions asked by the assistant',
+    ai_draft_answered: 'Assistant’s questions answered',
+    ai_draft_version_created: 'Draft version written',
+    ai_draft_discarded: 'Assistant draft discarded',
+    ai_draft_handed_over: 'Assistant draft turned into a document',
+    ai_draft_ownership_taken: 'Ownership of an AI draft taken',
+    ai_drafts_removed_by_system: 'Old assistant drafts removed',
 
     documents_exported: 'Document list exported',
     acknowledgements_exported: 'Version acknowledgements exported',

@@ -30,6 +30,7 @@ export const ar: AuditWording = {
     notification_preferences_changed: 'تغيير تفضيلات البريد الإلكتروني',
     audit_chain_started: 'بدء ختم سجل التدقيق',
     ai_use_changed: 'تفعيل الذكاء الاصطناعي أو إيقافه',
+    organization_profile_updated: 'تعديل الملف التعريفي للمؤسسة',
 
     incident_reported: 'تقديم بلاغ',
     incident_triaged: 'فرز حادث',
@@ -70,6 +71,15 @@ export const ar: AuditWording = {
     policy_defaults_reworded_by_system: 'تعديل صياغة أسماء الأنواع والفئات الافتراضية بتحديث من Trustline',
     import_confirmations_corrected_by_system: 'تصحيح تأكيدات الاستيراد بتحديث من Trustline',
     import_confirmations_backfilled_by_system: 'تسجيل تأكيدات الاستيراد بتحديث من Trustline',
+    document_design_updated: 'تعديل تصميم الوثائق',
+    ai_draft_started: 'بدء الصياغة بمساعدة المساعد الذكي',
+    ai_draft_questions_asked: 'طرح المساعد الذكي أسئلة',
+    ai_draft_answered: 'الإجابة عن أسئلة المساعد الذكي',
+    ai_draft_version_created: 'كتابة نسخة من المسودة',
+    ai_draft_discarded: 'التخلي عن مسودة المساعد الذكي',
+    ai_draft_handed_over: 'تحويل مسودة المساعد الذكي إلى وثيقة',
+    ai_draft_ownership_taken: 'تولّي مسؤولية مسودة أعدّها الذكاء الاصطناعي',
+    ai_drafts_removed_by_system: 'حذف مسودات قديمة للمساعد الذكي',
 
     documents_exported: 'تصدير قائمة الوثائق',
     acknowledgements_exported: 'تصدير إقرارات إصدار',
