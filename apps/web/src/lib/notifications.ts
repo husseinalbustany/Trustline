@@ -32,6 +32,11 @@ export type Notification = {
     title: Localized | null;
     canOpen: boolean;
   } | null;
+  /**
+   * The person one is about (`policies_import_granted`), by their name now;
+   * null for any other, or when the name is gone.
+   */
+  person?: { id: string; name: Localized | null } | null;
   data: {
     reference?: string;
     /** With a document's: its number, the version and the day it is about. */
@@ -57,9 +62,17 @@ export type Notification = {
     confirmationDueOn?: string;
     /** With `signing_pin_changed`: set, changed or reset. */
     action?: string;
-    /** With `review_approval_turned_off`: the document type changed. */
+    /**
+     * With `review_approval_turned_off`: the document type changed, and its
+     * name as it was then, for a type no longer listed.
+     */
     typeId?: string;
     typeCode?: string;
+    typeName?: Localized;
+    /** With `audit_chain_broken`: what the daily check found. */
+    kind?: string;
+    /** With `audit_chain_broken`: the first entry that does not hold, when known. */
+    firstBadSeq?: number;
     /** With `document_step_assigned`: review or approve. */
     step?: string;
     /** With `review_due`: 60, 30 or 7 days before. */
@@ -116,6 +129,9 @@ export const weeklySummaryPath = (lang: string, data: Notification["data"]) =>
 /** About no one document: the overdue acknowledgements of the week. */
 export const overdueDigest = "acknowledgements_overdue_digest";
 
+/** The audit trail no longer matches its seals: told to who may act on it. */
+export const auditChainBroken = "audit_chain_broken";
+
 /** What says more about each kind, beyond the kind itself. */
 const detailOf = {
   due_soon: "deadline",
@@ -141,8 +157,23 @@ type Wording = string | Record<string, string>;
 export function sentenceFor(
   kinds: Record<string, Wording>,
   { kind, data }: Pick<Notification, "kind" | "data">,
+  /** What a broken audit trail was found to be, by `data.kind`. */
+  breaks?: Record<string, string>,
 ): string {
   const general = kinds.other as string;
+  // The audit trail broken: from which entry, when known, and what was
+  // found, when this app has words for it (`{kind}`, from `breaks`).
+  if (kind === auditChainBroken) {
+    const wording = kinds[kind];
+    if (typeof wording !== "object") return wording ?? general;
+    const known = !!data?.kind && !!breaks && Object.hasOwn(breaks, data.kind);
+    const variant = !known
+      ? "other"
+      : typeof data?.firstBadSeq === "number"
+        ? "seq"
+        : "noSeq";
+    return wording[variant] ?? wording.other ?? general;
+  }
   // The weekly summary: overdue acknowledgements, overdue approval steps,
   // or both, whichever it counts.
   if (kind === overdueDigest) {

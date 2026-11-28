@@ -4,7 +4,7 @@ import { Mail, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useLayoutEffect, useState } from "react";
-import { useSession, useUnread } from "@/components/shell/session";
+import { can, useSession, useUnread } from "@/components/shell/session";
 import { hasModule } from "@/components/shell/subscription";
 import { features } from "@/config/modules";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,7 @@ import { pick, type Localized } from "@/lib/localized";
 import type { DocumentType } from "@/lib/policies";
 import {
   aboutReview,
+  auditChainBroken,
   emailTurnedOff,
   overdueDigest,
   sentenceFor,
@@ -63,6 +64,8 @@ const ownPlace = new Set([
   "signing_pin_changed",
   "signing_pin_locked",
   "review_approval_turned_off",
+  auditChainBroken,
+  "policies_import_granted",
 ]);
 
 /**
@@ -255,7 +258,13 @@ export function NotificationsView({
                   n.kind === "review_approval_turned_off" &&
                     session.scope?.["policies.manage"] === "all"
                   ? `/${lang}/policies/settings`
-                  : null;
+                  : // Given the import permission: their account, for
+                    // whoever manages accounts.
+                    n.kind === "policies_import_granted" &&
+                      n.person &&
+                      can(session, "users.manage")
+                    ? `/${lang}/admin/users/${n.person.id}`
+                    : null;
     const title = doc?.canOpen && doc.title
       ? pick(doc.title, lang, session.tenant.defaultLocale)
       : null;
@@ -263,16 +272,23 @@ export function NotificationsView({
     // The reference is one piece, left to right and never broken at its
     // hyphens: put in with the words, it would wrap as "INC-2026-" and
     // "00042", and in Arabic its parts would be reordered across the lines.
-    const sentence = fill(sentenceFor(t.kinds, n), {
+    const sentence = fill(sentenceFor(t.kinds, n, t.auditBreaks), {
       limit: numbers.format(n.data?.limit ?? 0),
       version: numbers.format(n.data?.version ?? 0),
       date: day(n.data?.dueOn ?? n.data?.effectiveOn) ?? "",
       position: numbers.format(n.data?.position ?? 0),
       overdue: numbers.format(Number(n.data?.overdue ?? 0)),
       confirmBy: day(n.data?.confirmationDueOn) ?? "",
+      // The type by its name now; else its name then; else its code.
       type:
         pick(typeNames?.[n.data?.typeId ?? ""], lang, session.tenant.defaultLocale) ||
+        pick(n.data?.typeName, lang, session.tenant.defaultLocale) ||
         (n.data?.typeCode ?? ""),
+      seq: numbers.format(n.data?.firstBadSeq ?? 0),
+      kind: (t.auditBreaks as Record<string, string>)[n.data?.kind ?? ""] ?? "",
+      name:
+        pick(n.person?.name, lang, session.tenant.defaultLocale) ||
+        t.unknownPerson,
       people: numbers.format(n.data?.people ?? 0),
       stepsOverdue: numbers.format(n.data?.stepsOverdue ?? 0),
     })

@@ -610,6 +610,12 @@
       "document_owner_assigned_confirm": "You are now the owner of {reference}: confirm by {confirmBy} that what was imported matches the approved original. Its periodic review and its re-issue are yours.",
       "signing_pin_locked": "Signing with your PIN is locked after too many wrong PINs, and the session they were typed in was signed out. Ask your administrator to reset it. If it was not you, say so.",
       "review_approval_turned_off": "Documents of the type “{type}”: a “no change” review no longer needs the Approving authority's signature, as the setting was turned off.",
+      "audit_chain_broken": {
+        "seq": "The daily check found that the audit trail no longer matches its seals from entry {seq} ({kind}). Contact Trustline so the cause can be found.",
+        "noSeq": "The daily check found that the audit trail no longer matches its seals ({kind}). Contact Trustline so the cause can be found.",
+        "other": "The daily check found that the audit trail no longer matches its seals. Contact Trustline so the cause can be found."
+      },
+      "policies_import_granted": "{name} can now import existing documents. If you did not expect this, check their roles under “Users and roles”.",
       "other": "There is an update on {reference}."
     },
     "descriptionGeneral": "What has happened that concerns you. A notification names no one.",
@@ -695,7 +701,17 @@
       "pinChanged": "Your signing PIN is changed, and your other sessions were signed out.",
       "pinEmailed": "You are always told by email when your PIN is set, changed, reset or locked, whatever your email settings."
     },
-    "preferencesLink": "Email preferences"
+    "preferencesLink": "Email preferences",
+    "auditBreaks": {
+      "content_changed": "an entry changed after it was sealed",
+      "missing_entry": "a sealed entry is missing",
+      "missing_seal": "an entry has no seal",
+      "gap": "entry numbers are missing",
+      "head_rewound": "fewer entries than at an earlier check",
+      "backdated": "an entry dated before an earlier check",
+      "bad_checkpoint": "a checkpoint's signature does not hold"
+    },
+    "unknownPerson": "A former user"
   },
   "modulePage": {
     "scopeTitle": "What this area will cover",
@@ -1440,7 +1456,8 @@
       "settings.manage": "Change settings",
       "policies.approve": "Review and approve documents when named in a step of an approval route",
       "policies.view_all": "Read every document, including restricted ones and drafts, and see acknowledgement figures",
-      "policies.import": "Import existing documents"
+      "policies.import": "Import existing documents",
+      "audit.view": "View the audit trail"
     },
     "permissionHints": {
       "policies.import": "Held by the Quality officer. An administrator can give it to someone without holding it."

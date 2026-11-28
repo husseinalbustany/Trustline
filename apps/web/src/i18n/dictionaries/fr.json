@@ -610,6 +610,12 @@
       "document_owner_assigned_confirm": "Vous êtes désormais responsable du document {reference} : confirmez au plus tard le {confirmBy} que ce qui a été importé correspond à l’original approuvé. Sa révision périodique et sa réédition vous reviennent.",
       "signing_pin_locked": "La signature par votre code est bloquée après trop de codes erronés, et la session dans laquelle ils ont été saisis a été déconnectée. Demandez à votre administrateur de le réinitialiser. Si ce n’était pas vous, dites-le-lui.",
       "review_approval_turned_off": "Documents du type « {type} » : une révision « sans modification » ne nécessite plus la signature de l’Autorité d’approbation, ce réglage ayant été désactivé.",
+      "audit_chain_broken": {
+        "seq": "Journal d’audit : la vérification quotidienne a constaté qu’il ne correspond plus à ses sceaux à partir de l’entrée {seq} ({kind}). Contactez Trustline pour en déterminer la cause.",
+        "noSeq": "Journal d’audit : la vérification quotidienne a constaté qu’il ne correspond plus à ses sceaux ({kind}). Contactez Trustline pour en déterminer la cause.",
+        "other": "Journal d’audit : la vérification quotidienne a constaté qu’il ne correspond plus à ses sceaux. Contactez Trustline pour en déterminer la cause."
+      },
+      "policies_import_granted": "{name} peut désormais importer des documents existants. Si ce n’était pas prévu, vérifiez les rôles de cette personne dans « Utilisateurs et rôles ».",
       "other": "Du nouveau concernant l’incident {reference}."
     },
     "descriptionGeneral": "Ce qui s’est passé et vous concerne. Une notification ne nomme personne.",
@@ -695,7 +701,17 @@
       "pinChanged": "Votre code de signature est modifié, et vos autres sessions ont été déconnectées.",
       "pinEmailed": "Vous êtes toujours prévenu par e-⁠mail lorsque votre code est défini, modifié, réinitialisé ou bloqué, quels que soient vos réglages d’e-⁠mail."
     },
-    "preferencesLink": "Préférences d’e-⁠mail"
+    "preferencesLink": "Préférences d’e-⁠mail",
+    "auditBreaks": {
+      "content_changed": "contenu d’une entrée modifié après son scellement",
+      "missing_entry": "entrée scellée manquante",
+      "missing_seal": "entrée sans sceau",
+      "gap": "numéros d’entrée manquants",
+      "head_rewound": "moins d’entrées que lors d’une vérification précédente",
+      "backdated": "entrée datée d’avant une vérification précédente",
+      "bad_checkpoint": "signature d’un point de contrôle non valide"
+    },
+    "unknownPerson": "Un ancien utilisateur"
   },
   "modulePage": {
     "scopeTitle": "Ce que cette partie couvrira",
@@ -1440,7 +1456,8 @@
       "settings.manage": "Modifier les paramètres",
       "policies.approve": "Vérifier et approuver des documents lorsqu’on est désigné dans une étape d’un circuit d’approbation",
       "policies.view_all": "Lire tous les documents, y compris restreints et brouillons, et voir les chiffres de prise de connaissance",
-      "policies.import": "Importer les documents existants"
+      "policies.import": "Importer les documents existants",
+      "audit.view": "Consulter le journal d’audit"
     },
     "permissionHints": {
       "policies.import": "Détenue par le Responsable qualité. Un administrateur peut la donner sans la détenir."
