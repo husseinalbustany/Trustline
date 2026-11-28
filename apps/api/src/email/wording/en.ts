@@ -57,13 +57,15 @@ export const en: Wording = {
     },
     audit_chain_head: {
       subject: 'This week’s seal of your audit trail',
-      body: 'Your organization’s audit trail was checked and is unbroken up to entry {count}, whose seal is {hash}. Keep this email: if the trail before that entry were ever rewritten, this seal would no longer match.',
+      body: 'Your organization’s audit trail was checked on {day} and is unbroken up to entry {count}. The seal of that entry is:',
+      keep: 'Keep this email: if any entry up to that one were ever changed, removed or added afterwards, this seal would no longer match.',
     },
   },
   signInCode: {
     subject: 'Your Trustline sign-in code',
     body: 'Your sign-in code is {code}.',
-    expires: 'It can be used once, within {count} minutes. If you did not try to sign in, tell the organization that invited you.',
+    expires: 'It can be used once, within {count} minutes. Do not give it to anyone. If you did not just try to sign in, someone else knows your password: tell the organization that gave you access.',
+    footer: 'You receive this email because {organization} gave you access to Trustline as an external reviewer.',
   },
   weekly: {
     subject: 'Overdue acknowledgements this week',
@@ -90,6 +92,7 @@ export const en: Wording = {
     open: 'Open Trustline',
   },
   footer: {
+    alwaysAuditSeal: 'Administrators are always sent the weekly seal of the audit trail by email, whatever their email settings.',
     member: 'You receive this email as a member of {organization} in Trustline.',
     noDetails: 'Emails from Trustline carry no details of the incident or document: sign in to see them.',
     unsubscribeImmediate: 'Stop these immediate emails',

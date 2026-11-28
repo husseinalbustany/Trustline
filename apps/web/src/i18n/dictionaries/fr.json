@@ -1525,7 +1525,6 @@
         "language": "Langue des e-⁠mails",
         "languageDefault": "La langue de l’établissement",
         "submit": "Ouvrir l’accès",
-        "created": "L’accès est ouvert. Envoyez ce lien à la personne : il lui permet de choisir un mot de passe.",
         "another": "Ouvrir un accès à quelqu’un d’autre"
       },
       "extend": {
@@ -2731,7 +2730,8 @@
         "passed": "réussie",
         "failed": "échouée",
         "other": "effectuée"
-      }
+      },
+      "checked": "Entrées 1 à {head}. Vérifié chaque jour ; dernière vérification {at}, {result}."
     },
     "filters": {
       "title": "Filtres",
@@ -2756,7 +2756,7 @@
       "onlyRecord": "Seulement ce dossier"
     },
     "list": {
-      "total": "{total} entrées",
+      "total": "Entrées : {total}",
       "totalCapped": "Plus de {total} entrées",
       "older": "Entrées plus anciennes",
       "newer": "Entrées plus récentes",
@@ -2789,8 +2789,8 @@
       "step3": "Un sceau conservé auparavant (un téléchargement, ou l’e-⁠mail hebdomadaire) apparaît toujours, inchangé.",
       "step4": "Les entrées lues dans le CSV ont le même contenu dans le fichier de chaîne.",
       "script": "Le script publié par Trustline effectue ces vérifications sur l’ordinateur de l’évaluateur, sans envoyer le fichier nulle part :",
-      "keys": "Clés publiques de Trustline",
-      "command": "node verify-audit-chain.mjs <fichier> [keys.json]"
+      "keys": "Télécharger les clés publiques de Trustline",
+      "command": "node verify-audit-chain.mjs <fichier de chaîne> keys.json"
     },
     "breaks": {
       "content_changed": "contenu d’une entrée modifié après son scellement",

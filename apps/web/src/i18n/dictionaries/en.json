@@ -1525,7 +1525,6 @@
         "language": "Language of the emails",
         "languageDefault": "The organization's language",
         "submit": "Give access",
-        "created": "Access is given. Send this link to the person: it lets them choose a password.",
         "another": "Give access to someone else"
       },
       "extend": {
@@ -2731,7 +2730,8 @@
         "passed": "passed",
         "failed": "failed",
         "other": "done"
-      }
+      },
+      "checked": "Entries 1 to {head}. Checked every day; last check {at}, {result}."
     },
     "filters": {
       "title": "Filters",
@@ -2756,7 +2756,7 @@
       "onlyRecord": "Only this record"
     },
     "list": {
-      "total": "{total} entries",
+      "total": "Entries: {total}",
       "totalCapped": "More than {total} entries",
       "older": "Older entries",
       "newer": "Newer entries",
@@ -2789,8 +2789,8 @@
       "step3": "A seal kept from earlier (a download, or the weekly email) still appears, unchanged.",
       "step4": "The entries read in the CSV have the same content in the chain file.",
       "script": "Trustline's published script does these checks on the surveyor's own computer, without sending the file anywhere:",
-      "keys": "Trustline's public keys",
-      "command": "node verify-audit-chain.mjs <file> [keys.json]"
+      "keys": "Download Trustline's public keys",
+      "command": "node verify-audit-chain.mjs <chain file> keys.json"
     },
     "breaks": {
       "content_changed": "an entry changed after it was sealed",

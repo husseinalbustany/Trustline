@@ -73,6 +73,10 @@ export type Notification = {
     kind?: string;
     /** With `audit_chain_broken`: the first entry that does not hold, when known. */
     firstBadSeq?: number;
+    /** With `audit_chain_head`: the week's last entry checked, and its seal. */
+    seq?: number;
+    hash?: string;
+    checkedOn?: string;
     /** With `document_step_assigned`: review or approve. */
     step?: string;
     /** With `review_due`: 60, 30 or 7 days before. */
@@ -144,6 +148,7 @@ const detailOf = {
   email_turned_off: "switch",
   import_confirmation_due: "overdue",
   signing_pin_changed: "action",
+  external_access_changed: "change",
 } as const;
 
 /** A sentence, or a set of them by what `data` adds, with `other` as a rest. */

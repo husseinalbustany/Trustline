@@ -17,7 +17,7 @@ import {
 import { and, asc, count, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { pgErrorCode } from '../database/errors.js';
-import { roleAssignments, roles } from '../database/schema.js';
+import { roleAssignments, roles, users } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
 import {
   fitsLanguages,
@@ -25,7 +25,7 @@ import {
   optionalLocalizedText,
   type Localized,
 } from '../i18n/locales.js';
-import { PERMISSIONS, type Permission } from './permissions.js';
+import { PERMISSIONS, READ_ONLY_PERMISSIONS, type Permission } from './permissions.js';
 import { ProvisioningService } from './provisioning.service.js';
 import { mayGrant } from './scope.js';
 import {
@@ -187,6 +187,18 @@ export class RolesController {
           permissions.every((p) => role.permissions.includes(p))
         );
       });
+      // A role an external reviewer holds keeps to reading (security
+      // review 14, M2): widened, it would read more than was granted.
+      const { permissions } = parsed.data;
+      if (permissions?.some((p) => !READ_ONLY_PERMISSIONS.includes(p))) {
+        const [reviewer] = await tx
+          .select({ id: users.id })
+          .from(roleAssignments)
+          .innerJoin(users, eq(users.id, roleAssignments.userId))
+          .where(and(eq(roleAssignments.roleId, role.id), eq(users.kind, 'external_reviewer')))
+          .limit(1);
+        if (reviewer) throw new ConflictException({ code: 'held_by_external_reviewer' });
+      }
       const importers = await this.provisioning.importHolders(tx);
       const [updated] = await tx
         .update(roles)

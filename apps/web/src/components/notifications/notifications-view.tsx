@@ -2,6 +2,7 @@
 
 import { Mail, TriangleAlert } from "lucide-react";
 import Link from "next/link";
+import { isReviewer } from "@/lib/identity";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { can, useSession, useUnread } from "@/components/shell/session";
@@ -65,7 +66,9 @@ const ownPlace = new Set([
   "signing_pin_locked",
   "review_approval_turned_off",
   auditChainBroken,
+  "audit_chain_head",
   "policies_import_granted",
+  "external_access_changed",
 ]);
 
 /**
@@ -86,6 +89,7 @@ export function NotificationsView({
   >;
 }) {
   const session = useSession();
+  const reviewer = isReviewer(session);
   // The count on the bell, and the way to have it counted again.
   const { unread: unreadCount, refresh: refreshUnread } = useUnread();
   // What is asked for is in the address, and nowhere else.
@@ -187,6 +191,8 @@ export function NotificationsView({
 
   /** Shown as read at once; the bell follows when the API has it. */
   const markRead = (id: string) => {
+    // An external reviewer's session changes nothing, not even this.
+    if (reviewer) return Promise.resolve();
     const readAt = new Date().toISOString();
     setAnswer(
       (was) =>
@@ -264,7 +270,14 @@ export function NotificationsView({
                       n.person &&
                       can(session, "users.manage")
                     ? `/${lang}/admin/users/${n.person.id}`
-                    : null;
+                    : // About the audit trail: to it, for whoever may read it.
+                      (n.kind === auditChainBroken || n.kind === "audit_chain_head") &&
+                        session.scope?.["audit.view"] === "all"
+                      ? `/${lang}/admin/audit`
+                      : n.kind === "external_access_changed" &&
+                          session.scope?.["users.manage"] === "all"
+                        ? `/${lang}/admin/users/external`
+                        : null;
     const title = doc?.canOpen && doc.title
       ? pick(doc.title, lang, session.tenant.defaultLocale)
       : null;
@@ -284,7 +297,8 @@ export function NotificationsView({
         pick(typeNames?.[n.data?.typeId ?? ""], lang, session.tenant.defaultLocale) ||
         pick(n.data?.typeName, lang, session.tenant.defaultLocale) ||
         (n.data?.typeCode ?? ""),
-      seq: numbers.format(n.data?.firstBadSeq ?? 0),
+      seq: numbers.format(n.data?.firstBadSeq ?? n.data?.seq ?? 0),
+      hash: n.data?.hash ?? "",
       kind: (t.auditBreaks as Record<string, string>)[n.data?.kind ?? ""] ?? "",
       name:
         pick(n.person?.name, lang, session.tenant.defaultLocale) ||
@@ -381,7 +395,7 @@ export function NotificationsView({
           )}
         </div>
         {/* One that leads nowhere can still be put away. */}
-        {unread && !opens && (
+        {unread && !opens && !reviewer && (
           <Button
             variant="secondary"
             className="shrink-0 max-sm:self-start"
@@ -408,13 +422,15 @@ export function NotificationsView({
               <Mail className="size-4" aria-hidden />
               {t.preferencesLink}
             </ButtonLink>
-            <Button
-              variant="secondary"
-              disabled={busy || !anyUnread}
-              onClick={markAll}
-            >
-              {t.markAll}
-            </Button>
+            {!reviewer && (
+              <Button
+                variant="secondary"
+                disabled={busy || !anyUnread}
+                onClick={markAll}
+              >
+                {t.markAll}
+              </Button>
+            )}
           </div>
         }
       />

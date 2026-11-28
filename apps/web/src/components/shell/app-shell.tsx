@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, LogOut, Menu, Plus, UserCog } from "lucide-react";
+import { Bell, Eye, LogOut, Menu, Plus, UserCog } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -14,8 +14,8 @@ import {
 import { ButtonLink } from "@/components/ui/button-link";
 import type { Locale } from "@/i18n/config";
 import { api, statusOf } from "@/lib/api";
-import { fill, numberFormat } from "@/lib/format";
-import type { Session } from "@/lib/identity";
+import { dayFormat, fill, numberFormat } from "@/lib/format";
+import { isReviewer, type Session } from "@/lib/identity";
 import { pick } from "@/lib/localized";
 import { LanguageSwitcher } from "./language-switcher";
 import {
@@ -48,6 +48,8 @@ export type ShellLabels = SidebarLabels & {
   notificationsUnread: string;
   emailPreferences: string;
   unreadMany: string;
+  reviewerTitle: string;
+  reviewerHelp: string;
   subscription: SubscriptionText;
 };
 
@@ -350,6 +352,24 @@ export function AppShell({
                       session={session}
                       t={labels.subscription}
                     />
+                    {/* Someone from outside, for a few days: what they may
+                    do, and until when. */}
+                    {isReviewer(session) && session.user.access && (
+                      <div
+                        role="note"
+                        className="mb-6 flex items-start gap-3 rounded-lg border border-warn bg-warn-soft px-4 py-3 text-sm print:hidden"
+                      >
+                        <Eye className="mt-0.5 size-4 shrink-0 text-warn" aria-hidden />
+                        <div className="flex flex-col gap-1">
+                          <p className="font-medium">
+                            {fill(labels.reviewerTitle, {
+                              date: dayFormat(lang)(session.user.access.until) ?? "",
+                            })}
+                          </p>
+                          <p>{labels.reviewerHelp}</p>
+                        </div>
+                      </div>
+                    )}
                     {included ? (
                       children
                     ) : (

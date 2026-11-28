@@ -7,7 +7,7 @@ import { moduleOn, type ModuleKey } from "@/config/modules";
 import type { Dictionary } from "@/i18n/dictionaries";
 import { codeOf, limitOf } from "@/lib/api";
 import { fill, numberFormat } from "@/lib/format";
-import type { Session } from "@/lib/identity";
+import { isReviewer, type Session } from "@/lib/identity";
 import { SessionContext, useRefreshSession } from "./session";
 
 export type SubscriptionText = Dictionary["subscription"];
@@ -29,7 +29,7 @@ export const hasModule = (session: Session, module: ModuleKey) =>
  * notifications read.
  */
 export const isReadOnly = (session: Session) =>
-  session.tenant.subscription?.status === "suspended";
+  session.tenant.subscription?.status === "suspended" || isReviewer(session);
 
 /** The same, for a screen inside the app shell. */
 export function useReadOnly() {
@@ -51,6 +51,8 @@ export function useSubscriptionRefusal() {
     (err: unknown): string | null => {
       if (!words) return null;
       const { lang, t } = words;
+      // An external reviewer's session reads only.
+      if (codeOf(err) === "read_only_access") return t.reviewerRefused;
       if (codeOf(err) === "subscription_suspended") {
         void refreshSession();
         return t.refused;

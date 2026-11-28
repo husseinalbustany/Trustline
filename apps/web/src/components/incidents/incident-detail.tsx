@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { isReviewer } from "@/lib/identity";
+import { auditPathFor } from "@/lib/audit";
 import { useParams } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { can, useSession } from "@/components/shell/session";
@@ -36,6 +38,7 @@ import {
 /** One incident: the report, what has happened to it, and what can be done. */
 export function IncidentDetail({ lang, t }: IncidentsProps) {
   const session = useSession();
+  const reviewer = isReviewer(session);
   const { id } = useParams<{ id: string }>();
   // The incident as last read, and when: what "due in 5 hours" counts from.
   const [loaded, setLoaded] = useState<{ incident: Incident; at: Date } | null>(
@@ -160,12 +163,23 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
           </>
         }
         actions={
-          <IncidentPills
-            t={words}
-            status={incident.status}
-            harmLevel={incident.harmLevel}
-            isSentinel={incident.isSentinel}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <IncidentPills
+              t={words}
+              status={incident.status}
+              harmLevel={incident.harmLevel}
+              isSentinel={incident.isSentinel}
+            />
+            {/* Its entries in the trail, for whoever may read the trail. */}
+            {session.scope?.["audit.view"] === "all" && (
+              <Link
+                href={auditPathFor(lang, "incident", incident.id)}
+                className="text-sm text-accent hover:underline"
+              >
+                {d.auditTrail}
+              </Link>
+            )}
+          </div>
         }
       />
       {behind && (
@@ -223,7 +237,8 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
         <IncidentReport {...view} />
 
         {/* What the API lets this user do now; nothing when that is nothing. */}
-        {(incident.canRetriage || incident.moves.length > 0) && (
+        {/* Someone who may only read is offered nothing to do. */}
+        {!reviewer && (incident.canRetriage || incident.moves.length > 0) && (
           <div className="lg:col-start-2 lg:row-span-3 lg:row-start-1">
             <TriagePanel
               lang={lang}
@@ -242,7 +257,7 @@ export function IncidentDetail({ lang, t }: IncidentsProps) {
         <IncidentTimeline {...view} />
 
         <IncidentComments {...view}>
-          <CommentBox t={t} incident={incident} onAdded={refresh} />
+          {!reviewer && <CommentBox t={t} incident={incident} onAdded={refresh} />}
         </IncidentComments>
       </div>
       {back}

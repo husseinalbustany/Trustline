@@ -22,6 +22,7 @@ import {
 } from './actions.js';
 import { AuditKeys } from './audit-keys.js';
 import { bodyOf } from './chain.js';
+import { detailLines, idsIn, type DetailContext } from './details.js';
 import { AUDIT_WORDING } from './wording/index.js';
 
 /** What the trail is filtered by, on screen and exported. */
@@ -54,7 +55,7 @@ const list = (values: string[]) =>
     : sql`'{}'::text[]`;
 
 export type Actor =
-  | { kind: 'person'; id: string; name: Localized | null }
+  | { kind: 'person'; id: string; name: Localized | null; external: boolean }
   | { kind: Exclude<AuditActor, 'trustline_staff'> }
   | { kind: 'trustline_staff'; name: string | null };
 
@@ -65,6 +66,8 @@ type Row = {
   occurred_at: string;
   actor_id: string | null;
   actor_name: Localized | null;
+  actor_kind: 'staff' | 'external_reviewer' | null;
+  unit_type: 'facility' | 'department' | 'unit' | null;
   action: AuditAction;
   entity_type: AuditEntityType | null;
   entity_id: string | null;
@@ -143,10 +146,13 @@ export class TrailService {
 
   /** Whether an entry is masked for the caller, as SQL over the row. */
   private maskedSql(auth: AuthContext): SQL {
+    // What was decided when the entry was written, as the incident screens
+    // decide it (security review 14, H2): the report, and the comments
+    // written as the reporter. Whatever else the reporter did, as one of
+    // the incident's handlers, is theirs by name, as on the timeline.
     return sql`(a.action = any(${list(MASKABLE)}) and a.entity_type = 'incident' and not coalesce(${reporterToldTo(auth)}, false) and (
       a.action = 'incident_reported'
-      or (a.action = 'incident_commented' and coalesce((a.changes ->> 'byReporter')::boolean, false))
-      or (a.actor_id is not null and a.actor_id = ${incidents.reportedBy})))`;
+      or (a.action = 'incident_commented' and coalesce((a.changes ->> 'byReporter')::boolean, false))))`;
   }
 
   /** The filters, as SQL over `audit_log a`; null when nothing can match. */
@@ -199,7 +205,7 @@ export class TrailService {
              to_char(a.occurred_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as at,
              to_char(a.occurred_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as at_sort,
              a.occurred_at::text as occurred_at,
-             a.actor_id, u.name as actor_name, a.action, a.entity_type, a.entity_id, a.changes,
+             a.actor_id, u.name as actor_name, u.kind as actor_kind, ou.type as unit_type, a.action, a.entity_type, a.entity_id, a.changes,
              a.ip_address, c.seq::text as seq, c.sealed_late,
              ${this.maskedSql(auth)} as masked,
              coalesce(${reporterToldTo(auth)}, false) as told,
@@ -241,17 +247,54 @@ export class TrailService {
     return rows;
   }
 
-  /** One entry as the viewer shows it. `sealedBefore`: see `sealedBeforeIn`. */
-  private shown(row: Row, sealedBefore: number) {
+  /**
+   * What the ids of these entries' details stand for, for their sentences:
+   * people, roles and units by name, documents by number, incidents by
+   * reference, in one statement.
+   */
+  private async namesFor(tx: Transaction, rows: Row[]) {
+    const ids = new Set<string>();
+    for (const r of rows) idsIn(r.changes, ids);
+    const names = new Map<string, string | Localized>();
+    if (ids.size === 0) return names;
+    const list = sql`array[${sql.join([...ids].map((id) => sql`${id}`), sql`, `)}]::uuid[]`;
+    const { rows: found } = await tx.execute<{ id: string; label: string | Localized }>(sql`
+      select id::text as id, to_jsonb(name) as label from users where id = any(${list})
+      union all select id::text, to_jsonb(name) from roles where id = any(${list})
+      union all select id::text, to_jsonb(name) from org_units where id = any(${list})
+      union all select id::text, to_jsonb(name) from document_types where id = any(${list})
+      union all select id::text, to_jsonb(name) from document_categories where id = any(${list})
+      union all select id::text, to_jsonb(name) from approval_routes where id = any(${list})
+      union all select id::text, to_jsonb(number) from documents where id = any(${list})
+      union all select id::text, to_jsonb(reference) from incidents where id = any(${list})`);
+    for (const f of found) names.set(f.id, f.label);
+    return names;
+  }
+
+  /**
+   * One entry as the viewer shows it. `sealedBefore`: see
+   * `sealedBeforeIn`. `ctx`: the language its sentences are in.
+   */
+  private shown(row: Row, sealedBefore: number, ctx: DetailContext, auth: AuthContext) {
     const info = AUDIT_ACTIONS[row.action];
     const details = row.changes ? { ...row.changes } : null;
+    if (details) {
+      // Keys entries written before held, which nothing shows: Trustline
+      // staff's email (security review 14, info).
+      for (const key of (info as { legacy?: readonly string[] }).legacy ?? []) delete details[key];
+    }
     if (row.masked && details) {
+      // Nothing that tells who reported, nor that a report was anonymous:
+      // through the public link, a report always is (review 14, M1).
       delete details.anonymous;
       delete details.byReporter;
+      delete details.channel;
     }
     let actor: Actor;
     if (row.masked) actor = { kind: 'reporter' };
-    else if (row.actor_id) actor = { kind: 'person', id: row.actor_id, name: row.actor_name };
+    else if (row.actor_id) {
+      actor = { kind: 'person', id: row.actor_id, name: row.actor_name, external: row.actor_kind === 'external_reviewer' };
+    }
     else if ((BY_PLATFORM as string[]).includes(row.action)) {
       const name = row.changes?.platformAdminName;
       actor = { kind: 'trustline_staff', name: typeof name === 'string' ? name : null };
@@ -278,8 +321,10 @@ export class TrailService {
           }
         : null,
       details,
-      // The address, for sign-in entries only, while it is kept.
-      ip: info.area === 'sign_in' && !row.masked ? row.ip_address : null,
+      detailLines: detailLines(row.action, details, ctx),
+      // The address, for sign-in entries only, while it is kept; never to
+      // an external reviewer (security review 14, info).
+      ip: info.area === 'sign_in' && !row.masked && auth.user.kind !== 'external_reviewer' ? row.ip_address : null,
       // Recorded before the trail was sealed: by its number, which the
       // chain covers, never by the seal's own column.
       sealedLate: row.seq !== null && Number(row.seq) <= sealedBefore,
@@ -287,8 +332,8 @@ export class TrailService {
   }
 
   /** A page of entries, newest first, by key, with a total capped at 10,000. */
-  entries(auth: AuthContext, input: TrailFilters & { before?: string; pageSize: number }) {
-    const { before, pageSize, ...filters } = input;
+  entries(auth: AuthContext, input: TrailFilters & { before?: string; pageSize: number; locale: Locale }) {
+    const { before, pageSize, locale, ...filters } = input;
     const cursor = before ? readCursor(before) : null;
     return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
       const where = await this.whereOf(tx, auth, filters);
@@ -302,8 +347,9 @@ export class TrailService {
       const { sealedBefore } = await sealedBeforeIn(tx);
       const page = rows.slice(0, pageSize);
       const more = rows.length > pageSize;
+      const ctx = { words: AUDIT_WORDING[locale], locale, defaultLocale: auth.tenant.defaultLocale, names: await this.namesFor(tx, page) };
       return {
-        items: page.map((r) => this.shown(r, sealedBefore)),
+        items: page.map((r) => this.shown(r, sealedBefore, ctx, auth)),
         more,
         next: more ? cursorOf(page.at(-1)!) : null,
         total: Math.min(counted[0].n, TOTAL_CAP),
@@ -323,11 +369,16 @@ export class TrailService {
       const where = await this.whereOf(tx, auth, filters);
       const rows = where ? await this.rows(tx, auth, where, { limit: EXPORT_CAP }) : [];
       const { sealedBefore } = await sealedBeforeIn(tx);
+      const ctx = { words, locale, defaultLocale: auth.tenant.defaultLocale, names: await this.namesFor(tx, rows) };
       const name = (value: Localized | string | null | undefined) =>
         value == null ? null : typeof value === 'string' ? value : pickText(value, locale, auth.tenant.defaultLocale);
       const who = (actor: Actor) =>
         actor.kind === 'person'
-          ? name(actor.name)
+          ? actor.name
+            ? actor.external
+              ? words.csv.externalReviewer.replace('{name}', name(actor.name)!)
+              : name(actor.name)
+            : words.csv.formerUser
           : actor.kind === 'trustline_staff'
             ? actor.name
               ? `${words.actors.trustline_staff} (${actor.name})`
@@ -336,7 +387,8 @@ export class TrailService {
       const body = csv(
         [
           words.csv.seq,
-          words.csv.at,
+          // The organization's time zone, as the times are in it.
+          words.csv.at.replace('{zone}', zone),
           words.csv.who,
           words.csv.area,
           words.csv.action,
@@ -347,16 +399,20 @@ export class TrailService {
           words.csv.sealedLate,
         ],
         rows.map((row) => {
-          const e = this.shown(row, sealedBefore);
+          const e = this.shown(row, sealedBefore, ctx, auth);
           return [
             e.seq,
             momentIn(new Date(row.occurred_at), zone),
             who(e.actor),
             words.areas[e.area],
             words.actions[e.action],
-            e.entity ? words.entities[e.entity.type] : null,
+            e.entity
+              ? e.entity.type === 'org_unit' && row.unit_type
+                ? words.unitTypes[row.unit_type]
+                : words.entities[e.entity.type]
+              : null,
             e.entity ? name(e.entity.label) : null,
-            e.details ? JSON.stringify(e.details) : null,
+            e.detailLines.length > 0 ? e.detailLines.join(words.details.separator) : null,
             e.ip,
             e.sealedLate ? words.csv.yes : words.csv.no,
           ];
@@ -379,7 +435,7 @@ export class TrailService {
   chainFile(
     auth: AuthContext,
     range: { fromSeq?: number; toSeq?: number },
-    write: (line: string) => void,
+    write: (line: string) => Promise<void>,
   ) {
     const shown = this.shownActions(auth);
     return this.tenantDb.withTenant(auth.tenant.id, async (tx) => {
@@ -396,7 +452,7 @@ export class TrailService {
         select seq::text as seq, hash, at, key_id, signature from audit_chain_checkpoints
         where seq <= ${last} and (seq >= ${first} or seq = (select max(seq) from audit_chain_checkpoints where seq <= ${first}))
         order by seq, at`);
-      write(
+      await write(
         JSON.stringify({
           type: 'header',
           format: 'trustline-audit-chain',
@@ -439,7 +495,6 @@ export class TrailService {
             seq: Number(r.seq),
             entryId: r.entry_id,
             prevHash: r.prev_hash,
-            bodyHash: r.body_hash,
             hash: r.hash,
             sealedLate: Number(r.seq) <= sealedBefore,
           };
@@ -447,6 +502,11 @@ export class TrailService {
           // entry, nor one of a module that is off, nor one gone.
           const full = r.id !== null && !r.masked && (shown as string[]).includes(r.action!);
           if (full) {
+            // The body and its hash, only where the caller may see it all:
+            // a withheld entry's body hash would let its few unknown values
+            // (who reported, whether anonymously) be found by trying them
+            // (security review 14, H1). Its link still holds.
+            line.bodyHash = r.body_hash;
             line.body = bodyOf(
               {
                 id: r.id!,
@@ -462,17 +522,17 @@ export class TrailService {
               r.ip_commitment,
             );
             // While kept, the address and its salt, to check against the
-            // commitment the body holds.
-            if (r.ip_address !== null) {
+            // commitment the body holds; never to an external reviewer.
+            if (r.ip_address !== null && auth.user.kind !== 'external_reviewer') {
               line.ip = r.ip_address;
               line.ipSalt = r.ip_salt;
             }
           } else withheld++;
-          write(JSON.stringify(line));
+          await write(JSON.stringify(line));
         }
       }
       for (const cp of checkpoints) {
-        write(
+        await write(
           JSON.stringify({
             type: 'checkpoint',
             tenant: auth.tenant.id,

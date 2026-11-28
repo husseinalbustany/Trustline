@@ -20,6 +20,7 @@ import type { Dictionary } from "@/i18n/dictionaries";
 import { api, codeOf, statusOf } from "@/lib/api";
 import { fill, languageNameIn } from "@/lib/format";
 import { afterSigningRefusal } from "@/lib/signing";
+import { isReviewer } from "@/lib/identity";
 import { Words } from "@/components/policies/sentence";
 
 /** A person's email preferences, as the API gives them. */
@@ -209,6 +210,8 @@ function PreferencesForm({
 
   return (
     <form onSubmit={save} className="flex flex-col gap-6">
+      {/* An external reviewer's session changes nothing. */}
+      <fieldset disabled={isReviewer(session)} className="contents">
       <Panel title={t.emailTitle}>
         <div className="flex flex-col gap-4 p-4">
           <p className="text-sm text-muted">
@@ -313,6 +316,7 @@ function PreferencesForm({
           {busy ? t.saving : t.save}
         </Button>
       </div>
+      </fieldset>
     </form>
   );
 }

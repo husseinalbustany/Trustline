@@ -40,9 +40,10 @@ export type MailContent =
       number?: string;
       version?: number;
       step?: 'review' | 'approve';
-      /** The audit chain's head (audit_chain_head): its number and seal. */
+      /** The audit chain's head (audit_chain_head): its number, seal and day. */
       count?: number;
       hash?: string;
+      day?: string;
       href: string;
     }
   | {
@@ -120,6 +121,8 @@ const oneLine = (value: string) => value.replace(/[\u0000-\u001f\u007f-\u009f\u2
 
 type Paragraph =
   | { kind: 'text'; text: string }
+  /** A value to copy as it is: left to right, monospace, wrapped anywhere. */
+  | { kind: 'code'; text: string }
   | { kind: 'link'; text: string; href: string }
   | { kind: 'list'; items: DigestItem[] };
 
@@ -152,7 +155,27 @@ export function renderMail(content: MailContent, envelope: MailEnvelope): Render
         : content.kind === 'signing_pin_changed'
           ? (`signing_pin_${content.action ?? 'changed'}` as const)
           : content.kind;
-    const text = w.immediate[key];
+    if (content.kind === 'audit_chain_head') {
+      // The seal in a paragraph of its own, to be copied whole (language
+      // review 10), and the day it was checked, as the digest shows days.
+      const t = w.immediate.audit_chain_head;
+      const day = formatDay(content.day ?? '', envelope.locale);
+      subject = t.subject;
+      body.push({
+        kind: 'text',
+        text: fill(t.body, { day: rtl ? `${FSI}${day}${PDI}` : day, count: value(content.count ?? '') }),
+      });
+      body.push({ kind: 'code', text: content.hash ?? '' });
+      body.push({ kind: 'text', text: t.keep });
+      body.push({ kind: 'link', text: w.open, href: content.href });
+      return finish(subject, body, [
+        { kind: 'text', text: say(w.footer.member, { organization: oneLine(envelope.organization) }) },
+        // Not to be switched off: said, instead of a link that would not.
+        { kind: 'text', text: w.footer.alwaysAuditSeal },
+        ...(envelope.preferencesHref ? [{ kind: 'link' as const, text: w.footer.preferences, href: envelope.preferencesHref }] : []),
+      ]);
+    }
+    const text = w.immediate[key as Exclude<typeof key, 'audit_chain_head'>];
     const values = {
       reference: content.reference ?? '',
       number: content.number ?? '',
@@ -167,6 +190,11 @@ export function renderMail(content: MailContent, envelope: MailEnvelope): Render
     subject = w.signInCode.subject;
     body.push({ kind: 'text', text: say(w.signInCode.body, { code: content.code }) });
     body.push({ kind: 'text', text: say(w.signInCode.expires, { count: content.minutes }) });
+    // Its own footer: an external reviewer is no member of the
+    // organization, and a code is about no record (language review 10).
+    return finish(subject, body, [
+      { kind: 'text', text: say(w.signInCode.footer, { organization: oneLine(envelope.organization) }) },
+    ]);
   } else if (content.category === 'weekly_digest') {
     // Acknowledgements first, as before; the approval steps as a line of
     // their own, or alone when no acknowledgement is overdue. The subject
@@ -231,12 +259,16 @@ export function renderMail(content: MailContent, envelope: MailEnvelope): Render
     });
   }
 
-  subject = oneLine(subject);
-  return {
-    subject,
-    text: renderText(body, footer, w),
-    html: renderHtml(subject, body, footer, envelope.locale, w),
-  };
+  return finish(subject, body, footer);
+
+  function finish(title: string, main: Paragraph[], end: Paragraph[]): RenderedMail {
+    const line = oneLine(title);
+    return {
+      subject: line,
+      text: renderText(main, end, w),
+      html: renderHtml(line, main, end, envelope.locale, w),
+    };
+  }
 }
 
 function itemText(item: DigestItem, w: Wording, rtl: boolean) {
@@ -248,6 +280,7 @@ function renderText(body: Paragraph[], footer: Paragraph[], w: Wording) {
   const rtl = w.dir === 'rtl';
   const block = (p: Paragraph) => {
     if (p.kind === 'text') return p.text;
+    if (p.kind === 'code') return rtl ? `${LRI}${p.text}${PDI}` : p.text;
     if (p.kind === 'link') return `${p.text}${w.colon}${p.href}`;
     return p.items.map((item) => `- ${itemText(item, w, rtl)}${w.colon}${item.href}`).join('\n');
   };
@@ -272,6 +305,9 @@ function renderHtml(
       ? ' style="margin:0 0 8px;font-size:12px;color:#52606d"'
       : ' style="margin:0 0 16px"';
     if (p.kind === 'text') return `<p${style}>${escapeHtml(p.text)}</p>`;
+    if (p.kind === 'code') {
+      return `<p dir="ltr" style="margin:0 0 16px;font-family:monospace;word-break:break-all">${escapeHtml(p.text)}</p>`;
+    }
     if (p.kind === 'link') {
       return `<p${style}><a href="${escapeHtml(p.href)}" style="${LINK_STYLE}">${escapeHtml(p.text)}</a></p>`;
     }

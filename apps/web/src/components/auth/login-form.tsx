@@ -9,7 +9,7 @@ import {
 } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
-import { api, statusOf } from "@/lib/api";
+import { api, codeOf, statusOf } from "@/lib/api";
 import type { Dictionary } from "@/i18n/dictionaries";
 import type { Locale } from "@/i18n/config";
 import { AuthCard } from "./auth-card";
@@ -42,6 +42,12 @@ export function LoginForm({
   const orgInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // An external reviewer's second step: the code sent by email. Only the
+  // challenge is kept, never the password.
+  const [challenge, setChallenge] = useState<{ org: string; challenge: string } | null>(
+    null,
+  );
+  const [restartOrg, setRestartOrg] = useState<string | undefined>(undefined);
 
   // Prefill the organization from the link the hospital shares (?org=), or
   // from the last sign-in on this browser.
@@ -65,44 +71,128 @@ export function LoginForm({
     setBusy(true);
     setError(null);
     try {
-      await api("/auth/login", {
-        method: "POST",
-        body: {
-          org,
-          email: data.get("email"),
-          password: data.get("password"),
+      const answer = await api<{ code?: string; challenge?: string } | undefined>(
+        "/auth/login",
+        {
+          method: "POST",
+          body: {
+            org,
+            email: data.get("email"),
+            password: data.get("password"),
+          },
         },
-      });
+      );
       try {
         window.localStorage.setItem(ORG_KEY, org);
       } catch {}
       // Visited pages stay mounted, so clear the password before leaving.
       form.reset();
       if (orgInput.current) orgInput.current.value = org;
-      // A full page load, so no page from an earlier session stays mounted.
-      // To the page asked for before signing in, when it is a page of the
-      // hospital's app in this language; otherwise to the dashboard.
-      loadPage(
-        returnPath(
-          `/${lang}`,
-          [`/${lang}/login`, `/${lang}/invite`, `/${lang}/platform`],
-          `/${lang}/dashboard`,
-        ),
-      );
+      // An external reviewer: a code was emailed, and is asked for next.
+      if (answer?.code === "one_time_code_sent" && answer.challenge) {
+        setChallenge({ org, challenge: answer.challenge });
+        setBusy(false);
+        return;
+      }
+      enter();
       return;
     } catch (err) {
       const status = statusOf(err);
       // 400: something in the organization ID or the email that cannot be
       // in one, such as a control character pasted with it.
       setError(
-        status === 401
-          ? t.login.failed
-          : status === 400
-            ? t.login.invalid
-            : t.login.error,
+        codeOf(err) === "code_not_sent"
+          ? t.login.codeNotSent
+          : status === 401
+            ? t.login.failed
+            : status === 400
+              ? t.login.invalid
+              : t.login.error,
       );
     }
     setBusy(false);
+  }
+
+  // A full page load, so no page from an earlier session stays mounted.
+  // To the page asked for before signing in, when it is a page of the
+  // hospital's app in this language; otherwise to the dashboard.
+  const enter = () =>
+    loadPage(
+      returnPath(
+        `/${lang}`,
+        [`/${lang}/login`, `/${lang}/invite`, `/${lang}/platform`],
+        `/${lang}/dashboard`,
+      ),
+    );
+
+  async function sendCode(e: FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (!challenge) return;
+    const form = e.currentTarget;
+    const code = String(new FormData(form).get("code") ?? "").trim();
+    form.reset();
+    if (!/^\d{6}$/.test(code)) return setError(t.login.codeInvalid);
+    setBusy(true);
+    setError(null);
+    try {
+      await api("/auth/login/code", { method: "POST", body: { ...challenge, code } });
+      setChallenge(null);
+      enter();
+      return;
+    } catch (err) {
+      const status = statusOf(err);
+      setError(
+        status === 401
+          ? t.login.codeWrong
+          : codeOf(err) === "code_not_sent"
+            ? t.login.codeNotSent
+            : status === 400
+              ? t.login.codeInvalid
+              : t.login.error,
+      );
+    }
+    setBusy(false);
+  }
+
+  if (challenge) {
+    return (
+      <AuthCard eyebrow={appName} title={t.login.codeTitle}>
+        <form onSubmit={sendCode} className="flex flex-col gap-5">
+          <p className="text-sm text-muted">{t.login.codeHelp}</p>
+          <Field label={t.login.code}>
+            <input
+              name="code"
+              required
+              inputMode="numeric"
+              pattern="[0-9]{6}"
+              maxLength={6}
+              autoComplete="one-time-code"
+              dir="ltr"
+              className={inputClass}
+            />
+          </Field>
+          {error && (
+            <p role="alert" className="text-sm text-danger">
+              {error}
+            </p>
+          )}
+          <Button type="submit" disabled={busy} className="h-10">
+            {t.login.codeSubmit}
+          </Button>
+          <button
+            type="button"
+            onClick={() => {
+              setRestartOrg(challenge.org);
+              setChallenge(null);
+              setError(null);
+            }}
+            className="text-sm text-accent hover:underline"
+          >
+            {t.login.restart}
+          </button>
+        </form>
+      </AuthCard>
+    );
   }
 
   return (
@@ -120,6 +210,8 @@ export function LoginForm({
           <input
             name="org"
             required
+            // Back from the code step: the organization as it was typed.
+            defaultValue={restartOrg}
             dir="ltr"
             autoCapitalize="none"
             ref={orgInput}

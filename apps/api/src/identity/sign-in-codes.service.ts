@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
-import { and, eq, gt, isNull, sql } from 'drizzle-orm';
+import { and, count, eq, gt, isNull, sql } from 'drizzle-orm';
 import type { Transaction } from '../database/client.js';
 import { emailQueue, signInCodes, type tenants, type users } from '../database/schema.js';
 import { TenantDb } from '../database/tenant-db.service.js';
@@ -14,6 +14,8 @@ import { hashToken } from './provisioning.service.js';
 /** How long a code may be used, and how many tries it has. */
 export const SIGN_IN_CODE_MINUTES = 10;
 export const SIGN_IN_CODE_TRIES = 5;
+/** Codes sent to one person in an hour, at most (security review 14, M3). */
+export const SIGN_IN_CODES_PER_HOUR = 5;
 
 const codeHashOf = (challenge: string, code: string) =>
   createHash('sha256').update(`trustline.sign-in-code.${challenge}.${code}`).digest('hex');
@@ -38,8 +40,21 @@ export class SignInCodes {
     @Inject(MAIL_CONFIG) private readonly config: MailConfig,
   ) {}
 
-  /** Records a code for this person, in the caller's transaction. */
+  /**
+   * Records a code for this person, in the caller's transaction; null when
+   * they have been sent as many as an hour allows.
+   */
   async issue(tx: Transaction, tenantId: string, userId: string, client: string) {
+    // In production a code is never kept readable in the outbox, which is
+    // also where mail goes when SMTP is not set up right (review 14, L5).
+    if (process.env.NODE_ENV === 'production' && this.sender.mode === 'outbox') {
+      throw new ServiceUnavailableException({ code: 'code_not_sent' });
+    }
+    const [{ sent }] = await tx
+      .select({ sent: count() })
+      .from(signInCodes)
+      .where(and(eq(signInCodes.userId, userId), gt(signInCodes.createdAt, new Date(Date.now() - 3_600_000))));
+    if (sent >= SIGN_IN_CODES_PER_HOUR) return null;
     const challenge = randomBytes(32).toString('base64url');
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
     // One live code per person: a new sign-in voids the one before.

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { auditPathFor } from "@/lib/audit";
 import { useParams } from "next/navigation";
 import { useEffect, useLayoutEffect, useState, type FormEvent } from "react";
 import { canIn, useSession } from "@/components/shell/session";
@@ -113,6 +114,8 @@ export function UserForm({
     // Someone who signs in by single sign-on, with a signing PIN, is given
     // no password by a link.
     if (code === "signs_with_pin") return f.signsWithPin;
+    // An external reviewer's account is managed on its own screen.
+    if (code === "external_reviewer") return f.externalReviewer;
     if (code?.endsWith("higher_access")) return f.higherAccess;
     if (statusOf(err) === 403) return t.noAccess;
     return statusOf(err) === 400 ? f.invalid : f.error;
@@ -335,6 +338,15 @@ export function UserForm({
                     {f.acknowledgementRecord}
                   </Link>
                 )}
+              {/* Their entries in the trail, for whoever may read the trail. */}
+              {session.scope?.["audit.view"] === "all" && (
+                <Link
+                  href={auditPathFor(lang, "user", user.id)}
+                  className="text-sm text-accent hover:underline"
+                >
+                  {f.auditTrail}
+                </Link>
+              )}
             </div>
           )
         }

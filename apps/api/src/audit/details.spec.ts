@@ -4,7 +4,7 @@ import { sql } from 'drizzle-orm';
 import ts from 'typescript';
 import { createDatabase } from '../database/client.js';
 import { requireEnv } from '../env.js';
-import { AUDIT_ACTIONS, isAuditAction, type AuditAction } from './actions.js';
+import { AUDIT_ACTIONS, isAuditAction, storedKeysOf, type AuditAction } from './actions.js';
 
 const API = resolve(import.meta.dirname, '../..');
 
@@ -136,7 +136,9 @@ describe('the details of audit entries', () => {
         select distinct a.action, k as key from audit_log a,
           jsonb_object_keys(case when jsonb_typeof(a.changes) = 'object' then a.changes else '{}'::jsonb end) k`);
       expect(
-        rows.filter((r) => !registered(r.action as AuditAction).has(r.key)).map((r) => `${r.action}.${r.key}`),
+        rows
+          .filter((r) => !isAuditAction(r.action) || !storedKeysOf(r.action as AuditAction).includes(r.key))
+          .map((r) => `${r.action}.${r.key}`),
       ).toEqual([]);
     } finally {
       await pool.end();

@@ -58,14 +58,16 @@ export const fr: Wording = {
       body: 'Après trop de codes de signature erronés, la signature par votre code est bloquée dans Trustline, et la session où ils ont été saisis a été fermée. Demandez à votre administrateur de réinitialiser votre code ; si ce n’était pas vous, dites-le-lui.',
     },
     audit_chain_head: {
-      subject: 'Le sceau de votre journal d’audit cette semaine',
-      body: 'Le journal d’audit de votre organisation a été vérifié et il est intact jusqu’à l’entrée {count}, dont le sceau est {hash}. Conservez ce message : si le journal antérieur à cette entrée était un jour réécrit, ce sceau ne correspondrait plus.',
+      subject: 'Journal d’audit : le sceau de la semaine',
+      body: 'Le journal d’audit de votre établissement a été vérifié le {day} : il est intact jusqu’à l’entrée {count}. Le sceau de cette entrée est :',
+      keep: 'Conservez ce message : si une entrée jusqu’à celle-ci était un jour modifiée, supprimée ou ajoutée après coup, ce sceau ne correspondrait plus.',
     },
   },
   signInCode: {
     subject: 'Votre code de connexion à Trustline',
     body: 'Votre code de connexion est {code}.',
-    expires: 'Il ne peut servir qu’une fois, dans les {count} minutes. Si vous n’avez pas tenté de vous connecter, prévenez l’organisation qui vous a invité.',
+    expires: 'Il ne peut servir qu’une fois, dans les {count} minutes. Ne le communiquez à personne. Si vous n’avez pas tenté de vous connecter à l’instant, quelqu’un d’autre connaît votre mot de passe : prévenez l’établissement qui vous a donné cet accès.',
+    footer: 'Vous recevez cet e-⁠mail car vous disposez d’un accès d’évaluateur externe à Trustline pour {organization}.',
   },
   weekly: {
     subject: 'Prises de connaissance en retard cette semaine',
@@ -92,6 +94,7 @@ export const fr: Wording = {
     open: 'Ouvrir Trustline',
   },
   footer: {
+    alwaysAuditSeal: 'Les administrateurs reçoivent toujours par e-⁠mail le sceau hebdomadaire du journal d’audit, quels que soient leurs réglages.',
     member: 'Vous recevez cet e-mail en tant que membre de {organization} dans Trustline.',
     noDetails: 'Les e-mails de Trustline ne contiennent aucun détail sur l’incident ou le document : connectez-vous pour les voir.',
     unsubscribeImmediate: 'Ne plus recevoir ces e-mails immédiats',

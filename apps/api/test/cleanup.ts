@@ -50,7 +50,7 @@ import {
   userTokens,
 } from '../src/database/schema.js';
 import { requireEnv } from '../src/env.js';
-import { AUDIT_ACTIONS, isAuditAction } from '../src/audit/actions.js';
+import { isAuditAction, storedKeysOf } from '../src/audit/actions.js';
 
 /** A tag, a hyphen and a run's random part are longer than this. */
 const MIN_PREFIX = 8;
@@ -81,6 +81,7 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
   // the registry (src/audit/actions.ts): what the code writes through a
   // variable is checked here, where it was written for real.
   let unregistered: string[] = [];
+  let checkFailed: unknown = null;
   try {
     const { rows } = await db.execute<{ action: string; key: string | null }>(sql`
       select distinct a.action, k as key
@@ -92,10 +93,12 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
     unregistered = rows
       .filter((r) =>
         !isAuditAction(r.action) ||
-        (r.key !== null && !(AUDIT_ACTIONS[r.action].details as readonly string[]).includes(r.key)))
+        (r.key !== null && !storedKeysOf(r.action).includes(r.key)))
       .map((r) => (r.key === null ? r.action : `${r.action}.${r.key}`));
-  } catch {
-    // The check only reads; the clean-up below goes on regardless.
+  } catch (error) {
+    // The check only reads; the clean-up below goes on regardless, and the
+    // failure is thrown after it (security review 14, L4).
+    checkFailed = error;
   }
   try {
     // In one transaction: another test file, which may be reading every
@@ -186,6 +189,7 @@ export async function removeTestData(slugPrefix: string, adminEmail: string) {
   } finally {
     await pool.end();
   }
+  if (checkFailed) throw checkFailed;
   if (unregistered.length > 0) {
     throw new Error(`Audit entries not in the registry (src/audit/actions.ts): ${[...new Set(unregistered)].sort().join(', ')}`);
   }

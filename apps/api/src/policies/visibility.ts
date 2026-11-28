@@ -166,11 +166,14 @@ export function visible(v: Viewer, engine: ApprovalEngine): SQL {
  * acknowledge it, reminded, and counted as targeted. Active users only.
  */
 export function audienceMember(
-  user: { id: SQLWrapper; orgUnitId: SQLWrapper; status: SQLWrapper },
+  user: { id: SQLWrapper; orgUnitId: SQLWrapper; status: SQLWrapper; kind: SQLWrapper },
   documentId: SQLWrapper,
 ): SQL {
+  // Never an external reviewer, who reads but is asked nothing: not to
+  // acknowledge, nor reminded, nor counted (security review 14, info).
   return sql`(
     ${user.status} = 'active'
+    and ${user.kind} = 'staff'
     and exists (
       select from ${roleAssignments} ra join ${roles} r on r.id = ra.role_id
       where ra.user_id = ${user.id}
@@ -192,6 +195,6 @@ export function audienceMember(
 /** `audienceMember` for the `users` table itself. */
 export const userInAudience = (documentId: SQLWrapper) =>
   audienceMember(
-    { id: users.id, orgUnitId: users.orgUnitId, status: users.status },
+    { id: users.id, orgUnitId: users.orgUnitId, status: users.status, kind: users.kind },
     documentId,
   );

@@ -199,11 +199,11 @@ export const SYSTEM_ROLES: {
     // names. Given to the clients that existed before it by migration
     // 0061. A narrower role of the client's may be given instead.
     code: 'external_reviewer',
-    name: { en: 'External reviewer', ar: 'مراجع خارجي', fr: 'Évaluateur externe' },
+    name: { en: 'External reviewer', ar: 'مقيّم خارجي', fr: 'Évaluateur externe' },
     description: {
-      en: 'A surveyor or auditor from outside, for a few days: reads the audit trail, every document, incidents without their reporters, and reports.',
-      ar: 'مُقيِّم أو مدقق من خارج المؤسسة لبضعة أيام: يطّلع على سجل التدقيق وكل الوثائق والحوادث دون أسماء المُبلِّغين والتقارير.',
-      fr: 'Un évaluateur ou un auditeur extérieur, pour quelques jours : consulte le journal d’audit, tous les documents, les incidents sans leurs déclarants, et les rapports.',
+      en: "Reads, for a limited time, the audit trail, all documents, reports, and incidents without the reporters' names. For surveyors and auditors from outside.",
+      ar: 'يطّلع لمدة محدودة على سجل التدقيق وجميع الوثائق والتقارير، وعلى الحوادث دون أسماء المبلّغين. للمقيّمين والمدققين من خارج المنشأة.',
+      fr: 'Consulte pour une durée limitée le journal d’audit, tous les documents, les rapports et les incidents sans le nom des déclarants. Pour les évaluateurs et auditeurs extérieurs.',
     },
     permissions: ['audit.view', 'policies.view_all', 'incidents.view', 'reports.view'],
   },

@@ -1,4 +1,4 @@
-import type { AuditAction, AuditActor, AuditArea, AuditEntityType } from '../actions.js';
+import type { AuditAction, AuditActor, AuditArea, AuditDetailKey, AuditEntityType } from '../actions.js';
 
 /**
  * The words of the audit trail in one language, for what the API writes
@@ -29,6 +29,34 @@ export type AuditWording = {
     sealedLate: string;
     yes: string;
     no: string;
+    /** An actor whose name is gone. */
+    formerUser: string;
+    /** An external reviewer, by name: `{name}`. */
+    externalReviewer: string;
   };
   actors: Record<AuditActor, string>;
+  /** The three types of unit, which a record of `org_unit` is named by. */
+  unitTypes: { facility: string; department: string; unit: string };
+  /**
+   * The details of an entry, as sentences (language review 10): the field
+   * first, then its value, so that no verb agrees with a name; a change as
+   * `change` says it (no arrow in Arabic); some actions as a whole sentence
+   * (`templates`, by action, or by action and value).
+   */
+  details: {
+    colon: string;
+    separator: string;
+    none: string;
+    all: string;
+    yes: string;
+    no: string;
+    change: string;
+    fields: Record<AuditDetailKey, string>;
+    values: Record<string, string>;
+    templates: Record<string, string>;
+    screens: Record<
+      'incident' | 'incidents' | 'document' | 'documents' | 'audit' | 'auditDownload' | 'reports' | 'users' | 'dashboard' | 'other',
+      string
+    >;
+  };
 };

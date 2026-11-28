@@ -62,6 +62,8 @@ export const entriesQuery = z.preprocess(
       ...filters,
       before: z.string().min(1).max(200).optional(),
       pageSize: z.coerce.number().int().min(1).max(200).default(50),
+      // The language of `detailLines`: one of the client's.
+      locale: localeSchema.optional(),
     })
     .refine(consistent),
 );

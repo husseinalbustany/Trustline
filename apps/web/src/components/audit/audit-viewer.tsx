@@ -369,7 +369,8 @@ function ChainStatus({ lang, t }: { lang: string; t: AuditText }) {
             {!head
               ? s.noEntries
               : check
-                ? fill(s.unbroken, {
+                ? // "Unbroken" only while no break was ever found.
+                  fill(!broken && check.result === "passed" ? s.unbroken : s.checked, {
                     head: numbers.format(head.seq),
                     at: moment.format(new Date(check.at)),
                     result: results[check.result] ?? results.other,
@@ -421,8 +422,8 @@ function Filters({
   const inLang = (text: Localized | null | undefined) =>
     pick(text, lang, session.tenant.defaultLocale);
   const offered = auditAreas.filter((a) => {
-    const module = areaModule[a];
-    return !module || hasModule(session, module);
+    const needs = areaModule[a];
+    return !needs || hasModule(session, needs);
   });
 
   function apply(e: FormEvent<HTMLFormElement>) {
@@ -590,6 +591,28 @@ function Downloads({ lang, t, asked }: { lang: string; t: AuditText; asked: Audi
     setBusy(null);
   }
 
+  // Trustline's public keys, as the file the script takes.
+  async function getKeys() {
+    setBusy("keys");
+    setFailed(null);
+    try {
+      const keys = await api<unknown>("/audit/keys");
+      const url = URL.createObjectURL(
+        new Blob([JSON.stringify(keys, null, 2)], { type: "application/json" }),
+      );
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "keys.json";
+      document.body.append(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setFailed("keys");
+    }
+    setBusy(null);
+  }
+
   const failure = (which: string) =>
     failed === which && (
       <p role="alert" className="text-sm text-danger">
@@ -689,11 +712,12 @@ function Downloads({ lang, t, asked }: { lang: string; t: AuditText; asked: Audi
           <code dir="ltr" className="block rounded-md bg-surface px-3 py-2 text-xs break-all">
             {d.command}
           </code>
-          <p>
-            <a href="/api/v1/audit/keys" className="text-accent hover:underline">
+          <div>
+            <Button variant="secondary" disabled={busy !== null} onClick={() => void getKeys()}>
               {d.keys}
-            </a>
-          </p>
+            </Button>
+            {failure("keys")}
+          </div>
         </div>
       </div>
     </Panel>

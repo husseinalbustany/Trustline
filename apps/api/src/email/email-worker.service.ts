@@ -852,7 +852,8 @@ export class EmailWorker implements OnModuleDestroy {
       const seq = Number(data.seq);
       const hash = typeof data.hash === 'string' && /^[0-9a-f]{64}$/.test(data.hash) ? data.hash : null;
       if (!Number.isSafeInteger(seq) || seq < 1 || !hash) return null;
-      return { category: 'immediate', kind, count: seq, hash, href: link('/admin/audit') };
+      const day = typeof data.checkedOn === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(data.checkedOn) ? data.checkedOn : undefined;
+      return { category: 'immediate', kind, count: seq, hash, day, href: link('/admin/audit') };
     }
     if (kind === 'review_approval_requested') {
       const number = short(data.number);

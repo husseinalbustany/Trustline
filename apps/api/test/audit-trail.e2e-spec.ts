@@ -44,7 +44,7 @@ describe('the audit trail', () => {
   const get = (cookie: string, url: string) => http().get(url).set('Cookie', cookie);
   const entries = async (cookie: string, query = '') =>
     (await get(cookie, `/audit/entries${query}`).expect(200)).body as {
-      items: { id: string; seq: number; action: string; actor: { kind: string; id?: string; name?: unknown }; entity: { type: string; id: string; label: unknown; canOpen: boolean } | null; details: Record<string, unknown> | null; ip: string | null; sealedLate: boolean }[];
+      items: { id: string; seq: number; action: string; actor: { kind: string; id?: string; name?: unknown }; entity: { type: string; id: string; label: unknown; canOpen: boolean } | null; details: Record<string, unknown> | null; detailLines: string[]; ip: string | null; sealedLate: boolean }[];
       more: boolean;
       next: string | null;
       total: number;
@@ -403,8 +403,13 @@ describe('the audit trail', () => {
       const res = await get(a.cookie, '/audit/exports/entries?area=accounts').expect(200);
       expect(res.headers['content-type']).toContain('text/csv');
       const lines = res.text.replace(/^﻿/, '').trim().split('\r\n');
-      expect(lines[0]).toBe('"No.","When","Who","Area","What","Record","Reference","Details","Address","Recorded before the trail was sealed"');
+      // The organization's time zone, named in the time column (language review 10).
+      const zone = (await http().get('/auth/me').set('Cookie', a.cookie).expect(200)).body.tenant.timeZone;
+      expect(lines[0]).toBe(`"Entry no.","Date and time (${zone})","Done by","Area","Action","Record type","Record","Details","IP address","Recorded before sealing started"`);
       expect(lines.some((l) => l.includes('"Accounts and roles","User added"'))).toBe(true);
+      // Details as sentences, field first: never raw JSON.
+      expect(lines.some((l) => l.includes('{'))).toBe(false);
+      expect(lines.find((l) => l.includes('"User\'s details changed"'))).toMatch(/Status: (Active|Disabled) → (Active|Disabled)/);
       const [entry] = await bench.owner.db
         .select({ actorId: auditLog.actorId, changes: auditLog.changes })
         .from(auditLog)
@@ -440,6 +445,28 @@ describe('the audit trail', () => {
       for (const l of full) {
         expect(masked.find((m) => m.seq === l.seq)).not.toHaveProperty('body');
       }
+      // H1: a withheld entry carries no body hash either.
+      for (const l of full) {
+        expect(masked.find((m) => m.seq === l.seq)).not.toHaveProperty('bodyHash');
+      }
+      // M4: the published keys are required, a signed checkpoint must cover
+      // the file, and every entry the header claims must be there.
+      const run_ = (args: string[]) => {
+        try {
+          execFileSync(process.execPath, [script, ...args], { encoding: 'utf8', stdio: 'pipe' });
+          return 0;
+        } catch (error) {
+          return (error as { status: number }).status;
+        }
+      };
+      writeFileSync(file, res.text);
+      expect(run_([file])).toBe(2);
+      writeFileSync(file, res.text.split('\n').filter((l) => !l.includes('"type":"checkpoint"')).join('\n'));
+      expect(run_([file, keys])).toBe(1);
+      const withoutOne = res.text.split('\n');
+      withoutOne.splice(2, 1);
+      writeFileSync(file, withoutOne.join('\n'));
+      expect(run_([file, keys])).toBe(1);
       const exported = await bench.owner.db.select({ changes: auditLog.changes }).from(auditLog).where(and(eq(auditLog.tenantId, a.id), eq(auditLog.action, 'audit_chain_exported')));
       expect(exported.length).toBeGreaterThanOrEqual(2);
     });
@@ -594,6 +621,49 @@ describe('the audit trail', () => {
       expect(actions).toEqual(expect.arrayContaining(['external_access_extended', 'external_access_ended']));
     });
 
+    it('M2: reads only, whatever its role becomes', async () => {
+      await bench.createRole(a, 'readers', ['incidents.view', 'audit.view']);
+      const granted = (await grant(a.cookie, body({ roleId: a.roles.readers })).expect(201)).body;
+      await http().post('/auth/invite/accept').send({ org: a.slug, token: granted.invite.token, password }).expect(204);
+      expect((await http().patch(`/roles/${a.roles.readers}`).set('Cookie', a.cookie).send({ permissions: ['incidents.view', 'audit.view', 'users.manage'] }).expect(409)).body).toEqual({ code: 'held_by_external_reviewer' });
+      // Widened behind the API's back: still nothing more.
+      await bench.owner.db.execute(sql`update roles set permissions = array_append(permissions, 'incidents.see_reporter') where id = ${a.roles.readers}`);
+      const challenge = await signIn(granted.reviewer.email);
+      const cookie = bench.cookieOf(await http().post('/auth/login/code').send({ org: a.slug, challenge, code: await codeFor(granted.reviewer.id) }).expect(200));
+      const me = (await get(cookie, '/auth/me').expect(200)).body;
+      expect(me.permissions).toEqual(['audit.view', 'incidents.view']);
+      // No sign-in address shown to it.
+      const signIns = await entries(cookie, '?area=sign_in');
+      expect(signIns.items.length).toBeGreaterThan(0);
+      expect(signIns.items.every((e) => e.ip === null)).toBe(true);
+      // Its reads recorded with what was asked.
+      const [read] = await bench.owner.db
+        .select({ changes: auditLog.changes })
+        .from(auditLog)
+        .where(and(eq(auditLog.actorId, granted.reviewer.id), eq(auditLog.action, 'external_reviewer_viewed'), sql`${auditLog.changes} -> 'query' ->> 'area' = 'sign_in'`));
+      expect(read.changes).toMatchObject({ route: expect.stringContaining('audit/entries'), query: { area: 'sign_in' } });
+    });
+
+    it('M3: wrong codes lock the account as wrong passwords do, and codes are few an hour', async () => {
+      const locked = (await grant(a.cookie, body()).expect(201)).body;
+      await http().post('/auth/invite/accept').send({ org: a.slug, token: locked.invite.token, password }).expect(204);
+      let last = '';
+      for (let i = 0; i < 5; i++) {
+        last = await signIn(locked.reviewer.email);
+        await http().post('/auth/login/code').send({ org: a.slug, challenge: last, code: '000000' === (await codeFor(locked.reviewer.id)) ? '111111' : '000000' }).expect(401);
+      }
+      const [user] = await bench.owner.db.select({ lockedUntil: users.lockedUntil }).from(users).where(eq(users.id, locked.reviewer.id));
+      expect(user.lockedUntil!.getTime()).toBeGreaterThan(Date.now());
+      await http().post('/auth/login').send({ org: a.slug, email: locked.reviewer.email, password }).expect(401);
+      // Five codes an hour at most.
+      const many = (await grant(a.cookie, body()).expect(201)).body;
+      await http().post('/auth/invite/accept').send({ org: a.slug, token: many.invite.token, password }).expect(204);
+      for (let i = 0; i < 5; i++) await signIn(many.reviewer.email);
+      await http().post('/auth/login').send({ org: a.slug, email: many.reviewer.email, password }).expect(401);
+      const refused = await bench.owner.db.select({ changes: auditLog.changes }).from(auditLog).where(and(eq(auditLog.entityId, many.reviewer.id), eq(auditLog.action, 'sign_in_failed')));
+      expect(refused.map((r) => r.changes)).toContainEqual({ locked: false, reason: 'too_many_codes' });
+    }, 60_000);
+
     it('is refused outside its days, and ended by the daily check when the last one has passed', async () => {
       const later = (await grant(a.cookie, body({ from: shiftDay(today, 2), until: shiftDay(today, 3) })).expect(201)).body;
       await http().post('/auth/invite/accept').send({ org: a.slug, token: later.invite.token, password }).expect(204);
@@ -615,6 +685,80 @@ describe('the audit trail', () => {
       expect(after).toMatchObject({ status: 'disabled', endedAt: expect.any(Date) });
       const [ended] = await bench.owner.db.select({ actorId: auditLog.actorId, changes: auditLog.changes }).from(auditLog).where(and(eq(auditLog.entityId, now.reviewer.id), eq(auditLog.action, 'external_access_ended')));
       expect(ended).toEqual({ actorId: null, changes: { by: 'period_over', until: shiftDay(today, -1) } });
+    });
+  });
+
+  describe('language review 10 and security review 14', () => {
+    it('H2, M1: masks only what was decided when written, so a reporter who handles the incident is named for that', async () => {
+      const own = await report(quality);
+      await http().post(`/incidents/${own.id}/comments`).set('Cookie', quality.cookie).send({ body: 'Looked at it.', visibility: 'everyone' }).expect(201);
+      const shown = await entries(auditor.cookie, `?entityType=incident&entityId=${own.id}`);
+      expect(shown.items.find((e) => e.action === 'incident_reported')!.actor).toEqual({ kind: 'reporter' });
+      expect(shown.items.find((e) => e.action === 'incident_commented')!.actor).toMatchObject({ kind: 'person', id: quality.id });
+      // The person filter lists the handling, not the report.
+      const theirs = (await entries(auditor.cookie, `?actorId=${quality.id}&entityType=incident&entityId=${own.id}`)).items.map((e) => e.action);
+      expect(theirs).toEqual(['incident_commented']);
+      // A masked entry says nothing of how the report came.
+      await bench.owner.db.insert(auditLog).values({
+        tenantId: a.id,
+        action: 'incident_reported',
+        entityType: 'incident',
+        entityId: own.id,
+        changes: { reference: own.reference, type: 'incident', anonymous: true, channel: 'public' },
+      });
+      const masked = (await entries(auditor.cookie, `?entityType=incident&entityId=${own.id}&actions=incident_reported`)).items;
+      for (const e of masked) {
+        expect(e.details).not.toHaveProperty('channel');
+        expect(e.details).not.toHaveProperty('anonymous');
+        expect(JSON.stringify(e.detailLines)).not.toMatch(/Without sign-in|Anonymous/);
+      }
+    });
+
+    it('words the details in the caller’s language, field first, with no arrow in Arabic', async () => {
+      const h = await bench.createHospital('words', { locales: ['en', 'ar'] });
+      const person = await bench.createStaff(h, 'worded', { role: 'reporter', orgUnitId: null });
+      await http().patch(`/users/${person.id}`).set('Cookie', h.cookie).send({ status: 'disabled' }).expect(200);
+      const english = (await entries(h.cookie, '?actions=user_updated')).items[0];
+      expect(english.detailLines).toEqual(expect.arrayContaining(['Status: Active → Disabled']));
+      const arabic = (await entries(h.cookie, '?actions=user_updated&locale=ar')).items[0];
+      expect(arabic.detailLines).toEqual(expect.arrayContaining(['الحالة: من نشط إلى معطَّل']));
+      expect(arabic.detailLines.join(' ')).not.toContain('→');
+      await get(h.cookie, '/audit/entries?locale=fr').expect(400);
+      // Ids as what they stand for: the role by its name.
+      const created = (await entries(h.cookie, `?actions=role_created`)).items;
+      expect(created.every((e) => !e.detailLines.join(' ').match(/[0-9a-f]{8}-[0-9a-f]{4}/))).toBe(true);
+      // Trustline staff by name, never by the email old entries held.
+      await bench.owner.db.insert(auditLog).values({
+        tenantId: h.id,
+        action: 'subscription_changed',
+        entityType: 'subscription',
+        entityId: h.id,
+        changes: { planUpdated: 'x', platformAdminEmail: 'staff@test.invalid' },
+      });
+      const old = (await entries(h.cookie, '?actions=subscription_changed')).items[0];
+      expect(old.details).not.toHaveProperty('platformAdminEmail');
+      expect(JSON.stringify(old)).not.toContain('staff@test.invalid');
+    });
+
+    it('M5, L1: a row or a notice the application writes does not stand for a check, nor does a checkpoint stripped of its signature', async () => {
+      const h = await bench.createHospital('forged');
+      const zone = daytimeZone();
+      await http().patch(`/platform/tenants/${h.id}`).set('Cookie', bench.platform).send({ timeZone: zone }).expect(200);
+      const app = appDb();
+      try {
+        await app.tenantDb.withTenant(h.id, async (tx) => {
+          await tx.insert(auditChainVerifications).values({ tenantId: h.id, fromSeq: 1, toSeq: 1, full: true, result: 'passed' });
+          await tx.insert(notifications).values({ tenantId: h.id, userId: h.adminId, kind: 'audit_chain_head', data: { seq: 1, hash: '0'.repeat(64), serious: false } });
+        });
+      } finally {
+        await app.pool.end();
+      }
+      expect(await check.run(new Date(), [h.id])).toMatchObject({ checked: 1 });
+      const told = await bench.owner.db.select({ data: notifications.data }).from(notifications).where(and(eq(notifications.userId, h.adminId), eq(notifications.kind, 'audit_chain_head')));
+      expect(told).toHaveLength(2);
+      // A checkpoint whose key was cleared is a break, while a key is set.
+      await bench.owner.db.update(auditChainCheckpoints).set({ keyId: null, signature: null }).where(eq(auditChainCheckpoints.tenantId, h.id));
+      expect(await check.verify(h.id)).toMatchObject({ result: 'failed', kind: 'bad_checkpoint' });
     });
   });
 

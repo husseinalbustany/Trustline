@@ -7,7 +7,7 @@ export function AdminTabs({
   lang,
   t,
   current,
-}: AdminProps & { current: "users" | "roles" }) {
+}: AdminProps & { current: "users" | "roles" | "external" }) {
   const session = useSession();
   const tabs = [
     {
@@ -20,6 +20,11 @@ export function AdminTabs({
       label: t.roles.title,
       show: can(session, "roles.manage"),
     },
+    {
+      key: "external" as const,
+      label: t.external.tab,
+      show: session.scope?.["users.manage"] === "all",
+    },
   ].filter((tab) => tab.show);
 
   return (
@@ -30,7 +35,7 @@ export function AdminTabs({
       {tabs.map((tab) => (
         <Link
           key={tab.key}
-          href={`/${lang}/admin/${tab.key}`}
+          href={`/${lang}/admin/${tab.key === "external" ? "users/external" : tab.key}`}
           aria-current={tab.key === current ? "page" : undefined}
           className={`-mb-px border-b-2 px-3 py-2 text-sm ${
             tab.key === current

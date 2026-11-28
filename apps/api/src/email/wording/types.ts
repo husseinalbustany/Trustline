@@ -39,10 +39,10 @@ export type Wording = {
     signing_pin_reset: { subject: string; body: string };
     signing_pin_locked: { subject: string; body: string };
     /** The week's head of the audit chain: {count} its number, {hash} its seal. */
-    audit_chain_head: { subject: string; body: string };
+    audit_chain_head: { subject: string; body: string; keep: string };
   };
   /** An external reviewer's one-time code: {code}, valid {count} minutes. */
-  signInCode: { subject: string; body: string; expires: string };
+  signInCode: { subject: string; body: string; expires: string; footer: string };
   weekly: {
     subject: string;
     body: string;
@@ -71,6 +71,8 @@ export type Wording = {
     open: string;
   };
   footer: {
+    /** In the weekly seal's email, instead of a link to switch it off. */
+    alwaysAuditSeal: string;
     member: string;
     noDetails: string;
     unsubscribeImmediate: string;

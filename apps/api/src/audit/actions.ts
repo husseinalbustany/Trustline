@@ -55,6 +55,12 @@ export type AuditModule = 'core' | 'incidents' | 'policies';
 type ActionInfo = {
   area: AuditArea;
   module?: AuditModule;
+  /**
+   * Keys only entries written before held, which no code writes any more and
+   * nothing shows (Trustline staff's email, before step 7 named them): the
+   * sealed entries keep them, the viewer and the CSV leave them out.
+   */
+  legacy?: readonly string[];
   entity: AuditEntityType | null;
   details: readonly string[];
   maskActor?: true;
@@ -95,8 +101,8 @@ export const AUDIT_ACTIONS = {
   role_created: code('accounts', 'role', ['code', 'permissions']),
   role_updated: code('accounts', 'role', ['changed', 'before', 'after']),
   role_deleted: code('accounts', 'role', ['code']),
-  administrator_created_by_platform: code('accounts', 'user', ['platformAdminId', 'platformAdminName', 'platformAdminEmail'], { by: 'platform' }),
-  built_in_roles_changed_by_system: migration('accounts', 'tenant', ['roles', 'permissions', 'permissionsAdded', 'permissionsRemoved', 'rolesAdded']),
+  administrator_created_by_platform: code('accounts', 'user', ['platformAdminId', 'platformAdminName'], { by: 'platform', legacy: ['platformAdminEmail'] }),
+  built_in_roles_changed_by_system: migration('accounts', 'tenant', ['roles', 'permissions', 'permissionsAdded', 'permissionsRemoved', 'rolesAdded', 'reworded']),
   // External reviewers (docs/specs/audit-trail.md, step 6).
   external_access_granted: code('accounts', 'user', ['organization', 'purpose', 'from', 'until', 'roleId']),
   external_access_extended: code('accounts', 'user', ['from', 'to', 'reason']),
@@ -114,7 +120,8 @@ export const AUDIT_ACTIONS = {
   // Incidents.
   incident_reported: code('incidents', 'incident', ['reference', 'type', 'anonymous', 'channel'], { maskActor: true }),
   incident_triaged: code('incidents', 'incident', ['from', 'to', 'harmLevel', 'isSentinel', 'categoryId', 'ownerUnitId', 'assignedTo']),
-  incident_status_changed: code('incidents', 'incident', ['from', 'to', 'kind', 'triageDueAt', 'closeDueAt'], { maskActor: true }),
+  // Never the reporter's as reporter: no status move is (security review 14, H2).
+  incident_status_changed: code('incidents', 'incident', ['from', 'to', 'kind', 'triageDueAt', 'closeDueAt']),
   incident_commented: code('incidents', 'incident', ['commentId', 'visibility', 'byReporter'], { maskActor: true }),
   incident_deadlines_filled: code('incidents', 'incident', ['triageDueAt', 'closeDueAt']),
   public_reporting_limit_reached: code('incidents', 'tenant', ['limit', 'perMinutes']),
@@ -163,8 +170,8 @@ export const AUDIT_ACTIONS = {
   // Written by Trustline's staff, from the admin portal.
   // `platformAdminName` names the staff member (`platformAdminEmail` in
   // entries written before the audit trail's step 7).
-  subscription_changed: code('trustline', 'subscription', ['plan', 'status', 'modules', 'limits', 'planUpdated', 'platformAdminId', 'platformAdminName', 'platformAdminEmail'], { by: 'platform' }),
-  import_window_changed: code('trustline', 'tenant', ['closesOn', 'reason', 'platformAdminId', 'platformAdminName', 'platformAdminEmail'], { by: 'platform', module: 'policies' }),
+  subscription_changed: code('trustline', 'subscription', ['plan', 'status', 'modules', 'limits', 'planUpdated', 'platformAdminId', 'platformAdminName'], { by: 'platform', legacy: ['platformAdminEmail'] }),
+  import_window_changed: code('trustline', 'tenant', ['closesOn', 'reason', 'platformAdminId', 'platformAdminName'], { by: 'platform', module: 'policies', legacy: ['platformAdminEmail'] }),
   // Mirrored from Trustline's own log (spec, item 3): the client was made,
   // and what of it was changed (suspended or made active again, its time
   // zone, its languages, its standard), with the old and new values.
@@ -179,7 +186,7 @@ export const AUDIT_ACTIONS = {
   audit_chain_exported: code('audit', 'tenant', ['fromSeq', 'toSeq', 'entries', 'withheld']),
   audit_checkpoints_exported: code('audit', 'tenant', ['from', 'to', 'checkpoints']),
   // A record an external reviewer opened: what was examined.
-  external_reviewer_viewed: code('audit', null, ['route', 'recordType', 'recordId']),
+  external_reviewer_viewed: code('audit', null, ['route', 'recordType', 'recordId', 'params', 'query']),
   // Addresses of sign-ins older than two years cleared (decision 7).
   audit_addresses_cleared: code('audit', 'tenant', ['before', 'count']),
 } as const satisfies Record<string, ActionInfo>;
@@ -203,6 +210,15 @@ export const moduleOfAction = (action: AuditAction): AuditModule => {
 };
 
 export type AuditAction = keyof typeof AUDIT_ACTIONS;
+
+/** Every key an entry's details may hold, worded in every language. */
+export type AuditDetailKey = (typeof AUDIT_ACTIONS)[AuditAction]['details'][number];
+
+/** The keys an action's stored entries may hold: its details, and its legacy keys. */
+export const storedKeysOf = (action: AuditAction): readonly string[] => {
+  const info: ActionInfo = AUDIT_ACTIONS[action];
+  return [...info.details, ...(info.legacy ?? [])];
+};
 
 export const isAuditAction = (action: string): action is AuditAction =>
   Object.hasOwn(AUDIT_ACTIONS, action);

@@ -2,6 +2,7 @@
 
 import { Printer } from "lucide-react";
 import Link from "next/link";
+import { auditPathFor } from "@/lib/audit";
 import { useParams, useRouter } from "next/navigation";
 import {
   useCallback,
@@ -12,6 +13,7 @@ import {
   type ReactNode,
 } from "react";
 import { useSession } from "@/components/shell/session";
+import { isReviewer } from "@/lib/identity";
 import { Button } from "@/components/ui/button";
 import { ButtonLink } from "@/components/ui/button-link";
 import { Field } from "@/components/ui/field";
@@ -38,6 +40,7 @@ import {
   type History,
   type Named,
   type PolicyDocument,
+  withoutMoves,
 } from "@/lib/policies";
 import { ControlledDocument, LanguageSwitch } from "./controlled-document";
 import { ConfirmationPill, useConfirmationLine } from "./import-confirmation";
@@ -62,7 +65,20 @@ type Loaded = {
 };
 
 /** Reads a document with its published version, its history and what is in progress. */
-export async function loadDocument(id: string): Promise<Loaded> {
+export async function loadDocument(id: string, readOnly = false): Promise<Loaded> {
+  const loaded = await loadAll(id);
+  if (!readOnly) return loaded;
+  // Someone who may only read is offered nothing to do.
+  const { doc, history, published, inProgress } = loaded;
+  return {
+    doc: withoutMoves(doc),
+    history,
+    published: published && withoutMoves(published),
+    inProgress: inProgress && withoutMoves(inProgress),
+  };
+}
+
+async function loadAll(id: string): Promise<Loaded> {
   const doc = await api<PolicyDocument>(`/policies/documents/${id}`);
   const [history, published, inProgress] = await Promise.all([
     api<History>(`/policies/documents/${id}/versions`).catch(() => null),
@@ -90,10 +106,11 @@ export function DocumentPage({ lang, t }: PoliciesProps) {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [behind, setBehind] = useState(false);
+  const readOnly = isReviewer(useSession());
 
   useEffect(() => {
     let current = true;
-    loadDocument(id)
+    loadDocument(id, readOnly)
       .then((next) => {
         if (!current) return;
         setLoaded(next);
@@ -108,11 +125,11 @@ export function DocumentPage({ lang, t }: PoliciesProps) {
     return () => {
       current = false;
     };
-  }, [id, t]);
+  }, [id, t, readOnly]);
 
   const refresh = useCallback(
     () =>
-      loadDocument(id)
+      loadDocument(id, readOnly)
         .then((next) => {
           setLoaded(next);
           setBehind(false);
@@ -120,7 +137,7 @@ export function DocumentPage({ lang, t }: PoliciesProps) {
         .catch((err) =>
           statusOf(err) === 404 ? setProblem(t.notFound) : setBehind(true),
         ),
-    [id, t],
+    [id, t, readOnly],
   );
 
   const shown = loaded?.doc.id === id ? loaded : null;
@@ -208,6 +225,15 @@ function DocumentView({
             {doc.published?.source === "imported" && <ImportedPill t={t} />}
             {doc.reissueRequired && <ReissuePill t={t} review={doc.review} />}
             {doc.confidentiality === "restricted" && <RestrictedPill t={t} />}
+            {/* Its entries in the trail, for whoever may read the trail. */}
+            {session.scope?.["audit.view"] === "all" && (
+              <Link
+                href={auditPathFor(lang, "document", doc.id)}
+                className="text-sm text-accent hover:underline"
+              >
+                {t.document.auditTrail}
+              </Link>
+            )}
           </div>
         }
       />

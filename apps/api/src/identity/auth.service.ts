@@ -35,6 +35,7 @@ import type {
   SubscriptionStatus,
 } from '../subscriptions/modules.js';
 import { hashToken, ProvisioningService } from './provisioning.service.js';
+import { READ_ONLY_PERMISSIONS, type Permission } from './permissions.js';
 import { buildScope, covers, type Scope } from './scope.js';
 import { SecurityNotices } from './security-notices.service.js';
 import { accessOpen } from './external-access.service.js';
@@ -221,8 +222,8 @@ export class AuthService {
   }
 
   /** What a user's roles allow, and for which part of the organization. */
-  private async accessOf(tx: Transaction, userId: string) {
-    const grants = await tx
+  private async accessOf(tx: Transaction, userId: string, kind: 'staff' | 'external_reviewer' = 'staff') {
+    const held = await tx
       .select({
         permissions: roles.permissions,
         orgUnitId: roleAssignments.orgUnitId,
@@ -230,6 +231,13 @@ export class AuthService {
       .from(roleAssignments)
       .innerJoin(roles, eq(roles.id, roleAssignments.roleId))
       .where(eq(roleAssignments.userId, userId));
+    // An external reviewer reads, whatever their role says: a role widened
+    // since it was given still gives them nothing more (security review 14,
+    // M2), nor a reporter's name.
+    const grants =
+      kind === 'external_reviewer'
+        ? held.map((g) => ({ ...g, permissions: g.permissions.filter((p) => READ_ONLY_PERMISSIONS.includes(p as Permission)) }))
+        : held;
     // The tree is only needed when a role was granted for one unit.
     const units = grants.some((g) => g.orgUnitId)
       ? await tx
@@ -324,7 +332,15 @@ export class AuthService {
           }, input.ip);
           return null;
         }
-        return { issued: await this.codes.issue(tx, tenant.id, user.id, input.client), user: fresh };
+        const issued = await this.codes.issue(tx, tenant.id, user.id, input.client);
+        if (!issued) {
+          await this.provisioning.audit(tx, tenant.id, user.id, 'sign_in_failed', 'user', user.id, {
+            locked: false,
+            reason: 'too_many_codes',
+          }, input.ip);
+          return null;
+        }
+        return { issued, user: fresh };
       }
       return { token: await this.openSession(tx, tenant, fresh, input.client, input.ip, null) };
     });
@@ -346,9 +362,22 @@ export class AuthService {
       const taken = await this.codes.take(tx, input.challenge, input.code);
       if (!taken.userId) return null;
       const [user] = await tx.select().from(users).where(eq(users.id, taken.userId)).for('update');
-      if (!taken.ok) {
+      const locked = !!user?.lockedUntil && user.lockedUntil > new Date();
+      if (!taken.ok || locked) {
+        // A wrong code counts as a wrong password does, toward the same
+        // lock (security review 14, M3): codes cannot be tried round after
+        // round. Locked, even the right one is refused.
+        if (!locked) {
+          await tx
+            .update(users)
+            .set({
+              failedAttempts: sql`case when ${users.failedAttempts} + 1 >= ${MAX_FAILED_ATTEMPTS} then 0 else ${users.failedAttempts} + 1 end`,
+              lockedUntil: sql`case when ${users.failedAttempts} + 1 >= ${MAX_FAILED_ATTEMPTS} then now() + make_interval(mins => ${LOCK_MINUTES}) else ${users.lockedUntil} end`,
+            })
+            .where(eq(users.id, taken.userId));
+        }
         await this.provisioning.audit(tx, tenant.id, taken.userId, 'sign_in_failed', 'user', taken.userId, {
-          locked: false,
+          locked,
           reason: 'wrong_code',
         }, input.ip);
         return null;
@@ -487,7 +516,7 @@ export class AuthService {
     }
     const stored = entitlements?.status ?? 'active';
 
-    const access = await this.accessOf(tx, user.id);
+    const access = await this.accessOf(tx, user.id, user.kind);
     const administers = covers(access, 'settings.manage', null);
     // What is commercial (a trial, a payment overdue) only to the
     // client's administrators; to anyone else it is active. A suspension

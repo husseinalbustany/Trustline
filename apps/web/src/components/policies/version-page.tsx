@@ -10,6 +10,7 @@ import {
   type FormEvent,
 } from "react";
 import { useSession } from "@/components/shell/session";
+import { isReviewer } from "@/lib/identity";
 import { Button } from "@/components/ui/button";
 import { ButtonLink } from "@/components/ui/button-link";
 import { Field, inputClass } from "@/components/ui/field";
@@ -40,6 +41,7 @@ import {
   type PolicyDocument,
   type RunStep,
   type SectionComparison,
+  withoutMoves,
 } from "@/lib/policies";
 import { ControlledDocument, LanguageSwitch } from "./controlled-document";
 import { ConfirmationPill, useConfirmationLine } from "./import-confirmation";
@@ -54,12 +56,15 @@ import { useSubmitRefusal, type SubmitRefusal } from "./use-submit-refusal";
 
 type Loaded = { doc: PolicyDocument; version: DocumentVersion };
 
-const load = async (id: string, versionId: string): Promise<Loaded> => {
+const load = async (id: string, versionId: string, readOnly: boolean): Promise<Loaded> => {
   const [doc, version] = await Promise.all([
     api<PolicyDocument>(`/policies/documents/${id}`),
     api<DocumentVersion>(`/policies/documents/${id}/versions/${versionId}`),
   ]);
-  return { doc, version };
+  // Someone who may only read is offered nothing to do.
+  return readOnly
+    ? { doc: withoutMoves(doc), version: withoutMoves(version) }
+    : { doc, version };
 };
 
 /**
@@ -75,10 +80,11 @@ export function VersionPage({ lang, t }: PoliciesProps) {
   // A decision taken here, said even when the version is then out of sight.
   const [decided, setDecided] = useState<string | null>(null);
   useLayoutEffect(() => () => setDecided(null), []);
+  const readOnly = isReviewer(useSession());
 
   useEffect(() => {
     let current = true;
-    load(id, versionId)
+    load(id, versionId, readOnly)
       .then((next) => {
         if (!current) return;
         setLoaded(next);
@@ -92,11 +98,11 @@ export function VersionPage({ lang, t }: PoliciesProps) {
     return () => {
       current = false;
     };
-  }, [id, versionId, t]);
+  }, [id, versionId, t, readOnly]);
 
   const refresh = useCallback(
     () =>
-      load(id, versionId)
+      load(id, versionId, readOnly)
         .then((next) => {
           setLoaded(next);
           setProblem(null);
@@ -104,7 +110,7 @@ export function VersionPage({ lang, t }: PoliciesProps) {
         .catch((err) =>
           setProblem(statusOf(err) === 404 ? t.notFound : t.loadError),
         ),
-    [id, versionId, t],
+    [id, versionId, t, readOnly],
   );
 
   const shown = loaded?.version.id === versionId ? loaded : null;

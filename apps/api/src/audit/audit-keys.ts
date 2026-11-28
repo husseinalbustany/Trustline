@@ -18,6 +18,12 @@ export const PREVIOUS_KEYS_VARIABLE = 'AUDIT_PREVIOUS_PUBLIC_KEYS';
  * passed over. Any other unknown key id is a break (security review 12, M2).
  */
 export const RETIRED_KEYS_VARIABLE = 'AUDIT_RETIRED_KEY_IDS';
+/**
+ * The day signing began, if checkpoints were made unsigned before it: an
+ * unsigned checkpoint older than this is passed over; any other, with a key
+ * configured, is a break (security review 14, L1).
+ */
+export const SIGNED_SINCE_VARIABLE = 'AUDIT_SIGNED_SINCE';
 
 /** A key's id: derived from the public key, so that nothing names it twice. */
 const keyIdOf = (publicKey: KeyObject) =>
@@ -53,6 +59,7 @@ export class AuditKeys {
   readonly signer: { keyId: string; key: KeyObject } | null;
   readonly verifiers = new Map<string, KeyObject>();
   readonly retired = new Set<string>();
+  readonly signedSince: Date | null;
   readonly published: PublishedKey[] = [];
   readonly problem: string | null;
 
@@ -83,6 +90,9 @@ export class AuditKeys {
     for (const id of (process.env[RETIRED_KEYS_VARIABLE] ?? '').split(',')) {
       if (id.trim()) this.retired.add(id.trim());
     }
+    const since = process.env[SIGNED_SINCE_VARIABLE]?.trim();
+    this.signedSince = since && !Number.isNaN(Date.parse(since)) ? new Date(since) : null;
+    if (since && !this.signedSince) problems.push(`${SIGNED_SINCE_VARIABLE} is not a date, and is left out`);
     this.signer = signer;
     this.problem = problems.length > 0 ? problems.join('; ') : null;
   }

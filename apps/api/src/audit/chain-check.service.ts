@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
-import { asc, desc, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import type { Database, Transaction } from '../database/client.js';
 import { databaseFailure } from '../database/database-error.filter.js';
 import { DATABASE } from '../database/database.constants.js';
@@ -13,7 +13,7 @@ import {
 import { TenantDb } from '../database/tenant-db.service.js';
 import { randomUUID } from 'node:crypto';
 import { MailQueue } from '../email/mail-queue.service.js';
-import { dayOf, isoWeekOf, momentIn } from '../i18n/time-zones.js';
+import { dayOf, isoWeekOf, momentIn, startOfDay } from '../i18n/time-zones.js';
 import { AccessService } from '../identity/access.service.js';
 import { ExternalAccessService } from '../identity/external-access.service.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
@@ -302,12 +302,14 @@ export class AuditChainCheck implements OnModuleDestroy {
         const zone = options.scheduled;
         if (zone) {
           const today = dayOf(now, zone);
-          if (previous && dayOf(previous.runAt, zone) === today) return null;
+          // Checked today only by what a row cannot fake (security review
+          // 14, M5): a break found today, or a checkpoint signed today.
+          if (await this.checkedOn(tx, tenantId, today, zone)) return null;
           full ||= weekdayOf(today) === fullCheckDayOf(tenantId);
         }
         const check = await this.check(tx, tenantId, full);
-        await this.record(tx, tenantId, check, now, previous ?? null);
-        if (zone && check.result === 'passed') await this.tellHead(tx, tenantId, check, now, zone);
+        const checkpointId = await this.record(tx, tenantId, check, now, previous ?? null);
+        if (zone && check.result === 'passed') await this.tellHead(tx, tenantId, check, now, zone, checkpointId);
         return check;
       },
       { isolationLevel: 'repeatable read' },
@@ -319,16 +321,51 @@ export class AuditChainCheck implements OnModuleDestroy {
    * hash to the client's Administrators (decision 5): a copy outside
    * Trustline's hands, not to be switched off.
    */
-  private async tellHead(tx: Transaction, tenantId: string, check: ChainCheck, now: Date, zone: string) {
+  /** A checkpoint that holds: signed under a known key, or, with no key configured, unsigned. */
+  private holds(tenantId: string, cp: { seq: number; hash: string; at: Date; keyId: string | null; signature: string | null }) {
+    const state = this.keys.check({ ...cp, tenantId });
+    return state === 'valid' || (state === 'unsigned' && !this.keys.signer);
+  }
+
+  /** Whether the client was checked on this day: a break found, or a checkpoint signed. */
+  private async checkedOn(tx: Transaction, tenantId: string, today: string, zone: string) {
+    const since = startOfDay(today, zone);
+    const runs = await tx
+      .select({
+        result: auditChainVerifications.result,
+        seq: auditChainCheckpoints.seq,
+        hash: auditChainCheckpoints.hash,
+        at: auditChainCheckpoints.at,
+        keyId: auditChainCheckpoints.keyId,
+        signature: auditChainCheckpoints.signature,
+      })
+      .from(auditChainVerifications)
+      .leftJoin(
+        auditChainCheckpoints,
+        and(
+          eq(auditChainCheckpoints.tenantId, auditChainVerifications.tenantId),
+          eq(auditChainCheckpoints.id, auditChainVerifications.checkpointId),
+        ),
+      )
+      .where(gte(auditChainVerifications.runAt, since));
+    return runs.some(
+      (r) =>
+        r.result === 'failed' ||
+        (r.at !== null && dayOf(r.at, zone) === today && this.holds(tenantId, { seq: r.seq!, hash: r.hash!, at: r.at, keyId: r.keyId, signature: r.signature })),
+    );
+  }
+
+  private async tellHead(tx: Transaction, tenantId: string, check: ChainCheck, now: Date, zone: string, checkpointId: string | null) {
     if (!('head' in check) || check.toSeq === 0) return;
     const head = (check as ChainCheck & { head: { seq: number; hash: string } }).head;
-    const [last] = await tx
-      .select({ at: notifications.createdAt })
-      .from(notifications)
-      .where(sql`${notifications.kind} = 'audit_chain_head'`)
-      .orderBy(desc(notifications.createdAt))
-      .limit(1);
-    if (last && isoWeekOf(dayOf(last.at, zone)) === isoWeekOf(dayOf(now, zone))) return;
+    // Once a week: the first checkpoint that holds signed this ISO week,
+    // which an inserted row cannot fake (security review 14, M5).
+    const week = isoWeekOf(dayOf(now, zone));
+    const earlier = await tx
+      .select()
+      .from(auditChainCheckpoints)
+      .where(gte(auditChainCheckpoints.at, new Date(now.getTime() - 8 * 86_400_000)));
+    if (earlier.some((cp) => cp.id !== checkpointId && isoWeekOf(dayOf(cp.at, zone)) === week && this.holds(tenantId, cp))) return;
     const { rows } = await tx.execute<{ id: string }>(sql`
       select distinct u.id from users u
       join role_assignments ra on ra.user_id = u.id
@@ -368,6 +405,12 @@ export class AuditChainCheck implements OnModuleDestroy {
         // (security review 12, M2): else one rewritten key id hides the
         // checkpoint that would show the chain was cut.
         if (state === 'invalid' || state === 'unknown') throw new Broken('bad_checkpoint', cp.seq);
+        // With a key configured, every checkpoint is signed: one unsigned
+        // had its key or signature cleared (security review 14, L1), unless
+        // it is older than signing began (AUDIT_SIGNED_SINCE).
+        if (state === 'unsigned' && this.keys.signer && !(this.keys.signedSince && cp.at < this.keys.signedSince)) {
+          throw new Broken('bad_checkpoint', cp.seq);
+        }
         if (state === 'valid') trusted.push({ seq: cp.seq, hash: cp.hash, at: cp.at });
       }
       const last = trusted.at(-1);
@@ -487,7 +530,7 @@ export class AuditChainCheck implements OnModuleDestroy {
     check: Awaited<ReturnType<AuditChainCheck['check']>>,
     now: Date,
     previous: { result: 'passed' | 'failed'; kind: ChainBreak | null; confirmed: boolean } | null,
-  ) {
+  ): Promise<string | null> {
     let checkpointId: string | null = null;
     if (check.result === 'passed' && 'head' in check && check.head.seq > 0) {
       // To the millisecond: what is signed is what is stored.
@@ -525,19 +568,19 @@ export class AuditChainCheck implements OnModuleDestroy {
       if ('head' in check) {
         this.logger.log(`Audit chain of client ${tenantId} passed: head ${check.head.seq} ${check.head.hash}`);
       }
-      return;
+      return checkpointId;
     }
     // The client and the kind, nothing of any entry.
     this.logger.error(`Audit chain of client ${tenantId} is broken: ${check.kind}${confirmed ? '' : ' (to be confirmed)'}`);
-    if (!confirmed) return;
+    if (!confirmed) return null;
     await tx.execute(
       sql`select audit_chain_report_break(${tenantId}::uuid, ${check.kind}::audit_chain_break, ${check.firstBadSeq}::bigint, ${check.firstBadEntryId}::uuid)`,
     );
     // Told once, when it is first found, not on every day it stays broken.
-    if (wasConfirmed) return;
+    if (wasConfirmed) return null;
     const holders = await this.access.holders(tx, ['audit.view', 'settings.manage'], []);
     const to = new Set([...holders.everywhere('audit.view'), ...holders.everywhere('settings.manage')]);
-    if (to.size === 0) return;
+    if (to.size === 0) return null;
     await tx.insert(notifications).values(
       [...to].map((userId) => ({
         tenantId,
@@ -550,5 +593,6 @@ export class AuditChainCheck implements OnModuleDestroy {
         },
       })),
     );
+    return null;
   }
 }

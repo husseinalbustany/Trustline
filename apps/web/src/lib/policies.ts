@@ -933,3 +933,12 @@ export type OverdueSteps = {
   }[];
   total: number;
 };
+
+/**
+ * For someone who may only read (an external reviewer): nothing to do,
+ * whatever the API offers; it refuses every write from them anyway.
+ */
+export const withoutMoves = <T extends { moves: readonly unknown[] }>(x: T): T => ({
+  ...x,
+  moves: [],
+});

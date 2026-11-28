@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Query, Req, Res, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Get, HttpException, HttpStatus, Query, Req, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
 import { and, asc, desc, eq } from 'drizzle-orm';
 import { z } from 'zod';
@@ -47,6 +47,9 @@ const download = (res: Response, type: string, fileName: string) => {
 
 const noQuery = z.strictObject({});
 
+/** The clients whose chain file is being written now, in this process. */
+const chainExports = new Set<string>();
+
 /**
  * The state of the client's audit trail (docs/specs/audit-trail.md, "What
  * a surveyor sees"): its head, the last check, the first break ever found
@@ -75,7 +78,7 @@ export class AuditController {
     requireEverywhere(req, 'audit.view');
     const input = parse(entriesQuery, query);
     if (input.before && !readCursor(input.before)) throw new BadRequestException();
-    return this.trail.entries(req.auth, input);
+    return this.trail.entries(req.auth, { ...input, locale: fileLocale(req, input.locale) });
   }
 
   /** The filtered trail as a CSV file, worded in the client's language. */
@@ -96,27 +99,30 @@ export class AuditController {
   async exportChain(@Query() query: unknown, @Req() req: AuthedRequest, @Res() res: Response) {
     requireEverywhere(req, 'audit.view');
     const range = parse(chainQuery, query);
-    const lines: string[] = [];
+    // One at a time per client, waiting for the reader (security review
+    // 14, L3): a slow download holds no more than a little of the file.
+    const tenantId = req.auth.tenant.id;
+    if (chainExports.has(tenantId)) {
+      throw new HttpException({ code: 'export_in_progress' }, HttpStatus.TOO_MANY_REQUESTS);
+    }
+    chainExports.add(tenantId);
     let started = false;
-    const flush = () => {
-      if (!started) {
-        res.status(200);
-        download(res, 'application/jsonl; charset=utf-8', 'audit-chain.jsonl');
-        started = true;
-      }
-      if (lines.length > 0) res.write(`${lines.splice(0).join('\n')}\n`);
+    const start = (fileName: string) => {
+      if (started) return;
+      res.status(200);
+      download(res, 'application/jsonl; charset=utf-8', fileName);
+      started = true;
     };
     try {
-      const { fileName } = await this.trail.chainFile(req.auth, range, (line) => {
-        lines.push(line);
-        if (lines.length >= 1_000) flush();
+      await this.trail.chainFile(req.auth, range, async (line) => {
+        start(`audit-chain-${req.auth.tenant.slug.replace(/[^A-Za-z0-9-]/g, '-')}.jsonl`);
+        if (!res.write(`${line}\n`)) {
+          await new Promise<void>((resolve, reject) => {
+            res.once('drain', resolve);
+            res.once('close', () => reject(new Error('closed')));
+          });
+        }
       });
-      if (!started) {
-        res.status(200);
-        download(res, 'application/jsonl; charset=utf-8', fileName);
-        started = true;
-      }
-      flush();
       res.end();
     } catch (error) {
       // Once begun, a file cut short is not a file: the connection is
@@ -126,6 +132,8 @@ export class AuditController {
         return;
       }
       throw error;
+    } finally {
+      chainExports.delete(tenantId);
     }
   }
 

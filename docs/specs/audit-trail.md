@@ -201,37 +201,37 @@ The trail must not undo a rule the screens keep.
   for the actor.
 - **Values in details** are worded as on the screens (statuses, harm levels,
   meanings of signatures), and client text is shown with `pick()`.
-- **Starting wording,** for the `bilingual-reviewer` to settle:
+- **Wording,** as settled by language reviews 9 and 10. Every label is in
+  `apps/api/src/audit/wording/<lang>.ts`; a sample:
 
 | Action | English | Arabic | French |
 |---|---|---|---|
 | `sign_in` | Sign-in | تسجيل الدخول | Connexion |
-| `sign_in_failed` | Failed sign-in | محاولة دخول فاشلة | Échec de connexion |
+| `sign_in_failed` | Failed sign-in | محاولة تسجيل دخول فاشلة | Échec de connexion |
 | `sign_out` | Sign-out | تسجيل الخروج | Déconnexion |
 | `password_set` | Password set | تعيين كلمة المرور | Définition du mot de passe |
-| `password_confirmation_failed` | Wrong password when signing | كلمة مرور خاطئة عند التوقيع | Mot de passe erroné lors d’une signature |
+| `password_confirmation_failed` | Password or PIN check failed | فشل التحقق من كلمة المرور أو رمز التوقيع | Échec de la vérification du mot de passe ou du code de signature |
 | `user_created` | User added | إضافة مستخدم | Ajout d’un utilisateur |
-| `user_roles_changed` | User’s roles changed | تغيير أدوار مستخدم | Modification des rôles d’un utilisateur |
+| `user_roles_changed` | User's roles changed | تغيير أدوار مستخدم | Modification des rôles d’un utilisateur |
 | `role_updated` | Role changed | تعديل دور | Modification d’un rôle |
-| `org_unit_moved` | Unit moved in the structure | نقل وحدة في الهيكل التنظيمي | Déplacement d’une unité dans l’organisation |
-| `incident_reported` | Incident reported | الإبلاغ عن حادث | Déclaration d’un incident |
+| `org_unit_moved` | Department or unit moved | نقل قسم أو وحدة في الهيكل التنظيمي | Déplacement d’un service ou d’une unité |
+| `incident_reported` | Incident reported | تقديم بلاغ | Déclaration d’un incident |
 | `incident_triaged` | Incident triaged | فرز حادث | Tri d’un incident |
 | `incident_status_changed` | Incident status changed | تغيير حالة حادث | Changement de statut d’un incident |
-| `document_step_approved` | Approval step approved | الموافقة على خطوة في مسار الاعتماد | Approbation d’une étape du circuit |
+| `document_step_approved` | Approval step signed | توقيع خطوة في مسار الاعتماد | Signature d’une étape du circuit d’approbation |
 | `document_published` | Version published | نشر إصدار | Publication d’une version |
 | `document_acknowledged` | Document acknowledged | الإقرار بالاطلاع على وثيقة | Prise de connaissance d’un document |
-| `documents_exported` | Document list exported | تصدير قائمة الوثائق | Export de la liste des documents |
-| `subscription_changed` | Subscription changed by Trustline | تعديل الاشتراك من قِبل Trustline | Modification de l’abonnement par Trustline |
-| `public_reporting_limit_reached` | Public form paused (hourly limit) | إيقاف النموذج العام مؤقتًا (بلوغ الحد في الساعة) | Formulaire public suspendu (limite horaire) |
-| `audit_chain_started` | Audit trail sealed | ختم سجل التدقيق | Scellement du journal d’audit |
+| `documents_exported` | Document list exported | تصدير قائمة الوثائق | Exportation de la liste des documents |
+| `subscription_changed` | Subscription changed | تعديل الاشتراك | Modification de l’abonnement |
+| `public_reporting_limit_reached` | Reporting without sign-in paused (hourly limit reached) | إيقاف الإبلاغ دون تسجيل الدخول مؤقتًا (بلوغ الحد الأقصى في الساعة) | Suspension de la déclaration sans authentification (limite horaire atteinte) |
+| `audit_chain_started` | Audit trail sealing started | بدء ختم سجل التدقيق | Début du scellement du journal d’audit |
 
 Who acted, when it is not a person:
 
 - "System" / «النظام» / « Système »;
 - "Trustline staff" / «فريق Trustline» / « Équipe Trustline »;
-- "The reporter" / «المُبلِّغ» / « Le déclarant »;
-- and, for holders of `incidents.see_reporter` only, "Anonymous" / «مجهول
-  الهوية» / « Anonyme ».
+- "The reporter" / «المبلّغ» / « Le déclarant »;
+- and, for holders of `incidents.see_reporter` only, "Anonymous" / «دون ذكر الاسم» / « Anonyme ».
 
 ## Who may view
 
@@ -1036,9 +1036,9 @@ A JSON Lines file, UTF-8, one JSON object per line, English keys:
 2. **One line per entry, by number:**
    `{ "type": "entry", "seq", "entryId", "prevHash", "bodyHash", "hash",
    "sealedLate", "body"?, "ip"?, "ipSalt"? }`.
-   - `body` is the exact text that was hashed. It is left out for an entry
-     the caller may not see in full: masked, of a module that is off, or
-     gone.
+   - `body` and `bodyHash` are the exact text that was hashed and its
+     hash. Both are left out for an entry the caller may not see in full:
+     masked, of a module that is off, or gone (security review 14, H1).
    - `ip` and `ipSalt` are given while the address is kept.
 3. **One line per checkpoint** in the range, and the one at or before its
    start:
@@ -1081,8 +1081,80 @@ ip: <SHA-256 hex of salt + address, or empty>
 To check one entry by hand: write its `body` to a file with no final
 newline, then run `sha256sum` and compare the result with `bodyHash`.
 
-`node apps/api/scripts/verify-audit-chain.mjs <file> [keys.json]` does steps
-1 to 5, on the reviewer's machine only.
+`node apps/api/scripts/verify-audit-chain.mjs <file> <keys.json>` does steps 1
+to 5, on the reviewer's machine only. The keys must come from Trustline's
+site, not from the file. For a withheld line, step 1 and the recomputation in
+step 2 are skipped: the line is checked by its links, and by a signed
+checkpoint at or after it.
+
+### Changed by language review 10 and security review 14
+
+- **Detail sentences** are worded by the API (`src/audit/details.ts`, and a
+  `details` section in each wording file).
+  - The field comes first. A change reads "{from} → {to}" in English and
+    French, and «من … إلى …» in Arabic, with no arrow.
+  - Ids are shown as names, references and numbers; codes as words.
+  - Some actions read as one sentence (`templates`).
+  - Routes are named as screens.
+  - The viewer gives `detailLines`, in the language asked for (`locale`)
+    or the client's own, and the CSV uses the same sentences.
+  - The CSV's time column names the organization's time zone.
+- **Arabic «مقيّم خارجي»** for "External reviewer": the labels, the role
+  (migration 0064, audited per client), and the sign-in code email.
+- **H1 (bodies of withheld entries):** a withheld line carries no `body`,
+  no `bodyHash`, and no address. Its hash cannot be recomputed by the
+  reader, but it is checked by its links, and by a signed checkpoint at or
+  after it. Otherwise the few unknown values of a masked body (who reported
+  it, and whether anonymously) could be found by trying them against its
+  hash. **Planned, not built: body v2.**
+  - Each entry is sealed with a random salt kept outside the body, as
+    `ip_salt` is.
+  - The salt is withheld with the body.
+  - The body hash can then be given for every entry, since no guess can be
+    checked against it.
+- **H2 (which entries are masked):** exactly what was decided when the entry
+  was written, as the incident screens decide it: the report, and the
+  comments written as the reporter. Whatever else the reporter did, as one
+  of the incident's handlers, appears under their name, as on the incident
+  timeline.
+- **M1 (channel):** a masked entry shows no `channel` either.
+- **M2 (widened roles):** an external reviewer holds only reading
+  permissions, whatever their role says (`accessOf`). A role a reviewer
+  holds cannot be widened (409 `held_by_external_reviewer`).
+- **M3 (sign-in codes):**
+  - a wrong code counts toward the account's lock, as a wrong password
+    does (5, then 15 minutes);
+  - five codes an hour at most (`too_many_codes`).
+- **M4 (the script):** `scripts/verify-audit-chain.mjs` requires the
+  published keys, and refuses a file:
+  - that no signed checkpoint covers (to its last entry, unless
+    `--allow-unanchored-tail` is given);
+  - whose entries do not number what its header claims;
+  - with a body of another entry or another organization.
+- **M5 (what counts as checked):** a day is checked only when a break was
+  found, or a checkpoint that holds was signed that day. The weekly email
+  goes with the week's first checkpoint that holds. Neither can be stood in
+  for by a row the application writes.
+- **L1 (cleared keys):** with a key configured, an unsigned checkpoint is a
+  break, unless it is older than `AUDIT_SIGNED_SINCE`.
+- **L2 (reviewers' reads):** an external reviewer's read is recorded before
+  the answer, with the route's parameters and the query (a search by its
+  length only).
+- **L3 (chain downloads):** the chain file waits for the reader. Each
+  client has one chain download at a time (429 `export_in_progress`).
+- **L4 (test clean-up):** the clean-up's registry check reports its own
+  failure.
+- **L5 (codes in the outbox):** in production, no code is sent in outbox
+  mode (503 `code_not_sent`).
+- **Info items:**
+  - staff email in old entries is never shown;
+  - external reviewers see no sign-in address;
+  - external reviewers are never in a document's audience: never asked to
+    acknowledge, reminded or counted.
+- **Single sign-on:** an external reviewer signs in with a password and a
+  code. At a client that signs in through single sign-on only, reviewers
+  cannot sign in until single sign-on is built, which must then decide how
+  they do.
 
 ### Not built yet
 

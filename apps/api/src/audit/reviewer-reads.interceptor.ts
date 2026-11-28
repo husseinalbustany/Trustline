@@ -1,5 +1,5 @@
 import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
-import { mergeMap, type Observable } from 'rxjs';
+import { from, mergeMap, type Observable } from 'rxjs';
 import { TenantDb } from '../database/tenant-db.service.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
 import { READS, type AuthedRequest } from '../identity/session.guard.js';
@@ -36,19 +36,30 @@ export class ReviewerReads implements NestInterceptor {
     }
     const route = `${req.baseUrl ?? ''}${(req.route as { path?: string } | undefined)?.path ?? req.path ?? ''}`;
     if (NOT_RECORDS.test(route)) return next.handle();
-    const id = typeof req.params?.id === 'string' ? req.params.id : null;
+    const params = Object.fromEntries(
+      Object.entries(req.params ?? {}).filter(([, v]) => typeof v === 'string'),
+    ) as Record<string, string>;
+    const id = params.id ?? null;
     const recordType = id ? (RECORDS.find(([pattern]) => pattern.test(route))?.[1] ?? null) : null;
-    return next.handle().pipe(
-      mergeMap(async (value: unknown) => {
-        await this.tenantDb.withTenant(auth.tenant.id, (tx) =>
-          this.provisioning.audit(tx, auth.tenant.id, auth.user.id, 'external_reviewer_viewed', null, null, {
-            route,
-            recordType,
-            recordId: recordType ? id : null,
-          }),
-        );
-        return value;
-      }),
+    // What was asked, as well as where (security review 14, L2): every
+    // parameter of the route and of the query, a search by its length only.
+    const query = Object.fromEntries(
+      Object.entries((req.query ?? {}) as Record<string, unknown>)
+        .filter(([, v]) => typeof v === 'string')
+        .map(([k, v]) => [k, k === 'q' ? `(${(v as string).length})` : (v as string).slice(0, 200)]),
     );
+    // Recorded before the answer is made, so that nothing, a file streamed
+    // as it is read included, goes out unrecorded.
+    return from(
+      this.tenantDb.withTenant(auth.tenant.id, (tx) =>
+        this.provisioning.audit(tx, auth.tenant.id, auth.user.id, 'external_reviewer_viewed', null, null, {
+          route,
+          recordType,
+          recordId: recordType ? id : null,
+          params,
+          query,
+        }),
+      ),
+    ).pipe(mergeMap(() => next.handle()));
   }
 }
