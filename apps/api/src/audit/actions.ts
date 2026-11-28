@@ -109,7 +109,7 @@ export const AUDIT_ACTIONS = {
   public_reporting_changed: code('organization', 'tenant', ['from', 'to']),
   response_rules_changed: code('organization', 'tenant', ['none', 'mild', 'moderate', 'severe', 'death']),
   email_setting_changed: code('organization', 'tenant', ['enabled']),
-  notification_preferences_changed: code('organization', 'user', ['immediate', 'digest', 'weekly', 'via']),
+  notification_preferences_changed: code('organization', 'user', ['immediate', 'digest', 'weekly', 'language', 'via']),
 
   // Incidents.
   incident_reported: code('incidents', 'incident', ['reference', 'type', 'anonymous', 'channel'], { maskActor: true }),

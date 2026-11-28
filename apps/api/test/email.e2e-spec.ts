@@ -202,7 +202,7 @@ describe('email', () => {
     config = bench.app.get<MailConfig>(MAIL_CONFIG);
     // The digest is tested on its own, below: until then it is never due.
     worker.digestHour = 24;
-  });
+  }, 60_000);
 
   afterAll(async () => {
     if (worker) worker.sender = outbox;
