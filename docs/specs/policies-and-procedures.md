@@ -1240,3 +1240,44 @@ is audited.
    business answers question 6 otherwise.
 10. **The original's revision for the print header:**
     `control.originalRevision` ("Version 1 (Rev. 4 on the original)").
+
+## Decided by the business after quality review 3
+
+Accepted as recommended, on 28 November 2026.
+
+1. **Who imports.** Importing is for the Quality officer only (a new
+   permission held by that role, not by the Administrator). The owner a
+   document is imported for confirms it within 30 days; until then it is
+   marked "awaiting the owner's confirmation", and the owner and the
+   importer are reminded.
+2. **Approved on paper after the module started.** Refused, as built: such
+   documents go through the approval route in Trustline. Onboarding tells
+   the client before the module is switched on.
+3. **Tables and figures.** Not for the pilot. The signed "differences from
+   the original" note covers them. Table markup may follow if the pilot
+   asks.
+4. **Compulsory emails.** Some emails cannot be switched off by the people
+   others rely on: serious-incident and sentinel alerts for those who
+   triage, and approval steps assigned to those who decide them. The
+   preferences screen shows them as always on, with the reason.
+5. **The language that applies, per document.** An option on each
+   document: it follows the organization's setting by default, or a
+   document can name its own. Recorded on each version as now.
+6. **"No change" periodic review.** A setting per document type: when on, a
+   "no change" confirmation by the owner also needs the Approving
+   authority's signature before the next review date moves. On by default
+   for policies, off for the other types.
+7. **Controlled paper copies.** Not now. Printed copies stay "valid on the
+   day printed".
+8. **Retention.** Acknowledgement records, including those of people who
+   have left, are kept as long as the document's own record: at least six
+   years after the document is retired. Nothing in Trustline deletes them
+   earlier.
+9. **Signing for single sign-on users.** People who sign in through their
+   organization's single sign-on set a separate signing PIN in Trustline,
+   used wherever a password signature is asked. Until it exists, policies
+   are not offered to an organization whose staff sign in only that way.
+10. **Bilingual PDF and measures.** Browser print in one language and the
+    figures for today are accepted for the pilot. A side-by-side bilingual
+    PDF and figures over time come with the reports work
+    (`reports-and-measures.md`).
