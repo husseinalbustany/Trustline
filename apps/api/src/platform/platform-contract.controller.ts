@@ -19,7 +19,7 @@ import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import type { Database, Transaction } from '../database/client.js';
 import { PLATFORM_DATABASE } from '../database/database.constants.js';
-import { clientDeletions, dataExports, platformAdmins, subscriptions, tenants } from '../database/schema.js';
+import { clientDeletions, dataExports, exportSecondApprovals, platformAdmins, subscriptions, tenants } from '../database/schema.js';
 import { line, optionalText, text } from '../i18n/text.js';
 import { dayOf } from '../i18n/time-zones.js';
 import { ProvisioningService } from '../identity/provisioning.service.js';
@@ -58,6 +58,11 @@ const SECOND_APPROVAL: Record<string, () => Error> = {
   not_requested: () => new ConflictException({ code: 'stale_export' }),
   lapsed: () => new ConflictException({ code: 'lapsed' }),
   not_alone: () => new ConflictException({ code: 'not_alone' }),
+  // The person who asked is not one Trustline may approve for: an account
+  // the platform made, or one made or given its password this week
+  // (security review 20, M2).
+  requester_not_independent: () => new ConflictException({ code: 'requester_not_independent' }),
+  same_person: () => new ForbiddenException({ code: 'same_person' }),
 };
 
 /**
@@ -101,15 +106,37 @@ export class PlatformContractController {
     const input = parse(contractSchema, body);
     const admin = req.platformAdmin;
     return this.db.transaction(async (tx) => {
-      const [current] = await tx
-        .select({ endsOn: subscriptions.endsOn, exitUntil: subscriptions.exitUntil, retainUntil: subscriptions.retainUntil })
+      const [client] = await tx.select({ status: tenants.status, timeZone: tenants.timeZone }).from(tenants).where(eq(tenants.id, id));
+      if (!client) throw new NotFoundException();
+      // A deleted client is a stub: nothing of it changes (security review 20, L5).
+      if (client.status === 'deleted') throw new ConflictException({ code: 'client_deleted' });
+      const [row] = await tx
+        .select({
+          status: subscriptions.status,
+          endsOn: subscriptions.endsOn,
+          exitUntil: subscriptions.exitUntil,
+          retainUntil: subscriptions.retainUntil,
+        })
         .from(subscriptions)
         .where(eq(subscriptions.tenantId, id))
         .for('update');
-      if (!current) throw new NotFoundException();
+      if (!row) throw new NotFoundException();
+      const { status, ...current } = row;
       const next = { ...current, ...input };
       if (next.retainUntil && next.exitUntil && next.retainUntil < next.exitUntil) {
         throw new BadRequestException({ code: 'invalid_dates' });
+      }
+      // An open exit window is never shortened: its holders may be exporting
+      // now (security review 20, L2).
+      const today = dayOf(new Date(), client.timeZone);
+      if (
+        status === 'cancelled' &&
+        current.exitUntil &&
+        current.exitUntil >= today &&
+        input.exitUntil !== undefined &&
+        (input.exitUntil === null || input.exitUntil < current.exitUntil)
+      ) {
+        throw new ConflictException({ code: 'exit_window_open' });
       }
       const changed = (['endsOn', 'exitUntil', 'retainUntil'] as const).filter((k) => input[k] !== undefined && input[k] !== current[k]);
       if (changed.length > 0) {
@@ -132,15 +159,13 @@ export class PlatformContractController {
   }
 
   /**
-   * Records Trustline's second approval of an export (decision 3): only for
-   * a request waiting for its approval, within its 7 days, of a client with
-   * no other holder of `data.export` for the whole organization (409
-   * `not_alone`: the other holder approves). Done by the database
-   * (`data_export_second_approval`), which alone may read who holds what.
+   * Trustline's second approval of an export (decision 3), in two hands
+   * (security review 20, M2). First, one member of staff records the
+   * contract contact's written request for it; then another approves on it.
    */
-  @Post('exports/:exportId/approve')
-  @HttpCode(200)
-  approve(
+  @Post('exports/:exportId/written-request')
+  @HttpCode(201)
+  recordRequest(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('exportId', ParseUUIDPipe) exportId: string,
     @Body() body: unknown,
@@ -149,11 +174,63 @@ export class PlatformContractController {
     const { writtenRequest: request } = parse(approvalSchema, body);
     const admin = req.platformAdmin;
     return this.db.transaction(async (tx) => {
+      const [found] = await tx
+        .select({ status: dataExports.status })
+        .from(dataExports)
+        .where(and(eq(dataExports.id, exportId), eq(dataExports.tenantId, id)));
+      if (!found) throw new NotFoundException();
+      if (found.status !== 'requested') throw new ConflictException({ code: 'stale_export' });
+      const [made] = await tx
+        .insert(exportSecondApprovals)
+        .values({ targetTenantId: id, exportId, writtenRequest: request, recordedBy: admin.id })
+        .onConflictDoNothing()
+        .returning({ id: exportSecondApprovals.id });
+      if (!made) throw new ConflictException({ code: 'already_recorded' });
+      await this.auth.audit(admin.id, 'second_approval_request_recorded', id, { exportId, writtenRequest: request }, tx);
+      return this.view(tx, id);
+    });
+  }
+
+  /**
+   * The approval on a recorded written request, by another member of staff
+   * than the one who recorded it (403 `same_person`): only for a request
+   * waiting for its approval, within its 7 days, of a client with no other
+   * holder who could approve (409 `not_alone`), whose requester is not an
+   * account the platform made or one made or given its password this week
+   * (409 `requester_not_independent`). Done by the database
+   * (`data_export_second_approval`), which alone may read who holds what.
+   */
+  @Post('exports/:exportId/approve')
+  @HttpCode(200)
+  approve(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('exportId', ParseUUIDPipe) exportId: string,
+    @Req() req: PlatformRequest,
+  ) {
+    const admin = req.platformAdmin;
+    return this.db.transaction(async (tx) => {
+      const [recorded] = await tx
+        .select()
+        .from(exportSecondApprovals)
+        .where(and(eq(exportSecondApprovals.exportId, exportId), eq(exportSecondApprovals.targetTenantId, id)))
+        .for('update');
+      if (!recorded) throw new ConflictException({ code: 'no_written_request' });
+      if (recorded.recordedBy === admin.id) throw new ForbiddenException({ code: 'same_person' });
+      if (recorded.approvedBy) throw new ConflictException({ code: 'stale_export' });
       const { rows } = await tx.execute<{ result: string }>(sql`
-        select data_export_second_approval(${id}::uuid, ${exportId}::uuid, ${admin.id}::uuid, ${admin.name}, ${JSON.stringify(request)}::jsonb) as result`);
+        select data_export_second_approval(${id}::uuid, ${exportId}::uuid, ${admin.id}::uuid, ${admin.name},
+          ${JSON.stringify(recorded.writtenRequest)}::jsonb, ${recorded.recordedBy}::uuid) as result`);
       const result = rows[0]?.result;
       if (result !== 'ok') throw (SECOND_APPROVAL[result] ?? (() => new ConflictException({ code: 'stale_export' })))();
-      await this.auth.audit(admin.id, 'second_approval_recorded', id, { exportId, writtenRequest: request }, tx);
+      await tx
+        .update(exportSecondApprovals)
+        .set({ approvedBy: admin.id, approvedAt: new Date() })
+        .where(eq(exportSecondApprovals.id, recorded.id));
+      await this.auth.audit(admin.id, 'second_approval_recorded', id, {
+        exportId,
+        writtenRequest: recorded.writtenRequest,
+        recordedBy: recorded.recordedBy,
+      }, tx);
       return this.view(tx, id);
     });
   }
@@ -236,6 +313,8 @@ export class PlatformContractController {
 
   /** What the end of the contract stands at, for one client. */
   private async contract(tx: Transaction, tenantId: string, lock = false) {
+    // A left join: a deleted client has no subscription left, and is still
+    // shown, with its certificate (security review 20, M3).
     const query = tx
       .select({
         status: tenants.status,
@@ -244,16 +323,21 @@ export class PlatformContractController {
         endsOn: subscriptions.endsOn,
         exitUntil: subscriptions.exitUntil,
         retainUntil: subscriptions.retainUntil,
+        cancelledAt: subscriptions.accessResetAt,
       })
       .from(tenants)
-      .innerJoin(subscriptions, eq(subscriptions.tenantId, tenants.id))
+      .leftJoin(subscriptions, eq(subscriptions.tenantId, tenants.id))
       .where(eq(tenants.id, tenantId));
-    const [row] = lock ? await query.for('update', { of: subscriptions }) : await query;
+    const [row] = lock ? await query.for('update', { of: tenants }) : await query;
     if (!row) throw new NotFoundException();
-    const { rows: downloaded } = await tx.execute<{ n: number }>(
-      sql`select count(*)::int as n from ${dataExports} where ${dataExports.tenantId} = ${tenantId} and ${dataExports.downloads} > 0`,
-    );
-    return { ...row, today: dayOf(new Date(), row.timeZone), downloaded: downloaded[0].n > 0 };
+    // Only an export downloaded since the subscription was cancelled counts
+    // (security review 20, M4): a routine export from years before does
+    // not. The cancellation is its last access reset, set on cancelling.
+    const { rows: downloaded } = await tx.execute<{ n: number }>(sql`
+      select count(*)::int as n from ${dataExports}
+      where ${dataExports.tenantId} = ${tenantId} and ${dataExports.downloads} > 0
+        and ${dataExports.lastDownloadedAt} >= ${row.cancelledAt ?? new Date(0)}`);
+    return { ...row, subscription: row.subscription ?? 'cancelled', today: dayOf(new Date(), row.timeZone), downloaded: downloaded[0].n > 0 };
   }
 
   private async view(tx: Transaction, tenantId: string) {
@@ -316,6 +400,8 @@ export class PlatformContractController {
             cancelledAt: deletion.cancelledAt,
             executedAt: deletion.executedAt,
             certificate: deletion.certificate,
+            // Its exact bytes: what the fingerprint and the signature are of.
+            certificateText: deletion.certificateText,
             certificateSha256: deletion.certificateSha256,
             signature: deletion.signature,
           }

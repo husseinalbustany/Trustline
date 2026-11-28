@@ -31,18 +31,41 @@ export const INDEPENDENT_DAYS = 7;
 
 /**
  * Whether an approver is a second person in fact, not one the requester
- * made (security review 19, M3): their account, and a grant of theirs
- * that gives `data.export` for the whole organization, each at least 7 days
- * old and not made by the requester. Why not, or null.
+ * made (security review 19, M3; 20, M1): their account, and a grant of
+ * theirs that gives `data.export` for the whole organization, each at least
+ * 7 days old and not made by the requester; no password set this week, no
+ * sign-in link the requester made for them this week, and no role of
+ * theirs widened this week to `data.export` or `incidents.see_reporter`.
+ * Why not, or null.
  */
 export async function dependenceOf(tx: Transaction, approverId: string, requesterId: string) {
-  const { rows: account } = await tx.execute<{ recent: boolean; by_requester: boolean }>(sql`
-    select u.created_at > now() - make_interval(days => ${INDEPENDENT_DAYS}) as recent,
-      exists (select from audit_log a where a.action = 'user_created' and a.entity_id = u.id and a.actor_id = ${requesterId}::uuid) as by_requester
+  const since = sql`now() - make_interval(days => ${INDEPENDENT_DAYS})`;
+  const { rows: account } = await tx.execute<{
+    recent: boolean;
+    by_requester: boolean;
+    password_recent: boolean;
+    link_by_requester: boolean;
+    role_widened: boolean;
+  }>(sql`
+    select u.created_at > ${since} as recent,
+      exists (select from audit_log a where a.action = 'user_created' and a.entity_id = u.id and a.actor_id = ${requesterId}::uuid) as by_requester,
+      -- An account taken over: its password set this week, or a sign-in
+      -- link the requester made for it (security review 20, M1).
+      coalesce(u.password_changed_at > ${since}, false) as password_recent,
+      exists (select from audit_log a where a.action = 'sign_in_link_created' and a.entity_id = u.id
+        and a.actor_id = ${requesterId}::uuid and a.occurred_at > ${since}) as link_by_requester,
+      -- A role it holds widened this week to give what an export needs.
+      exists (select from audit_log a join role_assignments ra on ra.role_id = a.entity_id and ra.user_id = u.id
+        where a.action = 'role_updated' and a.occurred_at > ${since}
+          and ((coalesce(a.changes -> 'after', '[]') ? 'data.export' and not coalesce(a.changes -> 'before', '[]') ? 'data.export')
+            or (coalesce(a.changes -> 'after', '[]') ? 'incidents.see_reporter' and not coalesce(a.changes -> 'before', '[]') ? 'incidents.see_reporter'))) as role_widened
     from users u where u.id = ${approverId}`);
   if (!account[0]) return 'account_new';
   if (account[0].by_requester) return 'account_by_requester';
   if (account[0].recent) return 'account_new';
+  if (account[0].link_by_requester) return 'link_by_requester';
+  if (account[0].password_recent) return 'password_recent';
+  if (account[0].role_widened) return 'role_widened';
   const grants = await tx
     .select({ grantedBy: roleAssignments.grantedBy, grantedAt: roleAssignments.grantedAt })
     .from(roleAssignments)

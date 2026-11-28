@@ -3669,7 +3669,11 @@ export const clientDeletions = pgTable(
     cancelledAt: timestamp({ withTimezone: true }),
     executedAt: timestamp({ withTimezone: true }),
     // The deletion certificate, its fingerprint, and Trustline's signature.
+    // `certificate_text` is its exact bytes, which the fingerprint and the
+    // signature are of (security review 20, M3); `certificate` is the same
+    // as JSON, for reading.
     certificate: jsonb().$type<Record<string, unknown>>(),
+    certificateText: text(),
     certificateSha256: text(),
     signature: jsonb().$type<{ algorithm: 'Ed25519'; keyId: string; signature: string }>(),
   },
@@ -4978,5 +4982,36 @@ export const actionNotes = pgTable(
     check('action_notes_text', sql`length(${t.text}) between 1 and 4000`),
     index('action_notes_action_idx').on(t.tenantId, t.actionId),
     tenantIsolation(),
+  ],
+);
+
+/**
+ * Trustline's second approval of an export, for a client with one holder
+ * of `data.export` (decision 3), in two hands (security review 20, M2): one
+ * member of staff records the contract contact's written request, another
+ * approves on it, through `data_export_second_approval()`. Trustline's own
+ * table: the platform role writes it, the application never. It points at
+ * the export by id only, so that deleting a client leaves no link into its
+ * data.
+ */
+export const exportSecondApprovals = pgTable(
+  'export_second_approvals',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    targetTenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    exportId: uuid().notNull(),
+    writtenRequest: jsonb().$type<WrittenRequest>().notNull(),
+    recordedBy: uuid()
+      .notNull()
+      .references(() => platformAdmins.id),
+    recordedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    approvedBy: uuid().references(() => platformAdmins.id),
+    approvedAt: timestamp({ withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('export_second_approvals_once').on(t.exportId),
+    check('export_second_approvals_two_people', sql`${t.approvedBy} is null or ${t.approvedBy} <> ${t.recordedBy}`),
   ],
 );
