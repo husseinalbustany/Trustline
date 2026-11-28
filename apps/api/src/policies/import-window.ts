@@ -42,8 +42,8 @@ export const defaultClosesOn = (startedOn: string) =>
  * On the client's calendar, in a transaction of the client's (or of the
  * admin portal, which names the client). With no recorded start (the
  * database records one whenever the module is switched on, so a client
- * that has it has one), today stands for it: nothing approved from today
- * on.
+ * that has it has one), the window is closed, and today stands for the
+ * start in what is said of it.
  */
 export async function importWindowOf(
   tx: Transaction | Database,
@@ -67,7 +67,9 @@ export async function importWindowOf(
     startedOn,
     closesOn,
     latestApprovedOn: shiftDay(startedOn, -1),
-    open: today <= closesOn,
+    // Fails closed (security review 9): with no recorded start, nothing
+    // can be imported.
+    open: !!start && today <= closesOn,
     setByTrustline: !!set,
     startRecorded: !!start,
   };

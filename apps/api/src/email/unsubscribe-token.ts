@@ -24,6 +24,13 @@ export type UnsubscribeClaim = {
 /** How long a link in an email keeps working. */
 export const UNSUBSCRIBE_DAYS = 90;
 
+/**
+ * How long the links sent before tokens carried their issue time lived:
+ * fixed, so that a change of UNSUBSCRIBE_DAYS cannot move when those links
+ * count as issued (security review 9).
+ */
+const LEGACY_UNSUBSCRIBE_DAYS = 90;
+
 const VERSION = 'v1';
 // Bound to its use, so that no other signature made with the same key can
 // pass for one of these.
@@ -35,8 +42,8 @@ const claimSchema = z.strictObject({
   s: z.enum(['immediate', 'digest']),
   l: localeSchema,
   e: z.number().int().positive(),
-  // Absent from the links sent before it was added: issued UNSUBSCRIBE_DAYS
-  // before they expire, which is how they were made.
+  // Absent from the links sent before it was added: issued
+  // LEGACY_UNSUBSCRIBE_DAYS before they expire, which is how they were made.
   i: z.number().int().positive().optional(),
 });
 
@@ -102,6 +109,6 @@ export function verifyUnsubscribe(
     switch: claim.data.s,
     locale: claim.data.l,
     expiresAt: claim.data.e,
-    issuedAt: claim.data.i ?? (claim.data.e - UNSUBSCRIBE_DAYS * 86_400) * 1000,
+    issuedAt: claim.data.i ?? (claim.data.e - LEGACY_UNSUBSCRIBE_DAYS * 86_400) * 1000,
   };
 }

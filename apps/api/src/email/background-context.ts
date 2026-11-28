@@ -36,7 +36,7 @@ export class BackgroundContext {
     return this.tenantDb.withTenant(tenant.id, async (tx) => {
       const [user] = await tx.select().from(users).where(eq(users.id, userId));
       if (!user || user.status !== 'active') return null;
-      return this.auth.contextIn(tx, tenant, user, '', null);
+      return this.auth.backgroundContextIn(tx, tenant, user);
     });
   }
 }

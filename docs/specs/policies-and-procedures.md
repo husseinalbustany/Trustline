@@ -1082,7 +1082,9 @@ contract is in the API engineer's notes to the web engineer.
    The path is matched whole, under the prefix the API is served at
    (`^/api/v1/policies/(?:imports(?:/check)?|documents/import)$`). A body
    nested more than 64 deep is refused (400 `body_too_deep`, `max`) before
-   it is parsed.
+   it is parsed. Since security review 9 the client must also have the
+   policies module and a subscription that is not suspended; otherwise the
+   guard answers, after 100 kB.
 2. **Imports are for migration only.**
    - An imported document's approval day must be before the day the
      policies module was first switched on for the client (400
@@ -1101,7 +1103,8 @@ contract is in the API engineer's notes to the web engineer.
      subscription leaving cancelled. Switched off and on again, a module
      keeps its first day. For the clients that had the policies module
      already, the day is the earlier of their first document and the day of
-     migration 0049.
+     migration 0049. With no day recorded, the window is closed (security
+     review 9).
    - `GET` and `PUT /platform/tenants/:id/import-window` (admin portal):
      `PUT { closesOn, reason }` (reason 1 to 500 characters) sets the last
      day, from the day before the module's first day (closed from the
@@ -1120,13 +1123,22 @@ contract is in the API engineer's notes to the web engineer.
    language that stood then and keep the earlier form, so every signature
    made before stays valid. The database keeps both columns fixed once the
    version leaves draft, as it keeps the text. Versions answer
-   `authoritativeLocale` (null on a draft).
+   `authoritativeLocale` (null on a draft). Since migration 0051 (security
+   review 9, finding 5), a version sent by a release from before 0049,
+   which writes no language, is given the one that stands as it leaves
+   draft (not covered by its signatures); and a version out of draft with
+   none recorded may be given one, once.
 4. **Numbers are kept normalised**: NFKC, every digit of any script as its
    ASCII digit, spaces made one, before the taken check, the series and the
    counter, and stored so, which the unique key on the number in any
-   capitals then holds. A number whose letters mix scripts is refused (400
-   `invalid_number`, `reason: 'mixed_scripts'`). The check answers the
-   normalised number.
+   capitals then holds. Its letters may be only Latin (Trustline's own
+   numbers are) or of the scripts of the client's languages: Arabic where
+   it works in Arabic (security review 9, finding 3); any other letter is
+   refused (400 `invalid_number`, `reason: 'script'`), so that a number
+   wholly in a script that looks like Latin (Cyrillic `ЅОР-001`, Lisu,
+   Cherokee) cannot pass for another. A number whose letters mix scripts
+   is refused (400 `invalid_number`, `reason: 'mixed_scripts'`). The check
+   answers the normalised number.
 5. **A starting route always ends with an approval**: with no built-in
    Approving authority (a client's own role holds that code), the
    Administrator approves, and the audit entry (`approval_route_created`,

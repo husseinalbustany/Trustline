@@ -482,14 +482,6 @@ export class ProvisioningService {
   }
 
   /**
-   * The one entry the admin portal writes in a client's own audit log: what
-   * it changed of the client's subscription (`subscription_changed`), by
-   * nobody of the client's. Only for a transaction of the platform role,
-   * which may set no other column (migration 0035): the id, the time, the
-   * actor and the address are the database's defaults. Not through
-   * `insert()`, which names every column of the table.
-   */
-  /**
    * The other entry the admin portal writes in a client's own audit log:
    * that Trustline's staff set the last day the client may import its
    * existing documents (`import_window_changed`), with the reason. As
@@ -506,6 +498,14 @@ export class ProvisioningService {
     `);
   }
 
+  /**
+   * An entry the admin portal writes in a client's own audit log: what
+   * it changed of the client's subscription (`subscription_changed`), by
+   * nobody of the client's. Only for a transaction of the platform role,
+   * which may set no other column (migration 0035): the id, the time, the
+   * actor and the address are the database's defaults. Not through
+   * `insert()`, which names every column of the table.
+   */
   async auditSubscriptionChange(
     tx: Transaction,
     tenantId: string,

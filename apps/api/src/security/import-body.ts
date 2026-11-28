@@ -1,6 +1,7 @@
 import type { NextFunction, Request, Response } from 'express';
 import type { AuthContext } from '../identity/auth.service.js';
 import { covers } from '../identity/scope.js';
+import { allows } from '../subscriptions/entitlements.service.js';
 import { SESSION_COOKIE } from '../identity/session.guard.js';
 import { readCookie } from './cookies.js';
 
@@ -59,6 +60,20 @@ export function nestsDeeperThan(body: Buffer, max: number): boolean {
   return false;
 }
 
+/**
+ * Who may send an import's body: one who may import, in a client that has
+ * the policies module and whose subscription is not suspended (imports are
+ * writes, refused while it is). Anyone else is answered by the guard.
+ */
+const mayImport = (auth: AuthContext) => {
+  const { modules, subscription } = auth.tenant;
+  return (
+    covers(auth, 'policies.manage', null) &&
+    allows({ modules, status: subscription.status }, 'policies') &&
+    subscription.status !== 'suspended'
+  );
+};
+
 export type ImportBodyOptions = {
   /** The global prefix the API is served under: '/api/v1', or '' in tests. */
   prefix?: string;
@@ -75,8 +90,10 @@ const answer = (res: Response, status: number, body: Record<string, unknown>) =>
 /**
  * Reads the JSON body of the import routes up to IMPORT_BODY_LIMIT, only
  * for a caller whose session is live and who may import (`policies.manage`
- * for the whole organization), looked up as the route's guard does before
- * a byte of the body is read (security review 7, finding 1). Anything
+ * for the whole organization, the policies module, a subscription that is
+ * not suspended), looked up as the route's guard does before a byte of the
+ * body is read (security reviews 7, finding 1, and 9). The guard looks the
+ * session up again, so that one revoked during a long upload is refused. Anything
  * else, and every other route, is left to Nest's own parser and its
  * 100 kB; the route's guard then answers 401 or 403 as for any route. The
  * path is matched whole, under the API's own prefix. Registered before
@@ -112,8 +129,8 @@ export function importBodyParser({
     // Nothing of the body is read while this is looked up.
     resolve(token).then(
       (auth) => {
-        if (!auth || !covers(auth, 'policies.manage', null)) next();
-        else read(req, res, next);
+        if (auth && mayImport(auth)) read(req, res, next);
+        else next();
       },
       // Whatever went wrong, the guard meets it again; the body is not read.
       () => next(),

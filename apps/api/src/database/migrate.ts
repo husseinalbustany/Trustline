@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { sql } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
@@ -20,7 +21,13 @@ const ROLES = {
  */
 export async function runMigrations() {
   const { pool, db } = createDatabase(requireEnv('DATABASE_URL'));
+  // One run at a time (security review 9, finding 4): a second waits here
+  // until the first has finished, so that two never build or drop the same
+  // index, or apply the same migration, together. Held on a connection of
+  // its own for the whole run, and released however the run ends.
+  const lock = await pool.connect();
   try {
+    await lock.query('select pg_advisory_lock($1)', [MIGRATION_LOCK]);
     for (const role of Object.keys(ROLES)) {
       await db.execute(
         sql.raw(`
@@ -33,9 +40,7 @@ export async function runMigrations() {
     }
 
     await buildConcurrently(db);
-    await migrate(db, {
-      migrationsFolder: resolve(import.meta.dirname, '../../drizzle'),
-    });
+    await migrate(db, { migrationsFolder: MIGRATIONS });
 
     for (const [role, variable] of Object.entries(ROLES)) {
       const url = process.env[variable];
@@ -48,8 +53,35 @@ export async function runMigrations() {
       await db.execute(sql.raw(rows[0].stmt));
     }
   } finally {
+    await lock.query('select pg_advisory_unlock($1)', [MIGRATION_LOCK]).catch(() => undefined);
+    lock.release();
     await pool.end();
   }
+}
+
+const MIGRATIONS = resolve(import.meta.dirname, '../../drizzle');
+
+/** The key of the advisory lock every migration run takes. */
+const MIGRATION_LOCK = 724_002_050;
+
+/**
+ * Whether a migration is applied: drizzle records each by the moment in
+ * its journal (`created_at`).
+ */
+async function applied(db: ReturnType<typeof createDatabase>['db'], tag: string) {
+  const journal = JSON.parse(
+    readFileSync(resolve(MIGRATIONS, 'meta/_journal.json'), 'utf8'),
+  ) as { entries: { tag: string; when: number }[] };
+  const entry = journal.entries.find((e) => e.tag === tag);
+  if (!entry) return false;
+  const { rows } = await db.execute<{ table: boolean }>(
+    sql`select to_regclass('drizzle.__drizzle_migrations') is not null as table`,
+  );
+  if (!rows[0].table) return false;
+  const found = await db.execute(
+    sql`select 1 from drizzle.__drizzle_migrations where created_at = ${entry.when}`,
+  );
+  return found.rows.length > 0;
 }
 
 /**
@@ -63,6 +95,9 @@ export async function runMigrations() {
 const CONCURRENT_INDEXES = [
   {
     // Migration 0050: the key email_queue_notification_fk points to it.
+    // Only while 0050 is not applied (security review 9, finding 4): once
+    // it is, the index is the migrations' to keep, rename or drop.
+    before: '0050_email_review_fixes',
     name: 'notifications_tenant_id_id_key',
     table: 'notifications',
     create:
@@ -72,6 +107,7 @@ const CONCURRENT_INDEXES = [
 
 async function buildConcurrently(db: ReturnType<typeof createDatabase>['db']) {
   for (const index of CONCURRENT_INDEXES) {
+    if (await applied(db, index.before)) continue;
     const { rows } = await db.execute<{ table: boolean; valid: boolean | null }>(sql`
       select to_regclass(${`public.${index.table}`}) is not null as table,
              (select i.indisvalid from pg_index i

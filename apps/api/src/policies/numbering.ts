@@ -164,6 +164,38 @@ const SCRIPTS: [string, RegExp][] = [
 ];
 
 /**
+ * The scripts each language of the product is written in. A number's
+ * letters may come only from the scripts of the client's own languages
+ * (security review 9, finding 3): Latin and Arabic for English, French and
+ * Arabic. A number written wholly in another script that looks like Latin
+ * (Cyrillic `ЅОР-001`, Lisu, Cherokee) would otherwise pass for a number
+ * it is not.
+ */
+const LOCALE_SCRIPTS: Record<string, string> = {
+  en: 'latin',
+  fr: 'latin',
+  ar: 'arabic',
+};
+
+/**
+ * Whether a number has a letter outside the scripts of these languages.
+ * Latin is always allowed: the numbers Trustline gives are (`POL-GOV-007`),
+ * whatever the client's languages. Digits and punctuation belong to no
+ * script.
+ */
+export function lettersOutside(value: string, locales: string[]): boolean {
+  const allowed = new Set([
+    'latin',
+    ...locales.map((l) => LOCALE_SCRIPTS[l]).filter(Boolean),
+  ]);
+  for (const letter of value.match(/\p{L}/gu) ?? []) {
+    const script = SCRIPTS.find(([, re]) => re.test(letter))?.[0] ?? 'other';
+    if (!allowed.has(script)) return true;
+  }
+  return false;
+}
+
+/**
  * Whether a number's letters come from more than one script, as
  * `РОL-GOV-007` (a Cyrillic Р and О among Latin letters) does: what makes a
  * number look like another one it is not. Digits and punctuation belong to

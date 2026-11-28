@@ -143,6 +143,16 @@ describe('policies: the safeguards of importing documents', () => {
       ]) {
         await http().post('/policies/documents/import').set(auth).send({ password, ...big() }).expect(413);
       }
+      // One who may import, while the subscription is suspended (imports are
+      // refused then): 100 kB too (security review 9).
+      const subscription = (to: string) =>
+        http().patch(`/platform/tenants/${a.id}/subscription`).set('Cookie', bench.platform).send({ status: to }).expect(200);
+      await subscription('suspended');
+      try {
+        await importOne(writer.cookie, big()).expect(413);
+      } finally {
+        await subscription('active');
+      }
     });
 
     it('is read on the import paths only, matched whole', async () => {
@@ -290,16 +300,29 @@ describe('policies: the safeguards of importing documents', () => {
       expect(checked.documents[0]).toMatchObject({ number: 'PRC-SAF-007', series: 'PRC-SAF' });
     });
 
-    it('are refused when their letters mix scripts', async () => {
-      for (const number of ['РОL-GOV-007', 'POLα-1', 'ПОЛ-GOV-1']) {
+    it('are refused when a letter is of no script of the client’s languages', async () => {
+      // Hospital a works in English and Arabic: Latin and Arabic letters.
+      // Each of these reads like a Latin number (security review 9, finding 3).
+      for (const number of ['ЅОР-001', 'ꓑꓳꓡ-ꓖꓳꓦ-007', 'ᏢᎾᏞ-ᎶᎾᏙ-007', 'РОL-GOV-007', 'POLα-1', `ПОЛ-${parseInt(run, 16)}`]) {
         expect((await importOne(writer.cookie, document({ number })).expect(400)).body).toEqual({
           code: 'invalid_number',
-          reason: 'mixed_scripts',
+          reason: 'script',
         });
       }
-      // One script, any script, is a number.
-      await importOne(writer.cookie, document({ number: `ПОЛ-${parseInt(run, 16)}` })).expect(201);
+      // A batch says it of the document.
+      const batch = await post(writer.cookie, '/imports/check', { documents: [document({ number: 'ЅОР-001' })] }).expect(400);
+      expect(batch.body.problems).toEqual([expect.objectContaining({ index: 0, code: 'invalid_number', reason: 'script' })]);
     });
+
+    it('are refused when their letters mix the client’s scripts', async () => {
+      expect((await importOne(writer.cookie, document({ number: 'POL-سياسة-1' })).expect(400)).body).toEqual({
+        code: 'invalid_number',
+        reason: 'mixed_scripts',
+      });
+      // One script of the client's is a number.
+      await importOne(writer.cookie, document({ number: `سياسة-${parseInt(run, 16)}` })).expect(201);
+    });
+
   });
 
   describe('the authoritative language of a version', () => {
@@ -349,6 +372,49 @@ describe('policies: the safeguards of importing documents', () => {
       // The database keeps it as it keeps the text.
       await expect(
         bench.owner.db.update(documentVersions).set({ authoritativeLocale: 'ar' }).where(eq(documentVersions.id, version.id)),
+      ).rejects.toThrow();
+    });
+
+    it('is filled by the database for a version a release from before sends with none, and may be given once', async () => {
+      // As a release from before 0049 sends a draft: no language written.
+      const doc = (await post(writer.cookie, '/documents', {
+        typeId: types.procedure,
+        categoryId: categories.SAF,
+        title: { en: 'Sent by the old release' },
+        ownerId: writer.id,
+        ownerUnitId: dept,
+      }).expect(201)).body as Doc;
+      await bench.owner.db
+        .update(documentVersions)
+        .set({ status: 'in_review' })
+        .where(eq(documentVersions.id, doc.inProgress!.id));
+      const [sent] = await bench.owner.db.select().from(documentVersions).where(eq(documentVersions.id, doc.inProgress!.id));
+      expect(sent).toMatchObject({ authoritativeLocale: 'en', signsAuthoritativeLocale: false });
+      // Recorded once, it is kept.
+      await expect(
+        bench.owner.db.update(documentVersions).set({ authoritativeLocale: 'ar' }).where(eq(documentVersions.id, sent.id)),
+      ).rejects.toThrow();
+
+      // A version that left draft with none recorded may be given one,
+      // once, while its signatures do not cover it.
+      const [bare] = await bench.owner.db
+        .insert(documentVersions)
+        .values({
+          tenantId: a.id,
+          documentId: doc.id,
+          version: 2,
+          status: 'withdrawn',
+          sections: sent.sections,
+          preparedBy: writer.id,
+        })
+        .returning();
+      expect(bare.authoritativeLocale).toBeNull();
+      await bench.owner.db.update(documentVersions).set({ authoritativeLocale: 'en' }).where(eq(documentVersions.id, bare.id));
+      await expect(
+        bench.owner.db.update(documentVersions).set({ authoritativeLocale: 'ar' }).where(eq(documentVersions.id, bare.id)),
+      ).rejects.toThrow();
+      await expect(
+        bench.owner.db.update(documentVersions).set({ signsAuthoritativeLocale: true }).where(eq(documentVersions.id, bare.id)),
       ).rejects.toThrow();
     });
 

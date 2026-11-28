@@ -47,6 +47,7 @@ import {
 } from './import-window.js';
 import {
   advanceSeries,
+  lettersOutside,
   mixesScripts,
   nextDocumentNumber,
   normalizeNumber,
@@ -599,6 +600,11 @@ export class ImportsService {
     // zeros before its place); none given, Trustline numbers it.
     const given = input.number ?? null;
     let series: Planned['series'] = null;
+    // Letters only of the scripts of the client's languages, and of one of
+    // them (security reviews 7 and 9).
+    if (given && lettersOutside(given, tenant.locales)) {
+      throw new BadRequestException({ code: 'invalid_number', reason: 'script' });
+    }
     if (given && mixesScripts(given)) {
       throw new BadRequestException({ code: 'invalid_number', reason: 'mixed_scripts' });
     }

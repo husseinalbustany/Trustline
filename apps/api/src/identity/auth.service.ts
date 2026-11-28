@@ -271,14 +271,29 @@ export class AuthService {
   }
 
   /**
+   * The context of a person as if they were signed in, with no session, for
+   * BackgroundContext (email/background-context.ts) alone, which builds the
+   * email digest as the person and is provided to EmailModule alone. It
+   * takes no token and no session time, so neither can be left out by
+   * mistake elsewhere. Lint (`.oxlintrc.json`) refuses a call to it outside
+   * identity/ and email/ (security review 9, finding 6). Every request gets
+   * its context from `resolve`, with a session.
+   */
+  backgroundContextIn(
+    tx: Transaction,
+    tenant: typeof tenants.$inferSelect,
+    user: typeof users.$inferSelect,
+  ): Promise<AuthContext | null> {
+    return this.contextIn(tx, tenant, user, '', null);
+  }
+
+  /**
    * The context of an active user of an active client, in a transaction of
    * that client. `issuedAt`: when the session was, to be refused if it is
    * from before the client or its subscription was last reset; null only
-   * for BackgroundContext (email/background-context.ts), which builds one
-   * with no session for the email digest and is provided to EmailModule
-   * alone. Everything else gets a context from `resolve`, with a session.
+   * from `backgroundContextIn`.
    */
-  async contextIn(
+  private async contextIn(
     tx: Transaction,
     tenant: typeof tenants.$inferSelect,
     user: typeof users.$inferSelect,

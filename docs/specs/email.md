@@ -241,16 +241,25 @@ for the life of the process (the log says so).
 - **Retries and backoff.** No answer, or a temporary refusal (4xx), is
   tried again after 1, 5, 30 and 120 minutes. After 5 attempts it is
   `failed`. Only a refusal of this message or its recipient is `failed` at
-  once: a 5xx to RCPT TO (`EENVELOPE`) or to the message (`EMESSAGE`).
+  once: a 5xx to the message (`EMESSAGE`), or one to RCPT TO (`EENVELOPE`)
+  whose enhanced status (RFC 3463) is about the address, the mailbox or the
+  mail system (5.1.x, 5.2.x, 5.3.x), or, with no enhanced status, 550 to
+  553 (security review 9, finding 1). At RCPT TO, 530 and any 5.7.x
+  (Postfix's "554 5.7.1 Relay access denied", Exchange's "550 5.7.54
+  Unable to relay") are the sender's standing, the configuration's: tried
+  again, as a refused login is, and sending stops.
   Everything else is tried again, whatever its reply code and nodemailer's
   own `permanent` (security review 8, M1): a refused or missing login
   (`EAUTH` 535, `ENOAUTH`, 530), TLS, the protocol, the connection, and a
   refusal of the sender at MAIL FROM (550, 553). These are the
   configuration's or the server's, and fixing them fixes every message. A
-  refused login also stops the run: the email it happened to is tried
-  again later, every other one claimed goes back to the queue as it was,
-  nothing more is sent to any client until the next run, and the log says
-  to check `SMTP_USER` and `SMTP_PASSWORD`.
+  refused login or relay stops sending: the email it happened to and every
+  other one claimed go back to the queue as they were, with no attempt
+  counted (security review 9, finding 2), so an outage of the login gives
+  up nobody's email (the day-old expiry is the only limit); nothing is sent
+  to any client for 5 minutes (`PAUSE_AFTER_REFUSAL_MS`), so a wrong
+  password is not tried every 30 seconds; and the log says to check
+  `SMTP_USER`, `SMTP_PASSWORD` and the relay's settings.
 - **Read for each email.** The organization's switch, the subscription and
   its modules are read as each email is prepared (security review 8, L1),
   so switching email off, a module off or a suspension counts from the next
@@ -318,7 +327,14 @@ security, so one of the id alone could have named another tenant's row.
 The index on notifications, which may be large, is built concurrently by
 `migrate.ts` before the migrations run (a migration runs in a transaction,
 where that cannot be done); the migration makes it only if it is not
-there.
+there. `migrate.ts` builds it only while 0050 is not applied, and a
+migration run holds an advisory lock throughout, so two never build or
+drop it together (security review 9, finding 4). 0050 itself still holds a
+lock on `notifications` while its check is added again over every row, in
+the one transaction the migrations run in. It is committed as it is: no
+production database holds data yet, so the lock lasts no time today. A
+later change of that kind to a table with data adds its check and key
+`NOT VALID` and validates them after.
 
 **Audit:** changing one's preferences (`notification_preferences_changed`,
 with what changed and `via: 'settings' | 'unsubscribe_link'`), and switching
@@ -370,7 +386,11 @@ log) is kept elsewhere.
   (`email/background-context.ts`). This builds the person's access as a
   session would, with no session, and only for work in the background. It
   is a provider of EmailModule's own, exported to nothing (security review
-  8), so no other module can build a context without a session.
+  8), so no other module can build a context without a session. It asks
+  `AuthService.backgroundContextIn`, which takes no token and no session
+  time; lint (`.oxlintrc.json`) refuses that call, and the import of
+  `BackgroundContext`, outside `identity/` and `email/` (security review 9,
+  finding 6).
 - **The unsubscribe link posts a form.** The API takes JSON bodies only,
   except a form posted to `/email/unsubscribe/:token` (`app.setup.ts`), which
   is what RFC 8058 has mail clients send. It needs no session and acts on the

@@ -2,8 +2,35 @@
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "rules": {
     "typescript/no-explicit-any": "off",
-    "typescript/no-floating-promises": "error"
+    "typescript/no-floating-promises": "error",
+    "no-restricted-properties": [
+      "error",
+      {
+        "property": "backgroundContextIn",
+        "message": "A context with no session is for the email digest only (email/background-context.ts): security review 9, finding 6."
+      }
+    ],
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["**/background-context.js", "**/background-context"],
+            "message": "BackgroundContext builds a person's access with no session: EmailModule's alone (security review 9, finding 6)."
+          }
+        ]
+      }
+    ]
   },
+  "overrides": [
+    {
+      "files": ["src/identity/**", "src/email/**"],
+      "rules": {
+        "no-restricted-properties": "off",
+        "no-restricted-imports": "off"
+      }
+    }
+  ],
   "env": {
     "node": true
   }
