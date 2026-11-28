@@ -77,5 +77,8 @@ export type ExportWording = {
     empty: string;
     contentHash: string;
     signed: string;
+    /** An AI draft nobody has taken ownership of yet: its mark and notice (design-guidelines-and-branding.md, "AI content"). */
+    aiDraft: string;
+    aiNotice: string;
   };
 };

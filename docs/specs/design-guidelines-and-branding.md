@@ -109,6 +109,21 @@ Rules that apply to all:
 - **Actions:** Use, Dismiss; never "Accept all".
 - A draft keeps its "AI draft" mark until a person takes ownership.
 
+#### The fixed notices (language review 11)
+
+The single source of the wording: the web dictionaries
+(`policies.drafting.notice` and the suggestion notice) and the API's
+exported documents (`apps/api/src/exports/wording/<lang>.ts`, `html.aiNotice`)
+copy these texts word for word. They cannot be switched off or styled away.
+
+| | English | العربية | Français |
+|---|---|---|---|
+| **Mark** | AI draft · AI suggestion | مسودة ذكاء اصطناعي · اقتراح من المساعد الذكي | Brouillon IA · Suggestion de l’IA |
+| **Drafting notice** (on every AI draft, and in every export of one, until a person takes ownership) | Written by an AI assistant. It can be wrong or incomplete: check every part against how your organization works before you rely on it. Only a person can approve or publish what it writes. | كتبه المساعد الذكي، وقد يحتوي أخطاء أو نقصًا: راجِع كل جزء منه في ضوء طريقة العمل في منشأتك قبل الأخذ به. ولا يُعتمد شيء مما يكتبه ولا يُنشر إلا بقرار من شخص. | Ce texte a été rédigé par un assistant d’IA. Il peut contenir des erreurs ou des oublis : vérifiez chaque partie au regard du fonctionnement de votre établissement avant de vous y fier. Seule une personne peut approuver ou publier ce qu’il rédige. |
+| **Suggestion notice** (with every suggestion, and in anything exported or printed that holds one; `ai-insights.md`, rule 7) | This is a suggestion from the AI assistant, based on the records listed below. It can be wrong or incomplete. Check it and investigate further before you decide. | هذا اقتراح من المساعد الذكي، مبني على السجلات المذكورة أدناه، وقد يكون خاطئًا أو ناقصًا. تحقّق منه وواصل التقصّي قبل أن تقرّر. | Ceci est une suggestion de l’assistant d’IA, fondée sur les dossiers listés ci-dessous. Elle peut être erronée ou incomplète. Vérifiez-la et poursuivez l’analyse avant de décider. |
+
+In French, the colon takes a no-break space (U+00A0) before it.
+
 ### Accessibility
 
 WCAG 2.2 level AA as the target: contrast as above, keyboard access, visible

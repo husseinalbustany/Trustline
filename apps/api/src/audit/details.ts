@@ -1,4 +1,7 @@
 import { pickText, type Locale, type Localized } from '../i18n/locales.js';
+import { wordDay, wordMonth } from '../i18n/dates.js';
+import { MEASURE_DEFINITIONS, type MeasureCode } from '../reports/measures.js';
+import { REPORTS_WORDING } from '../reports/wording/index.js';
 import { AUDIT_ACTIONS, type AuditAction } from './actions.js';
 import type { AuditWording } from './wording/types.js';
 
@@ -26,7 +29,15 @@ const CODED = new Set([
   'visibility', 'outcome', 'via', 'type', 'harmLevel', 'kind', 'to', 'from',
   // How a document came into Trustline, and who wrote a draft's version.
   'source', 'author',
+  // A module, and how a month's figures were taken (language review 11).
+  'module', 'method',
 ]);
+
+/** A measure's name in this language, or its code if it is none. */
+const measureName = (code: unknown, locale: Locale) =>
+  typeof code === 'string' && Object.hasOwn(MEASURE_DEFINITIONS, code)
+    ? REPORTS_WORDING[locale].measures[code as MeasureCode]
+    : String(code);
 
 /** The screen a route is, for what an external reviewer viewed. */
 export function screenOf(route: string): keyof AuditWording['details']['screens'] {
@@ -70,6 +81,13 @@ export function detailLines(action: AuditAction, details: Record<string, unknown
         return name ? pick(name) : v.slice(0, 8);
       }
       if (CODED.has(key) && Object.hasOwn(d.values, v)) return d.values[v];
+      // Words, not codes or raw dates (language review 11): a language by
+      // its name, a month and a day as the web writes them, a measure by
+      // its name.
+      if (key === 'locale' && Object.hasOwn(d.languages, v)) return d.languages[v as Locale];
+      if (key === 'month') return wordMonth(v, ctx.locale);
+      if (key === 'measures' || key === 'measure') return measureName(v, ctx.locale);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return wordDay(v, ctx.locale);
       return v;
     }
     if (Array.isArray(v)) return v.length === 0 ? d.none : v.map((x) => fmt(key, x)).join(', ');
@@ -86,6 +104,38 @@ export function detailLines(action: AuditAction, details: Record<string, unknown
   };
   const fill = (template: string, values: Record<string, string>) =>
     template.replace(/\{([A-Za-z]+)\}/g, (_, k: string) => values[k] ?? d.none).replace(/\s+$/, '');
+
+  // A target in the measure's own terms: "95%", "120 s", or the default.
+  const target = (code: string, v: unknown) => {
+    if (v === null || v === undefined) return d.defaultTarget;
+    const unit = Object.hasOwn(MEASURE_DEFINITIONS, code) ? MEASURE_DEFINITIONS[code as MeasureCode].valueUnit : 'count';
+    return unit === 'percent' || unit === 'seconds' ? d.units[unit].replace('{value}', String(v)) : String(v);
+  };
+  const change = (from: string, to: string) => d.change.replace('{from}', from).replace('{to}', to);
+  // Reports: one line per measure, named (language review 11).
+  if (action === 'report_settings_changed') {
+    const lines: string[] = [];
+    const targets = details.targets && typeof details.targets === 'object' ? (details.targets as Record<string, { from?: unknown; to?: unknown }>) : {};
+    for (const [code, c] of Object.entries(targets)) {
+      lines.push(`${measureName(code, ctx.locale)}${d.colon}${change(target(code, c?.from), target(code, c?.to))}`);
+    }
+    if (details.baseline !== undefined) lines.push(`${label('baseline')}${d.colon}${fmt('baseline', details.baseline)}`);
+    return lines;
+  }
+  if (action === 'measure_correction_requested' && Array.isArray(details.values)) {
+    const lines = ['month', 'measures', 'unitId', 'reason']
+      .filter((k) => details[k] !== undefined)
+      .map((k) => `${label(k)}${d.colon}${fmt(k, details[k])}`);
+    const figures = (details.values as { measure?: string; unitId?: string | null; from?: { value?: unknown }; to?: { value?: unknown } }[]).map(
+      (r) =>
+        `${measureName(r.measure, ctx.locale)}${r.unitId ? ` (${fmt('unitId', r.unitId)})` : ''}${d.colon}${change(
+          r.from?.value == null ? d.none : target(r.measure ?? '', r.from.value),
+          r.to?.value == null ? d.none : target(r.measure ?? '', r.to.value),
+        )}`,
+    );
+    if (figures.length > 0) lines.push(`${label('values')}${d.colon}${figures.join(d.listSeparator)}`);
+    return lines;
+  }
 
   if (action === 'external_reviewer_viewed') {
     const route = typeof details.route === 'string' ? details.route : '';

@@ -58,40 +58,40 @@ export const fr: Wording = {
       body: 'Après trop de codes de signature erronés, la signature par votre code est bloquée dans Trustline, et la session où ils ont été saisis a été fermée. Demandez à votre administrateur de réinitialiser votre code ; si ce n’était pas vous, dites-le-lui.',
     },
     data_export_requested: {
-      subject: "Un export complet des données de votre organisation a été demandé",
-      body: "Un export complet des données de votre organisation a été demandé. Il doit être approuvé par une deuxième personne avant d’être préparé. Ouvrez Trustline pour voir qui l’a demandé.",
+      subject: "Une exportation complète des données de votre établissement a été demandée",
+      body: "Une exportation complète des données de votre établissement a été demandée. Elle doit être approuvée par une deuxième personne avant d’être préparée. Ouvrez Trustline pour voir qui l’a demandée ; si vous ne l’attendiez pas, refusez-la.",
     },
     data_export_approved: {
-      subject: "Un export complet des données de votre organisation a été approuvé",
-      body: "Un export complet des données de votre organisation a été approuvé et est en cours de préparation. Ouvrez Trustline pour voir qui l’a approuvé.",
+      subject: "Une exportation complète des données de votre établissement a été approuvée",
+      body: "Une exportation complète des données de votre établissement a été approuvée et est en cours de préparation. Ouvrez Trustline pour voir qui l’a approuvée.",
     },
     data_export_refused: {
-      subject: "Un export complet des données de votre organisation a été refusé",
-      body: "Une demande d’export complet des données de votre organisation a été refusée. Rien n’a été préparé. Ouvrez Trustline pour en voir le motif.",
+      subject: "Une exportation complète des données de votre établissement a été refusée",
+      body: "Une demande d’exportation complète des données de votre établissement a été refusée. Aucun fichier n’a été créé. Ouvrez Trustline pour en voir le motif.",
     },
     data_export_cancelled: {
-      subject: "Un export complet des données de votre organisation a été annulé",
-      body: "Une demande d’export complet des données de votre organisation a été annulée par la personne qui l’avait faite. Rien n’a été préparé.",
+      subject: "Une exportation complète des données de votre établissement a été annulée",
+      body: "Une demande d’exportation complète des données de votre établissement a été annulée par la personne qui l’avait faite. Aucun fichier n’a été créé.",
     },
     data_export_lapsed: {
-      subject: "Une demande d’export complet des données a expiré",
-      body: "Une demande d’export complet des données de votre organisation n’a pas été approuvée dans les 7 jours et a expiré. Rien n’a été préparé.",
+      subject: "Une demande d’exportation complète des données a expiré",
+      body: "Une demande d’exportation complète des données de votre établissement n’a pas été approuvée dans les 7 jours et a expiré. Aucun fichier n’a été créé.",
     },
     data_export_ready: {
-      subject: "L’export complet des données de votre organisation est prêt",
-      body: "L’export complet des données de votre organisation est prêt. La personne qui l’a demandé et celle qui l’a approuvé peuvent le télécharger dans Trustline pendant 7 jours.",
+      subject: "L’exportation complète des données de votre établissement est prête",
+      body: "L’exportation complète des données de votre établissement est prête. La personne qui l’a demandée et celle qui l’a approuvée peuvent la télécharger dans Trustline, jusqu’à 5 fois dans les 7 jours.",
     },
     data_export_downloaded: {
-      subject: "L’export complet des données de votre organisation a été téléchargé",
-      body: "L’export complet des données de votre organisation a été téléchargé. Ouvrez Trustline pour voir qui l’a téléchargé.",
+      subject: "L’exportation complète des données de votre établissement a été téléchargée",
+      body: "L’exportation complète des données de votre établissement a été téléchargée. Ouvrez Trustline pour voir qui l’a téléchargée.",
     },
     data_export_failed: {
-      subject: "L’export complet des données de votre organisation n’a pas pu être préparé",
-      body: "L’export complet des données de votre organisation n’a pas pu être préparé, malgré plusieurs tentatives. Vous pouvez en demander un nouveau.",
+      subject: "L’exportation complète des données de votre établissement n’a pas pu être préparée",
+      body: "L’exportation complète des données de votre établissement n’a pas pu être préparée, malgré plusieurs tentatives. Vous pouvez en demander une nouvelle.",
     },
     contract_ending: {
-      subject: "Le contrat de votre organisation prend fin le {day}",
-      body: "Le contrat de votre organisation avec Trustline prend fin le {day}. Vous pouvez en exporter les données d’ici là, depuis Administration, « Export des données ».",
+      subject: "Le contrat de votre établissement prend fin le {day}",
+      body: "Le contrat de votre établissement avec Trustline prend fin le {day}. Vous pouvez en exporter les données d’ici là, depuis Administration, « Exportation des données ».",
     },
     audit_chain_head: {
       subject: 'Journal d’audit : le sceau de la semaine',

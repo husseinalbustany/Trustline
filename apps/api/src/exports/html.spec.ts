@@ -38,13 +38,15 @@ describe('document HTML', () => {
       imported: null,
       signatures: [{ meaning: 'Approval', by: 'Authority', at: '2026-10-30 10:00', contentHash: 'a'.repeat(64) }],
       languageName: (l) => (l === 'en' ? 'الإنجليزية' : l),
+      aiDraft: true,
     };
     const html = versionHtml(page, EXPORT_WORDING.ar);
     expect(html).toContain('<html lang="ar" dir="rtl">');
     expect(html).toContain("default-src 'none'");
     expect(html).not.toMatch(/<script|<link|<img|src=|href=/);
-    expect(html).toContain('<div lang="en"><p>Clean hands.</p></div>');
-    expect(html).toContain('بـالإنجليزية');
+    expect(html).toContain('<div lang="en" dir="ltr"><p>Clean hands.</p></div>');
+    expect(html).toContain('باللغة الإنجليزية');
+    expect(html).toContain('مسودة ذكاء اصطناعي');
     expect(html).toContain('<p>اغسل.</p>');
     expect(html).toContain('a'.repeat(64));
   });

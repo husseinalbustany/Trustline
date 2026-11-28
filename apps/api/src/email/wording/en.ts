@@ -57,7 +57,7 @@ export const en: Wording = {
     },
     data_export_requested: {
       subject: "A full export of your organization’s data was requested",
-      body: "A full export of your organization’s data was requested. It needs a second person’s approval before it is made. Open Trustline to see who asked.",
+      body: "A full export of your organization’s data was requested. It needs a second person’s approval before it is made. Open Trustline to see who asked. If you do not expect it, refuse it there.",
     },
     data_export_approved: {
       subject: "A full export of your organization’s data was approved",
@@ -77,7 +77,7 @@ export const en: Wording = {
     },
     data_export_ready: {
       subject: "A full export of your organization’s data is ready",
-      body: "A full export of your organization’s data is ready. The person who asked and the approver can download it in Trustline for 7 days.",
+      body: "A full export of your organization’s data is ready. The person who asked and the approver can download it in Trustline, up to 5 times within 7 days.",
     },
     data_export_downloaded: {
       subject: "A full export of your organization’s data was downloaded",

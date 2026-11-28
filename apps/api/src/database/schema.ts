@@ -3034,6 +3034,7 @@ export const dataExports = pgTable(
     // The worker's queue, client by client.
     index('data_exports_status_idx').on(t.tenantId, t.status),
     check('data_exports_not_self_approved', sql`${t.approvedBy} is null or ${t.approvedBy} <> ${t.requestedBy}`),
+    check('data_exports_not_self_refused', sql`${t.refusedBy} is null or ${t.refusedBy} <> ${t.requestedBy}`),
     check(
       'data_exports_one_approval',
       sql`(${t.trustlineApprovedBy} is null or ${t.approvedBy} is null) and ((${t.trustlineApprovedBy} is null) = (${t.writtenRequest} is null))`,

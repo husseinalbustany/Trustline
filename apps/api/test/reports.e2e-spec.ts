@@ -475,7 +475,7 @@ describe('reports and measures', () => {
       const res = await get(a.cookie, `/reports/exports/measures?${months(lastMonth, lastMonth)}&unitId=${dept}`).expect(200);
       expect(res.headers['content-type']).toContain('text/csv');
       const lines = res.text.replace(/^﻿/, '').trim().split('\r\n');
-      expect(lines[0]).toBe('"Month","Unit","Place in the structure","Measure","Value","Counted","Out of","Target","Target met","Status","How it was taken","Revision","As at","Definition version"');
+      expect(lines[0]).toBe(`"Month","Unit","Place in the structure","Measure","Value","Counted","Out of","Target","Target met","Status","How it was taken","Revision","As at (${zone})","Definition version"`);
       expect(lines.find((l) => l.includes('"Reports submitted"'))).toContain('"Unit D"');
       const [audited] = await bench.owner.db
         .select({ changes: auditLog.changes })

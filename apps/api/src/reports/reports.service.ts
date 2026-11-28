@@ -300,19 +300,21 @@ export class ReportsService {
       let unitName: string = w.organization;
       let unitPath = '';
       if (unit) {
-        const { rows: found } = await tx.execute<{ name: Localized; path: string }>(sql`
+        const { rows: found } = await tx.execute<{ name: Localized; depth: number }>(sql`
           with recursive up (id, name, depth) as (
             select id, name, 0 from org_units where id = ${unit}
             union all
             select p.id, p.name, up.depth + 1 from up join org_units u on u.id = up.id join org_units p on p.id = u.parent_id
-          ) select (select name from up where depth = 0) as name,
-                   string_agg(name ->> ${locale}, ' / ' order by depth desc) as path from up`);
+          ) select name, depth from up order by depth desc`);
+        // Each unit's name in the file's language, or in the client's own
+        // where it has none (language review 11).
         const pick = (n: Localized) => pickText(n, locale, auth.tenant.defaultLocale);
-        unitName = found[0] ? pick(found[0].name) : unit;
-        unitPath = found[0]?.path ?? '';
+        const own = found.find((r) => r.depth === 0);
+        unitName = own ? pick(own.name) : unit;
+        unitPath = found.map((r) => pick(r.name)).join(' / ');
       }
       const body = csv(
-        [w.csv.month, w.csv.unit, w.csv.unitPath, w.csv.measure, w.csv.value, w.csv.numerator, w.csv.denominator, w.csv.target, w.csv.met, w.csv.status, w.csv.method, w.csv.revision, w.csv.asAt, w.csv.definitionVersion],
+        [w.csv.month, w.csv.unit, w.csv.unitPath, w.csv.measure, w.csv.value, w.csv.numerator, w.csv.denominator, w.csv.target, w.csv.met, w.csv.status, w.csv.method, w.csv.revision, w.csv.asAt.replace('{zone}', zone), w.csv.definitionVersion],
         rows.map((r) => {
           const def = MEASURE_DEFINITIONS[r.measure as MeasureCode];
           const value = r.value === null ? null : Number(r.value);

@@ -105,6 +105,8 @@ export type VersionPage = {
     differences: unknown;
   } | null;
   signatures: { meaning: string; by: string | null; at: string; contentHash: string }[];
+  /** An AI draft nobody has taken ownership of yet: marked as such. */
+  aiDraft: boolean;
   /** The language names, in the page's language, for the fallback note. */
   languageName: (locale: string) => string;
 };
@@ -115,6 +117,8 @@ table { border-collapse: collapse; margin-block: 1rem; }
 th, td { text-align: start; padding-block: 0.25rem; padding-inline: 0 1rem; vertical-align: top; }
 .control { border: 1px solid #999; padding: 0.75rem 1rem; }
 .note { font-style: italic; color: #555; }
+:lang(ar) .note { font-style: normal; }
+.ai { border-inline-start: 4px solid #5B4BC4; padding-inline-start: 0.75rem; color: #5B4BC4; }
 .hash { font-family: ui-monospace, monospace; word-break: break-all; direction: ltr; unicode-bidi: isolate; }
 section { margin-block: 1.5rem; }
 `;
@@ -170,7 +174,11 @@ export function versionHtml(page: VersionPage, words: ExportWording): string {
               ? `<p class="note">${escapeHtml(w.empty)}</p>`
               : '';
       const text = s.state === 'fallback' ? main : here;
-      const lang = s.state === 'fallback' ? ` lang="${escapeHtml(page.authoritative)}"` : '';
+      // Shown in the language that applies: its own language and direction.
+      const lang =
+        s.state === 'fallback'
+          ? ` lang="${escapeHtml(page.authoritative)}" dir="${page.authoritative === 'ar' ? 'rtl' : 'ltr'}"`
+          : '';
       return `<section><h2>${escapeHtml(pick(s.name))}</h2>${note}<div${lang}>${text ? sectionHtml(text) : ''}</div></section>`;
     })
     .join('');
@@ -200,6 +208,7 @@ export function versionHtml(page: VersionPage, words: ExportWording): string {
     '<body>',
     `<p>${escapeHtml(pick(page.organization))}</p>`,
     `<h1>${escapeHtml(title)}</h1>`,
+    page.aiDraft ? `<div class="ai"><strong>${escapeHtml(w.aiDraft)}</strong><p>${escapeHtml(w.aiNotice)}</p></div>` : '',
     `<div class="control"><table>${control}</table>${approvals}</div>`,
     sections,
     summary,

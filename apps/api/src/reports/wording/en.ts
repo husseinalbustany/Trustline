@@ -22,7 +22,7 @@ export const en: ReportsWording = {
     status: 'Status',
     method: 'How it was taken',
     revision: 'Revision',
-    asAt: 'As at',
+    asAt: 'As at ({zone})',
     definitionVersion: 'Definition version',
   },
   organization: 'Whole organization',

@@ -51,6 +51,14 @@ export type AuditWording = {
     yes: string;
     no: string;
     change: string;
+    /** Between items of one list in a line: ", " or "، " (language review 11). */
+    listSeparator: string;
+    /** A target left to the default (language review 11). */
+    defaultTarget: string;
+    /** A figure in its unit: {value}. */
+    units: { percent: string; seconds: string };
+    /** Each language by its name, in this language. */
+    languages: Record<'en' | 'ar' | 'fr', string>;
     fields: Record<AuditDetailKey, string>;
     values: Record<string, string>;
     templates: Record<string, string>;

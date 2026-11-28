@@ -691,25 +691,150 @@ built. Reviews are still due: `security-reviewer` after steps 2 and 3, and
   - `wording.spec.ts`, which checks the same keys and placeholders in en,
     ar and fr.
 
+### Security review 19 (fixed)
+
+- **H1: Trustline's records about the client.** In
+  `organization/trustline_records.jsonl`, an allowlist of detail keys per
+  action (`exports/trustline-records.ts`) keeps only what the client's own
+  log mirrors. Trustline's note, the AI spending limit and connection ids
+  are never in it, and an action not listed goes with no details. The e2e
+  test sets a note and a limit and finds neither in any file.
+- **M1: the retry cap.** A claim silent for 30 minutes is taken over only
+  within the 3 tries; at the last, the export fails as `stopped`, audited
+  and told.
+- **M2: overlapping runs.**
+  - Working files and the stored archive are per attempt
+    (`work/<client>/<export>/<attempt>`, `<client>/<export>/<attempt>.zip.enc`).
+  - A heartbeat every minute, and at each phase, checks the claim is still
+    the run's (its attempt). Otherwise the run aborts and touches nothing
+    of the other's.
+- **M3: the second person.** Approval is refused (403
+  `approver_not_independent`, with `reason`) when the approver's account,
+  or every grant of theirs giving `data.export` for the whole
+  organization, was made by the requester or within the last 7 days.
+  Holders are told when someone is given `data.export` (see "Built, steps 6
+  and 7").
+- **L1:** `data.export` counts only together with `incidents.see_reporter`
+  for the whole organization: on every route, in the exit window, and in
+  who counts as a holder for Trustline's second approval. Reporters stay
+  in the archive.
+- **L2:**
+  - AI request costs and Trustline's connection ids are left out;
+  - `exports/coverage-columns.ts` lists every exported column. The archive
+    reads only those, and the coverage test fails for a column decided
+    nowhere.
+- **L3:** batches are sized by what the last one weighed, and wide tables
+  start at 50 rows.
+- **L4:** a download is counted only after the whole file is decrypted and
+  its tag checked (409 `archive_unavailable` otherwise).
+- **L5:** production needs `EXPORT_STORAGE_DIR`, kept at 0700, and refuses
+  an export key equal to the audit key.
+- **L6:** document folder names are unique across the archive.
+- **L7:**
+  - each run does the quick work (lapse, expiry) for every client first,
+    and begins no export after 10 minutes;
+  - one archive is ready per client: a newer one expires the older
+    (`by: replaced`).
+- **L8:**
+  - the organization's email switch no longer silences the export and
+    contract-end emails;
+  - the README gives the keys' full address, the OpenSSL 3 and jq commands
+    (run as written by the e2e test), and advice to save `keys.json` with
+    the archive.
+- **L9:** a wider isolation check, tests of the records, the cap,
+  overlapping runs, the one-ready rule and a tampered file; the test
+  clean-up removes the run's archive files.
+- **0071:** the schema comment now names the right migration.
+
+## Built (steps 6 and 7, API)
+
+The migrations are drafted (generated from `schema.ts`, plus custom grants
+and a function). They are added to `drizzle/` once the branches before them
+have merged. The web page and the portal's screens are not built.
+
+- **The contract's dates:**
+  - Trustline's staff set `subscriptions.ends_on`, `exit_until` and
+    `retain_until` (`PUT /platform/tenants/:id/contract`).
+  - Each change is in Trustline's log (`contract_end_set`,
+    `exit_window_set`, `retention_set`) and the client's
+    (`contract_end_set`).
+  - Cancelling a subscription sets the exit window to 90 days (the
+    business's decision) unless staff set one, and the retention date to its
+    end unless later.
+- **Notices before the end:** `ContractNotices` runs hourly (started by
+  `main.ts`), 90, 30 and 7 days before `ends_on` on the client's calendar.
+  - It tells the client's holders of `data.export` or `settings.manage` for
+    the whole organization, in the app and by email (`contract_ending`):
+    compulsory, sent while suspended, sent whatever the organization's
+    switch says.
+  - Each notice goes once per end date. A date set late gets only the
+    nearest notice.
+- **The exit window:**
+  - While the subscription is cancelled and the window is open on the
+    client's calendar, only those who may export (`data.export` and
+    `incidents.see_reporter` for the whole organization) can sign in.
+  - Their context has `tenant.exit = { until }` and no modules. Only routes
+    marked `@OpenInExitWindow()` answer (sign-out, `/auth/me`, `/exports`);
+    every other route answers 403 `subscription_cancelled`.
+  - Everyone else is refused as before, and the public routes stay closed.
+    Sessions from before the cancellation stay void.
+  - The export emails go on during the window.
+- **Trustline's second approval** (decision 3):
+  `POST /platform/tenants/:id/exports/:exportId/approve` records it, with
+  the contract contact's written request.
+  - The database function `data_export_second_approval()` (SECURITY
+    DEFINER, `pg_temp` last in its `search_path`) does it, and only when no
+    other independent holder of the client could approve (409
+    `not_alone`).
+  - It writes `data_export_approved_by_trustline` in the client's log and
+    tells the holders. Trustline's log records `second_approval_recorded`.
+  - It releases nothing to Trustline: only the person who asked may
+    download.
+- **Trustline's view of the exports:** status, reason, times, size and
+  downloads, through column grants and a SELECT policy for the platform
+  role, never who asked.
+- **Deletion:**
+  - Asked for by one member of staff (`POST /platform/tenants/:id/deletion`)
+    after the retention date, for a cancelled client, and only once an
+    export was downloaded or the client's written instruction is recorded.
+  - Approved by another (`…/deletion/:id/approve`, 403 `same_person`), and
+    cancellable.
+  - Carried out by `pnpm --filter api platform:delete-client --deletion <id>
+    --backups-expire-on <day>`, as the owner, in one transaction:
+    - it re-checks everything, and records the chain's head and last
+      checkpoint;
+    - it deletes every row of every table with `tenant_id` (from the
+      catalogue, so a new module's too), counting each, and refuses if a
+      table without `tenant_id` points into them;
+    - it keeps the client's row as a stub (status `deleted`, no name, the
+      identifier never reused);
+    - it writes the deletion certificate, signed with Trustline's export
+      key, into `client_deletions` and Trustline's log
+      (`client_data_deleted`);
+    - it removes the client's archives from storage.
+- **The `data.export` grant notice:** someone given `data.export` for the
+  whole organization is named to the other Administrators
+  (`data_export_granted`). It goes to neither the person given it nor the
+  one who gave it, as for `policies.import`
+  (`ProvisioningService.tellOfWatchedGrants`).
+- **Tests:** `test/contract-end.e2e-spec.ts`, run against a scratch
+  database with the drafts applied:
+  - the dates and their audit;
+  - the notices;
+  - the grant notice;
+  - the exit window;
+  - Trustline's approval, with `not_alone` and a download;
+  - deletion: refusals, two people, the certificate verified against the
+    published key, the stub, and nothing left of the client.
+
 ### Not done here
 
-- **Trustline's second approval** for a client with one administrator
-  (decision 3, decided): it needs the platform view of exports, so it
-  comes with step 6.
-- **The passphrase on the archive** (decision 5, optional). AES ZIP
+- **Sending the deletion certificate** to the client's contract contact:
+  Trustline has no record of that contact yet. The portal shows the
+  certificate, and the command writes it to a file.
+- **The optional passphrase** on the archive (decision 5): AES ZIP
   encryption needs a tool to check it against, and none is installed here.
-- **PDFs** wait for the renderer (decision 12). The manifest says
-  `pdfs.included: false`.
-- **The rest of steps 4 to 8:**
-  - the platform's column-limited view of `data_exports`;
-  - the contract's end date, notices and exit window;
-  - deletion after retention, and the deletion certificate;
-  - telling administrators when someone is given `data.export` (the grant
-    itself is audited).
+- **PDFs** wait for the renderer (decision 12).
 - **Storage** is a volume, not object storage per region with a key service
   (decision 4).
-- **Without `EXPORT_STORAGE_KEY`,** outside production, a process can read
-  only the archives it made.
-- **Phase 2** keeps an index of the versions, not their text, in memory.
-  The maps of people, units, documents, steps, signatures and imports are
-  held whole.
+- **A per-person export** (step 8).

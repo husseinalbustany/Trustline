@@ -744,6 +744,7 @@ export class ArchiveBuilder {
             : null,
           signatures: about.signatures.map((s) => ({ meaning: code(s.meaning), by: name(s.by), at: moment(s.at) ?? '', contentHash: s.hash })),
           languageName: (l) => (words.languages as Record<string, string>)[l] ?? l,
+          aiDraft: doc.source === 'ai_drafted' && !doc.ai_draft_owned_at,
         },
         words,
       );

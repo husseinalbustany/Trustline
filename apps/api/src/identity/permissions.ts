@@ -189,9 +189,10 @@ export const SYSTEM_ROLES: {
       fr: 'Autorité d’approbation',
     },
     description: {
-      en: 'Gives the final approval of controlled documents, reads every document, restricted ones and drafts included, and views reports on documents.',
-      ar: 'يمنح الاعتماد النهائي للوثائق المضبوطة، ويقرأ كل الوثائق بما فيها المقيّدة والمسودات، ويطّلع على تقارير الوثائق.',
-      fr: 'Donne l’approbation finale des documents maîtrisés, lit tous les documents, y compris les documents restreints et les brouillons, et consulte les rapports sur les documents.',
+      // Reworded by language review 11 (a migration after 0067 rewords existing clients' roles).
+      en: 'Gives the final approval of controlled documents, reads every document (restricted ones and drafts included), and reads the document measures in Reports.',
+      ar: 'يتولى الاعتماد النهائي للوثائق المضبوطة، ويقرأ كل الوثائق بما فيها المقيّدة والمسودات، ويطّلع على مؤشرات الوثائق في التقارير.',
+      fr: 'Donne l’approbation finale des documents maîtrisés, lit tous les documents (brouillons et documents restreints compris) et consulte les indicateurs documentaires des rapports.',
     },
     // `reports.view` from migration 0067 (reports decision 6): with no
     // incident permission, it sees the document measures only.

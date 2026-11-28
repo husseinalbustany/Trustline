@@ -39,7 +39,7 @@ export const en: ExportWording = {
     unsigned: 'This manifest is not signed: the system that made it has no export key. Its files can still be checked against the manifest.',
     personalTitle: 'Personal data:',
     personal: [
-      'This archive holds personal data: names, email addresses, phone numbers, job titles and employee numbers of staff; their sign-in times and addresses in the audit trail; who reported each named incident; signatures and acknowledgements; and the free text of incidents and comments, which is written by people and may name someone.',
+      'This archive holds personal data: names, email addresses, phone numbers, job titles and employee numbers of staff; their sign-in times and IP addresses in the audit trail; who reported each named incident; signatures and acknowledgements; and the free text of incidents and comments, which is written by people and may name someone.',
       'Your organization is responsible for it from now on: keep it where only those who need it can open it.',
     ],
     notIncludedTitle: 'Left out, and why:',
@@ -47,7 +47,7 @@ export const en: ExportWording = {
       'Passwords, signing PINs, sign-in codes, session and link tokens, and their fingerprints: secrets of no use outside Trustline.',
       'The secret an anonymous reporter follows their report with.',
       'Copies of emails sent, kept 30 days for support only.',
-      'Sign-in addresses already cleared from the audit trail after two years. Their fingerprints stay in the chain.',
+      'Sign-in IP addresses already cleared from the audit trail after two years. Their fingerprints stay in the chain.',
     ],
     pdfs: 'PDF files of the documents are not in this archive yet: they follow in a later release. Each version is here as its text and as a web page.',
   },
@@ -65,10 +65,10 @@ export const en: ExportWording = {
       description: 'Description', immediate_action: 'Immediate action', closure_summary: 'Closure summary',
     },
     incident_events: {
-      incident_id: 'Incident', occurred_at: 'When', kind: 'What happened', actor_id: 'By', from_status: 'Status before', to_status: 'Status after',
+      incident_id: 'Incident', occurred_at: 'Date and time', kind: 'Event', actor_id: 'Done by', from_status: 'Status before', to_status: 'Status after',
     },
     documents: {
-      number: 'Number', title: 'Title', type_id: 'Type', category_id: 'Category', owner_id: 'Owner', owner_unit_id: 'Owning unit',
+      number: 'Number', title: 'Title', type_id: 'Type', category_id: 'Category', owner_id: 'Owner', owner_unit_id: 'Responsible area',
       confidentiality: 'Who may read it', status: 'Status', next_review_on: 'Next review', last_reviewed_on: 'Last reviewed', retired_at: 'Retired',
     },
     document_acknowledgements: {
@@ -117,7 +117,7 @@ export const en: ExportWording = {
     version: 'Version',
     number: 'Number',
     owner: 'Owner',
-    ownerUnit: 'Owning unit',
+    ownerUnit: 'Responsible area',
     effective: 'In force from',
     status: 'Status',
     approvals: 'Approvals',
@@ -132,5 +132,7 @@ export const en: ExportWording = {
     empty: 'Not written.',
     contentHash: 'Fingerprint of the signed text (SHA-256)',
     signed: 'Signed',
+    aiDraft: 'AI draft',
+    aiNotice: 'Written by an AI assistant. It can be wrong or incomplete: check every part against how your organization works before you rely on it. Only a person can approve or publish what it writes.',
   },
 };
