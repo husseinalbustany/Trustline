@@ -15,6 +15,7 @@ import {
   TriangleAlert,
   Users,
   type LucideIcon,
+  ScrollText,
 } from "lucide-react";
 import type { Dictionary } from "@/i18n/dictionaries";
 import type { ModuleKey as ModuleOrCore } from "./modules";
@@ -29,6 +30,7 @@ export type ModuleKey =
   | "reports"
   | "organization"
   | "users"
+  | "audit"
   | "settings";
 
 /** The pages of a module beside its main one. */
@@ -43,7 +45,7 @@ export type NavItemKey = "dashboard" | ModuleKey | SubItemKey;
 /** The areas not built yet, which show what they will cover. */
 export type PlaceholderKey = Exclude<
   ModuleKey,
-  "incidents" | "policies" | "organization" | "users" | "settings"
+  "incidents" | "policies" | "organization" | "users" | "audit" | "settings"
 >;
 
 export type NavGroupKey =
@@ -186,6 +188,13 @@ export const navigation: { key: NavGroupKey; items: NavItem[] }[] = [
         icon: Users,
         // Also marks /admin/roles as part of this item.
         permissions: ["users.manage", "roles.manage"],
+      },
+      {
+        key: "audit",
+        href: "/admin/audit",
+        icon: ScrollText,
+        // Only a grant for the whole organization opens it; the page says so.
+        permissions: ["audit.view"],
       },
       {
         key: "settings",

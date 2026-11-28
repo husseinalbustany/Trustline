@@ -51,8 +51,14 @@ export type AuditEntry = {
     label: string | Localized | null;
     canOpen: boolean;
   } | null;
-  /** Raw values, worded per action by the viewer. */
+  /** Raw values: the CSV and the chain file hold them; the screen does not word them. */
   details: Record<string, unknown> | null;
+  /**
+   * What the entry recorded, worded by the API in the request's language,
+   * field first (language review 10). Missing from an API that does not
+   * word them yet: then no details are shown.
+   */
+  detailLines?: string[];
   /** Given for sign-in entries only, while it is kept. */
   ip: string | null;
   /** Recorded before the trail was sealed. */
