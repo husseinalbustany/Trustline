@@ -44,6 +44,7 @@ import {
 } from "@/lib/policies";
 import { ControlledDocument, LanguageSwitch } from "./controlled-document";
 import { ConfirmationPill, useConfirmationLine } from "./import-confirmation";
+import { AiMark } from "@/components/ai/ai-mark";
 import { PasswordPrompt } from "./password-prompt";
 import {
   DocumentStatusPill,
@@ -298,6 +299,11 @@ function DocumentView({
                 : t.reissue.helpReader}
           </p>
         </div>
+      )}
+
+      {/* Drafted with the assistant: marked until a person takes ownership. */}
+      {doc.aiDraft && (
+        <AiDraftNote lang={lang} t={t} doc={doc} onOwned={() => void refresh()} />
       )}
 
       {/* Imported: where its owner's confirmation stands, for everyone. */}
@@ -1389,5 +1395,79 @@ function OriginalSummary({
         </div>
       ))}
     </dl>
+  );
+}
+
+/**
+ * An AI-drafted document: the "AI draft" mark until a person takes
+ * ownership, offered to its owner and to those who manage it (the API
+ * decides); then, who did. The conversation behind it is one click away.
+ */
+function AiDraftNote({
+  lang,
+  t,
+  doc,
+  onOwned,
+}: PoliciesProps & { doc: PolicyDocument; onOwned: () => void }) {
+  const session = useSession();
+  const d = t.drafting;
+  const draft = doc.aiDraft!;
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useLayoutEffect(() => () => setError(null), []);
+  const explain = useExplain(t, lang);
+  const moment = dateTimeFormat(lang, session.tenant.timeZone);
+  const offered =
+    !draft.ownedBy && (doc.owner.id === session.user.id || doc.moves.includes("edit"));
+
+  async function own() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/policies/documents/${doc.id}/ai-draft/ownership`, { method: "POST" });
+      onOwned();
+    } catch (err) {
+      setError(explain(err));
+      onOwned();
+    }
+    setBusy(false);
+  }
+
+  const history = draft.sessionId && (
+    <Link href={`/${lang}/policies/${doc.id}/ai-draft`} className="text-sm text-accent hover:underline">
+      {d.historyLink}
+    </Link>
+  );
+  if (draft.ownedBy) {
+    return (
+      <p className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted print:hidden">
+        <span>
+          {fill(d.ownedBy, {
+            name: pick(draft.ownedBy.name, lang, session.tenant.defaultLocale) || t.document.unknownPerson,
+            time: draft.ownedAt ? moment.format(new Date(draft.ownedAt)) : "",
+          })}
+        </span>
+        {history}
+      </p>
+    );
+  }
+  return (
+    <div className="mt-4 flex flex-col gap-2 rounded-lg border border-line border-s-4 border-s-ai px-4 py-3 text-sm print:hidden">
+      <AiMark>{d.aiDraft}</AiMark>
+      <p>{d.notOwned}</p>
+      {error && (
+        <p role="alert" className="text-danger">
+          {error}
+        </p>
+      )}
+      <div className="flex flex-wrap items-center gap-3">
+        {offered && (
+          <Button disabled={busy} onClick={() => void own()}>
+            {d.takeOwnership}
+          </Button>
+        )}
+        {history}
+      </div>
+    </div>
   );
 }

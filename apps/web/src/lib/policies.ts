@@ -26,7 +26,7 @@ export type Confidentiality = "all_staff" | "restricted";
  * How a document or a version came into Trustline: written here, or
  * imported as approved before Trustline (its first version only).
  */
-export type Source = "written" | "imported" | (string & {});
+export type Source = "written" | "imported" | "ai_drafted" | (string & {});
 export type ReviewState = "due" | "overdue" | null;
 
 /** A person or a unit as a record names them. The name may be gone. */
@@ -114,6 +114,15 @@ export type PolicyDocument = {
   authoritativeLocale?: string | null;
   /** In the answer to a change of the language that applies. */
   versionsInProgress?: { draft: number; in_review: number; approved: number };
+  /**
+   * Drafted with the assistant: the conversation behind it (for those who
+   * see it in full), and who took ownership of it. Null for any other.
+   */
+  aiDraft?: {
+    sessionId: string | null;
+    ownedBy: Named | null;
+    ownedAt: string | null;
+  } | null;
   /**
    * In force as approved before Trustline: its next review is a re-issue
    * through the route, not a confirmation that nothing changed.

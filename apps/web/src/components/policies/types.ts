@@ -45,6 +45,18 @@ export function explain(
       problem: why,
     });
   }
+  // An AI draft with a "To be decided" mark still in it: which sections.
+  if (code === "ai_draft_gaps") {
+    const gaps = Array.isArray(details.gaps) ? (details.gaps as { section: string }[]) : [];
+    return fill(errors.ai_draft_gaps, {
+      sections: list([...new Set(gaps.map((g) => names.section?.(g.section) ?? g.section))]),
+    });
+  }
+  if (code === "ai_allowance_reached" && typeof details.resetsOn === "string") {
+    return fill(errors.ai_allowance_reached, {
+      date: names.day?.(details.resetsOn) ?? details.resetsOn,
+    });
+  }
   if (code === "missing_sections") {
     const sections = Array.isArray(details.sections)
       ? (details.sections as string[])

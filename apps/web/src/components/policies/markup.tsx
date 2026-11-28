@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from "react";
+import { createContext, Fragment, useContext, type ReactNode } from "react";
 import { parseMarkup, type Block, type Inline } from "@/lib/markup";
 
 /**
@@ -7,24 +7,37 @@ import { parseMarkup, type Block, type Inline } from "@/lib/markup";
  * Headings sit under the section's own numbered heading, so a level 1
  * heading inside a section is one level below it.
  */
-export function Markup({ text }: { text: string }) {
+export function Markup({
+  text,
+  highlight,
+}: {
+  text: string;
+  /** Draws some words apart (an AI draft's gaps and assumptions); still as text. */
+  highlight?: (text: string) => ReactNode;
+}) {
   return (
-    <div className="flex flex-col gap-3 text-sm leading-relaxed break-words">
-      {parseMarkup(text).map((block, i) => (
-        <BlockView key={i} block={block} />
-      ))}
-    </div>
+    <Highlight.Provider value={highlight ?? null}>
+      <div className="flex flex-col gap-3 text-sm leading-relaxed break-words">
+        {parseMarkup(text).map((block, i) => (
+          <BlockView key={i} block={block} />
+        ))}
+      </div>
+    </Highlight.Provider>
   );
 }
 
+const Highlight = createContext<((text: string) => ReactNode) | null>(null);
+
 function Runs({ runs }: { runs: Inline[] }) {
+  const highlight = useContext(Highlight);
+  const draw = (text: string) => (highlight ? highlight(text) : text);
   return runs.map((run, i) =>
     run.bold ? (
       <strong key={i} className="font-semibold">
-        {run.text}
+        {draw(run.text)}
       </strong>
     ) : (
-      <Fragment key={i}>{run.text}</Fragment>
+      <Fragment key={i}>{draw(run.text)}</Fragment>
     ),
   );
 }

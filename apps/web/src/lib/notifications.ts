@@ -73,6 +73,12 @@ export type Notification = {
     kind?: string;
     /** With `audit_chain_broken`: the first entry that does not hold, when known. */
     firstBadSeq?: number;
+    /** With the AI notices: which features, and how much of an allowance is used. */
+    feature?: string;
+    features?: string;
+    used?: number;
+    allowance?: number | null;
+    resetsOn?: string;
     /** With `audit_chain_head`: the week's last entry checked, and its seal. */
     seq?: number;
     hash?: string;

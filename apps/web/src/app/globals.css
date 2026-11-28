@@ -15,6 +15,9 @@
   /* Attention, not danger: a notice that something needs seeing to. */
   --warn: #8a5300;
   --warn-soft: #fdf1dc;
+  /* AI content only: its mark and its panel's edge (design guidelines). */
+  --ai: #5b4bc4;
+  --ai-soft: #efedfb;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -32,6 +35,8 @@
     --danger-soft: #3a1b19;
     --warn: #f0b75e;
     --warn-soft: #33260f;
+    --ai: #a99cf2;
+    --ai-soft: #221d3d;
   }
 }
 
@@ -49,6 +54,8 @@
   --color-danger-soft: var(--danger-soft);
   --color-warn: var(--warn);
   --color-warn-soft: var(--warn-soft);
+  --color-ai: var(--ai);
+  --color-ai-soft: var(--ai-soft);
   /* System fonts: no build-time font download, and each platform's own
      Arabic face. */
   --font-sans:

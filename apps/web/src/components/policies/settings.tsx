@@ -40,10 +40,11 @@ import {
   type PolicySettings as OrganizationSettings,
   type StepKind,
 } from "@/lib/policies";
+import { DocumentDesign } from "./document-design";
 import type { PoliciesProps, PoliciesText } from "./types";
 import { useExplain } from "./use-explain";
 
-const tabs = ["types", "categories", "routes", "general"] as const;
+const tabs = ["types", "categories", "routes", "design", "general"] as const;
 type Tab = (typeof tabs)[number];
 
 type Lists = {
@@ -151,6 +152,8 @@ export function PolicySettings({ lang, t }: PoliciesProps) {
               <Categories lang={lang} t={t} lists={lists} reload={reload} />
             ) : tab === "routes" ? (
               <Routes lang={lang} t={t} lists={lists} reload={reload} />
+            ) : tab === "design" ? (
+              <DocumentDesign lang={lang} t={t} types={lists.types} />
             ) : (
               <General lang={lang} t={t} lists={lists} reload={reload} />
             )}

@@ -69,7 +69,13 @@ const ownPlace = new Set([
   "audit_chain_head",
   "policies_import_granted",
   "external_access_changed",
+  "ai_provider_changed",
+  "ai_allowance_warning",
+  "ai_allowance_reached",
 ]);
+
+/** The AI notices: about the organization's AI settings. */
+const aboutAi = new Set(["ai_provider_changed", "ai_allowance_warning", "ai_allowance_reached"]);
 
 /**
  * The reader's own notifications, newest first: a sentence each, how long
@@ -235,6 +241,7 @@ export function NotificationsView({
   const anyUnread =
     (unreadCount ?? 0) > 0 || !!data?.items.some((n) => !n.readAt);
 
+  const aiFeatureNames = t.aiFeatures as Record<string, string>;
   const row = (n: Notification, at: Date) => {
     const doc = n.document;
     const reference =
@@ -277,7 +284,9 @@ export function NotificationsView({
                       : n.kind === "external_access_changed" &&
                           session.scope?.["users.manage"] === "all"
                         ? `/${lang}/admin/users/external`
-                        : null;
+                        : aboutAi.has(n.kind)
+                          ? `/${lang}/admin/settings/ai`
+                          : null;
     const title = doc?.canOpen && doc.title
       ? pick(doc.title, lang, session.tenant.defaultLocale)
       : null;
@@ -299,6 +308,15 @@ export function NotificationsView({
         (n.data?.typeCode ?? ""),
       seq: numbers.format(n.data?.firstBadSeq ?? n.data?.seq ?? 0),
       hash: n.data?.hash ?? "",
+      feature: aiFeatureNames[n.data?.feature ?? ""] ?? n.data?.feature ?? "",
+      features: (n.data?.features ?? "")
+        .split(",")
+        .filter(Boolean)
+        .map((f) => aiFeatureNames[f] ?? f)
+        .join(", "),
+      used: numbers.format(n.data?.used ?? 0),
+      allowance: numbers.format(n.data?.allowance ?? 0),
+      resetsOn: day(n.data?.resetsOn) ?? "",
       kind: (t.auditBreaks as Record<string, string>)[n.data?.kind ?? ""] ?? "",
       name:
         pick(n.person?.name, lang, session.tenant.defaultLocale) ||

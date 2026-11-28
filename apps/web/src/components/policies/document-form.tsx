@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Field, inputClass } from "@/components/ui/field";
 import { LocalizedField } from "@/components/ui/localized-field";
+import { DraftingOffer } from "@/components/ai/drafting";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState, Panel } from "@/components/ui/panel";
 import { api, codeOf, statusOf } from "@/lib/api";
@@ -101,7 +102,13 @@ export function NewDocument({ lang, t }: PoliciesProps) {
       ) : !lists ? (
         <EmptyState>{t.loading}</EmptyState>
       ) : (
-        <DocumentForm lang={lang} t={t} lists={lists} doc={null} />
+        <>
+          {/* Write it by hand, or draft it with the assistant when offered. */}
+          <DraftingOffer lang={lang} t={t} />
+          <div id="write" className="scroll-mt-20">
+            <DocumentForm lang={lang} t={t} lists={lists} doc={null} />
+          </div>
+        </>
       )}
     </>
   );
@@ -357,6 +364,8 @@ export function DocumentFields({
   onPeriodChange,
   reviewMonthsHelp,
   ownerError = null,
+  titleDefault = null,
+  typeFixed = false,
 }: PoliciesProps & {
   lists: Lists;
   doc: PolicyDocument | null;
@@ -372,6 +381,10 @@ export function DocumentFields({
   reviewMonthsHelp?: string;
   /** Why the owner chosen was refused, said at the owner field. */
   ownerError?: string | null;
+  /** A title to start from: a draft's, when it becomes a document. */
+  titleDefault?: Localized | null;
+  /** The type is already chosen (a draft's) and is not offered again. */
+  typeFixed?: boolean;
 }) {
   const session = useSession();
   const f = t.form;
@@ -432,11 +445,13 @@ export function DocumentFields({
     <>
         <Panel title={f.what}>
           <div className="flex flex-col gap-5 p-4">
-            {doc ? (
+            {doc || typeFixed ? (
               <p className="text-sm">
                 <span className="text-muted">{f.type}: </span>
-                <bdi>{inLang(doc.type.name)}</bdi>
-                <span className="block text-xs text-muted">{f.typeFixed}</span>
+                <bdi>
+                  {inLang(doc ? doc.type.name : lists.types.find((x) => x.id === typeId)?.name)}
+                </bdi>
+                {doc && <span className="block text-xs text-muted">{f.typeFixed}</span>}
               </p>
             ) : (
               <Field label={f.type} help={f.typeHelp}>
@@ -480,7 +495,7 @@ export function DocumentFields({
               name="title"
               locales={locales}
               required={defaultLocale}
-              value={doc?.title}
+              value={doc?.title ?? titleDefault}
               maxLength={300}
             />
             {/* The language that applies, on this document: the organization's

@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { CopyLink } from "@/components/ui/copy-link";
 import { inputClass } from "@/components/ui/field";
 import { PageHeader } from "@/components/ui/page-header";
+import { SettingsTabs } from "./settings-tabs";
 import { EmptyState, Panel } from "@/components/ui/panel";
 import { Pill } from "@/components/ui/pill";
 import { api, statusOf } from "@/lib/api";
@@ -94,7 +95,12 @@ export function SettingsView(props: Props) {
   const deadlines = hasModule(session, features.deadlineSettings);
   const s = t.settings;
 
-  const header = <PageHeader title={s.title} description={s.description} />;
+  const header = (
+    <>
+      <PageHeader title={s.title} description={s.description} />
+      <SettingsTabs lang={props.lang} t={s.tabs} current="general" />
+    </>
+  );
   if (!manages && !triages) {
     return (
       <>

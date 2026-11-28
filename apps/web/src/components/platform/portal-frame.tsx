@@ -110,7 +110,7 @@ export function PortalFrame({
           aria-label={t.nav.label}
           className="mx-auto flex w-full max-w-6xl gap-1 px-4 sm:px-6"
         >
-          {(["clients", "plans"] as const).map((area) => {
+          {(["clients", "plans", "ai"] as const).map((area) => {
             const href = `/${lang}/platform/${area}`;
             const current =
               pathname === href || pathname.startsWith(`${href}/`);
