@@ -415,7 +415,7 @@ export function NotificationsView({
           )}
           {about && !about.canOpen && (
             <p className="mt-0.5 text-sm text-muted">
-              {doc ? t.documentUnavailable : t.unavailable}
+              {doc ? t.documentUnavailable : n.risk || n.action ? t.riskUnavailable : t.unavailable}
             </p>
           )}
           {!about && settingsPath && !ownPlace.has(n.kind) && (

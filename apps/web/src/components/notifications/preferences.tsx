@@ -166,6 +166,7 @@ function PreferencesForm({
 
   const incidents = hasModule(session, "incidents");
   const policies = hasModule(session, "policies");
+  const risks = hasModule(session, "risks");
   const changed =
     immediate !== saved.immediate ||
     digest !== saved.digest ||
@@ -200,12 +201,14 @@ function PreferencesForm({
       ? [t.immediateItems.serious, t.immediateItems.sentinel, t.immediateItems.assigned, t.immediateItems.signOff]
       : []),
     ...(policies ? [t.immediateItems.step] : []),
+    ...(risks ? [t.immediateItems.riskExtreme, t.immediateItems.riskStep] : []),
   ];
   const digestItems = [
     ...(policies
       ? [t.digestItems.acknowledge, t.digestItems.approve, t.digestItems.reviews]
       : []),
     ...(incidents ? [t.digestItems.incidents] : []),
+    ...(risks ? [t.digestItems.risks] : []),
   ];
 
   return (
