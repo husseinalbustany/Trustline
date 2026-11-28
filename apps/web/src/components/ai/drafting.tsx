@@ -273,30 +273,28 @@ export function NewDraft({ lang, t }: PoliciesProps) {
 }
 
 /** A draft's text with its gaps and assumptions drawn apart, still as text. */
-function marked(t: PoliciesText) {
-  return (text: string): ReactNode => {
-    const pattern = new RegExp(`${gapMark.source}|${assumptionMark.source}`, "g");
-    const out: ReactNode[] = [];
-    let last = 0;
-    for (const m of text.matchAll(pattern)) {
-      const at = m.index ?? 0;
-      if (at > last) out.push(text.slice(last, at));
-      const gap = new RegExp(gapMark.source).test(m[0]);
-      out.push(
-        <mark
-          key={at}
-          className={`rounded px-0.5 ${gap ? "bg-warn-soft text-warn" : "bg-surface text-muted"}`}
-          title={gap ? t.drafting.gap : t.drafting.assumption}
-        >
-          {m[0]}
-        </mark>,
-      );
-      last = at + m[0].length;
-    }
-    if (out.length === 0) return text;
-    if (last < text.length) out.push(text.slice(last));
-    return <>{out.map((x, i) => <Fragment key={i}>{x}</Fragment>)}</>;
-  };
+function marked(t: PoliciesText, text: string): ReactNode {
+  const pattern = new RegExp(`${gapMark.source}|${assumptionMark.source}`, "g");
+  const out: ReactNode[] = [];
+  let last = 0;
+  for (const m of text.matchAll(pattern)) {
+    const at = m.index ?? 0;
+    if (at > last) out.push(text.slice(last, at));
+    const gap = new RegExp(gapMark.source).test(m[0]);
+    out.push(
+      <mark
+        key={at}
+        className={`rounded px-0.5 ${gap ? "bg-warn-soft text-warn" : "bg-surface text-muted"}`}
+        title={gap ? t.drafting.gap : t.drafting.assumption}
+      >
+        {m[0]}
+      </mark>,
+    );
+    last = at + m[0].length;
+  }
+  if (out.length === 0) return text;
+  if (last < text.length) out.push(text.slice(last));
+  return <>{out.map((x, i) => <Fragment key={i}>{x}</Fragment>)}</>;
 }
 
 /** One version of the draft: its title, sections, marks and sources. */
@@ -315,14 +313,18 @@ export function DraftVersionView({
   const d = t.drafting;
   const inLang = (text: Localized | null | undefined) => pick(text, lang, session.tenant.defaultLocale);
   const content = version.content[locale] ?? Object.values(version.content)[0] ?? {};
-  const highlight = marked(t);
+  const highlight = (text: string) => marked(t, text);
   const nameOf = (key: string) => inLang(sectionNames[key]) || key;
   return (
     <div className="flex flex-col gap-4">
       <h3 className="text-lg font-semibold" dir="auto">
         {pick(version.title, locale, session.tenant.defaultLocale)}
       </h3>
-      {Object.entries(content).map(([key, text]) =>
+      {/* In the type's order of sections, then any other. */}
+      {[
+        ...Object.keys(sectionNames).filter((k) => k in content),
+        ...Object.keys(content).filter((k) => !(k in sectionNames)),
+      ].map((key) => [key, content[key]] as const).map(([key, text]) =>
         text ? (
           <section key={key} className="flex flex-col gap-1">
             <h4 className="text-sm font-semibold">{nameOf(key)}</h4>

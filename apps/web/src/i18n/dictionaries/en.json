@@ -628,6 +628,9 @@
         "other": "External reviewer access changed: {name}."
       },
       "audit_chain_head": "The audit trail passed this week's check up to entry {seq}. Its seal has been emailed to you: keep that email.",
+      "ai_provider_changed": "Trustline changed who processes AI requests for: {features}. See where they are processed now.",
+      "ai_allowance_warning": "AI, {feature}: {used} of this month's {allowance} used. It starts again on {resetsOn}.",
+      "ai_allowance_reached": "AI, {feature}: this month's allowance of {allowance} is used up, so it is paused until {resetsOn}.",
       "other": "There is an update on {reference}."
     },
     "descriptionGeneral": "What has happened that concerns you. A notification names no one.",
@@ -723,7 +726,12 @@
       "backdated": "an entry dated before an earlier check",
       "bad_checkpoint": "a checkpoint's signature does not hold"
     },
-    "unknownPerson": "A former user"
+    "unknownPerson": "A former user",
+    "aiFeatures": {
+      "drafting": "drafting",
+      "insights": "suggestions",
+      "assistant": "the assistant"
+    }
   },
   "modulePage": {
     "scopeTitle": "What this area will cover",
@@ -921,7 +929,8 @@
     "nav": {
       "label": "Portal",
       "clients": "Clients",
-      "plans": "Plans"
+      "plans": "Plans",
+      "ai": "AI"
     },
     "plans": {
       "title": "Plans",
@@ -1110,6 +1119,112 @@
         "invalidClosesOn": "Choose a day from {earliest} to {latest}.",
         "invalid": "Check the date and the reason: the reason is one line of at most 500 characters.",
         "generic": "The change could not be saved. Try again."
+      }
+    },
+    "ai": {
+      "title": "AI",
+      "description": "Connections to AI providers, the spending limit over every client, and each client's use this month.",
+      "fakeMode": "Fake provider: every AI request is answered by Trustline's fake provider. Nothing is sent to a real AI service.",
+      "spending": "Spending limit over every client",
+      "spent": "Spent in {month} (UTC): {spent}",
+      "limit": "Monthly limit, in US dollars",
+      "limitHelp": "Empty for no limit. Reached, every client's AI pauses until the next month.",
+      "saveLimit": "Save the limit",
+      "limitSaved": "The limit is saved.",
+      "connections": "Connections",
+      "connectionsHelp": "The credential is never typed here: only the name of the server's environment variable that holds it.",
+      "noConnections": "No connections yet.",
+      "active": "Active",
+      "inactive": "Inactive",
+      "kinds": {
+        "anthropic": "Anthropic API",
+        "bedrock": "Amazon Bedrock"
+      },
+      "inferenceTypes": {
+        "in_region": "In the region only",
+        "regional": "Within the geography",
+        "global": "Global"
+      },
+      "clientsUsing": "Clients using it: {count}",
+      "credential": "Credential variable:",
+      "credentialSet": "(set on the server)",
+      "credentialNotSet": "(not set on the server)",
+      "testConnection": "Test the connection",
+      "testing": "Testing…",
+      "test": {
+        "fake": "Not tested: the fake provider answers every request.",
+        "works": "It works.",
+        "fails": "It does not work.",
+        "credentialPresent": "The credential variable is set.",
+        "credentialMissing": "The credential variable is not set on the server."
+      },
+      "edit": "Edit",
+      "addConnection": "Add a connection",
+      "editConnection": "Edit the connection",
+      "name": "Name",
+      "kind": "Provider",
+      "kindFixed": "Cannot be changed.",
+      "inference": "Where requests are processed",
+      "region": "Region",
+      "regionBedrock": "An AWS region code, for example me-central-1.",
+      "regionAnthropic": "global for global processing, or us or eu for regional processing.",
+      "credentialEnvLabel": "Credential variable name",
+      "credentialEnvHelp": "Starts with {prefix}, then capitals, digits or _.",
+      "models": "Models",
+      "modelsHelp": "One per line: id | name | input $ per million tokens | output $ per million tokens.",
+      "activeLabel": "Active",
+      "save": "Save",
+      "deactivate": "Deactivate",
+      "cancel": "Cancel",
+      "usage": "Use this month",
+      "noUsage": "No client uses AI yet.",
+      "client": "Client",
+      "features": {
+        "drafting": "Drafting",
+        "insights": "Suggestions",
+        "assistant": "Assistant"
+      },
+      "cost": "Cost",
+      "state": "State",
+      "usedOf": "{used} of {allowance}",
+      "ofLimit": "limit {limit}",
+      "over": "Over a limit",
+      "near": "Near a limit",
+      "clientOn": "Switched on by the client",
+      "clientOff": "Off at the client",
+      "clientTitle": "AI",
+      "clientSaved": "Saved. The client's administrators are told of a change of provider.",
+      "clientCost": "Cost in {month}: {cost}",
+      "offered": "AI offered to this client",
+      "connection": "Connection",
+      "notOfferedFeature": "Not offered",
+      "model": "Model",
+      "quickModel": "Quick model",
+      "quickModelHelp": "For short steps, such as questions.",
+      "sameModel": "The same model",
+      "allowance": "Monthly allowance",
+      "planAllowance": "The plan's: {value}",
+      "followPlan": "Follow the plan",
+      "setAllowance": "Set for this client",
+      "noLimit": "No limit",
+      "allowanceValue": "Allowance for this client",
+      "featureUse": "This month: {used} of {allowance}, {requests} requests, {cost}.",
+      "medical": "Medical option allowed",
+      "clientLimit": "Monthly spending limit for this client, in US dollars",
+      "clientLimitHelp": "Empty for no limit. Never shown to the client.",
+      "errors": {
+        "invalid_region": "The region does not fit the provider or where requests are processed.",
+        "inference_type_not_offered": "The Anthropic API does not process requests in one region only.",
+        "model_inference_mismatch": "The model {model} does not match where requests are processed: global needs global.…, regional needs the region's own geography, in-region needs the bare model.",
+        "credential_env_mismatch": "The credential variable is not named for this provider.",
+        "unknown_model": "The connection does not offer the model {model}.",
+        "name_taken": "Another connection already has this name.",
+        "connection_in_use": "Clients use this connection ({clients}): its region, processing or credential cannot change, and it cannot be deactivated, until they move.",
+        "model_in_use": "Clients use the model {model} ({clients}): it cannot be removed until they move.",
+        "unknown_connection": "{feature}: this connection no longer exists.",
+        "connection_inactive": "{feature}: this connection is inactive.",
+        "invalid": "Check the fields: something is missing or not in the right form.",
+        "generic": "Could not save. Try again."
       }
     }
   },
@@ -1461,6 +1576,12 @@
         "triages": "Triages incidents",
         "stillApproves": "Emails about approval steps waiting for their decision stay on: they cannot be switched off.",
         "stillTriages": "Serious-incident and sentinel-event alerts stay on for them: they cannot be switched off."
+      },
+      "tabs": {
+        "label": "Parts of the settings",
+        "general": "General",
+        "profile": "Organization profile",
+        "ai": "AI"
       }
     },
     "permissions": {
@@ -2056,7 +2177,8 @@
         "types": "Types",
         "categories": "Categories",
         "routes": "Approval routes",
-        "general": "General"
+        "general": "General",
+        "design": "Document design"
       },
       "inactive": "Switched off",
       "edit": "Edit",
@@ -2263,7 +2385,27 @@
       "stale_signing_pin": "Your signing PIN was changed or reset in the meantime, perhaps in another tab or by an administrator. Reload the page, then try again.",
       "signing_pin_unavailable": "Signing PINs cannot be used at the moment: the server is not set up for them. Nothing was signed. Tell your administrator.",
       "signs_with_pin": "This person signs with a signing PIN, so they are given no password by a link. Reset their signing PIN instead.",
-      "read_only_access": "You have read-only access as an external reviewer, so nothing was changed."
+      "read_only_access": "You have read-only access as an external reviewer, so nothing was changed.",
+      "ai_not_offered": "AI is not available for this.",
+      "ai_switched_off": "Your organization has not switched AI on. You can still write the document yourself.",
+      "ai_allowance_reached": "This month's allowance is used up; it starts again on {date}. Writing by hand still works.",
+      "ai_spending_limit": "The assistant is paused, and Trustline has been told. Writing by hand still works.",
+      "ai_unavailable": "The assistant is unavailable just now; everything else works. Try again in a few minutes.",
+      "ai_request_too_large": "This is too long for the assistant. Shorten it, then try again.",
+      "subscription_suspended": "This was not done: changes are paused for your organization's account.",
+      "answers_mismatch": "Every open question needs an answer, or “Not decided”. Reload the page if the questions changed.",
+      "draft_changed": "This conversation changed in the meantime, perhaps in another tab. It is shown as it is now.",
+      "not_asking": "The assistant has finished asking questions.",
+      "questions_open": "Answer the open questions first.",
+      "not_ready": "This conversation cannot be drafted now.",
+      "not_drafted": "There is no draft yet.",
+      "draft_too_long_for_assistant": "The draft is now too long for the assistant to change. Edit it by hand instead.",
+      "unknown_version": "This version no longer exists. Reload the page.",
+      "handed_over": "This conversation already became a document.",
+      "not_ai_draft": "This document was not drafted with the assistant.",
+      "already_owned": "Someone has already taken ownership of this draft.",
+      "ai_draft_not_owned": "This AI draft cannot be sent for review until a person takes ownership of it.",
+      "ai_draft_gaps": "A “To be decided” mark is still in the text of: {sections}. Decide each point, then send it again."
     },
     "importing": {
       "open": "Import documents",
@@ -2591,6 +2733,163 @@
       "returnButton": "Return the review",
       "returnedDone": "The review is returned to its owner.",
       "sent": "Confirmed. It now waits for the Approving authority's signature; the next review date moves once it is signed."
+    },
+    "design": {
+      "noAccess": "The document design is for those who manage the settings of the whole organization.",
+      "forLabel": "Design for",
+      "forHelp": "A type without a design of its own uses the organization's.",
+      "organization": "The whole organization",
+      "source": {
+        "type": "This type's own design",
+        "organization": "The organization's design",
+        "defaults": "Not saved yet"
+      },
+      "sourceHelp": {
+        "type": "Saved for this type.",
+        "organization": "Saving here gives this type a design of its own.",
+        "defaults": "Made from your profile until you save it."
+      },
+      "template": "Layout",
+      "header": "Header",
+      "footer": "Footer",
+      "showLogo": "Show the logo",
+      "font": "Font",
+      "fonts": {
+        "sans": "Sans serif",
+        "serif": "Serif"
+      },
+      "accentColor": "Accent colour",
+      "accentColorHelp": "As #RRGGBB.",
+      "bilingual": "Several languages",
+      "bilingualLayout": {
+        "one_language_per_document": "One language per document",
+        "side_by_side": "Side by side",
+        "one_after_another": "One after another"
+      },
+      "controlBlock": "Control block",
+      "controlBlockHelp": "What it shows, 1 to 7 fields.",
+      "controlFields": {
+        "number": "Number",
+        "title": "Title",
+        "version": "Version",
+        "owner": "Owner",
+        "effectiveOn": "In force from",
+        "reviewOn": "Next review",
+        "approvals": "Approvals"
+      },
+      "writing": "How documents are written",
+      "rules": "Writing rules",
+      "rulesHelp": "One rule per line, in each language.",
+      "maxSentenceWords": "Longest sentence, in words",
+      "stepsLabel": "Steps",
+      "steps": {
+        "numbered_one_action": "Numbered, one action each",
+        "numbered": "Numbered"
+      },
+      "requirementsLabel": "Words for requirements",
+      "requirements": {
+        "must_should_may": "must, should, may",
+        "shall_should_may": "shall, should, may"
+      },
+      "citationsLabel": "Citing other documents",
+      "citations": {
+        "by_number": "By number",
+        "by_number_and_title": "By number and title"
+      },
+      "useGlossary": "Use the words of the profile",
+      "never": "Never write",
+      "neverHelp": "One per line, in each language.",
+      "sections": "Guidance for each section",
+      "sectionsHelp": "The sections are the type's, set under document types. Say here what each should hold.",
+      "save": "Save the design",
+      "saved": "The design is saved.",
+      "changed": "Someone else saved this design in the meantime. Reload the page, then try again.",
+      "unknownSection": "Guidance is given for a section no type has: {section}.",
+      "languageMismatch": "Write only in the organization's languages.",
+      "invalid": "Check the fields: the colour is #RRGGBB, and the control block has 1 to 7 fields.",
+      "error": "Could not save. Try again."
+    },
+    "drafting": {
+      "notice": "Written by an AI assistant. It can be wrong or incomplete: check every part against how your organization works before relying on it. Nothing it writes is approved or published without people.",
+      "aiDraft": "AI draft",
+      "aiQuestions": "AI questions",
+      "writeYourself": "Write it yourself",
+      "writeYourselfHelp": "Fill in the details below, then write each section.",
+      "withAssistant": "Draft it with the assistant",
+      "withAssistantHelp": "Say what you need; it asks a few questions, then writes a draft in your organization's design for you to check and own.",
+      "underWay": "Your drafts with the assistant",
+      "lastActivity": "Last change {time}",
+      "status": {
+        "asking": "Questions",
+        "ready": "Ready to draft",
+        "drafted": "Drafted",
+        "handed_over": "Now a document"
+      },
+      "newTitle": "Draft with the assistant",
+      "newDescription": "Describe the policy or procedure you need. The assistant asks what it needs to know, then drafts it.",
+      "notActive": "Drafting with the assistant is not on for your organization. You can still write the document yourself.",
+      "type": "Type of document",
+      "languageLabel": "Language",
+      "requestLabel": "What do you need?",
+      "requestHelp": "What it is for, who it applies to, and anything it must cover. Do not name patients.",
+      "keptFor": "This conversation is yours alone. Handed over, it is kept with the document. Discarded, it is removed the next day; untouched for 90 days, it is removed.",
+      "start": "Start",
+      "thinking": "The assistant is working…",
+      "conversationTitle": "Drafting with the assistant",
+      "back": "Back to the new document",
+      "openDocument": "Open the document",
+      "notFound": "This conversation does not exist, or is not yours.",
+      "requestTitle": "Your request",
+      "round": "Questions, round {round}",
+      "rounds": "Rounds of questions: {rounds} of {max}",
+      "changeAsked": "Change asked for ({language})",
+      "questionsTitle": "The assistant asks",
+      "reason": "Why it asks: {reason}",
+      "notDecided": "Not decided",
+      "emptyIsUndecided": "A question left empty counts as not decided: the draft marks it as a gap to fill.",
+      "submitAnswers": "Send the answers",
+      "draftNow": "Draft it now",
+      "noQuestionsYet": "The assistant has not asked its questions yet. Ask again, or draft now: open points will be marked as gaps.",
+      "askAgain": "Ask the questions again",
+      "readyToDraft": "The assistant knows enough to draft.",
+      "discard": "Discard this conversation",
+      "discardHelp": "It is removed the next day.",
+      "noVersionYet": "No draft yet.",
+      "versions": "Version",
+      "versionByAssistant": "Version {number}, by the assistant, {time}",
+      "versionByPerson": "Version {number}, edited by hand, {time}",
+      "editedByPerson": "Edited by hand",
+      "model": "Model: {model}",
+      "gap": "To be decided",
+      "gaps": "To be decided",
+      "gapsHelp": "The draft cannot be sent for review while any of these is in its text.",
+      "assumption": "Assumed",
+      "assumptions": "Assumptions",
+      "assumptionsHelp": "Check each one: the document's owner answers for them.",
+      "sources": "Documents it drew on",
+      "revise": "Ask for a change",
+      "reviseLabel": "What should change",
+      "reviseHelp": "For example: make the steps shorter. To translate, choose another language below.",
+      "translateTo": "In which language",
+      "translateHelp": "Another language translates the draft; the others stay as they are.",
+      "sendRevision": "Send",
+      "editByHand": "Edit by hand",
+      "editHelp": "Your text becomes a new version, in {language}.",
+      "saveEdit": "Save as a new version",
+      "handOverVersion": "Make version {number} a document",
+      "handOverHelp": "This version becomes a draft document of the library, marked as an AI draft until a person takes ownership. Nothing is approved or published.",
+      "handOver": "Make it a document",
+      "handedOverMark": "Became the document",
+      "allowanceReached": "This month's allowance of drafts is used up; it starts again on {date}. You can still write the document yourself.",
+      "tooLongForAssistant": "The draft is now too long for the assistant to change. Edit it by hand instead.",
+      "historyLink": "Drafted with the assistant: see the conversation",
+      "historyTitle": "Drafted with the assistant",
+      "historyDescription": "The request, the questions and answers, and every version, as they were.",
+      "historyNotFound": "This conversation is not one you may read.",
+      "backToDocument": "Back to the document",
+      "notOwned": "Drafted with the assistant. It cannot be sent for review until a person takes ownership of it, and answers for what it says.",
+      "takeOwnership": "Take ownership",
+      "ownedBy": "Drafted with the assistant; ownership taken by {name}, {time}."
     }
   },
   "audit": {
@@ -2679,7 +2978,19 @@
       "measure_correction_requested": "Correction of figures asked for",
       "report_settings_changed": "Report targets or baseline changed",
       "measures_exported": "Measures exported (CSV)",
-      "measures_recomputed_by_system": "Figures recomputed by a Trustline update"
+      "measures_recomputed_by_system": "Figures recomputed by a Trustline update",
+      "ai_use_changed": "AI switched on or off",
+      "ai_settings_changed": "AI settings changed by Trustline",
+      "organization_profile_updated": "Organization profile changed",
+      "document_design_updated": "Document design changed",
+      "ai_draft_started": "Drafting with the assistant started",
+      "ai_draft_questions_asked": "Questions asked by the assistant",
+      "ai_draft_answered": "Assistant’s questions answered",
+      "ai_draft_version_created": "Draft version written",
+      "ai_draft_discarded": "Assistant draft discarded",
+      "ai_draft_handed_over": "Assistant draft turned into a document",
+      "ai_draft_ownership_taken": "Ownership of an AI draft taken",
+      "ai_drafts_removed_by_system": "Old assistant drafts removed"
     },
     "areas": {
       "sign_in": "Sign-in",
@@ -2702,7 +3013,8 @@
       "document_type": "Document type",
       "document_category": "Category",
       "approval_route": "Approval route",
-      "subscription": "Subscription"
+      "subscription": "Subscription",
+      "ai_draft": "Assistant draft"
     },
     "actors": {
       "system": "System",
@@ -2980,5 +3292,185 @@
         "error": "Could not recompute. Try again."
       }
     }
+  },
+  "ai": {
+    "title": "AI",
+    "intro": "What the AI assistant may do for your organization, who processes its requests and where, and how much of this month's allowance is used.",
+    "loading": "Loading…",
+    "loadError": "Could not load the AI settings. Reload the page.",
+    "notIncluded": "Your organization's subscription does not include the AI assistant.",
+    "notAvailable": "Trustline does not offer AI to your organization yet.",
+    "noAccess": "Switching AI on or off is for those who manage the organization's settings.",
+    "error": "Could not save. Try again.",
+    "cancel": "Cancel",
+    "formerUser": "a former user",
+    "providerLine": "Processed by {provider}, {where}.",
+    "providers": {
+      "anthropic": "the Anthropic API",
+      "bedrock": "Amazon Bedrock"
+    },
+    "inference": {
+      "in_region": "only in {region}",
+      "regional": "within {region}'s geography",
+      "global": "in any region the provider has"
+    },
+    "regions": {
+      "me-central-1": "the UAE",
+      "global": "any region",
+      "us": "the United States",
+      "eu": "the European Union"
+    },
+    "switch": {
+      "title": "Your organization's switch",
+      "isOn": "AI is on",
+      "isOff": "AI is off",
+      "help": "Nothing is sent to an AI service while this is off. When it is on, the assistant only suggests: people decide, sign and approve.",
+      "lastChanged": "Last changed by {name}, {time}.",
+      "on": "Switch AI on",
+      "off": "Switch AI off",
+      "confirmOn": "Switch AI on for the whole organization? Requests that use it are sent to the provider shown below, with names removed.",
+      "nowOn": "AI is now on.",
+      "nowOff": "AI is now off.",
+      "suspended": "AI cannot be switched on while your organization's account is suspended. It can still be switched off.",
+      "suspendedNote": "While your organization's account is suspended, AI can only be switched off."
+    },
+    "featuresTitle": "What is offered",
+    "features": {
+      "drafting": "Drafting policies and procedures",
+      "insights": "Suggestions on records",
+      "assistant": "Assistant"
+    },
+    "units": {
+      "drafting": "drafts",
+      "insights": "suggestions",
+      "assistant": "messages"
+    },
+    "reasons": {
+      "module": "Not in your subscription.",
+      "not_offered": "Not offered by Trustline.",
+      "not_configured": "Not set up yet by Trustline.",
+      "connection_inactive": "Paused by Trustline.",
+      "plan": "Not included in your plan."
+    },
+    "state": {
+      "active": "In use",
+      "offered": "Offered, switched off",
+      "notOffered": "Not offered"
+    },
+    "model": "Model: {model}",
+    "usage": {
+      "of": "{used} of {allowance} {unit} used this month",
+      "noLimit": "{used} {unit} used this month, with no limit",
+      "warning": "80% or more of this month's allowance is used.",
+      "reached": "This month's allowance is used up: paused until {date}. Writing by hand still works.",
+      "month": "Allowances start again on {date}."
+    },
+    "medicalOption": {
+      "title": "Medical option",
+      "allowed": "Trustline allows your organization the medical option.",
+      "notAllowed": "The medical option is not allowed for your organization."
+    },
+    "howTitle": "How AI content is shown",
+    "markExample": "AI draft",
+    "how1": "Everything the assistant writes carries this mark until a person takes ownership of it.",
+    "how2": "The assistant never approves, signs or publishes anything.",
+    "how3": "Names of people are removed before anything is sent, and nothing your organization writes is used to train a model.",
+    "errors": {
+      "ai_not_offered": "Trustline does not offer AI to your organization yet, so it cannot be switched on."
+    }
+  },
+  "profile": {
+    "title": "Organization profile",
+    "description": "What your organization is, does and calls things. Documents rely on it, and the assistant drafts from it. Write each text in your organization's languages.",
+    "noAccess": "The organization profile is for those who manage the settings of the whole organization.",
+    "loading": "Loading…",
+    "loadError": "Could not load the profile. Reload the page.",
+    "saved": "The profile is saved.",
+    "changed": "Someone else saved the profile in the meantime. It is shown as it is now: check it, then save again.",
+    "languageMismatch": "The legal name is needed in the organization's main language, and texts only in its languages.",
+    "unknownRole": "A job title is matched to a role that no longer exists. Choose another role.",
+    "invalid": "Check the fields: something is missing or too long.",
+    "error": "Could not save. Try again.",
+    "save": "Save the profile",
+    "none": "None yet.",
+    "add": "Add",
+    "remove": "Remove",
+    "identity": "Identity",
+    "legalName": "Legal name",
+    "tradingName": "Name in use",
+    "sector": "Sector",
+    "sectors": {
+      "healthcare": "Healthcare",
+      "manufacturing": "Manufacturing",
+      "logistics": "Logistics",
+      "education": "Education",
+      "public_sector": "Public sector",
+      "services": "Services",
+      "retail": "Retail",
+      "energy": "Energy",
+      "construction": "Construction",
+      "other": "Other"
+    },
+    "ownershipLabel": "Ownership",
+    "ownership": {
+      "public": "Public",
+      "private": "Private",
+      "non_profit": "Not for profit",
+      "mixed": "Mixed"
+    },
+    "notSaid": "Not said",
+    "staffCount": "Staff",
+    "siteCount": "Sites",
+    "organizationType": "What kind of organization",
+    "organizationTypeHelp": "In a few words, for example: a general hospital with an emergency department.",
+    "measures": "Figures that describe it",
+    "measuresHelp": "Up to 10, for example beds or operating rooms.",
+    "measureLabel": "What is counted",
+    "measureValue": "How many",
+    "provided": "Services provided",
+    "providedHelp": "What the organization does, one per row.",
+    "notProvided": "Services not provided",
+    "notProvidedHelp": "What it does not do, so documents do not assume it.",
+    "service": "Service",
+    "committees": "Committees",
+    "committeesHelp": "And what each approves.",
+    "committeeName": "Committee",
+    "committeeApproves": "What it approves",
+    "titles": "Job titles",
+    "titlesHelp": "The titles documents use, each with the role that matches it in Trustline, if one does.",
+    "jobTitle": "Job title",
+    "role": "Role in Trustline",
+    "noRole": "None",
+    "standards": "Standards and regulations",
+    "standardsHelp": "Those the organization follows. Documents cite a requirement by its number.",
+    "standardKind": "Kind",
+    "standardKinds": {
+      "standard": "Standard",
+      "regulation": "Regulation",
+      "licensing_body": "Licensing body"
+    },
+    "standardName": "Name",
+    "edition": "Edition",
+    "glossary": "Words to use",
+    "glossaryHelp": "The word to use, and the one to avoid.",
+    "preferred": "Use",
+    "avoid": "Avoid",
+    "note": "Note",
+    "abbreviations": "Abbreviations",
+    "short": "Abbreviation",
+    "meaning": "Meaning",
+    "houseRules": "House rules",
+    "houseRulesHelp": "What every document should say the same way.",
+    "documentOwners": "Who owns documents",
+    "retention": "How long records are kept",
+    "otherRules": "Other rules",
+    "relatedSystems": "Other systems in use",
+    "relatedSystemsHelp": "Systems a document may send people to, such as a maintenance system.",
+    "systemName": "System",
+    "systemPurpose": "What it is for",
+    "fromSettings": "Taken from your settings",
+    "fromSettingsHelp": "These are set elsewhere, and shown here so you see the whole profile.",
+    "languages": "Languages: {languages}",
+    "defaultLanguage": "Main language: {language}"
   }
 }

@@ -676,6 +676,9 @@ describe('the AI foundation', () => {
     });
 
     it('stops at the platform-wide spending limit, and tells Trustline’s staff once', async () => {
+      // The platform-wide limit is shared by every client on this database:
+      // start from whatever it holds now, and put it back afterwards.
+      const before = (await portal('get', '/platform/ai/settings').expect(200)).body.monthlySpendingLimitUsd ?? null;
       const set = await portal('put', '/platform/ai/settings').send({ monthlySpendingLimitUsd: 0.01 }).expect(200);
       try {
         expect(set.body).toMatchObject({ monthlySpendingLimitUsd: 0.01, mode: 'fake' });
@@ -692,9 +695,9 @@ describe('the AI foundation', () => {
           .where(eq(platformAuditLog.action, 'ai_platform_settings_updated'))
           .orderBy(desc(platformAuditLog.createdAt))
           .limit(1);
-        expect(entry.details).toEqual({ monthlySpendingLimitUsd: { from: null, to: 0.01 } });
+        expect(entry.details).toEqual({ monthlySpendingLimitUsd: { from: before, to: 0.01 } });
       } finally {
-        await portal('put', '/platform/ai/settings').send({ monthlySpendingLimitUsd: null }).expect(200);
+        await portal('put', '/platform/ai/settings').send({ monthlySpendingLimitUsd: before }).expect(200);
       }
       await portal('put', '/platform/ai/settings').send({ monthlySpendingLimitUsd: -1 }).expect(400);
     });
