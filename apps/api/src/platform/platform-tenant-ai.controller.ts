@@ -197,7 +197,7 @@ export class PlatformTenantAiController {
           await this.provisioning.auditAiSettingsChange(tx, tenant.id, {
             ...seen,
             platformAdminId: admin.id,
-            platformAdminEmail: admin.email,
+            platformAdminName: admin.name,
           });
         }
 

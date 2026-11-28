@@ -316,7 +316,7 @@ describe('the AI foundation', () => {
         offered: { from: false, to: true },
         features: { drafting: { from: null, to: { kind: 'anthropic', region: 'global', inferenceType: 'global', model: 'claude-sonnet-5-5' } } },
         medicalOptionAllowed: { from: false, to: true },
-        platformAdminEmail: expect.stringContaining('@test.invalid'),
+        platformAdminName: 'Staff',
       });
       // Never the connection's own name, nor where its credential is.
       expect(JSON.stringify(clientEntry.changes)).not.toContain(credentialEnv);
