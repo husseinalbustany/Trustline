@@ -779,7 +779,9 @@ export const incidentResponseRules = pgTable(
 );
 
 /** What a notification carries: short words, flags and counts only. */
-export type NotificationData = Record<string, string | number | boolean>;
+// A value is plain, or a name in each of the client's languages, shown with
+// `pick()` (`review_approval_turned_off`'s `typeName`).
+export type NotificationData = Record<string, string | number | boolean | Localized>;
 
 export const notificationKind = pgEnum('notification_kind', [
   'incident_reported',

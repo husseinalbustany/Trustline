@@ -306,6 +306,21 @@ describe('policies: the business decisions after quality review 3', () => {
     });
   });
 
+  describe('1. an importer who is the owner while the confirmation is awaited', () => {
+    it('is not offered the confirmation, and is refused it', async () => {
+      // As an owner change made before security review 11 left it: the
+      // importer made owner while it awaits.
+      const doc = (await importOne(quality.cookie, document({ number: `IOWN-${run}` })).expect(201)).body as Doc;
+      await bench.owner.db.update(documents).set({ ownerId: quality.id }).where(eq(documents.id, doc.id));
+      const seen = (await get(quality.cookie, `/documents/${doc.id}`).expect(200)).body as Doc;
+      expect(seen.importConfirmation).toMatchObject({ state: 'awaiting' });
+      expect(seen.moves).not.toContain('confirm_import');
+      expect(
+        (await post(quality.cookie, `/documents/${doc.id}/confirm-import`, { password, revision: seen.revision }).expect(403)).body.code,
+      ).toBe('importer_cannot_confirm');
+    });
+  });
+
   describe('1. an owner change while the confirmation is awaited (security review 11)', () => {
     it('makes it due from the new owner, who is told; and never makes the importer the owner', async () => {
       const doc = (await importOne(quality.cookie, document({ number: `MOVE-${run}` })).expect(201)).body as Doc;
@@ -547,7 +562,7 @@ describe('policies: the business decisions after quality review 3', () => {
       await patch(quality.cookie, `/types/${type.id}`, { noChangeNeedsApproval: false, revision: type.revision }).expect(200);
       for (const who of [authority.id, a.adminId]) {
         expect(await told(who, 'review_approval_turned_off')).toEqual([
-          { documentId: null, data: { typeId: type.id, typeCode: 'policy', serious: false } },
+          { documentId: null, data: { typeId: type.id, typeCode: 'policy', typeName: type.name, serious: false } },
         ]);
       }
       expect(await told(quality.id, 'review_approval_turned_off')).toEqual([]);

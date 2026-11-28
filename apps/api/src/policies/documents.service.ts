@@ -380,7 +380,11 @@ export class DocumentsService {
       access.owner &&
       doc.status === 'active' &&
       importConfirmation &&
-      importConfirmation.state !== 'confirmed'
+      importConfirmation.state !== 'confirmed' &&
+      (!importConfirmation.dueFrom || importConfirmation.dueFrom.id === viewer.userId) &&
+      // Never to the importer, owner or not (security review 11): offered
+      // only as `confirmImport` would take it.
+      !(await this.importedBy(tx, published!.id, viewer.userId))
     ) {
       moves.push('confirm_import');
     }
@@ -2832,6 +2836,15 @@ export class DocumentsService {
    * decision 1): `confirmed` (by their signature, or by the import itself
    * when they imported it), `awaiting` until its day, `overdue` after.
    */
+  /** Whether this person imported this version. */
+  private async importedBy(tx: Transaction, versionId: string, userId: string) {
+    const [row] = await tx
+      .select({ id: documentImports.id })
+      .from(documentImports)
+      .where(and(eq(documentImports.versionId, versionId), eq(documentImports.importedBy, userId)));
+    return !!row;
+  }
+
   async importConfirmationOf(tx: Transaction, versionId: string, today: string) {
     const [row] = await tx
       .select({

@@ -231,7 +231,7 @@ export class PolicySettingsService {
               tenantId: auth.tenant.id,
               userId: u.id,
               kind: 'review_approval_turned_off' as const,
-              data: { typeId: id, typeCode: before.code, serious: false },
+              data: { typeId: id, typeCode: before.code, typeName: after.name, serious: false },
             })),
           );
         }
