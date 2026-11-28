@@ -470,6 +470,27 @@
       "when": 1795859904127,
       "tag": "0066_reports_grants_and_existing_clients",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1795861355833,
+      "tag": "0067_approving_authority_reports",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1795861826021,
+      "tag": "0068_data_exports",
+      "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1795861836437,
+      "tag": "0069_data_exports_grants_and_existing_clients",
+      "breakpoints": true
     }
   ]
 }

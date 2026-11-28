@@ -37,6 +37,11 @@ export const PERMISSIONS = [
   // and reporting baseline (docs/specs/reports-and-measures.md). For the
   // whole organization only.
   'reports.manage',
+  // Ask for, approve and download a full export of the client's data
+  // (docs/specs/data-export.md): everything, reporters' names and
+  // restricted documents included. Only a grant for the whole organization
+  // counts. Built-in: the Administrator.
+  'data.export',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -81,6 +86,7 @@ export const PERMISSION_MODULE: Record<Permission, ModuleKey> = {
   'settings.manage': 'core',
   'audit.view': 'core',
   'reports.manage': 'core',
+  'data.export': 'core',
 };
 
 /** Whether a permission does anything for a client with these modules. */
@@ -183,11 +189,13 @@ export const SYSTEM_ROLES: {
       fr: 'Autorité d’approbation',
     },
     description: {
-      en: 'Gives the final approval of controlled documents, and reads every document, restricted ones and drafts included.',
-      ar: 'يمنح الاعتماد النهائي للوثائق المضبوطة، ويقرأ كل الوثائق بما فيها المقيّدة والمسودات.',
-      fr: 'Donne l’approbation finale des documents maîtrisés, et lit tous les documents, y compris les documents restreints et les brouillons.',
+      en: 'Gives the final approval of controlled documents, reads every document, restricted ones and drafts included, and views reports on documents.',
+      ar: 'يمنح الاعتماد النهائي للوثائق المضبوطة، ويقرأ كل الوثائق بما فيها المقيّدة والمسودات، ويطّلع على تقارير الوثائق.',
+      fr: 'Donne l’approbation finale des documents maîtrisés, lit tous les documents, y compris les documents restreints et les brouillons, et consulte les rapports sur les documents.',
     },
-    permissions: ['policies.view', 'policies.view_all', 'policies.approve'],
+    // `reports.view` from migration 0067 (reports decision 6): with no
+    // incident permission, it sees the document measures only.
+    permissions: ['policies.view', 'policies.view_all', 'policies.approve', 'reports.view'],
   },
   {
     code: 'reporter',

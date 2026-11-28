@@ -171,7 +171,9 @@ export const navigation: { key: NavGroupKey; items: NavItem[] }[] = [
   },
   {
     key: "insights",
-    items: [{ key: "reports", href: "/reports", icon: ChartColumn }],
+    items: [
+      { key: "reports", href: "/reports", icon: ChartColumn, permissions: ["reports.view"] },
+    ],
   },
   {
     key: "administration",

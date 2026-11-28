@@ -1480,11 +1480,13 @@
       "policies.approve": "Vérifier et approuver des documents lorsqu’on est désigné dans une étape d’un circuit d’approbation",
       "policies.view_all": "Lire tous les documents, y compris restreints et brouillons, et voir les chiffres de prise de connaissance",
       "policies.import": "Importer les documents existants",
-      "audit.view": "Consulter le journal d’audit"
+      "audit.view": "Consulter le journal d’audit",
+      "reports.manage": "Corriger les chiffres des rapports et fixer les objectifs et la référence"
     },
     "permissionHints": {
       "policies.import": "Détenue par le Responsable qualité. Un administrateur peut la donner sans la détenir.",
-      "audit.view": "Ne compte que si elle est donnée pour tout l’établissement : une attribution pour une seule unité n’ouvre rien."
+      "audit.view": "Ne compte que si elle est donnée pour tout l’établissement : une attribution pour une seule unité n’ouvre rien.",
+      "reports.manage": "Ne compte que si elle est donnée pour tout l’établissement : une attribution pour une seule unité n’ouvre rien."
     },
     "external": {
       "tab": "Évaluateurs externes",
@@ -2672,7 +2674,12 @@
       "audit_chain_exported": "Téléchargement du fichier de la chaîne",
       "audit_checkpoints_exported": "Téléchargement des points de contrôle",
       "external_reviewer_viewed": "Consultation par un évaluateur externe",
-      "audit_addresses_cleared": "Effacement des anciennes adresses IP de connexion"
+      "audit_addresses_cleared": "Effacement des anciennes adresses IP de connexion",
+      "measures_snapshot_taken": "Relevé des chiffres du mois",
+      "measure_correction_requested": "Demande de correction des chiffres",
+      "report_settings_changed": "Modification des objectifs ou de la référence des rapports",
+      "measures_exported": "Exportation des indicateurs (CSV)",
+      "measures_recomputed_by_system": "Recalcul des chiffres par une mise à jour de Trustline"
     },
     "areas": {
       "sign_in": "Connexion",
@@ -2682,7 +2689,8 @@
       "documents": "Documents",
       "exports": "Exports",
       "trustline": "Trustline",
-      "audit": "Journal d’audit"
+      "audit": "Journal d’audit",
+      "reports": "Rapports"
     },
     "entities": {
       "user": "Personne",
@@ -2801,6 +2809,175 @@
       "backdated": "entrée datée d’avant une vérification précédente",
       "bad_checkpoint": "signature d’un point de contrôle non valide",
       "other": "une différence a été constatée"
+    }
+  },
+  "reports": {
+    "title": "Rapports",
+    "description": "Les indicateurs suivis par l’établissement, mois par mois, au regard de leurs objectifs.",
+    "loading": "Chargement des chiffres…",
+    "loadError": "Impossible de charger les chiffres. Rechargez la page.",
+    "noAccess": "Les rapports sont réservés aux personnes qui détiennent « Consulter les rapports ».",
+    "unitGone": "Vous ne pouvez pas consulter les chiffres de cette unité. Choisissez-en une autre.",
+    "noMeasures": "Aucun indicateur pour ce choix : ils dépendent des modules de votre établissement et de ce que vous pouvez voir pour cette unité.",
+    "settingsLink": "Paramètres des rapports",
+    "csv": "Télécharger le CSV",
+    "csvFailed": "Le fichier n’a pas pu être téléchargé. Réessayez.",
+    "unit": "Établissement ou unité",
+    "organization": "Tout l’établissement",
+    "unitHelp": "Les chiffres d’une unité comptent l’unité et tout ce qui en dépend.",
+    "period": "Période",
+    "monthsBack": "{count} derniers",
+    "measures": {
+      "incidents.time_to_report": {
+        "name": "Durée de déclaration",
+        "help": "La durée médiane entre l’ouverture du formulaire et l’envoi de la déclaration, pour les déclarations dont le début a été enregistré."
+      },
+      "incidents.reported": {
+        "name": "Déclarations envoyées",
+        "help": "Les déclarations envoyées dans le mois, quel que soit leur type. Davantage de déclarations traduit en général une culture de déclaration plus forte."
+      },
+      "incidents.triaged_on_time": {
+        "name": "Tri dans les délais",
+        "help": "Parmi les déclarations du mois triées ou dont le premier délai de tri est passé, la part triée dans ce délai."
+      },
+      "actions.overdue": {
+        "name": "Actions correctives en retard",
+        "help": "Les actions ouvertes dont l’échéance est passée en fin de mois, en part des actions ouvertes."
+      },
+      "policies.past_review": {
+        "name": "Documents dont la révision est dépassée",
+        "help": "En fin de mois, la part des documents en vigueur dont la date de prochaine révision était passée."
+      },
+      "policies.acknowledged": {
+        "name": "Taux de prise de connaissance",
+        "help": "En fin de mois, parmi les prises de connaissance dues sur les documents en vigueur, la part donnée."
+      }
+    },
+    "current": {
+      "title": "Ce mois-ci jusqu’à présent",
+      "asOf": "Au {time}",
+      "provisional": "Provisoire",
+      "noValue": "Pas encore de chiffre ce mois-ci.",
+      "counted": "{numerator} sur {denominator}"
+    },
+    "target": {
+      "below": "Objectif : moins de {target}",
+      "at_least": "Objectif : {target} ou plus",
+      "above": "Objectif : plus de {target}",
+      "none": "Pas encore d’objectif",
+      "met": "Atteint",
+      "notMet": "Non atteint",
+      "unknown": "Non évalué"
+    },
+    "targetSource": {
+      "business": "l’objectif de référence",
+      "client": "l’objectif de votre établissement",
+      "baseline": "votre référence",
+      "first_months": "la moyenne des trois premiers mois"
+    },
+    "trend": {
+      "title": "Mois par mois",
+      "none": "Aucun mois n’a encore été relevé sur cette période.",
+      "chart": "{measure}, mois par mois : de {first} à {last}",
+      "point": "{month} : {value}, {met}",
+      "targetLine": "Objectif",
+      "figures": "Chiffres de chaque mois",
+      "month": "Mois",
+      "value": "Valeur",
+      "counted": "Comptés",
+      "outOf": "Sur",
+      "target": "Objectif",
+      "met": "Objectif atteint",
+      "how": "Mode de relevé",
+      "revisions": "Révisions",
+      "openRevisions": "Révisions de {month}"
+    },
+    "status": {
+      "provisional": "Provisoire",
+      "final": "Définitif"
+    },
+    "method": {
+      "snapshot": "Relevé en fin de mois",
+      "reconstructed": "Reconstitué à partir des dossiers",
+      "corrected": "Corrigé"
+    },
+    "marks": {
+      "corrected": "Corrigé le {date}",
+      "reconstructed": "Reconstitué à partir des dossiers",
+      "provisional": "Provisoire : certaines déclarations sont encore dans leur délai de tri"
+    },
+    "details": {
+      "quickShare": "Envoyées en moins de 2 minutes : {share}",
+      "withStartTime": "Déclarations avec heure de début : {count}",
+      "pending": "Encore dans leur délai de tri : {count}",
+      "nearMissShare": "Presque-accidents : {share}",
+      "channel": "Mode d’arrivée des déclarations",
+      "public": "Sans authentification : {count}",
+      "anonymous": "Anonymes : {count}",
+      "named": "Nominatives : {count}"
+    },
+    "history": {
+      "title": "Révisions de {month}",
+      "loading": "Chargement des révisions…",
+      "loadError": "Impossible de charger les révisions. Réessayez.",
+      "revision": "Révision {revision}",
+      "takenAt": "Relevée le {date}",
+      "reason": "Motif : {reason}",
+      "requestedBy": "Demandée par {name}",
+      "close": "Fermer",
+      "formerUser": "un ancien utilisateur"
+    },
+    "values": {
+      "seconds": "{value} s"
+    },
+    "settings": {
+      "title": "Paramètres des rapports",
+      "description": "Les objectifs, la référence de déclaration et le recalcul des chiffres d’un mois. Les modifications s’appliquent aux mois relevés à partir de maintenant ; les mois précédents gardent les leurs.",
+      "back": "Retour aux rapports",
+      "noAccess": "Les paramètres des rapports sont réservés aux personnes qui détiennent « Corriger les chiffres des rapports et fixer les objectifs et la référence » pour tout l’établissement.",
+      "loading": "Chargement…",
+      "loadError": "Impossible de charger les paramètres. Rechargez la page.",
+      "targets": "Objectifs",
+      "targetsHelp": "Laissez un objectif vide pour utiliser l’objectif de référence.",
+      "business": "Objectif de référence : {value}",
+      "inForce": "En vigueur : {value}",
+      "secondsUnit": "En secondes, de 1 à 3600",
+      "percentUnit": "En pourcentage, de 0 à 100",
+      "saveTargets": "Enregistrer les objectifs",
+      "saved": "Enregistré. Les mois relevés à partir de maintenant les utilisent.",
+      "unchanged": "Rien n’a changé.",
+      "baseline": "Référence de déclaration",
+      "baselineHelp": "La moyenne mensuelle des déclarations de l’établissement avant Trustline, avec sa source. L’objectif est que les déclarations envoyées la dépassent.",
+      "monthlyAverage": "Moyenne mensuelle avant Trustline",
+      "note": "Source",
+      "noteHelp": "Par exemple : registre papier, 2025.",
+      "saveBaseline": "Enregistrer la référence",
+      "removeBaseline": "Supprimer la référence",
+      "firstMonths": "Sans référence, l’objectif est la moyenne des trois premiers mois complets : {value}.",
+      "firstMonthsNone": "Sans référence, l’objectif sera la moyenne des trois premiers mois complets, une fois écoulés.",
+      "reportedTarget": "Objectif actuel des déclarations envoyées : plus de {value} ({source}).",
+      "reportedNone": "Les déclarations envoyées n’ont pas encore d’objectif.",
+      "stale": "Les paramètres ont été modifiés entre-temps. Ils sont affichés tels qu’ils sont maintenant : vérifiez-les, puis enregistrez de nouveau.",
+      "invalid": "Une valeur est hors de sa plage : vérifiez les champs.",
+      "languageMismatch": "Écrivez la source dans la langue par défaut de l’établissement.",
+      "error": "Impossible d’enregistrer. Réessayez.",
+      "correction": {
+        "title": "Recalculer un mois",
+        "help": "Si les chiffres d’un mois ont été relevés à partir de dossiers alors erronés (un incident saisi sur la mauvaise unité, par exemple), demandez à Trustline de les recalculer. Trustline les recalcule à partir des dossiers tels qu’ils sont maintenant, à la même fin de mois. Aucun chiffre ne peut être saisi. Les chiffres précédents sont conservés, avec votre motif.",
+        "month": "Mois",
+        "unit": "Établissement ou unité",
+        "unitAll": "L’établissement et toutes les unités",
+        "measures": "Indicateurs",
+        "reason": "Motif",
+        "reasonHelp": "Obligatoire : ce qui était erroné dans les dossiers, et ce qui a été fait. Il est conservé avec les chiffres.",
+        "submit": "Recalculer ce mois",
+        "pickMeasure": "Choisissez au moins un indicateur.",
+        "done": "Recalculé. Chaque chiffre a maintenant une nouvelle révision :",
+        "line": "{measure}, {unit} : {from} → {to} (révision {revision})",
+        "noSnapshot": "Les chiffres de ce mois n’ont jamais été relevés : il n’y a rien à recalculer.",
+        "notFound": "Un indicateur ou une unité choisi ne fait pas partie de ce que vous pouvez voir.",
+        "error": "Impossible de recalculer. Réessayez."
+      }
     }
   }
 }

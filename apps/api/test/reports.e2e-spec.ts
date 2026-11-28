@@ -332,6 +332,15 @@ describe('reports and measures', () => {
       expect(off.measures.map((m) => m.code)).toEqual(['policies.past_review', 'policies.acknowledged']);
     });
 
+    it('gives the Approving authority the document measures only', async () => {
+      const authority = await bench.createStaff(a, 'authority', { role: 'approving_authority', orgUnitId: null });
+      const seen = await measuresOf(authority.cookie, months(lastMonth, lastMonth));
+      expect(seen.measures.map((m) => m.code)).toEqual(['policies.past_review', 'policies.acknowledged']);
+      await http().post('/reports/measures/corrections').set('Cookie', authority.cookie)
+        .send({ month: lastMonth.slice(0, 7), measures: ['policies.past_review'], reason: 'Not theirs to correct.' })
+        .expect(403);
+    });
+
     it('corrects a month only by recomputing it, with a reason, for the whole organization’s reports.manage', async () => {
       const body = { month: lastMonth.slice(0, 7), measures: ['incidents.reported'], reason: 'Two reports were entered against the wrong ward.' };
       await http().post('/reports/measures/corrections').send(body).expect(401);

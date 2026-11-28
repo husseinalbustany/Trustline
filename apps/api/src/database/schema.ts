@@ -1098,6 +1098,11 @@ export const notificationKind = pgEnum('notification_kind', [
   // of the audit chain, so that a copy of it is outside Trustline's hands
   // (decision 5). Emailed, and not to be switched off.
   'audit_chain_head',
+  // A full data export was asked for, approved, refused, made, failed, or
+  // downloaded (docs/specs/data-export.md, `data.change`, `data.exportId`):
+  // to every holder of `data.export` or `settings.manage` for the whole
+  // organization, in the app and by email at once. Names nobody.
+  'data_export_changed',
 ]);
 
 // Something a user is told about an incident they can see. Stored so that it
@@ -1160,7 +1165,7 @@ export const notifications = pgTable(
     // new kind to be committed before it is created.
     check(
       'notifications_about_one_thing',
-      sql`(${t.incidentId} is null or ${t.documentId} is null) and (${t.incidentId} is not null or ${t.documentId} is not null or ${t.kind}::text in ('public_form_paused', 'acknowledgements_overdue_digest', 'email_turned_off', 'signing_pin_changed', 'signing_pin_locked', 'review_approval_turned_off', 'audit_chain_broken', 'policies_import_granted', 'external_access_changed', 'audit_chain_head'))`,
+      sql`(${t.incidentId} is null or ${t.documentId} is null) and (${t.incidentId} is not null or ${t.documentId} is not null or ${t.kind}::text in ('public_form_paused', 'acknowledgements_overdue_digest', 'email_turned_off', 'signing_pin_changed', 'signing_pin_locked', 'review_approval_turned_off', 'audit_chain_broken', 'policies_import_granted', 'external_access_changed', 'audit_chain_head', 'data_export_changed'))`,
     ),
     tenantIsolation(),
   ],
@@ -2836,4 +2841,116 @@ export const reportSettings = pgTable(
     updatedBy: uuid(),
   },
   () => [tenantIsolation()],
+);
+
+export const dataExportReason = pgEnum('data_export_reason', ['contract_end', 'on_request']);
+export const dataExportStatus = pgEnum('data_export_status', [
+  // Asked for, waiting for a second holder of `data.export`.
+  'requested',
+  // Approved, waiting for the worker.
+  'approved',
+  'refused',
+  // Not approved within 7 days.
+  'lapsed',
+  // Cancelled by the person who asked, before it was made.
+  'cancelled',
+  // Being made by the worker.
+  'making',
+  // Made, and downloadable until `expires_at` or the last download.
+  'ready',
+  // Could not be made after the retries.
+  'failed',
+  // Its file deleted: past `expires_at`, or downloaded the most times.
+  'expired',
+]);
+
+/**
+ * A full export of a client's data (docs/specs/data-export.md): asked for
+ * by one holder of `data.export`, approved by another, made by the export
+ * worker from one moment of the data, and kept, encrypted, until
+ * downloaded at most 5 times within 7 days. The record stays when its file
+ * is gone. At most one is asked for or in the making per client at a time
+ * (`data_exports_one_open`).
+ */
+export const dataExports = pgTable(
+  'data_exports',
+  {
+    id: uuid().primaryKey().defaultRandom(),
+    tenantId: uuid()
+      .notNull()
+      .references(() => tenants.id),
+    reason: dataExportReason().notNull(),
+    note: text(),
+    // The CSV files' language and the README's first one: one of the client's.
+    locale: text().notNull(),
+    // PDFs follow once the shared renderer exists (business decision): kept
+    // as asked, and said in the archive.
+    includePdfs: boolean().notNull().default(false),
+    status: dataExportStatus().notNull().default('requested'),
+    requestedBy: uuid().notNull(),
+    requestedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    // Seven days after the request, unless approved before.
+    lapsesAt: timestamp({ withTimezone: true }).notNull(),
+    approvedBy: uuid(),
+    approvedAt: timestamp({ withTimezone: true }),
+    refusedBy: uuid(),
+    refusedAt: timestamp({ withTimezone: true }),
+    refusedReason: text(),
+    cancelledAt: timestamp({ withTimezone: true }),
+    // The worker: its claim, the phase it is in, and its tries.
+    claimedAt: timestamp({ withTimezone: true }),
+    phase: text(),
+    attempts: integer().notNull().default(0),
+    // The kind of the last failure, never its message.
+    errorKind: text(),
+    // The moment of the data the archive holds.
+    snapshotAt: timestamp({ withTimezone: true }),
+    // Rows of each table in the archive.
+    counts: jsonb().$type<Record<string, number>>(),
+    sizeBytes: bigint({ mode: 'number' }),
+    archiveSha256: text(),
+    manifestSha256: text(),
+    // Where the encrypted archive is kept, and its own key, wrapped by the
+    // storage key (exports/storage.ts). Never shown.
+    storageKey: text(),
+    wrappedKey: text(),
+    readyAt: timestamp({ withTimezone: true }),
+    expiresAt: timestamp({ withTimezone: true }),
+    expiredAt: timestamp({ withTimezone: true }),
+    downloads: integer().notNull().default(0),
+    lastDownloadedAt: timestamp({ withTimezone: true }),
+    // Raised by every change, for stale-save protection (409 `stale_export`).
+    revision: integer().notNull().default(1),
+    createdAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp({ withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('data_exports_tenant_id_id_key').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'data_exports_requested_by_fk',
+      columns: [t.tenantId, t.requestedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'data_exports_approved_by_fk',
+      columns: [t.tenantId, t.approvedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    foreignKey({
+      name: 'data_exports_refused_by_fk',
+      columns: [t.tenantId, t.refusedBy],
+      foreignColumns: [users.tenantId, users.id],
+    }),
+    // One asked for or in the making per client (409 `export_in_progress`).
+    uniqueIndex('data_exports_one_open')
+      .on(t.tenantId)
+      .where(sql`${t.status} in ('requested', 'approved', 'making')`),
+    index('data_exports_tenant_idx').on(t.tenantId, t.requestedAt),
+    // The worker's queue, client by client.
+    index('data_exports_status_idx').on(t.tenantId, t.status),
+    check('data_exports_not_self_approved', sql`${t.approvedBy} is null or ${t.approvedBy} <> ${t.requestedBy}`),
+    check('data_exports_downloads', sql`${t.downloads} between 0 and 5`),
+    check('data_exports_note', sql`${t.note} is null or length(${t.note}) <= 1000`),
+    tenantIsolation(),
+  ],
 );

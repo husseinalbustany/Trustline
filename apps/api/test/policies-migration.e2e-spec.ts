@@ -2,7 +2,7 @@ import '../src/env.js';
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { createDatabase, type Transaction } from '../src/database/client.js';
 import {
   approvalRoutes,
@@ -326,6 +326,8 @@ describe('the policies migration, for clients that existed before it', () => {
           approval_routes: ours,
           approval_route_steps: ours,
         });
+        // Then what came after it for the role: reports.view (0067).
+        await applyToOwnRows(tx, statementsOf('0067_approving_authority_reports'), { roles: ours });
         const role = async (tenantId: string) =>
           (
             await tx
@@ -351,6 +353,16 @@ describe('the policies migration, for clients that existed before it', () => {
           changed: await steps(tx, changed),
           own: await steps(tx, own),
           keptAudits: await audits(kept),
+          keptId: kept,
+          reportAudits: await tx
+            .select({ tenantId: auditLog.tenantId, changes: auditLog.changes })
+            .from(auditLog)
+            .where(
+              and(
+                inArray(auditLog.tenantId, [kept, own]),
+                sql`${auditLog.changes} ->> 'migration' = '0067_approving_authority_reports'`,
+              ),
+            ),
           changedAudits: await audits(changed),
           ownAudits: await audits(own),
           revision: (
@@ -365,9 +377,21 @@ describe('the policies migration, for clients that existed before it', () => {
     ).rejects.toBe(rollback);
     const code = SYSTEM_ROLES.find((r) => r.code === 'approving_authority')!;
     expect(found.keptRole).toEqual({ name: code.name, isSystem: true, permissions: code.permissions });
+    // reports.view (0067): applied twice, audited once, and only for the built-in role.
+    expect(found.reportAudits).toEqual([
+      {
+        tenantId: found.keptId,
+        changes: {
+          migration: '0067_approving_authority_reports',
+          roles: ['approving_authority'],
+          permissionsAdded: ['reports.view'],
+          reworded: true,
+        },
+      },
+    ]);
     // In three languages, worded for any organization.
     expect(Object.keys(code.name).sort()).toEqual(['ar', 'en', 'fr']);
-    expect(code.permissions).toEqual(['policies.view', 'policies.view_all', 'policies.approve']);
+    expect(code.permissions).toEqual(['policies.view', 'policies.view_all', 'policies.approve', 'reports.view']);
     const authorityRoute = 'review:quality_officer:7 approve:approving_authority:7';
     const earlier = 'review:quality_officer:7 approve:administrator:7';
     expect(found.kept).toEqual({ policy: authorityRoute, procedure: authorityRoute, work_instruction: authorityRoute });

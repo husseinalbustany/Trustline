@@ -10,6 +10,7 @@ export const auditAreas = [
   "exports",
   "trustline",
   "audit",
+  "reports",
 ] as const;
 export type AuditArea = (typeof auditAreas)[number];
 
@@ -267,5 +268,12 @@ export const auditActionsByArea: Record<AuditArea, readonly string[]> = {
     "audit_checkpoints_exported",
     "external_reviewer_viewed",
     "audit_addresses_cleared",
+  ],
+  reports: [
+    "measures_snapshot_taken",
+    "measure_correction_requested",
+    "measures_recomputed_by_system",
+    "report_settings_changed",
+    "measures_exported",
   ],
 };

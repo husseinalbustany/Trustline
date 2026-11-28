@@ -1480,11 +1480,13 @@
       "policies.approve": "Review and approve documents when named in a step of an approval route",
       "policies.view_all": "Read every document, including restricted ones and drafts, and see acknowledgement figures",
       "policies.import": "Import existing documents",
-      "audit.view": "View the audit trail"
+      "audit.view": "View the audit trail",
+      "reports.manage": "Correct report figures, and set targets and the baseline"
     },
     "permissionHints": {
       "policies.import": "Held by the Quality officer. An administrator can give it to someone without holding it.",
-      "audit.view": "Counts only when given for the whole organization: a grant for one unit opens nothing."
+      "audit.view": "Counts only when given for the whole organization: a grant for one unit opens nothing.",
+      "reports.manage": "Counts only when given for the whole organization: a grant for one unit opens nothing."
     },
     "external": {
       "tab": "External reviewers",
@@ -2672,7 +2674,12 @@
       "audit_chain_exported": "Chain file downloaded",
       "audit_checkpoints_exported": "Checkpoints downloaded",
       "external_reviewer_viewed": "Viewed by an external reviewer",
-      "audit_addresses_cleared": "Old sign-in IP addresses cleared"
+      "audit_addresses_cleared": "Old sign-in IP addresses cleared",
+      "measures_snapshot_taken": "Month's figures taken",
+      "measure_correction_requested": "Correction of figures asked for",
+      "report_settings_changed": "Report targets or baseline changed",
+      "measures_exported": "Measures exported (CSV)",
+      "measures_recomputed_by_system": "Figures recomputed by a Trustline update"
     },
     "areas": {
       "sign_in": "Sign-in",
@@ -2682,7 +2689,8 @@
       "documents": "Documents",
       "exports": "Exports",
       "trustline": "Trustline",
-      "audit": "Audit trail"
+      "audit": "Audit trail",
+      "reports": "Reports"
     },
     "entities": {
       "user": "Person",
@@ -2801,6 +2809,175 @@
       "backdated": "an entry dated before an earlier check",
       "bad_checkpoint": "a checkpoint's signature does not hold",
       "other": "a difference was found"
+    }
+  },
+  "reports": {
+    "title": "Reports",
+    "description": "The measures the organization tracks, month by month, against their targets.",
+    "loading": "Loading the figures…",
+    "loadError": "Could not load the figures. Reload the page.",
+    "noAccess": "Reports are for those who hold “View reports”.",
+    "unitGone": "This unit is not one whose figures you may see. Choose another.",
+    "noMeasures": "No measures for this choice: they depend on the modules your organization has, and on what you may see for this unit.",
+    "settingsLink": "Report settings",
+    "csv": "Download CSV",
+    "csvFailed": "The file could not be downloaded. Try again.",
+    "unit": "Organization or unit",
+    "organization": "Whole organization",
+    "unitHelp": "A unit's figures count the unit and everything under it.",
+    "period": "Period",
+    "monthsBack": "Last {count}",
+    "measures": {
+      "incidents.time_to_report": {
+        "name": "Time to submit a report",
+        "help": "The median time from opening the report form to sending it, over the reports that recorded when they were started."
+      },
+      "incidents.reported": {
+        "name": "Reports submitted",
+        "help": "Reports sent in the month, whatever their type. More reports usually means a stronger reporting culture."
+      },
+      "incidents.triaged_on_time": {
+        "name": "Triaged on time",
+        "help": "Of the month's reports that were decided or are past their first triage deadline, the share decided by that deadline."
+      },
+      "actions.overdue": {
+        "name": "Overdue corrective actions",
+        "help": "Open actions past their due date at the end of the month, as a share of open actions."
+      },
+      "policies.past_review": {
+        "name": "Documents past their review date",
+        "help": "At the end of the month, the share of active documents whose next review date had passed."
+      },
+      "policies.acknowledged": {
+        "name": "Acknowledgement completion",
+        "help": "At the end of the month, of the acknowledgements due on documents in force, the share given."
+      }
+    },
+    "current": {
+      "title": "This month so far",
+      "asOf": "As of {time}",
+      "provisional": "Provisional",
+      "noValue": "No figure yet this month.",
+      "counted": "{numerator} of {denominator}"
+    },
+    "target": {
+      "below": "Target: under {target}",
+      "at_least": "Target: {target} or more",
+      "above": "Target: above {target}",
+      "none": "No target yet",
+      "met": "Met",
+      "notMet": "Not met",
+      "unknown": "Not judged"
+    },
+    "targetSource": {
+      "business": "the business target",
+      "client": "your organization's target",
+      "baseline": "your baseline",
+      "first_months": "the average of the first three months"
+    },
+    "trend": {
+      "title": "Month by month",
+      "none": "No month was taken in this period yet.",
+      "chart": "{measure}, month by month: {first} to {last}",
+      "point": "{month}: {value}, {met}",
+      "targetLine": "Target",
+      "figures": "Figures for each month",
+      "month": "Month",
+      "value": "Value",
+      "counted": "Counted",
+      "outOf": "Out of",
+      "target": "Target",
+      "met": "Target met",
+      "how": "How it was taken",
+      "revisions": "Revisions",
+      "openRevisions": "Revisions of {month}"
+    },
+    "status": {
+      "provisional": "Provisional",
+      "final": "Final"
+    },
+    "method": {
+      "snapshot": "Taken at month end",
+      "reconstructed": "Reconstructed from records",
+      "corrected": "Corrected"
+    },
+    "marks": {
+      "corrected": "Corrected on {date}",
+      "reconstructed": "Reconstructed from records",
+      "provisional": "Provisional: some reports are still within their triage deadline"
+    },
+    "details": {
+      "quickShare": "Sent within 2 minutes: {share}",
+      "withStartTime": "Reports with a start time: {count}",
+      "pending": "Still within their triage deadline: {count}",
+      "nearMissShare": "Near misses: {share}",
+      "channel": "How reports arrived",
+      "public": "Without sign-in: {count}",
+      "anonymous": "Anonymous: {count}",
+      "named": "Named: {count}"
+    },
+    "history": {
+      "title": "Revisions of {month}",
+      "loading": "Loading the revisions…",
+      "loadError": "Could not load the revisions. Try again.",
+      "revision": "Revision {revision}",
+      "takenAt": "Taken on {date}",
+      "reason": "Reason: {reason}",
+      "requestedBy": "Asked for by {name}",
+      "close": "Close",
+      "formerUser": "a former user"
+    },
+    "values": {
+      "seconds": "{value} s"
+    },
+    "settings": {
+      "title": "Report settings",
+      "description": "Targets, the reporting baseline, and recomputing a month's figures. Changes apply to months taken from now on; earlier months keep theirs.",
+      "back": "Back to reports",
+      "noAccess": "Report settings are for those who hold “Correct report figures, and set targets and the baseline” for the whole organization.",
+      "loading": "Loading…",
+      "loadError": "Could not load the settings. Reload the page.",
+      "targets": "Targets",
+      "targetsHelp": "Leave a target empty to use the business target.",
+      "business": "Business target: {value}",
+      "inForce": "In force: {value}",
+      "secondsUnit": "Seconds, 1 to 3600",
+      "percentUnit": "Percent, 0 to 100",
+      "saveTargets": "Save the targets",
+      "saved": "Saved. Months taken from now on use these.",
+      "unchanged": "Nothing changed.",
+      "baseline": "Reporting baseline",
+      "baselineHelp": "The organization's monthly average of reports before Trustline, with where it comes from. The target for reports submitted is to be above it.",
+      "monthlyAverage": "Monthly average before Trustline",
+      "note": "Where it comes from",
+      "noteHelp": "For example: paper register, 2025.",
+      "saveBaseline": "Save the baseline",
+      "removeBaseline": "Remove the baseline",
+      "firstMonths": "Without a baseline, the target is the average of the first three full months: {value}.",
+      "firstMonthsNone": "Without a baseline, the target will be the average of the first three full months, once they have passed.",
+      "reportedTarget": "Target for reports submitted now: above {value} ({source}).",
+      "reportedNone": "Reports submitted have no target yet.",
+      "stale": "The settings were changed in the meantime. They are shown as they are now: check them, then save again.",
+      "invalid": "A value is outside its range: check the fields.",
+      "languageMismatch": "Write the note in the organization's default language.",
+      "error": "Could not save. Try again.",
+      "correction": {
+        "title": "Recompute a month",
+        "help": "If a month's figures were taken from records that were wrong then (an incident entered against the wrong unit, for example), ask Trustline to work them out again. Trustline recomputes them from the records as they stand now, as at the same month end. No figure can be typed in. The earlier figures stay, with your reason.",
+        "month": "Month",
+        "unit": "Organization or unit",
+        "unitAll": "The organization and every unit",
+        "measures": "Measures",
+        "reason": "Reason",
+        "reasonHelp": "Required: what was wrong in the records, and what was done. It is kept with the figures.",
+        "submit": "Recompute this month",
+        "pickMeasure": "Choose at least one measure.",
+        "done": "Recomputed. Each figure now has a new revision:",
+        "line": "{measure}, {unit}: {from} → {to} (revision {revision})",
+        "noSnapshot": "This month's figures were never taken, so there is nothing to recompute.",
+        "notFound": "A measure or unit chosen is not one you may see.",
+        "error": "Could not recompute. Try again."
+      }
     }
   }
 }
